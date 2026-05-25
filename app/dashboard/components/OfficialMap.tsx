@@ -10,6 +10,7 @@ export interface OfficialMapRecord {
 interface Props {
   map: OfficialMapRecord | null
   title: string
+  note?: string
   className?: string
 }
 
@@ -21,7 +22,7 @@ function formatDate(iso: string) {
   })
 }
 
-export default function OfficialMap({ map, title, className = '' }: Props) {
+export default function OfficialMap({ map, title, note, className = '' }: Props) {
   if (!map) {
     return (
       <div
@@ -63,6 +64,9 @@ export default function OfficialMap({ map, title, className = '' }: Props) {
             Source
           </a>
         </p>
+        {note && (
+          <p className="mt-1 text-xs text-forest-green/40 font-dm-sans">{note}</p>
+        )}
       </div>
     </div>
   )

@@ -312,8 +312,13 @@ export default async function DashboardPage({
             {/* Official maps row: state + national */}
             <div className="grid gap-6 sm:grid-cols-2">
               <OfficialMap
-                map={stateMap}
+                map={stateMap ?? nationalMap}
                 title={`USDM — ${selectedCounty.state}`}
+                note={
+                  stateMap == null && nationalMap != null
+                    ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
+                    : undefined
+                }
               />
               <OfficialMap
                 map={nationalMap}
