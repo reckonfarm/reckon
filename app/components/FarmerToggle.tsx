@@ -25,16 +25,17 @@ export default function FarmerToggle({ className = '' }: Props) {
   }
 
   return (
-    <div className={`flex rounded-lg border border-forest-green/15 bg-cream p-0.5 ${className}`}>
+    <div className={`flex gap-2 ${className}`}>
       {(['livestock', 'rowcrop'] as const).map(m => (
         <button
           key={m}
           onClick={() => handleChange(m)}
+          style={mode === m ? { color: '#ffffff' } : undefined}
           className={[
-            'rounded-md px-4 py-2 text-sm font-semibold font-dm-sans',
+            'rounded-full px-4 py-2 text-sm font-semibold font-dm-sans transition-colors',
             mode === m
-              ? 'bg-forest-green text-white'
-              : 'text-forest-green/60 hover:text-forest-green',
+              ? 'bg-forest-green'
+              : 'border border-forest-green/30 text-forest-green hover:border-forest-green/60',
           ].join(' ')}
         >
           {m === 'livestock' ? 'Livestock' : 'Row Crop'}

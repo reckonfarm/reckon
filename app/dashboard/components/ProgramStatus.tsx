@@ -336,7 +336,8 @@ function LivestockPanel({
             </div>
             <button
               onClick={recalculate}
-              className="rounded-lg bg-forest-green px-4 py-2 text-sm font-medium text-white font-dm-sans hover:bg-forest-green/90"
+              style={{ color: '#ffffff' }}
+              className="rounded-lg bg-forest-green px-4 py-2 text-sm font-medium font-dm-sans hover:bg-forest-green/90"
             >
               Recalculate
             </button>
@@ -525,10 +526,11 @@ export default function ProgramStatus({
             <button
               key={m}
               onClick={() => handleModeChange(m)}
+              style={mode === m ? { color: '#ffffff' } : undefined}
               className={[
                 'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
                 mode === m
-                  ? 'bg-forest-green text-white'
+                  ? 'bg-forest-green'
                   : 'text-forest-green/60 hover:text-forest-green',
               ].join(' ')}
             >

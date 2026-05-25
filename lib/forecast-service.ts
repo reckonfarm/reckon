@@ -198,9 +198,10 @@ function parseFcstDate(s: string): string {
 }
 
 function lastDayOfMonth(target: string): string {
-  const [monthName, yearStr] = target.split(' ')
-  const monthIdx = MONTHS.indexOf(monthName)
-  const year     = parseInt(yearStr, 10)
+  const parts    = target.split(' ')
+  const monthName = parts[0]
+  const year      = parseInt(parts[parts.length - 1], 10)
+  const monthIdx  = MONTHS.indexOf(monthName)
   return new Date(Date.UTC(year, monthIdx + 1, 0)).toISOString().slice(0, 10)
 }
 
