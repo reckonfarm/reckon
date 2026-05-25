@@ -1,13 +1,17 @@
 import { createServiceClient } from '@/lib/supabase'
 import { getLocalForecast } from '@/lib/nws'
+import { computeLfpEligibility } from '@/lib/lfp-eligibility'
+import { getGrazingPreset } from '@/lib/grazing-presets'
 import CountySelector from './components/CountySelector'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
+import ProgramStatus from './components/ProgramStatus'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
 import type { ForecastOutlook } from './components/ForecastSection'
+import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,9 +71,9 @@ function formatDate(iso: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fips?: string }>
+  searchParams: Promise<{ fips?: string; gs?: string; ge?: string }>
 }) {
-  const { fips } = await searchParams
+  const { fips, gs, ge } = await searchParams
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -105,6 +109,7 @@ export default async function DashboardPage({
   let monthlyOutlook: ForecastOutlook | null        = null
   let seasonalOutlook: ForecastOutlook | null       = null
   let nwsForecast: Awaited<ReturnType<typeof getLocalForecast>> = null
+  let lfpResult: LfpEligibilityResult | null        = null
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -118,6 +123,7 @@ export default async function DashboardPage({
       monthlyOutlookRes,
       seasonalOutlookRes,
       nwsResult,
+      lfpRes,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -179,6 +185,14 @@ export default async function DashboardPage({
       selectedCounty.lat != null && selectedCounty.lon != null
         ? getLocalForecast(selectedCounty.lat, selectedCounty.lon)
         : Promise.resolve(null),
+
+      // LFP eligibility
+      computeLfpEligibility(selectedCounty.fips, (() => {
+        if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
+        const preset = getGrazingPreset(selectedCounty.fips, 2025)
+        if (preset.source === 'county') return { grazingPeriod: { startDate: preset.startDate, endDate: preset.endDate } }
+        return {}
+      })()),
     ])
 
     history         = historyRes.data ?? []
@@ -188,6 +202,7 @@ export default async function DashboardPage({
     monthlyOutlook  = monthlyOutlookRes.data as ForecastOutlook | null
     seasonalOutlook = seasonalOutlookRes.data as ForecastOutlook | null
     nwsForecast     = nwsResult
+    lfpResult       = lfpRes
   }
 
   const latest = history[0] ?? null
@@ -308,6 +323,13 @@ export default async function DashboardPage({
             {history.length > 0 && (
               <DroughtTrendChart history={history} countyName={selectedCounty.name} />
             )}
+
+            {/* Program Status — LFP eligibility and row crop programs */}
+            <ProgramStatus
+              eligibility={lfpResult}
+              fips={selectedCounty.fips}
+              countyName={selectedCounty.name}
+            />
 
             {/* Official maps row: state + national */}
             <div className="grid gap-6 sm:grid-cols-2">
