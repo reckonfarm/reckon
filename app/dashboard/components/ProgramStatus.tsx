@@ -10,6 +10,7 @@ import {
   type LivestockKind,
 } from '@/lib/lfp-payment'
 import { getGrazingPreset } from '@/lib/grazing-presets'
+import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -497,6 +498,18 @@ export default function ProgramStatus({
 }: ProgramStatusProps) {
   const [mode, setMode] = useState<FarmerMode>('livestock')
 
+  useEffect(() => {
+    const stored = localStorage.getItem(FARMER_TYPE_KEY)
+    if (stored === 'livestock' || stored === 'rowcrop') {
+      setMode(stored)
+    }
+  }, [])
+
+  function handleModeChange(next: FarmerMode) {
+    setMode(next)
+    localStorage.setItem(FARMER_TYPE_KEY, next)
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
 
@@ -511,7 +524,7 @@ export default function ProgramStatus({
           {(['livestock', 'rowcrop'] as const).map(m => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={() => handleModeChange(m)}
               className={[
                 'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
                 mode === m

@@ -32,12 +32,18 @@ interface CountyRow extends County {
 // ─── Sub-components (server-safe) ─────────────────────────────────────────────
 
 function DroughtBar({ reading }: { reading: DroughtReading }) {
+  const d0 = reading.d0 ?? 0
+  const d1 = reading.d1 ?? 0
+  const d2 = reading.d2 ?? 0
+  const d3 = reading.d3 ?? 0
+  const d4 = reading.d4 ?? 0
+  // USDM values are cumulative (d2 = "D2 or worse"), so subtract to get actual per-category
   const segments = [
-    { pct: reading.d0 ?? 0, bg: '#FFFF00' },
-    { pct: reading.d1 ?? 0, bg: '#FCD37F' },
-    { pct: reading.d2 ?? 0, bg: '#FFAA00' },
-    { pct: reading.d3 ?? 0, bg: '#E60000' },
-    { pct: reading.d4 ?? 0, bg: '#730000' },
+    { pct: d0 - d1, bg: '#FFFF00' },
+    { pct: d1 - d2, bg: '#FCD37F' },
+    { pct: d2 - d3, bg: '#FFAA00' },
+    { pct: d3 - d4, bg: '#E60000' },
+    { pct: d4,      bg: '#730000' },
   ]
   return (
     <div className="flex h-3 w-full overflow-hidden rounded-full bg-forest-green/10">
@@ -50,13 +56,6 @@ function DroughtBar({ reading }: { reading: DroughtReading }) {
   )
 }
 
-const LEVELS = [
-  { key: 'd0' as const, label: 'D0', sublabel: 'Abnormally Dry',  dot: '#FFFF00' },
-  { key: 'd1' as const, label: 'D1', sublabel: 'Moderate',        dot: '#FCD37F' },
-  { key: 'd2' as const, label: 'D2', sublabel: 'Severe',          dot: '#FFAA00' },
-  { key: 'd3' as const, label: 'D3', sublabel: 'Extreme',         dot: '#E60000' },
-  { key: 'd4' as const, label: 'D4', sublabel: 'Exceptional',     dot: '#730000' },
-]
 
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
@@ -294,24 +293,33 @@ export default async function DashboardPage({
 
                 <DroughtBar reading={latest} />
 
-                {/* D0–D4 stat grid */}
-                <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
-                  {LEVELS.map(({ key, label, sublabel, dot }) => (
-                    <div key={key} className="rounded-lg bg-cream p-3 text-center">
-                      <div
-                        className="mx-auto mb-1.5 h-2.5 w-2.5 rounded-full ring-1 ring-forest-green/10"
-                        style={{ backgroundColor: dot }}
-                      />
-                      <dt className="text-xs text-forest-green/60 font-dm-sans leading-tight">
-                        <span className="font-semibold">{label}</span> {sublabel}
-                      </dt>
-                      <dd className="mt-1 font-fraunces text-xl font-semibold text-forest-green">
-                        {(latest[key] ?? 0).toFixed(1)}
-                        <span className="text-sm font-normal text-forest-green/50">%</span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                {/* Compact legend — actual per-category, only categories > 0.5% */}
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
+                  {(() => {
+                    const d0 = latest.d0 ?? 0
+                    const d1 = latest.d1 ?? 0
+                    const d2 = latest.d2 ?? 0
+                    const d3 = latest.d3 ?? 0
+                    const d4 = latest.d4 ?? 0
+                    const items = [
+                      { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
+                      { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
+                      { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
+                      { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
+                      { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
+                    ].filter(c => c.pct > 0.5)
+                    if (items.length === 0) {
+                      return <span className="text-forest-green/40">No drought this week.</span>
+                    }
+                    return items.map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-1">
+                        {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
+                        <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
+                        {c.label} {c.pct.toFixed(1)}%
+                      </span>
+                    ))
+                  })()}
+                </div>
 
                 <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
                   Source: U.S. Drought Monitor · droughtmonitor.unl.edu
@@ -360,87 +368,6 @@ export default async function DashboardPage({
               hasCoords={selectedCounty.lat != null && selectedCounty.lon != null}
             />
 
-            {/* Recent history table */}
-            {history.length > 1 && (
-              <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
-                <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-                  <h2 className="font-fraunces text-base font-semibold text-forest-green">
-                    Recent History
-                  </h2>
-                </div>
-
-                {/* Mobile: card stack */}
-                <div className="divide-y divide-forest-green/10 sm:hidden">
-                  {history.slice(0, 12).map(row => (
-                    <div key={row.week_date} className="px-4 py-3">
-                      <p className="mb-2 text-xs font-medium text-forest-green/60 font-dm-sans">
-                        {formatDate(row.week_date)}
-                      </p>
-                      <DroughtBar reading={row} />
-                      <div className="mt-2 flex gap-3 text-xs text-forest-green/60 font-dm-sans">
-                        {LEVELS.map(({ key, label }) => (
-                          <span key={key}>
-                            {label}{' '}
-                            <span className="font-medium text-forest-green">
-                              {(row[key] ?? 0).toFixed(0)}%
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop: table */}
-                <div className="hidden overflow-x-auto sm:block">
-                  <table className="w-full text-sm font-dm-sans">
-                    <thead>
-                      <tr className="border-b border-forest-green/10 bg-cream/50">
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-forest-green/50">
-                          Week
-                        </th>
-                        {LEVELS.map(({ label, dot }) => (
-                          <th
-                            key={label}
-                            className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wide text-forest-green/50"
-                          >
-                            <span className="inline-flex items-center gap-1">
-                              <span
-                                className="inline-block h-2 w-2 rounded-full ring-1 ring-forest-green/10"
-                                style={{ backgroundColor: dot }}
-                              />
-                              {label}
-                            </span>
-                          </th>
-                        ))}
-                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-forest-green/50">
-                          Distribution
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-forest-green/10">
-                      {history.map(row => (
-                        <tr key={row.week_date} className="hover:bg-cream/40">
-                          <td className="px-6 py-3 font-medium text-forest-green">
-                            {formatDate(row.week_date)}
-                          </td>
-                          {LEVELS.map(({ key }) => (
-                            <td key={key} className="px-3 py-3 text-right tabular-nums text-forest-green/70">
-                              {(row[key] ?? 0).toFixed(1)}%
-                            </td>
-                          ))}
-                          <td className="px-6 py-3">
-                            <div className="w-32">
-                              <DroughtBar reading={row} />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
 
             {/* FSA disclaimer */}
             <p className="rounded-lg border border-forest-green/10 bg-white px-4 py-3 text-xs text-forest-green/50 font-dm-sans">

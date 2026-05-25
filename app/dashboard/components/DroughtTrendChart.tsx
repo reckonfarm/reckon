@@ -1,12 +1,14 @@
 'use client'
 
 import {
-  BarChart,
+  ComposedChart,
   Bar,
   Cell,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
 
@@ -22,8 +24,16 @@ export interface DroughtReading {
 }
 
 interface ChartDatum {
-  week: string
-  maxCategory: number  // 0-4 or -1 (no drought)
+  week: string         // "May 19, 2025" — tooltip display
+  weekDate: string     // "YYYY-MM-DD"   — XAxis dataKey + tick formatting
+  maxCategory: number  // -1 (none) to 4
+  yValue: number       // 0=none, 1=D0 … 5=D4
+  // Per-category values for stacked areas; null = not this week's level
+  y0: number | null
+  y1: number | null
+  y2: number | null
+  y3: number | null
+  y4: number | null
   d0: number
   d1: number
   d2: number
@@ -41,6 +51,17 @@ interface Props {
 const COLORS = ['#FFFF00', '#FCD37F', '#FFAA00', '#E60000', '#730000']
 const LABELS = ['D0 Abnormally Dry', 'D1 Moderate', 'D2 Severe', 'D3 Extreme', 'D4 Exceptional']
 
+const Y_LABELS: Record<number, string> = { 0: '', 1: 'D0', 2: 'D1', 3: 'D2', 4: 'D3', 5: 'D4' }
+
+function severityColor(maxCategory: number): string {
+  if (maxCategory === 4) return '#730000'
+  if (maxCategory === 3) return '#E60000'
+  if (maxCategory === 2) return '#FFAA00'
+  if (maxCategory === 1) return '#FCD37F'
+  if (maxCategory === 0) return '#FFFF00'
+  return '#E5E0D8'
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function calcMaxCategory(row: DroughtReading): number {
@@ -56,6 +77,14 @@ function formatWeek(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function formatTickLabel(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric',
   })
 }
 
@@ -70,21 +99,32 @@ function CustomTooltip({
 }) {
   if (!active || !payload?.[0]) return null
   const d = payload[0].payload
+
+  // USDM cumulative → actual per-category (d2 means "D2 or worse", so actual D2 = d2 - d3)
+  const actual: Record<number, number> = {
+    0: d.d0 - d.d1,
+    1: d.d1 - d.d2,
+    2: d.d2 - d.d3,
+    3: d.d3 - d.d4,
+    4: d.d4,
+  }
+
   return (
     <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 shadow-md text-xs font-dm-sans">
       <p className="font-semibold text-forest-green">{d.week}</p>
       {d.maxCategory >= 0 ? (
-        <p className="mt-0.5" style={{ color: COLORS[d.maxCategory] }}>
-          {LABELS[d.maxCategory]}
-        </p>
+        <div className="mt-1 space-y-0.5">
+          {([4, 3, 2, 1, 0] as const).map(i =>
+            actual[i] > 0.5 ? (
+              <p key={i} style={{ color: COLORS[i] }}>
+                {LABELS[i]} — {actual[i].toFixed(1)}%
+              </p>
+            ) : null,
+          )}
+        </div>
       ) : (
-        <p className="mt-0.5 text-forest-green/40">No drought</p>
+        <p className="mt-0.5 text-forest-green/40">No drought this week.</p>
       )}
-      <div className="mt-1 space-y-0.5 text-forest-green/60">
-        {([d.d0, d.d1, d.d2, d.d3, d.d4] as number[]).map((pct, i) =>
-          pct > 0 ? <p key={i}>D{i}: {pct.toFixed(1)}%</p> : null,
-        )}
-      </div>
     </div>
   )
 }
@@ -92,15 +132,25 @@ function CustomTooltip({
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DroughtTrendChart({ history, countyName }: Props) {
-  const data: ChartDatum[] = [...history].reverse().map(row => ({
-    week: formatWeek(row.week_date),
-    maxCategory: calcMaxCategory(row),
-    d0: row.d0 ?? 0,
-    d1: row.d1 ?? 0,
-    d2: row.d2 ?? 0,
-    d3: row.d3 ?? 0,
-    d4: row.d4 ?? 0,
-  }))
+  const data: ChartDatum[] = [...history].reverse().map(row => {
+    const maxCategory = calcMaxCategory(row)
+    return {
+      week: formatWeek(row.week_date),
+      weekDate: row.week_date,
+      maxCategory,
+      yValue: maxCategory === -1 ? 0 : maxCategory + 1,
+      y0: maxCategory === 0 ? 1 : null,
+      y1: maxCategory === 1 ? 2 : null,
+      y2: maxCategory === 2 ? 3 : null,
+      y3: maxCategory === 3 ? 4 : null,
+      y4: maxCategory === 4 ? 5 : null,
+      d0: row.d0 ?? 0,
+      d1: row.d1 ?? 0,
+      d2: row.d2 ?? 0,
+      d3: row.d3 ?? 0,
+      d4: row.d4 ?? 0,
+    }
+  })
 
   if (data.length === 0) return null
 
@@ -129,26 +179,45 @@ export default function DroughtTrendChart({ history, countyName }: Props) {
           ))}
         </div>
 
-        <ResponsiveContainer width="100%" height={140}>
-          <BarChart data={data} barCategoryGap="20%">
+        <ResponsiveContainer width="100%" height={160}>
+          <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap={0} barGap={0}>
             <XAxis
-              dataKey="week"
+              dataKey="weekDate"
               tick={{ fontSize: 10, fill: '#1B4332', fillOpacity: 0.5 }}
               tickLine={false}
               axisLine={false}
-              interval="preserveStartEnd"
+              interval={7}
+              tickFormatter={formatTickLabel}
             />
-            <YAxis hide domain={[0, 4]} />
+            <YAxis
+              domain={[0, 5]}
+              ticks={[0, 1, 2, 3, 4, 5]}
+              tickFormatter={(v: number) => Y_LABELS[v] ?? ''}
+              tick={{ fontSize: 10, fill: '#1B4332', fillOpacity: 0.5 }}
+              tickLine={false}
+              axisLine={false}
+              width={28}
+            />
+            <ReferenceLine y={0} stroke="rgba(27,67,50,0.12)" strokeWidth={1} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(27,67,50,0.06)' }} />
-            <Bar dataKey="maxCategory" isAnimationActive={false} radius={[2, 2, 0, 0]}>
+            <Bar dataKey="yValue" stroke="none" isAnimationActive={false}>
               {data.map((d, i) => (
                 <Cell
                   key={i}
-                  fill={d.maxCategory >= 0 ? COLORS[d.maxCategory] : 'rgba(27,67,50,0.08)'}
+                  fill={severityColor(d.maxCategory)}
+                  fillOpacity={0.5}
                 />
               ))}
             </Bar>
-          </BarChart>
+            <Line
+              type="step"
+              dataKey="yValue"
+              stroke="#1B4332"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
