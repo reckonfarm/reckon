@@ -1,6 +1,6 @@
 import { createServiceClient } from '@/lib/supabase'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
-import { getGrazingPreset } from '@/lib/grazing-presets'
+import { getGrazingPeriod } from '@/lib/grazing-periods'
 import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import WatchlistButton from './components/WatchlistButton'
@@ -234,9 +234,16 @@ export default async function DashboardPage({
       // LFP eligibility
       computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
-        const preset = getGrazingPreset(selectedCounty.fips, 2025)
-        if (preset.source === 'county') return { grazingPeriod: { startDate: preset.startDate, endDate: preset.endDate } }
-        return {}
+        const period = getGrazingPeriod(selectedCounty.fips)
+        if (period) {
+          const startMM = parseInt(period.start.slice(0, 2), 10)
+          const endMM   = parseInt(period.end.slice(0, 2), 10)
+          const endYear = endMM < startMM ? period.year + 1 : period.year
+          return { grazingPeriod: { startDate: `${period.year}-${period.start}`, endDate: `${endYear}-${period.end}` } }
+        }
+        // Generic Northern Plains fallback for counties not in FOIA dataset
+        const yr = new Date().getFullYear()
+        return { grazingPeriod: { startDate: `${yr}-05-01`, endDate: `${yr}-11-30` } }
       })()),
 
       // USDM drought discussion narrative (weekly, cached 24h)
