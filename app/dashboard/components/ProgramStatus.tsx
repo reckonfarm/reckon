@@ -19,6 +19,7 @@ type FarmerMode = 'livestock' | 'rowcrop'
 
 export interface ProgramStatusProps {
   eligibility: LfpEligibilityResult | null
+  priorYearEligibility: LfpEligibilityResult | null
   fips: string
   countyName: string
 }
@@ -723,10 +724,12 @@ function RowCropPanel({
 
 export default function ProgramStatus({
   eligibility,
+  priorYearEligibility,
   fips,
   countyName,
 }: ProgramStatusProps) {
   const [mode, setMode] = useState<FarmerMode>('livestock')
+  const [year, setYear] = useState<'current' | 'prior'>('current')
 
   useEffect(() => {
     const stored = localStorage.getItem(FARMER_TYPE_KEY)
@@ -740,6 +743,10 @@ export default function ProgramStatus({
     localStorage.setItem(FARMER_TYPE_KEY, next)
   }
 
+  const activeEligibility = year === 'current' ? eligibility : priorYearEligibility
+  const currentYear = eligibility?.grazingPeriod.startDate.slice(0, 4) ?? String(new Date().getFullYear())
+  const priorYear   = priorYearEligibility?.grazingPeriod.startDate.slice(0, 4) ?? String(new Date().getFullYear() - 1)
+
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
 
@@ -748,30 +755,60 @@ export default function ProgramStatus({
           Program Status
         </h2>
 
-        <div className="flex rounded-lg border border-forest-green/15 bg-cream p-0.5">
-          {(['livestock', 'rowcrop'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => handleModeChange(m)}
-              style={mode === m ? { color: '#ffffff' } : undefined}
-              className={[
-                'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
-                mode === m
-                  ? 'bg-forest-green'
-                  : 'text-forest-green/60 hover:text-forest-green',
-              ].join(' ')}
-            >
-              {m === 'livestock' ? 'Livestock' : 'Row Crop'}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {priorYearEligibility && (
+            <div className="flex rounded-lg border border-forest-green/15 bg-cream p-0.5">
+              {(['current', 'prior'] as const).map(y => (
+                <button
+                  key={y}
+                  onClick={() => setYear(y)}
+                  style={year === y ? { color: '#ffffff' } : undefined}
+                  className={[
+                    'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
+                    year === y
+                      ? 'bg-forest-green'
+                      : 'text-forest-green/60 hover:text-forest-green',
+                  ].join(' ')}
+                >
+                  {y === 'current' ? currentYear : priorYear}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex rounded-lg border border-forest-green/15 bg-cream p-0.5">
+            {(['livestock', 'rowcrop'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => handleModeChange(m)}
+                style={mode === m ? { color: '#ffffff' } : undefined}
+                className={[
+                  'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
+                  mode === m
+                    ? 'bg-forest-green'
+                    : 'text-forest-green/60 hover:text-forest-green',
+                ].join(' ')}
+              >
+                {m === 'livestock' ? 'Livestock' : 'Row Crop'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
+      {year === 'prior' && (
+        <div className="border-b border-forest-green/10 bg-amber-50/70 px-4 py-2 sm:px-6">
+          <p className="text-xs text-amber-800 font-dm-sans">
+            {priorYear} LFP signup closed March 1, {String(parseInt(priorYear) + 1)}. Contact your FSA office if you have not enrolled.
+          </p>
+        </div>
+      )}
+
       {mode === 'livestock' && (
-        <LivestockPanel eligibility={eligibility} fips={fips} countyName={countyName} />
+        <LivestockPanel eligibility={activeEligibility} fips={fips} countyName={countyName} />
       )}
       {mode === 'rowcrop' && (
-        <RowCropPanel eligibility={eligibility} countyName={countyName} />
+        <RowCropPanel eligibility={activeEligibility} countyName={countyName} />
       )}
     </div>
   )

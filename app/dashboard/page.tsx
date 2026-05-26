@@ -133,7 +133,8 @@ export default async function DashboardPage({
   let cpcSeasonalMap: OfficialMapRecord | null      = null
   let monthlyOutlook: ForecastOutlook | null        = null
   let seasonalOutlook: ForecastOutlook | null       = null
-  let lfpResult: LfpEligibilityResult | null        = null
+  let lfpResult: LfpEligibilityResult | null          = null
+  let priorYearLfpResult: LfpEligibilityResult | null = null
   let droughtDiscussion: DroughtDiscussion | null   = null
   let wpcUpdated: string | null                     = null
   let prcp814Updated: string | null                 = null
@@ -174,6 +175,7 @@ export default async function DashboardPage({
       hprcc14dHead,
       hprcc30dHead,
       hprcc60dHead,
+      priorYearLfpRes,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -316,6 +318,20 @@ export default async function DashboardPage({
         method: 'HEAD',
         next: { revalidate: 3600 },
       }).catch(() => null),
+
+      // Prior year LFP eligibility — same forage period but year - 1
+      computeLfpEligibility(selectedCounty.fips, (() => {
+        const period = getGrazingPeriod(selectedCounty.fips, pt)
+        if (period) {
+          const prior   = new Date().getFullYear() - 1
+          const startMM = parseInt(period.start.slice(0, 2), 10)
+          const endMM   = parseInt(period.end.slice(0, 2), 10)
+          const endYear = endMM < startMM ? prior + 1 : prior
+          return { grazingPeriod: { startDate: `${prior}-${period.start}`, endDate: `${endYear}-${period.end}` } }
+        }
+        const prior = new Date().getFullYear() - 1
+        return { grazingPeriod: { startDate: `${prior}-05-01`, endDate: `${prior}-11-30` } }
+      })()),
     ])
 
     history            = historyRes.data ?? []
@@ -325,6 +341,7 @@ export default async function DashboardPage({
     monthlyOutlook     = monthlyOutlookRes.data as ForecastOutlook | null
     seasonalOutlook    = seasonalOutlookRes.data as ForecastOutlook | null
     lfpResult          = lfpRes
+    priorYearLfpResult = priorYearLfpRes
     droughtDiscussion  = discussionRes
     const lastMod      = wpcHead?.headers.get('last-modified')
     if (lastMod) {
@@ -505,6 +522,7 @@ export default async function DashboardPage({
             {/* Program Status — LFP eligibility and row crop programs */}
             <ProgramStatus
               eligibility={lfpResult}
+              priorYearEligibility={priorYearLfpResult}
               fips={selectedCounty.fips}
               countyName={selectedCounty.name}
             />

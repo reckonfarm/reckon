@@ -126,12 +126,25 @@ async function fetchConsecutiveRuns(
     consecutiveWeeks: number
   }>
 
-  return data.map(r => ({
-    fips:             r.fips,
-    startDate:        r.startDate.slice(0, 10),
-    endDate:          r.endDate.slice(0, 10),
-    consecutiveWeeks: r.consecutiveWeeks,
-  }))
+  // Clip each run so only weeks that start on or after gp.startDate are counted.
+  // The USDM API returns the full consecutive run even when it started before startdate.
+  // USDM weeks always start on Tuesdays; a week whose start date is before gp.startDate
+  // is excluded. clipped = ceil((gpStart - runStart) / 7 days).
+  const gpStartMs = new Date(gp.startDate).getTime()
+  return data
+    .map(r => {
+      const runStartMs = new Date(r.startDate.slice(0, 10)).getTime()
+      const prePeriod  = runStartMs < gpStartMs
+        ? Math.ceil((gpStartMs - runStartMs) / (7 * 24 * 60 * 60 * 1000))
+        : 0
+      return {
+        fips:             r.fips,
+        startDate:        r.startDate.slice(0, 10),
+        endDate:          r.endDate.slice(0, 10),
+        consecutiveWeeks: r.consecutiveWeeks - prePeriod,
+      }
+    })
+    .filter(r => r.consecutiveWeeks > 0)
 }
 
 // ─── 7-of-8 sliding window ────────────────────────────────────────────────────
@@ -247,7 +260,7 @@ export async function computeLfpEligibility(
 
   // Determine which tiers are triggered
   const triggered = [
-    runsD2_4.length > 0,   // tier 1: D2 ≥4 consecutive weeks
+    runsD2_4.some(r => r.consecutiveWeeks >= 4),  // tier 1: D2 ≥4 consecutive weeks within period
     tier2,                  // tier 2: D2 ≥7 of any 8 weeks (sliding window)
     runsD3_1.length > 0,   // tier 3: D3 at any time
     totalD3Weeks >= 4,      // tier 4: D3 ≥4 non-consecutive total weeks (NDMC definition)
