@@ -17,6 +17,7 @@ interface Props {
   countyName: string
   nwsDiscussion: NwsDiscussion | null
   precipNormal: PrecipNormalData | null
+  wpcUpdated: string | null
   day814Updated: string | null
   weeks34Updated: string | null
   monthlyUpdated: string | null
@@ -26,6 +27,7 @@ interface Props {
 const TABS = [
   'Local Discussion',
   'Precip vs Normal',
+  '7-Day QPF',
   '8-14 Day',
   'Weeks 3-4',
   'Monthly',
@@ -237,6 +239,7 @@ export default function PrecipForecastSection({
   countyName,
   nwsDiscussion,
   precipNormal,
+  wpcUpdated,
   day814Updated,
   weeks34Updated,
   monthlyUpdated,
@@ -274,6 +277,30 @@ export default function PrecipForecastSection({
       <div className="p-4 sm:p-6">
         {active === 'Local Discussion' && <LocalDiscussionPanel discussion={nwsDiscussion} />}
         {active === 'Precip vs Normal' && <PrecipVsNormalPanel data={precipNormal} />}
+        {active === '7-Day QPF' && (
+          <div className="space-y-3">
+            <ForecastBadge />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
+              alt="WPC 7-Day Accumulated Precipitation Forecast"
+              className="w-full rounded-lg"
+              loading="lazy"
+            />
+            <p className="text-xs text-forest-green/50 font-dm-sans">
+              WPC 7-Day Accumulated Precipitation Forecast
+              {wpcUpdated ? ` · Updated ${wpcUpdated}` : ''}{' '}·{' '}
+              <a
+                href="https://www.wpc.ncep.noaa.gov/qpf/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Source: NOAA/WPC
+              </a>
+            </p>
+          </div>
+        )}
         {active === '8-14 Day' && (
           <CpcMapPanel
             imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif"

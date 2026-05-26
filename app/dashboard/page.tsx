@@ -16,6 +16,28 @@ import { getDroughtDiscussion } from '@/lib/drought-discussion'
 import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 
+// ─── USDM region lookup ───────────────────────────────────────────────────────
+
+function getUsdmRegion(state: string): string {
+  const lookup: Record<string, string> = {
+    PR: 'caribbean', VI: 'caribbean',
+    HI: 'pacific',
+    AR: 'south', LA: 'south', TX: 'south', OK: 'south', MS: 'south',
+    VA: 'southeast', WV: 'southeast', KY: 'southeast', TN: 'southeast',
+    NC: 'southeast', SC: 'southeast', GA: 'southeast', AL: 'southeast', FL: 'southeast',
+    ME: 'northeast', NH: 'northeast', VT: 'northeast', MA: 'northeast',
+    RI: 'northeast', CT: 'northeast', NY: 'northeast', NJ: 'northeast',
+    PA: 'northeast', DE: 'northeast', MD: 'northeast', DC: 'northeast',
+    MO: 'midwest', IA: 'midwest', IL: 'midwest', IN: 'midwest',
+    OH: 'midwest', MI: 'midwest', WI: 'midwest', MN: 'midwest',
+    ND: 'high_plains', SD: 'high_plains', NE: 'high_plains', KS: 'high_plains',
+    MT: 'west', WY: 'west', CO: 'west', UT: 'west', NV: 'west',
+    CA: 'west', OR: 'west', WA: 'west', ID: 'west', AK: 'west',
+    AZ: 'west', NM: 'west',
+  }
+  return lookup[state] ?? 'national'
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DroughtReading {
@@ -119,6 +141,12 @@ export default async function DashboardPage({
   let prcpSeasonalUpdated: string | null            = null
   let nwsDiscussion: NwsDiscussion | null           = null
   let precipNormal: PrecipNormalData | null         = null
+  let cpcSoilMoistureUpdated: string | null         = null
+  let vegdriUpdated: string | null                  = null
+  let vegdriLastModified: Date | null               = null
+  let hprcc30dUpdated: string | null                = null
+  let hprcc60dUpdated: string | null                = null
+  let regionalMapUrl: string | null                 = null
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -140,6 +168,10 @@ export default async function DashboardPage({
       prcpSeasonalHead,
       nwsDiscussionRes,
       precipNormalRes,
+      cpcSoilMoistureHead,
+      vegdriHead,
+      hprcc30dHead,
+      hprcc60dHead,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -242,6 +274,27 @@ export default async function DashboardPage({
 
       // ACIS YTD precipitation vs 30-year normals
       getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
+
+      // Drought condition map provenances (cached 1h)
+      fetch('https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://vegdri.unl.edu/data/emodis/operational/png/current/vdri_current_conus_text_complete.png', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
     ])
 
     history            = historyRes.data ?? []
@@ -272,6 +325,22 @@ export default async function DashboardPage({
     prcpSeasonalUpdated = fmtLM(prcpSeasonalHead)
     nwsDiscussion       = nwsDiscussionRes
     precipNormal        = precipNormalRes
+    cpcSoilMoistureUpdated = fmtLM(cpcSoilMoistureHead)
+    vegdriUpdated          = fmtLM(vegdriHead)
+    const vegdriLM         = vegdriHead?.headers.get('last-modified')
+    vegdriLastModified     = vegdriLM ? new Date(vegdriLM) : null
+    hprcc30dUpdated        = fmtLM(hprcc30dHead)
+    hprcc60dUpdated        = fmtLM(hprcc60dHead)
+
+    if (nationalMap?.release_date) {
+      const region = getUsdmRegion(selectedCounty.state)
+      if (region !== 'national') {
+        const releaseDate = new Date(nationalMap.release_date + 'T00:00:00Z')
+        const mapDate = new Date(releaseDate.getTime() - 2 * 24 * 60 * 60 * 1000)
+        const compact = mapDate.toISOString().slice(0, 10).replace(/-/g, '')
+        regionalMapUrl = `https://droughtmonitor.unl.edu/data/png/${compact}/${compact}_${region}_text.png`
+      }
+    }
   }
 
   const latest = history[0] ?? null
@@ -409,8 +478,8 @@ export default async function DashboardPage({
               countyName={selectedCounty.name}
             />
 
-            {/* Official maps row: state + national */}
-            <div className="grid gap-6 sm:grid-cols-2">
+            {/* Official maps row: regional + national + monthly + seasonal */}
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               <OfficialMap
                 map={stateMap ?? nationalMap}
                 title={`USDM — ${selectedCounty.state}`}
@@ -419,10 +488,19 @@ export default async function DashboardPage({
                     ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
                     : undefined
                 }
+                regionalMapUrl={regionalMapUrl}
               />
               <OfficialMap
                 map={nationalMap}
                 title="USDM — National"
+              />
+              <OfficialMap
+                map={cpcMonthlyMap}
+                title="Monthly Drought Outlook"
+              />
+              <OfficialMap
+                map={cpcSeasonalMap}
+                title="Seasonal Drought Outlook"
               />
             </div>
 
@@ -431,11 +509,11 @@ export default async function DashboardPage({
               countyName={selectedCounty.name}
               stateAbbr={selectedCounty.state}
               droughtDiscussion={droughtDiscussion}
-              wpcUpdated={wpcUpdated}
-              monthlyOutlook={monthlyOutlook}
-              seasonalOutlook={seasonalOutlook}
-              cpcMonthlyMap={cpcMonthlyMap}
-              cpcSeasonalMap={cpcSeasonalMap}
+              cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
+              vegdriUpdated={vegdriUpdated}
+              vegdriLastModified={vegdriLastModified}
+              hprcc30dUpdated={hprcc30dUpdated}
+              hprcc60dUpdated={hprcc60dUpdated}
             />
 
             {/* Precipitation Forecast & Deficit section */}
@@ -443,6 +521,7 @@ export default async function DashboardPage({
               countyName={selectedCounty.name}
               nwsDiscussion={nwsDiscussion}
               precipNormal={precipNormal}
+              wpcUpdated={wpcUpdated}
               day814Updated={prcp814Updated}
               weeks34Updated={prcpWk34Updated}
               monthlyUpdated={prcpMonthlyUpdated}

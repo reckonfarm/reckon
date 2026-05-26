@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import type { OfficialMapRecord } from './OfficialMap'
 
 // ─── Shared types (no server-only — serialized across RSC boundary) ───────────
 
@@ -25,16 +24,16 @@ interface Props {
   countyName: string
   stateAbbr: string
   droughtDiscussion: DroughtDiscussion | null
-  wpcUpdated: string | null
-  monthlyOutlook: ForecastOutlook | null
-  seasonalOutlook: ForecastOutlook | null
-  cpcMonthlyMap: OfficialMapRecord | null
-  cpcSeasonalMap: OfficialMapRecord | null
+  cpcSoilMoistureUpdated: string | null
+  vegdriUpdated: string | null
+  vegdriLastModified: Date | null
+  hprcc30dUpdated: string | null
+  hprcc60dUpdated: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS = ['Now', 'Week', 'Month', 'Season'] as const
+const TABS = ['Now', 'Soil Moisture', 'Vegetation', '30-Day Precip', '60-Day Precip'] as const
 type Tab = typeof TABS[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,37 +48,6 @@ function formatDate(iso: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ForecastBadge() {
-  return (
-    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
-      Forecast — not a current observation
-    </span>
-  )
-}
-
-function MapBlock({ map, title }: { map: OfficialMapRecord | null; title: string }) {
-  if (!map) {
-    return (
-      <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-forest-green/10 bg-cream p-4 text-center">
-        <p className="text-xs text-forest-green/40 font-dm-sans">
-          {title} — updating after next release.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={map.image_url} alt={title} className="w-full rounded-lg" loading="lazy" />
-      <p className="mt-2 text-xs text-forest-green/50 font-dm-sans">
-        Released {formatDate(map.release_date)} ·{' '}
-        <a href={map.source_url} target="_blank" rel="noopener noreferrer" className="underline">
-          Source
-        </a>
-      </p>
-    </div>
-  )
-}
 
 // ─── Tab panels ───────────────────────────────────────────────────────────────
 
@@ -130,63 +98,34 @@ function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
   )
 }
 
-function WeekPanel({ wpcUpdated }: { wpcUpdated: string | null }) {
-  return (
-    <div className="space-y-3">
-      <ForecastBadge />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
-        alt="WPC 7-Day Accumulated Precipitation Forecast"
-        className="w-full rounded-lg"
-        loading="lazy"
-      />
-      <p className="text-xs text-forest-green/50 font-dm-sans">
-        WPC 7-Day Accumulated Precipitation Forecast
-        {wpcUpdated ? ` · Updated ${wpcUpdated}` : ''}{' '}·{' '}
-        <a
-          href="https://www.wpc.ncep.noaa.gov/qpf/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline"
-        >
-          Source: NOAA/WPC
-        </a>
-      </p>
-    </div>
-  )
-}
 
-function OutlookPanel({
-  outlook,
-  map,
-  mapTitle,
+function CpcMapPanel({
+  imageUrl,
+  alt,
+  label,
+  sourceUrl,
+  lastModified,
 }: {
-  outlook: ForecastOutlook | null
-  map: OfficialMapRecord | null
-  mapTitle: string
+  imageUrl: string
+  alt: string
+  label: string
+  sourceUrl: string
+  lastModified: string | null
 }) {
   return (
-    <div className="space-y-4">
-      <ForecastBadge />
-
-      {outlook ? (
-        <div>
-          <p className="text-sm text-forest-green font-dm-sans leading-relaxed">
-            {outlook.outlook_text}
-          </p>
-          <p className="mt-2 text-xs text-forest-green/40 font-dm-sans">
-            CPC outlook · Released {formatDate(outlook.release_date)}
-            {outlook.valid_through ? ` · Valid through ${formatDate(outlook.valid_through)}` : ''}
-          </p>
-        </div>
-      ) : (
-        <p className="text-sm text-forest-green/40 font-dm-sans">
-          CPC outlook not yet available for this county.
-        </p>
-      )}
-
-      <MapBlock map={map} title={mapTitle} />
+    <div className="space-y-3">
+      <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
+        Not a current observation
+      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imageUrl} alt={alt} className="w-full rounded-lg" loading="lazy" />
+      <p className="text-xs text-forest-green/50 font-dm-sans">
+        {label}
+        {lastModified ? ` · Updated ${lastModified}` : ''}{' '}·{' '}
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
+          Source
+        </a>
+      </p>
     </div>
   )
 }
@@ -196,11 +135,11 @@ function OutlookPanel({
 export default function ForecastSection({
   countyName,
   droughtDiscussion,
-  wpcUpdated,
-  monthlyOutlook,
-  seasonalOutlook,
-  cpcMonthlyMap,
-  cpcSeasonalMap,
+  cpcSoilMoistureUpdated,
+  vegdriUpdated,
+  vegdriLastModified,
+  hprcc30dUpdated,
+  hprcc60dUpdated,
 }: Props) {
   const [active, setActive] = useState<Tab>('Now')
 
@@ -209,7 +148,7 @@ export default function ForecastSection({
       {/* Header */}
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
-          Conditions &amp; Outlook — {countyName}
+          Conditions — {countyName}
         </h2>
       </div>
 
@@ -236,19 +175,48 @@ export default function ForecastSection({
       {/* Panels — instant show/hide, no animation */}
       <div className="p-4 sm:p-6">
         {active === 'Now' && <NowPanel discussion={droughtDiscussion} />}
-        {active === 'Week' && <WeekPanel wpcUpdated={wpcUpdated} />}
-        {active === 'Month' && (
-          <OutlookPanel
-            outlook={monthlyOutlook}
-            map={cpcMonthlyMap}
-            mapTitle="CPC Monthly Drought Outlook"
+        {active === 'Soil Moisture' && (
+          <CpcMapPanel
+            imageUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif"
+            alt="NOAA/CPC Daily Soil Moisture Anomaly"
+            label="NOAA/CPC Soil Moisture Anomaly · Daily"
+            sourceUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/"
+            lastModified={cpcSoilMoistureUpdated}
           />
         )}
-        {active === 'Season' && (
-          <OutlookPanel
-            outlook={seasonalOutlook}
-            map={cpcSeasonalMap}
-            mapTitle="CPC Seasonal Drought Outlook"
+        {active === 'Vegetation' && (
+          <div className="space-y-3">
+            {vegdriLastModified !== null &&
+              Date.now() - vegdriLastModified.getTime() > 14 * 24 * 60 * 60 * 1000 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 font-dm-sans">
+                VegDRI production is currently paused due to a federal funding lapse. Displaying last available data from {vegdriUpdated}.
+              </div>
+            )}
+            <CpcMapPanel
+              imageUrl="https://vegdri.unl.edu/data/emodis/operational/png/current/vdri_current_conus_text_complete.png"
+              alt="VegDRI Vegetation Drought Response Index"
+              label="VegDRI — Vegetation Drought Response Index (eMODIS NDVI-based)"
+              sourceUrl="https://vegdri.unl.edu/"
+              lastModified={vegdriUpdated}
+            />
+          </div>
+        )}
+        {active === '30-Day Precip' && (
+          <CpcMapPanel
+            imageUrl="https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png"
+            alt="30-Day Percent of Normal Precipitation"
+            label="HPRCC/ACIS · Percent of Normal Precipitation · Past 30 Days · 1991–2020 normals"
+            sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
+            lastModified={hprcc30dUpdated}
+          />
+        )}
+        {active === '60-Day Precip' && (
+          <CpcMapPanel
+            imageUrl="https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png"
+            alt="60-Day Percent of Normal Precipitation"
+            label="HPRCC/ACIS · Percent of Normal Precipitation · Past 60 Days · 1991–2020 normals"
+            sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
+            lastModified={hprcc60dUpdated}
           />
         )}
       </div>
