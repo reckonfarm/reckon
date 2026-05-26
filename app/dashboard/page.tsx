@@ -6,7 +6,7 @@ import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
-import PrecipForecastSection from './components/PrecipForecastSection'
+import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
@@ -142,8 +142,7 @@ export default async function DashboardPage({
   let nwsDiscussion: NwsDiscussion | null           = null
   let precipNormal: PrecipNormalData | null         = null
   let cpcSoilMoistureUpdated: string | null         = null
-  let vegdriUpdated: string | null                  = null
-  let vegdriLastModified: Date | null               = null
+  let vhiUpdated: string | null                     = null
   let hprcc30dUpdated: string | null                = null
   let hprcc60dUpdated: string | null                = null
   let regionalMapUrl: string | null                 = null
@@ -169,7 +168,7 @@ export default async function DashboardPage({
       nwsDiscussionRes,
       precipNormalRes,
       cpcSoilMoistureHead,
-      vegdriHead,
+      vhiHead,
       hprcc30dHead,
       hprcc60dHead,
     ] = await Promise.all([
@@ -281,10 +280,16 @@ export default async function DashboardPage({
         next: { revalidate: 3600 },
       }).catch(() => null),
 
-      fetch('https://vegdri.unl.edu/data/emodis/operational/png/current/vdri_current_conus_text_complete.png', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-      }).catch(() => null),
+      (() => {
+        const now = new Date()
+        const yr = now.getUTCFullYear()
+        const doy = Math.floor((now.getTime() - Date.UTC(yr, 0, 1)) / 86400000) + 1
+        const wk = String(Math.ceil(doy / 7) - 1).padStart(2, '0')
+        return fetch(
+          `https://www.star.nesdis.noaa.gov/smcd/emb/vci/WebDataVH/gvix_webImages/${yr}/USA_VHI_DIVISION_${yr}${wk}.png`,
+          { method: 'HEAD', next: { revalidate: 3600 } },
+        ).catch(() => null)
+      })(),
 
       fetch('https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png', {
         method: 'HEAD',
@@ -326,9 +331,7 @@ export default async function DashboardPage({
     nwsDiscussion       = nwsDiscussionRes
     precipNormal        = precipNormalRes
     cpcSoilMoistureUpdated = fmtLM(cpcSoilMoistureHead)
-    vegdriUpdated          = fmtLM(vegdriHead)
-    const vegdriLM         = vegdriHead?.headers.get('last-modified')
-    vegdriLastModified     = vegdriLM ? new Date(vegdriLM) : null
+    vhiUpdated             = fmtLM(vhiHead)
     hprcc30dUpdated        = fmtLM(hprcc30dHead)
     hprcc60dUpdated        = fmtLM(hprcc60dHead)
 
@@ -461,7 +464,10 @@ export default async function DashboardPage({
                 </div>
 
                 <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
-                  Source: U.S. Drought Monitor · droughtmonitor.unl.edu
+                  Source:{' '}
+                  <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
+                    U.S. Drought Monitor
+                  </a>
                 </p>
               </div>
             )}
@@ -478,13 +484,27 @@ export default async function DashboardPage({
               countyName={selectedCounty.name}
             />
 
+            {/* Precipitation vs Normal card */}
+            {precipNormal !== null && precipNormal.dailyData.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
+                <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
+                  <h2 className="font-fraunces text-base font-semibold text-forest-green">
+                    Precipitation vs Normal — {selectedCounty.name}
+                  </h2>
+                </div>
+                <div className="p-4 sm:p-6">
+                  <PrecipVsNormalPanel data={precipNormal} />
+                </div>
+              </div>
+            )}
+
             {/* Official maps row: regional + national + monthly + seasonal */}
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               <OfficialMap
                 map={stateMap ?? nationalMap}
                 title={`USDM — ${selectedCounty.state}`}
                 note={
-                  stateMap == null && nationalMap != null
+                  stateMap == null && nationalMap != null && regionalMapUrl == null
                     ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
                     : undefined
                 }
@@ -510,8 +530,7 @@ export default async function DashboardPage({
               stateAbbr={selectedCounty.state}
               droughtDiscussion={droughtDiscussion}
               cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
-              vegdriUpdated={vegdriUpdated}
-              vegdriLastModified={vegdriLastModified}
+              vhiUpdated={vhiUpdated}
               hprcc30dUpdated={hprcc30dUpdated}
               hprcc60dUpdated={hprcc60dUpdated}
             />
@@ -520,7 +539,6 @@ export default async function DashboardPage({
             <PrecipForecastSection
               countyName={selectedCounty.name}
               nwsDiscussion={nwsDiscussion}
-              precipNormal={precipNormal}
               wpcUpdated={wpcUpdated}
               day814Updated={prcp814Updated}
               weeks34Updated={prcpWk34Updated}
@@ -532,8 +550,10 @@ export default async function DashboardPage({
             <p className="rounded-lg border border-forest-green/10 bg-white px-4 py-3 text-xs text-forest-green/50 font-dm-sans">
               Drought data is provided for general awareness only. Your local FSA office makes
               the final determination for all program eligibility and assistance decisions.
-              Data sources: U.S. Drought Monitor (droughtmonitor.unl.edu), NOAA/NWS
-              (weather.gov), NOAA CPC (cpc.ncep.noaa.gov).
+              Data sources:{' '}
+              <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">U.S. Drought Monitor</a>,{' '}
+              <a href="https://weather.gov" target="_blank" rel="noopener noreferrer" className="underline">NOAA/NWS</a>,{' '}
+              <a href="https://cpc.ncep.noaa.gov" target="_blank" rel="noopener noreferrer" className="underline">NOAA CPC</a>.
             </p>
           </div>
         )}

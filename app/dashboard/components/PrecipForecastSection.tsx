@@ -16,7 +16,6 @@ import type { PrecipNormalData } from '@/lib/precip-normal'
 interface Props {
   countyName: string
   nwsDiscussion: NwsDiscussion | null
-  precipNormal: PrecipNormalData | null
   wpcUpdated: string | null
   day814Updated: string | null
   weeks34Updated: string | null
@@ -26,7 +25,6 @@ interface Props {
 
 const TABS = [
   'Local Discussion',
-  'Precip vs Normal',
   '7-Day QPF',
   '8-14 Day',
   'Weeks 3-4',
@@ -109,7 +107,7 @@ function PrecipTooltip({
   )
 }
 
-function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null }) {
+export function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null }) {
   if (!data) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
@@ -238,7 +236,6 @@ function CpcMapPanel({
 export default function PrecipForecastSection({
   countyName,
   nwsDiscussion,
-  precipNormal,
   wpcUpdated,
   day814Updated,
   weeks34Updated,
@@ -276,7 +273,6 @@ export default function PrecipForecastSection({
 
       <div className="p-4 sm:p-6">
         {active === 'Local Discussion' && <LocalDiscussionPanel discussion={nwsDiscussion} />}
-        {active === 'Precip vs Normal' && <PrecipVsNormalPanel data={precipNormal} />}
         {active === '7-Day QPF' && (
           <div className="space-y-3">
             <ForecastBadge />

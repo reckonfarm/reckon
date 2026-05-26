@@ -21,6 +21,11 @@ function regionLabel(url: string): string {
   return slug.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
 }
 
+function extractUrl(value: string): string {
+  const m = value.match(/^\[.*?\]\((.*?)\)$/)
+  return m ? m[1] : value
+}
+
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short',
@@ -64,7 +69,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
         <p className="mt-3 text-xs text-forest-green/50 font-dm-sans">
           Released {formatDate(map.release_date)} ·{' '}
           <a
-            href={map.source_url}
+            href={extractUrl(map.source_url)}
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-forest-green/70"

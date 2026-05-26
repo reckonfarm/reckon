@@ -25,8 +25,7 @@ interface Props {
   stateAbbr: string
   droughtDiscussion: DroughtDiscussion | null
   cpcSoilMoistureUpdated: string | null
-  vegdriUpdated: string | null
-  vegdriLastModified: Date | null
+  vhiUpdated: string | null
   hprcc30dUpdated: string | null
   hprcc60dUpdated: string | null
 }
@@ -136,8 +135,7 @@ export default function ForecastSection({
   countyName,
   droughtDiscussion,
   cpcSoilMoistureUpdated,
-  vegdriUpdated,
-  vegdriLastModified,
+  vhiUpdated,
   hprcc30dUpdated,
   hprcc60dUpdated,
 }: Props) {
@@ -184,23 +182,24 @@ export default function ForecastSection({
             lastModified={cpcSoilMoistureUpdated}
           />
         )}
-        {active === 'Vegetation' && (
-          <div className="space-y-3">
-            {vegdriLastModified !== null &&
-              Date.now() - vegdriLastModified.getTime() > 14 * 24 * 60 * 60 * 1000 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 font-dm-sans">
-                VegDRI production is currently paused due to a federal funding lapse. Displaying last available data from {vegdriUpdated}.
-              </div>
-            )}
+        {active === 'Vegetation' && (() => {
+          const now = new Date()
+          const year = now.getUTCFullYear()
+          const startOfYear = new Date(Date.UTC(year, 0, 1))
+          const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / 86400000) + 1
+          const week = Math.ceil(dayOfYear / 7) - 1
+          const week2d = String(week).padStart(2, '0')
+          const vhiUrl = `https://www.star.nesdis.noaa.gov/smcd/emb/vci/WebDataVH/gvix_webImages/${year}/USA_VHI_DIVISION_${year}${week2d}.png`
+          return (
             <CpcMapPanel
-              imageUrl="https://vegdri.unl.edu/data/emodis/operational/png/current/vdri_current_conus_text_complete.png"
-              alt="VegDRI Vegetation Drought Response Index"
-              label="VegDRI — Vegetation Drought Response Index (eMODIS NDVI-based)"
-              sourceUrl="https://vegdri.unl.edu/"
-              lastModified={vegdriUpdated}
+              imageUrl={vhiUrl}
+              alt="NOAA STAR Vegetation Health Index — CONUS"
+              label="NOAA STAR VHI · Vegetation Health Index by Climate Division · Updated weekly"
+              sourceUrl="https://www.star.nesdis.noaa.gov/smcd/emb/vci/VH/vh_browse.php"
+              lastModified={vhiUpdated}
             />
-          </div>
-        )}
+          )
+        })()}
         {active === '30-Day Precip' && (
           <CpcMapPanel
             imageUrl="https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png"
