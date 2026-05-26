@@ -400,7 +400,11 @@ function RowCropPanel({
   eligibility: LfpEligibilityResult | null
   countyName: string
 }) {
-  const qualifying = (eligibility?.maxTier ?? 0) >= 1
+  const longestRun = Math.max(eligibility?.longestD2Run ?? 0, eligibility?.currentD2Streak ?? 0)
+  const qualifying =
+    longestRun >= 8 ||
+    (eligibility?.tiers[2]?.triggered ?? false) ||
+    (eligibility?.tiers[4]?.triggered ?? false)
 
   return (
     <div className="space-y-5 p-4 sm:p-6">
@@ -427,8 +431,8 @@ function RowCropPanel({
               No Qualifying Trigger
             </p>
             <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
-              Significant drought conditions (typically D2 for 4+ consecutive weeks or D3 at any
-              time) are required before a Secretarial Disaster Designation is issued.
+              D2 for 8+ consecutive weeks, or D3 or D4 at any point during the growing season,
+              triggers a Secretarial Disaster Designation under 7 CFR Part 759.
             </p>
           </div>
         )}
@@ -464,6 +468,24 @@ function RowCropPanel({
           >
             FSA Emergency Loan Program →
           </a>
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+              Emergency Conservation Program (ECP)
+            </h3>
+            <p className="mt-2 text-xs font-dm-sans text-forest-green/70">
+              ECP may also be available — cost-shares land rehabilitation and drought water
+              infrastructure. Contact your local FSA office.
+            </p>
+            <a
+              href="https://www.fsa.usda.gov/programs-and-services/conservation-programs/emergency-conservation/index"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block rounded-lg border border-forest-green/20 px-3 py-2 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"
+            >
+              FSA Emergency Conservation Program →
+            </a>
+          </div>
         </div>
       )}
 

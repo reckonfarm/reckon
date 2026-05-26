@@ -47,6 +47,7 @@ export interface LfpEligibilityResult {
   payments:          number           // monthly payments at maxTier (0, 1, 2, 3, 4, or 5)
   tiers:             LfpTierStatus[]  // all 6 tiers with triggered flag
   currentD2Streak:   number           // consecutive D2+ weeks in the most-recent ongoing run
+  longestD2Run:      number           // longest completed consecutive D2+ run (weeks) in the grazing period
   weeksUntilTier1:   number | null    // null if already tier 1+; remaining weeks of D2 needed
   grazingPeriod:     GrazingPeriod
   dataAsOf:          string           // latest USDM week_date used in calculation
@@ -269,6 +270,7 @@ export async function computeLfpEligibility(
   }))
 
   // Current D2 streak and "weeks until tier 1"
+  const longestD2Run    = runsD2_1.reduce((max, r) => Math.max(max, r.consecutiveWeeks), 0)
   const currentD2Streak = getCurrentD2Streak(runsD2_1, new Date().toISOString().slice(0, 10))
   const weeksUntilTier1 = maxTier >= 1
     ? null
@@ -282,6 +284,7 @@ export async function computeLfpEligibility(
     payments,
     tiers,
     currentD2Streak,
+    longestD2Run,
     weeksUntilTier1,
     grazingPeriod:   gp,
     dataAsOf:        asOf,
