@@ -9,7 +9,7 @@ import {
   PAYMENT_RATES_2025,
   type LivestockKind,
 } from '@/lib/lfp-payment'
-import { getGrazingPreset } from '@/lib/grazing-presets'
+import { getGrazingPeriod, type GrazingPeriod } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -97,6 +97,17 @@ function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
   )
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function buildFsaDate(period: GrazingPeriod | null, field: 'start' | 'end'): string {
+  if (!period) return ''
+  const mmdd = field === 'start' ? period.start : period.end
+  const startMM = parseInt(period.start.slice(0, 2), 10)
+  const endMM   = parseInt(period.end.slice(0, 2), 10)
+  const year = (field === 'end' && endMM < startMM) ? period.year + 1 : period.year
+  return `${year}-${mmdd}`
+}
+
 // ─── Livestock Panel ─────────────────────────────────────────────────────────
 
 function LivestockPanel({
@@ -111,14 +122,14 @@ function LivestockPanel({
   const [livestock, setLivestock] = useState<LivestockKind>('beef_adult')
   const [headCount, setHeadCount] = useState(100)
   const [showGrazingEdit, setShowGrazingEdit] = useState(false)
-  const grazingPreset = getGrazingPreset(fips, 2025)
-  const [gsInput, setGsInput] = useState(grazingPreset.startDate || '2025-10-01')
-  const [geInput, setGeInput] = useState(grazingPreset.endDate || new Date().toISOString().slice(0, 10))
+  const fsaPeriod = getGrazingPeriod(fips)
+  const [gsInput, setGsInput] = useState(() => buildFsaDate(fsaPeriod, 'start'))
+  const [geInput, setGeInput] = useState(() => buildFsaDate(fsaPeriod, 'end'))
 
   useEffect(() => {
-    const preset = getGrazingPreset(fips, 2025)
-    setGsInput(preset.startDate || '2025-10-01')
-    setGeInput(preset.endDate || new Date().toISOString().slice(0, 10))
+    const period = getGrazingPeriod(fips)
+    setGsInput(buildFsaDate(period, 'start'))
+    setGeInput(buildFsaDate(period, 'end'))
   }, [fips])
 
   const router = useRouter()
@@ -305,14 +316,12 @@ function LivestockPanel({
           </button>
         </div>
         <p className="mt-0.5 text-xs text-forest-green/40 font-dm-sans">
-          {grazingPreset.source === 'county'
-            ? `From confirmed FSA program records (${grazingPreset.sourceYear}). FSA assigns your actual period at signup.`
-            : grazingPreset.source === 'default'
-              ? 'Grazing period not on file for this county — showing estimate using program-year default (Oct 1, 2025 – today). Your actual FSA-assigned period depends on your forage type. Enter your real dates below or contact your local FSA office.'
-              : 'Custom dates entered. Your actual period depends on your forage type — confirm with FSA at signup.'}
+          {fsaPeriod
+            ? `FSA Official · ${fsaPeriod.pasture} · ${fsaPeriod.year}`
+            : 'Grazing period not on file for this county. Your actual FSA-assigned period depends on your forage type. Enter your dates below or contact your local FSA office.'}
         </p>
 
-        {(showGrazingEdit || grazingPreset.source === 'default') && (
+        {(showGrazingEdit || !fsaPeriod) && (
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
