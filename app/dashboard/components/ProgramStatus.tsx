@@ -101,10 +101,11 @@ function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
 
 function buildFsaDate(period: GrazingPeriod | null, field: 'start' | 'end'): string {
   if (!period) return ''
-  const mmdd = field === 'start' ? period.start : period.end
+  const mmdd    = field === 'start' ? period.start : period.end
+  const current = new Date().getFullYear()
   const startMM = parseInt(period.start.slice(0, 2), 10)
   const endMM   = parseInt(period.end.slice(0, 2), 10)
-  const year = (field === 'end' && endMM < startMM) ? period.year + 1 : period.year
+  const year = (field === 'end' && endMM < startMM) ? current + 1 : current
   return `${year}-${mmdd}`
 }
 
