@@ -8,6 +8,7 @@
 // lower actual feed cost × 60% instead.
 //
 // This calculator always uses the published 2025 rate (the UPPER BOUND).
+// 2026 rates had not been published as of May 2026 — update when FSA releases them.
 // Label every result as ESTIMATE — final amount is determined by FSA at signup.
 //
 // Source: droughtmonitor.unl.edu/FSA/About/PaymentRates.aspx (2025 column)
@@ -16,9 +17,11 @@
 
 export type LivestockKind =
   | 'beef_adult'
-  | 'beef_non_adult'
+  | 'beef_non_adult_heavy'
+  | 'beef_non_adult_light'
   | 'dairy_adult'
-  | 'dairy_non_adult'
+  | 'dairy_non_adult_heavy'
+  | 'dairy_non_adult_light'
   | 'sheep_adult'
   | 'goat_adult'
   | 'buffalo_adult'
@@ -51,11 +54,16 @@ export const PAYMENT_RATES_2025: PaymentRate[] = [
     rateConfirmed:   true,
   },
   {
-    kind:            'beef_non_adult',
+    kind:            'beef_non_adult_heavy',
+    label:           'Beef cattle (non-adult, ≥500 lb)',
+    monthlyRate2025: 31.05,
+    rateConfirmed:   true,
+  },
+  {
+    kind:            'beef_non_adult_light',
     label:           'Beef cattle (non-adult, <500 lb)',
-    // FSA standard: non-adult rate ≈ 2/3 of adult; verify with local FSA office
-    monthlyRate2025: 27.60,
-    rateConfirmed:   false,
+    monthlyRate2025: 20.70,
+    rateConfirmed:   true,
   },
   {
     kind:            'dairy_adult',
@@ -64,11 +72,16 @@ export const PAYMENT_RATES_2025: PaymentRate[] = [
     rateConfirmed:   true,
   },
   {
-    kind:            'dairy_non_adult',
-    label:           'Dairy cattle (non-adult)',
-    // FSA standard: typically same as beef adult; verify with local FSA office
-    monthlyRate2025: 41.40,
-    rateConfirmed:   false,
+    kind:            'dairy_non_adult_heavy',
+    label:           'Dairy cattle (non-adult, ≥500 lb)',
+    monthlyRate2025: 31.05,
+    rateConfirmed:   true,
+  },
+  {
+    kind:            'dairy_non_adult_light',
+    label:           'Dairy cattle (non-adult, <500 lb)',
+    monthlyRate2025: 20.70,
+    rateConfirmed:   true,
   },
   {
     kind:            'sheep_adult',
