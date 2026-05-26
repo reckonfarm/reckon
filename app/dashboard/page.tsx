@@ -526,7 +526,6 @@ export default async function DashboardPage({
 
             {/* Conditions & Outlook section */}
             <ForecastSection
-              countyName={selectedCounty.name}
               stateAbbr={selectedCounty.state}
               droughtDiscussion={droughtDiscussion}
               cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
@@ -537,7 +536,6 @@ export default async function DashboardPage({
 
             {/* Precipitation Forecast & Deficit section */}
             <PrecipForecastSection
-              countyName={selectedCounty.name}
               nwsDiscussion={nwsDiscussion}
               wpcUpdated={wpcUpdated}
               day814Updated={prcp814Updated}

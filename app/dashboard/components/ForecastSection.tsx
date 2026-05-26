@@ -21,7 +21,6 @@ export interface DroughtDiscussion {
 }
 
 interface Props {
-  countyName: string
   stateAbbr: string
   droughtDiscussion: DroughtDiscussion | null
   cpcSoilMoistureUpdated: string | null
@@ -132,7 +131,6 @@ function CpcMapPanel({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ForecastSection({
-  countyName,
   droughtDiscussion,
   cpcSoilMoistureUpdated,
   vhiUpdated,
@@ -146,7 +144,7 @@ export default function ForecastSection({
       {/* Header */}
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
-          Conditions — {countyName}
+          Drought Indicators
         </h2>
       </div>
 
@@ -172,15 +170,23 @@ export default function ForecastSection({
 
       {/* Panels — instant show/hide, no animation */}
       <div className="p-4 sm:p-6">
-        {active === 'Now' && <NowPanel discussion={droughtDiscussion} />}
+        {active === 'Now' && (
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Weekly drought summary from NOAA&apos;s National Drought Mitigation Center covering your region.</p>
+            <NowPanel discussion={droughtDiscussion} />
+          </>
+        )}
         {active === 'Soil Moisture' && (
-          <CpcMapPanel
-            imageUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif"
-            alt="NOAA/CPC Daily Soil Moisture Anomaly"
-            label="NOAA/CPC Soil Moisture Anomaly · Daily"
-            sourceUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/"
-            lastModified={cpcSoilMoistureUpdated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Daily soil moisture departure from normal across the contiguous US. Red indicates drier than average conditions.</p>
+            <CpcMapPanel
+              imageUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif"
+              alt="NOAA/CPC Daily Soil Moisture Anomaly"
+              label="NOAA/CPC Soil Moisture Anomaly · Daily"
+              sourceUrl="https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/"
+              lastModified={cpcSoilMoistureUpdated}
+            />
+          </>
         )}
         {active === 'Vegetation' && (() => {
           const now = new Date()
@@ -191,32 +197,41 @@ export default function ForecastSection({
           const week2d = String(week).padStart(2, '0')
           const vhiUrl = `https://www.star.nesdis.noaa.gov/smcd/emb/vci/WebDataVH/gvix_webImages/${year}/USA_VHI_DIVISION_${year}${week2d}.png`
           return (
-            <CpcMapPanel
-              imageUrl={vhiUrl}
-              alt="NOAA STAR Vegetation Health Index — CONUS"
-              label="NOAA STAR VHI · Vegetation Health Index by Climate Division · Updated weekly"
-              sourceUrl="https://www.star.nesdis.noaa.gov/smcd/emb/vci/VH/vh_browse.php"
-              lastModified={vhiUpdated}
-            />
+            <>
+              <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Weekly vegetation health index derived from satellite data. Low values indicate stressed or drought-affected vegetation.</p>
+              <CpcMapPanel
+                imageUrl={vhiUrl}
+                alt="NOAA STAR Vegetation Health Index — CONUS"
+                label="NOAA STAR VHI · Vegetation Health Index by Climate Division · Updated weekly"
+                sourceUrl="https://www.star.nesdis.noaa.gov/smcd/emb/vci/VH/vh_browse.php"
+                lastModified={vhiUpdated}
+              />
+            </>
           )
         })()}
         {active === '30-Day Precip' && (
-          <CpcMapPanel
-            imageUrl="https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png"
-            alt="30-Day Percent of Normal Precipitation"
-            label="HPRCC/ACIS · Percent of Normal Precipitation · Past 30 Days · 1991–2020 normals"
-            sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
-            lastModified={hprcc30dUpdated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 30 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <CpcMapPanel
+              imageUrl="https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png"
+              alt="30-Day Percent of Normal Precipitation"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 30 Days · 1991–2020 normals"
+              sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
+              lastModified={hprcc30dUpdated}
+            />
+          </>
         )}
         {active === '60-Day Precip' && (
-          <CpcMapPanel
-            imageUrl="https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png"
-            alt="60-Day Percent of Normal Precipitation"
-            label="HPRCC/ACIS · Percent of Normal Precipitation · Past 60 Days · 1991–2020 normals"
-            sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
-            lastModified={hprcc60dUpdated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 60 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <CpcMapPanel
+              imageUrl="https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png"
+              alt="60-Day Percent of Normal Precipitation"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 60 Days · 1991–2020 normals"
+              sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
+              lastModified={hprcc60dUpdated}
+            />
+          </>
         )}
       </div>
     </div>

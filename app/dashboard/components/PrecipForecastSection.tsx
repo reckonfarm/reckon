@@ -14,7 +14,6 @@ import type { NwsDiscussion } from '@/lib/nws-discussion'
 import type { PrecipNormalData } from '@/lib/precip-normal'
 
 interface Props {
-  countyName: string
   nwsDiscussion: NwsDiscussion | null
   wpcUpdated: string | null
   day814Updated: string | null
@@ -234,7 +233,6 @@ function CpcMapPanel({
 }
 
 export default function PrecipForecastSection({
-  countyName,
   nwsDiscussion,
   wpcUpdated,
   day814Updated,
@@ -248,7 +246,7 @@ export default function PrecipForecastSection({
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
-          Precipitation Forecast &amp; Deficit — {countyName}
+          Rainfall Outlook
         </h2>
       </div>
 
@@ -272,9 +270,15 @@ export default function PrecipForecastSection({
       </div>
 
       <div className="p-4 sm:p-6">
-        {active === 'Local Discussion' && <LocalDiscussionPanel discussion={nwsDiscussion} />}
+        {active === 'Local Discussion' && (
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Official forecast discussion from your local National Weather Service office.</p>
+            <LocalDiscussionPanel discussion={nwsDiscussion} />
+          </>
+        )}
         {active === '7-Day QPF' && (
           <div className="space-y-3">
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Quantitative precipitation forecast showing expected rainfall totals over the next 7 days.</p>
             <ForecastBadge />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -298,40 +302,52 @@ export default function PrecipForecastSection({
           </div>
         )}
         {active === '8-14 Day' && (
-          <CpcMapPanel
-            imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif"
-            alt="CPC 8-14 Day Precipitation Outlook"
-            label="CPC 8-14 Day Precipitation Outlook"
-            sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/"
-            lastModified={day814Updated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Probability of above or below normal precipitation over the next 8–14 days.</p>
+            <CpcMapPanel
+              imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif"
+              alt="CPC 8-14 Day Precipitation Outlook"
+              label="CPC 8-14 Day Precipitation Outlook"
+              sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/"
+              lastModified={day814Updated}
+            />
+          </>
         )}
         {active === 'Weeks 3-4' && (
-          <CpcMapPanel
-            imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif"
-            alt="CPC Weeks 3-4 Precipitation Outlook"
-            label="CPC Weeks 3-4 Precipitation Outlook"
-            sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/WK34/"
-            lastModified={weeks34Updated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Extended precipitation probability outlook for weeks 3 and 4.</p>
+            <CpcMapPanel
+              imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif"
+              alt="CPC Weeks 3-4 Precipitation Outlook"
+              label="CPC Weeks 3-4 Precipitation Outlook"
+              sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/WK34/"
+              lastModified={weeks34Updated}
+            />
+          </>
         )}
         {active === 'Monthly' && (
-          <CpcMapPanel
-            imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif"
-            alt="CPC Monthly Precipitation Outlook"
-            label="CPC Monthly Precipitation Outlook"
-            sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/30day/"
-            lastModified={monthlyUpdated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Monthly precipitation outlook from NOAA&apos;s Climate Prediction Center.</p>
+            <CpcMapPanel
+              imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif"
+              alt="CPC Monthly Precipitation Outlook"
+              label="CPC Monthly Precipitation Outlook"
+              sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/30day/"
+              lastModified={monthlyUpdated}
+            />
+          </>
         )}
         {active === 'Seasonal' && (
-          <CpcMapPanel
-            imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif"
-            alt="CPC Seasonal Precipitation Outlook"
-            label="CPC Seasonal Precipitation Outlook"
-            sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php?lead=1"
-            lastModified={seasonalUpdated}
-          />
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Seasonal precipitation outlook covering the next 3 months from NOAA&apos;s Climate Prediction Center.</p>
+            <CpcMapPanel
+              imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif"
+              alt="CPC Seasonal Precipitation Outlook"
+              label="CPC Seasonal Precipitation Outlook"
+              sourceUrl="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php?lead=1"
+              lastModified={seasonalUpdated}
+            />
+          </>
         )}
       </div>
     </div>
