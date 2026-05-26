@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
 import { getGrazingPreset } from '@/lib/grazing-presets'
+import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
@@ -143,6 +144,7 @@ export default async function DashboardPage({
   let precipNormal: PrecipNormalData | null         = null
   let cpcSoilMoistureUpdated: string | null         = null
   let vhiUpdated: string | null                     = null
+  let hprcc14dUpdated: string | null                = null
   let hprcc30dUpdated: string | null                = null
   let hprcc60dUpdated: string | null                = null
   let regionalMapUrl: string | null                 = null
@@ -169,6 +171,7 @@ export default async function DashboardPage({
       precipNormalRes,
       cpcSoilMoistureHead,
       vhiHead,
+      hprcc14dHead,
       hprcc30dHead,
       hprcc60dHead,
     ] = await Promise.all([
@@ -291,6 +294,11 @@ export default async function DashboardPage({
         ).catch(() => null)
       })(),
 
+      fetch('https://hprcc.unl.edu/products/maps/acis/14dPNormUS.png', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
       fetch('https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png', {
         method: 'HEAD',
         next: { revalidate: 3600 },
@@ -332,6 +340,7 @@ export default async function DashboardPage({
     precipNormal        = precipNormalRes
     cpcSoilMoistureUpdated = fmtLM(cpcSoilMoistureHead)
     vhiUpdated             = fmtLM(vhiHead)
+    hprcc14dUpdated        = fmtLM(hprcc14dHead)
     hprcc30dUpdated        = fmtLM(hprcc30dHead)
     hprcc60dUpdated        = fmtLM(hprcc60dHead)
 
@@ -354,12 +363,12 @@ export default async function DashboardPage({
       {/* ── Sticky header ─────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <div>
+          <Link href="/">
             <p className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
               Reckon
             </p>
             <p className="text-xs text-forest-green/50 font-dm-sans">Drought Monitor</p>
-          </div>
+          </Link>
           {selectedCounty && (
             <p className="hidden text-sm text-forest-green/60 font-dm-sans sm:block">
               {selectedCounty.name}, {selectedCounty.state}
@@ -406,10 +415,18 @@ export default async function DashboardPage({
                   {selectedCounty.state} · FIPS {selectedCounty.fips}
                 </p>
               </div>
-              <WatchlistButton
-                countyId={selectedCounty.id}
-                countyName={selectedCounty.name}
-              />
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/watchlist"
+                  className="font-dm-sans text-sm text-forest-green/60 underline hover:text-forest-green"
+                >
+                  My Counties
+                </Link>
+                <WatchlistButton
+                  countyId={selectedCounty.id}
+                  countyName={selectedCounty.name}
+                />
+              </div>
             </div>
 
             {/* No data yet */}
@@ -530,6 +547,7 @@ export default async function DashboardPage({
               droughtDiscussion={droughtDiscussion}
               cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
               vhiUpdated={vhiUpdated}
+              hprcc14dUpdated={hprcc14dUpdated}
               hprcc30dUpdated={hprcc30dUpdated}
               hprcc60dUpdated={hprcc60dUpdated}
             />

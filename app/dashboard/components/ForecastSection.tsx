@@ -25,13 +25,14 @@ interface Props {
   droughtDiscussion: DroughtDiscussion | null
   cpcSoilMoistureUpdated: string | null
   vhiUpdated: string | null
+  hprcc14dUpdated: string | null
   hprcc30dUpdated: string | null
   hprcc60dUpdated: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS = ['Now', 'Soil Moisture', 'Vegetation', '30-Day Precip', '60-Day Precip'] as const
+const TABS = ['Now', 'Soil Moisture', 'Vegetation', '14-Day Precip', '30-Day Precip', '60-Day Precip'] as const
 type Tab = typeof TABS[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,10 +135,14 @@ export default function ForecastSection({
   droughtDiscussion,
   cpcSoilMoistureUpdated,
   vhiUpdated,
+  hprcc14dUpdated,
   hprcc30dUpdated,
   hprcc60dUpdated,
 }: Props) {
   const [active, setActive] = useState<Tab>('Now')
+  const droughtWeekEnding = droughtDiscussion?.releaseDate
+    ? new Date(droughtDiscussion.releaseDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'this week'
 
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
@@ -172,7 +177,7 @@ export default function ForecastSection({
       <div className="p-4 sm:p-6">
         {active === 'Now' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Weekly drought summary from NOAA&apos;s National Drought Mitigation Center covering your region.</p>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">{`Summary of drought conditions across the US for the week ending ${droughtWeekEnding}. Produced by NOAA’s National Drought Mitigation Center.`}</p>
             <NowPanel discussion={droughtDiscussion} />
           </>
         )}
@@ -209,6 +214,18 @@ export default function ForecastSection({
             </>
           )
         })()}
+        {active === '14-Day Precip' && (
+          <>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 14 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <CpcMapPanel
+              imageUrl="https://hprcc.unl.edu/products/maps/acis/14dPNormUS.png"
+              alt="14-Day Percent of Normal Precipitation"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 14 Days · 1991–2020 normals"
+              sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
+              lastModified={hprcc14dUpdated}
+            />
+          </>
+        )}
         {active === '30-Day Precip' && (
           <>
             <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 30 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
@@ -233,6 +250,7 @@ export default function ForecastSection({
             />
           </>
         )}
+
       </div>
     </div>
   )

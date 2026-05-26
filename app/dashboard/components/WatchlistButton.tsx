@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import type { TriggeredLevel } from '@/lib/alert-service'
 
 // ─── Persistent anonymous user ID ─────────────────────────────────────────────
@@ -36,6 +37,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
   const [alerts, setAlerts]           = useState<TriggeredLevel[]>([])
   const [busy, setBusy]               = useState(true)
   const [showTooltip, setShowTooltip] = useState(false)
+  const [showAdded, setShowAdded]     = useState(false)
 
   // On mount: check if this county is already watched, then fetch any active alerts
   useEffect(() => {
@@ -69,7 +71,12 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
     })
 
     setWatching(w => !w)
-    if (watching) setAlerts([]) // clear alert badge when unwatching
+    if (watching) {
+      setAlerts([])    // clear alert badge when unwatching
+    } else {
+      setShowAdded(true)
+      setTimeout(() => setShowAdded(false), 4000)
+    }
     setBusy(false)
   }
 
@@ -119,6 +126,16 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
           </span>
         )}
       </button>
+
+      {/* "Added" confirmation */}
+      {showAdded && (
+        <span className="text-xs font-dm-sans text-forest-green/70">
+          Added to{' '}
+          <Link href="/watchlist" className="underline hover:text-forest-green">
+            My Counties
+          </Link>
+        </span>
+      )}
 
       {/* Tooltip listing triggered drought levels */}
       {showTooltip && hasAlert && (

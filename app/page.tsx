@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabase'
 import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
 import OfficialMap from '@/app/dashboard/components/OfficialMap'
@@ -23,9 +24,17 @@ export default async function Home() {
       <div className="mx-auto max-w-2xl px-4 py-10 sm:py-16">
 
         <div className="mb-10">
-          <h1 className="font-fraunces text-4xl font-semibold text-forest-green sm:text-5xl">
-            Reckon
-          </h1>
+          <div className="flex items-start justify-between">
+            <h1 className="font-fraunces text-4xl font-semibold text-forest-green sm:text-5xl">
+              Reckon
+            </h1>
+            <Link
+              href="/watchlist"
+              className="mt-1.5 font-dm-sans text-sm font-medium text-forest-green/60 hover:text-forest-green"
+            >
+              My Counties
+            </Link>
+          </div>
           <p className="mt-2 font-dm-sans text-base text-forest-green/60">
             Drought and FSA program status for your county.
           </p>

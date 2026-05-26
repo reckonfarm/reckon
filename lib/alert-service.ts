@@ -16,6 +16,7 @@ export interface DroughtAlert {
   state: string
   weekDate: string
   alertLevel: number  // the threshold that was set (e.g. 3 = watching for D3+)
+  alerted: boolean
   triggered: TriggeredLevel[]
 }
 
@@ -93,17 +94,29 @@ export async function checkAlerts(userId: string): Promise<DroughtAlert[]> {
       }
     }
 
-    if (triggered.length > 0) {
-      alerts.push({
-        countyId: entry.county_id,
-        fips: county.fips,
-        countyName: county.name,
-        state: county.state,
-        weekDate: reading.week_date,
-        alertLevel: minLevel,
-        triggered,
-      })
+    const alerted = triggered.length > 0
+
+    // For non-alerted counties, collect sub-threshold levels so the UI can
+    // display current conditions even when no alert fired.
+    if (!alerted) {
+      for (let l = 0; l < minLevel; l++) {
+        const pct = (reading[`d${l}` as 'd0' | 'd1' | 'd2' | 'd3' | 'd4'] as number | null) ?? 0
+        if (pct > 0) {
+          triggered.push({ level: `D${l}`, label: LEVEL_LABELS[l], pct })
+        }
+      }
     }
+
+    alerts.push({
+      countyId: entry.county_id,
+      fips: county.fips,
+      countyName: county.name,
+      state: county.state,
+      weekDate: reading.week_date,
+      alertLevel: minLevel,
+      alerted,
+      triggered,
+    })
   }
 
   return alerts
