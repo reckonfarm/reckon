@@ -223,35 +223,36 @@ export async function computeLfpEligibility(
 
   if (!county) return null
 
-  // Parallel: 6 USDM API calls + 7-of-8 DB check + latest week lookup
+  // Parallel: 4 USDM API calls + 7-of-8 DB check + latest week lookup
+  // D3 ≥4 weeks and D4 ≥4 weeks are NON-CONSECUTIVE totals (NDMC/FSA definition):
+  // sum all run weeks from minimumweeks=1 calls rather than requiring a single ≥4-week run.
   const [
     runsD2_4,   // tier 1: D2 ≥4 consecutive
-    runsD3_1,   // tier 3: D3 any time (≥1 week)
-    runsD3_4,   // tier 4: D3 ≥4 weeks
-    runsD4_1,   // tier 5: D4 any time
-    runsD4_4,   // tier 6: D4 ≥4 weeks
+    runsD3_1,   // tier 3 + tier 4: D3 any time; sum gives total non-consecutive D3 weeks
+    runsD4_1,   // tier 5 + tier 6: D4 any time; sum gives total non-consecutive D4 weeks
     runsD2_1,   // all D2 runs — used for streak detection only
     tier2,
     asOf,
   ] = await Promise.all([
     fetchConsecutiveRuns(paddedFips, 2, 4, gp),
     fetchConsecutiveRuns(paddedFips, 3, 1, gp),
-    fetchConsecutiveRuns(paddedFips, 3, 4, gp),
     fetchConsecutiveRuns(paddedFips, 4, 1, gp),
-    fetchConsecutiveRuns(paddedFips, 4, 4, gp),
     fetchConsecutiveRuns(paddedFips, 2, 1, gp),
     sevenOfEightWindowCheck(db, county.id as number, gp),
     latestWeekDate(db, county.id as number, gp),
   ])
 
+  const totalD3Weeks = runsD3_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
+  const totalD4Weeks = runsD4_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
+
   // Determine which tiers are triggered
   const triggered = [
-    runsD2_4.length > 0,   // tier 1
-    tier2,                  // tier 2
-    runsD3_1.length > 0,   // tier 3
-    runsD3_4.length > 0,   // tier 4
-    runsD4_1.length > 0,   // tier 5
-    runsD4_4.length > 0,   // tier 6
+    runsD2_4.length > 0,   // tier 1: D2 ≥4 consecutive weeks
+    tier2,                  // tier 2: D2 ≥7 of any 8 weeks (sliding window)
+    runsD3_1.length > 0,   // tier 3: D3 at any time
+    totalD3Weeks >= 4,      // tier 4: D3 ≥4 non-consecutive total weeks (NDMC definition)
+    runsD4_1.length > 0,   // tier 5: D4 at any time
+    totalD4Weeks >= 4,      // tier 6: D4 ≥4 non-consecutive total weeks (NDMC definition)
   ]
 
   // Maximum tier = highest index that is true
