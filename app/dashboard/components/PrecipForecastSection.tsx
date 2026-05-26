@@ -116,7 +116,7 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null })
     )
   }
 
-  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, stationName, distanceMiles } = data
+  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, stationName, distanceMiles, dataThrough } = data
   const isDeficit = deficit < 0
 
   const monthTicks = dailyData
@@ -194,10 +194,17 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null })
         </div>
       </div>
 
+      {dataThrough && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 font-dm-sans">
+          Precipitation data through{' '}
+          {new Date(`${dataThrough}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}{' '}
+          — station offline since
+        </p>
+      )}
       <p className="text-xs text-forest-green/40 font-dm-sans">
         Station: {stationName}
         {distanceMiles > 0 ? ` (${distanceMiles} miles from county center)` : ''}{' '}
-        · NOAA/ACIS · 30-year normals
+        · NOAA/ACIS · 1991–2020 normals (NOAA)
       </p>
     </div>
   )

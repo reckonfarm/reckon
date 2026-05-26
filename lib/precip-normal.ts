@@ -15,6 +15,7 @@ export interface PrecipNormalData {
   ytdNormal: number
   deficit: number
   deficitPct: number
+  dataThrough: string | null  // null = complete; date string = last day with valid actual
 }
 
 type AcisStn = {
@@ -149,19 +150,30 @@ export async function getPrecipNormal(
     const stationName = stnData.meta?.name ?? 'Unknown Station'
 
     // Step 3: compute running cumulative totals
-    const dailyData: PrecipNormalData['dailyData'] = []
+    let dailyData: PrecipNormalData['dailyData'] = []
     let actualCum = 0
     let normalCum = 0
+    let lastValidIdx = -1
 
-    for (const [date, actualRaw, normalRaw] of rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const [date, actualRaw, normalRaw] = rows[i]
       const actual = parseValue(actualRaw)
       const normal = parseValue(normalRaw)
-      if (actual !== null) actualCum += actual
+      if (actual !== null) { actualCum += actual; lastValidIdx = i }
       if (normal !== null) normalCum += normal
       dailyData.push({ date, actualCumulative: actualCum, normalCumulative: normalCum })
     }
 
-    if (dailyData.length === 0) return null
+    if (dailyData.length === 0 || lastValidIdx === -1) return null
+
+    // Trim trailing missing days so the chart and deficit both stop at the last
+    // date with a valid actual reading — prevents the normal line from running
+    // ahead and inflating the apparent deficit when a station goes offline.
+    let dataThrough: string | null = null
+    if (lastValidIdx < rows.length - 1) {
+      dailyData = dailyData.slice(0, lastValidIdx + 1)
+      dataThrough = dailyData[lastValidIdx].date
+    }
 
     const last = dailyData[dailyData.length - 1]
     const ytdActual = last.actualCumulative
@@ -169,7 +181,7 @@ export async function getPrecipNormal(
     const deficit = ytdActual - ytdNormal
     const deficitPct = ytdNormal > 0 ? (deficit / ytdNormal) * 100 : 0
 
-    return { stationName, stationUid: uid, distanceMiles, dailyData, ytdActual, ytdNormal, deficit, deficitPct }
+    return { stationName, stationUid: uid, distanceMiles, dailyData, ytdActual, ytdNormal, deficit, deficitPct, dataThrough }
   } catch {
     return null
   }
