@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Reads /tmp/fsa-lfp-eligibility.csv (FOIA data from Montana Climate Office)
-// and outputs lib/grazing-periods.ts with one entry per 5-digit FIPS county.
+// and outputs lib/grazing-periods.ts with all forage types per 5-digit FIPS county.
 
 const fs = require('fs')
 const readline = require('readline')
@@ -8,8 +8,6 @@ const path = require('path')
 
 const CSV_PATH = '/tmp/fsa-lfp-eligibility.csv'
 const OUTPUT_PATH = path.join(__dirname, '../lib/grazing-periods.ts')
-
-const PASTURE_PRIORITY = ['Native Pasture', 'Full Season Improved Pasture']
 
 function parseCSVLine(line) {
   const fields = []
@@ -75,57 +73,66 @@ async function main() {
       const pastures = byYear.get(year)
       if (pastures.size === 0) continue
 
-      let chosenName = null
-      for (const priority of PASTURE_PRIORITY) {
-        if (pastures.has(priority)) { chosenName = priority; break }
+      const typesForFips = {}
+      for (const [pastureName, { start, end }] of pastures.entries()) {
+        typesForFips[pastureName] = {
+          start: start.slice(5),  // YYYY-MM-DD → MM-DD
+          end:   end.slice(5),
+          source: 'FSA',
+          year,
+        }
       }
-      if (!chosenName) {
-        chosenName = [...pastures.keys()][0]
-      }
-
-      const { start, end } = pastures.get(chosenName)
-      entries[fips] = {
-        start:   start.slice(5),  // YYYY-MM-DD → MM-DD
-        end:     end.slice(5),
-        pasture: chosenName,
-        source:  'FSA',
-        year,
-      }
+      entries[fips] = typesForFips
       break // most recent year only
     }
   }
 
-  // Sort by FIPS as a plain string (leading-zero-safe) — avoid JS integer key reordering
+  // Sort by FIPS as a plain string (leading-zero-safe)
   const sortedEntries = Object.entries(entries).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 
-  const lines = sortedEntries.map(([fips, p]) =>
-    `  "${fips}": { start: "${p.start}", end: "${p.end}", pasture: "${p.pasture.replace(/"/g, '\\"')}", source: "FSA", year: ${p.year} },`
-  )
+  let totalTypes = 0
+  const lines = sortedEntries.map(([fips, types]) => {
+    const typeLines = Object.entries(types).map(([name, p]) =>
+      `    "${name.replace(/"/g, '\\"')}": { start: "${p.start}", end: "${p.end}", source: "FSA", year: ${p.year} },`
+    ).join('\n')
+    totalTypes += Object.keys(types).length
+    return `  "${fips}": {\n${typeLines}\n  },`
+  })
+
+  const avgTypes = (totalTypes / sortedEntries.length).toFixed(1)
 
   const output = `// AUTO-GENERATED — do not edit by hand.
 // Source: FOIA-released FSA LFP eligibility data via Montana Climate Office
 // Regenerate: node scripts/build-grazing-periods.js
-// Counties: ${sortedEntries.length}
+// Counties: ${sortedEntries.length} · Avg forage types per county: ${avgTypes}
 
-export interface GrazingPeriod {
-  start: string   // "MM-DD"
-  end: string     // "MM-DD"
-  pasture: string
+export interface GrazingPeriodEntry {
+  start:  string   // "MM-DD"
+  end:    string   // "MM-DD"
   source: "FSA"
-  year: number    // most recent program year with valid data
+  year:   number
 }
 
-export const grazingPeriods: Record<string, GrazingPeriod> = {
+export const grazingPeriods: Record<string, Record<string, GrazingPeriodEntry>> = {
 ${lines.join('\n')}
 }
 
-export function getGrazingPeriod(fips: string): GrazingPeriod | null {
+export function getGrazingPeriods(fips: string): Record<string, GrazingPeriodEntry> | null {
   return grazingPeriods[String(fips).padStart(5, '0')] ?? null
+}
+
+export function getGrazingPeriod(fips: string, pastureType?: string): GrazingPeriodEntry | null {
+  const all = getGrazingPeriods(fips)
+  if (!all) return null
+  if (pastureType && all[pastureType]) return all[pastureType]
+  if (all['Native Pasture']) return all['Native Pasture']
+  return Object.values(all)[0] ?? null
 }
 `
 
   fs.writeFileSync(OUTPUT_PATH, output, 'utf-8')
   console.log(`Wrote ${sortedEntries.length} counties to ${OUTPUT_PATH}`)
+  console.log(`Total forage types: ${totalTypes} · Avg per county: ${avgTypes}`)
 }
 
 main().catch(err => { console.error(err); process.exit(1) })

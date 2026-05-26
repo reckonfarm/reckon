@@ -9,7 +9,7 @@ import {
   PAYMENT_RATES_2025,
   type LivestockKind,
 } from '@/lib/lfp-payment'
-import { getGrazingPeriod, type GrazingPeriod } from '@/lib/grazing-periods'
+import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildFsaDate(period: GrazingPeriod | null, field: 'start' | 'end'): string {
+function buildFsaDate(period: GrazingPeriodEntry | null, field: 'start' | 'end'): string {
   if (!period) return ''
   const mmdd    = field === 'start' ? period.start : period.end
   const current = new Date().getFullYear()
@@ -120,23 +120,56 @@ function LivestockPanel({
   fips: string
   countyName: string
 }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const allTypes = getGrazingPeriods(fips)
+  const typeNames = allTypes ? Object.keys(allTypes) : []
+
+  const resolveInitialType = (fp: string, sp: ReturnType<typeof useSearchParams>) => {
+    const ptParam = sp.get('pt')
+    const types = getGrazingPeriods(fp)
+    if (ptParam && types?.[ptParam]) return ptParam
+    if (types?.['Native Pasture']) return 'Native Pasture'
+    return Object.keys(types ?? {})[0] ?? ''
+  }
+
+  const [selectedType, setSelectedType] = useState(() => resolveInitialType(fips, searchParams))
+  const fsaPeriod: GrazingPeriodEntry | null = (selectedType && allTypes?.[selectedType])
+    ? allTypes[selectedType]
+    : getGrazingPeriod(fips)
+
   const [livestock, setLivestock] = useState<LivestockKind>('beef_adult')
   const [headCount, setHeadCount] = useState(100)
   const [showGrazingEdit, setShowGrazingEdit] = useState(false)
-  const fsaPeriod = getGrazingPeriod(fips)
   const [gsInput, setGsInput] = useState(() => buildFsaDate(fsaPeriod, 'start'))
   const [geInput, setGeInput] = useState(() => buildFsaDate(fsaPeriod, 'end'))
 
   useEffect(() => {
-    const period = getGrazingPeriod(fips)
+    const types = getGrazingPeriods(fips)
+    const ptParam = searchParams.get('pt')
+    const defaultType = (ptParam && types?.[ptParam]) ? ptParam : (types?.['Native Pasture'] ? 'Native Pasture' : Object.keys(types ?? {})[0] ?? '')
+    setSelectedType(defaultType)
+    const period = (defaultType && types?.[defaultType]) ? types[defaultType] : getGrazingPeriod(fips)
     setGsInput(buildFsaDate(period, 'start'))
     setGeInput(buildFsaDate(period, 'end'))
   }, [fips])
 
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const hasCustomDates = !!searchParams.get('gs') && !!searchParams.get('ge')
   const [dateError, setDateError] = useState<string | null>(null)
+
+  function handleTypeChange(typeName: string) {
+    setSelectedType(typeName)
+    if (allTypes?.[typeName]) {
+      setGsInput(buildFsaDate(allTypes[typeName], 'start'))
+      setGeInput(buildFsaDate(allTypes[typeName], 'end'))
+    }
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('pt', typeName)
+    params.delete('gs')
+    params.delete('ge')
+    router.push(`/dashboard?${params.toString()}`)
+  }
 
   function recalculate() {
     const dateRe = /^\d{4}-\d{2}-\d{2}$/
@@ -302,10 +335,39 @@ function LivestockPanel({
 
       {/* ── Grazing period ── */}
       <div>
-        <div className="flex flex-wrap items-baseline gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
-            Grazing Period
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+          Grazing Period
+        </p>
+
+        {/* Forage type selector */}
+        {allTypes && typeNames.length > 0 && (
+          <div className="mb-1">
+            {typeNames.length === 1 ? (
+              <p className="text-sm font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
+            ) : (
+              <select
+                value={selectedType}
+                onChange={e => handleTypeChange(e.target.value)}
+                className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+              >
+                {typeNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            )}
+            <p className="mt-0.5 text-xs text-forest-green/40 font-dm-sans">
+              FSA Official · {fsaPeriod?.year ?? ''}
+            </p>
+          </div>
+        )}
+
+        {!allTypes && (
+          <p className="mb-1 text-xs text-forest-green/40 font-dm-sans">
+            Grazing period not on file for this county. Your actual FSA-assigned period depends on your forage type. Enter your dates below or contact your local FSA office.
           </p>
+        )}
+
+        <div className="flex flex-wrap items-baseline gap-2">
           <p className="text-xs text-forest-green font-dm-sans">
             {formatDateShort(grazingPeriod.startDate)} → {formatDateShort(grazingPeriod.endDate)}
           </p>
@@ -316,11 +378,6 @@ function LivestockPanel({
             {showGrazingEdit ? 'Cancel' : 'Customize dates'}
           </button>
         </div>
-        <p className="mt-0.5 text-xs text-forest-green/40 font-dm-sans">
-          {fsaPeriod
-            ? `FSA Official · ${fsaPeriod.pasture} · ${fsaPeriod.year}`
-            : 'Grazing period not on file for this county. Your actual FSA-assigned period depends on your forage type. Enter your dates below or contact your local FSA office.'}
-        </p>
 
         {(showGrazingEdit || !fsaPeriod) && (
           <div className="mt-3 space-y-2">

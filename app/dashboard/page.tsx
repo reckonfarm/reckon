@@ -96,9 +96,9 @@ function formatDate(iso: string) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fips?: string; gs?: string; ge?: string }>
+  searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string }>
 }) {
-  const { fips, gs, ge } = await searchParams
+  const { fips, gs, ge, pt } = await searchParams
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -234,7 +234,7 @@ export default async function DashboardPage({
       // LFP eligibility
       computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
-        const period = getGrazingPeriod(selectedCounty.fips)
+        const period = getGrazingPeriod(selectedCounty.fips, pt)
         if (period) {
           const current = new Date().getFullYear()
           const startMM = parseInt(period.start.slice(0, 2), 10)
