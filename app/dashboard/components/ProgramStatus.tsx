@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import type { LfpEligibilityResult, LfpTierStatus } from '@/lib/lfp-eligibility'
 import {
   estimatePayment,
-  formatPaymentLine,
-  PAYMENT_RATES_2025,
+  PAYMENT_RATES_2026,
+  DAILY_FEED_RATE_2026,
   type LivestockKind,
+  type LfpPaymentEstimate,
 } from '@/lib/lfp-payment'
 import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
@@ -24,15 +25,14 @@ export interface ProgramStatusProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Color band: maps max LFP tier → USDM drought color
 const TIER_STYLE: Record<number, { bg: string; fg: string }> = {
-  0: { bg: '#F3F4F6', fg: '#6B7280' },  // none
-  1: { bg: '#FFAA00', fg: '#451A00' },  // D2 orange
-  2: { bg: '#FFAA00', fg: '#451A00' },  // D2 orange
-  3: { bg: '#E60000', fg: '#FFFFFF' },  // D3 red
-  4: { bg: '#E60000', fg: '#FFFFFF' },  // D3 red
-  5: { bg: '#730000', fg: '#FFFFFF' },  // D4 dark red
-  6: { bg: '#730000', fg: '#FFFFFF' },  // D4 dark red
+  0: { bg: '#F3F4F6', fg: '#6B7280' },
+  1: { bg: '#FFAA00', fg: '#451A00' },
+  2: { bg: '#FFAA00', fg: '#451A00' },
+  3: { bg: '#E60000', fg: '#FFFFFF' },
+  4: { bg: '#E60000', fg: '#FFFFFF' },
+  5: { bg: '#730000', fg: '#FFFFFF' },
+  6: { bg: '#730000', fg: '#FFFFFF' },
 }
 
 function droughtLabel(maxTier: number): string {
@@ -45,6 +45,14 @@ function droughtLabel(maxTier: number): string {
 function formatDateShort(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
+  })
+}
+
+function usd(n: number, decimals = 2) {
+  return n.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   })
 }
 
@@ -97,6 +105,82 @@ function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
   )
 }
 
+// ─── Payment breakdown display ────────────────────────────────────────────────
+
+function PaymentBreakdown({
+  est,
+  tierLabel,
+}: {
+  est: LfpPaymentEstimate
+  tierLabel: string
+}) {
+  const limitingCost = est.limitingStep === 2 ? est.step2! : est.step1
+
+  return (
+    <div className="mt-2 space-y-1 rounded-md bg-forest-green/5 px-3 py-2.5 font-dm-sans text-xs text-forest-green/70">
+      {/* Step 1 */}
+      <div className="flex justify-between gap-2">
+        <span>
+          Step 1 — head count:{' '}
+          <span className="text-forest-green/50">
+            {est.headCount.toLocaleString()} × {usd(est.ratePerHead)}/head
+          </span>
+        </span>
+        <span className="tabular-nums text-forest-green/80 font-medium">
+          {usd(est.step1)}/mo
+        </span>
+      </div>
+
+      {/* Step 2 */}
+      {est.step2 !== null ? (
+        <div className="flex justify-between gap-2">
+          <span>
+            Step 2 — carrying cap:{' '}
+            <span className="text-forest-green/50">
+              ({est.eligibleAcres?.toLocaleString()} acres ÷ {est.acresPerAU} ac/AU) × 30 × {usd(DAILY_FEED_RATE_2026, 4)}/day
+            </span>
+          </span>
+          <span className="tabular-nums text-forest-green/80 font-medium">
+            {usd(est.step2)}/mo
+          </span>
+        </div>
+      ) : (
+        <div className="text-forest-green/40">
+          Step 2 — carrying cap: not entered (head-count method used)
+        </div>
+      )}
+
+      {/* 60% line */}
+      <div className="flex justify-between gap-2 border-t border-forest-green/10 pt-1">
+        <span>
+          FSA pays 60% of{' '}
+          <span className={est.step2 !== null ? 'font-semibold text-forest-green' : ''}>
+            {est.step2 !== null
+              ? `Step ${est.limitingStep} (${est.limitingStep === 2 ? 'carrying cap is less' : 'head count is less'})`
+              : 'Step 1'}
+          </span>
+          {': '}
+          <span className="text-forest-green/50">{usd(limitingCost)} × 0.60</span>
+        </span>
+        <span className="tabular-nums text-forest-green/80 font-medium">
+          {usd(est.monthlyPayment)}/mo
+        </span>
+      </div>
+
+      {/* × months */}
+      <div className="flex justify-between gap-2">
+        <span>
+          × {est.numPayments} monthly payment{est.numPayments !== 1 ? 's' : ''}{' '}
+          <span className="text-forest-green/50">({tierLabel})</span>
+        </span>
+        <span className="tabular-nums font-semibold text-forest-green">
+          {usd(est.grossEstimate, 0)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildFsaDate(period: GrazingPeriodEntry | null, field: 'start' | 'end'): string {
@@ -134,16 +218,18 @@ function LivestockPanel({
     return Object.keys(types ?? {})[0] ?? ''
   }
 
-  const [selectedType, setSelectedType] = useState(() => resolveInitialType(fips, searchParams))
-  const fsaPeriod: GrazingPeriodEntry | null = (selectedType && allTypes?.[selectedType])
+  const [selectedType, setSelectedType]       = useState(() => resolveInitialType(fips, searchParams))
+  const fsaPeriod: GrazingPeriodEntry | null   = (selectedType && allTypes?.[selectedType])
     ? allTypes[selectedType]
     : getGrazingPeriod(fips)
 
-  const [livestock, setLivestock] = useState<LivestockKind>('beef_adult')
-  const [headCount, setHeadCount] = useState(100)
+  const [livestock, setLivestock]       = useState<LivestockKind>('beef_adult')
+  const [headCount, setHeadCount]       = useState(100)
+  const [eligibleAcres, setEligibleAcres] = useState<string>('')
+  const [acresPerAU, setAcresPerAU]     = useState<string>('')
   const [showGrazingEdit, setShowGrazingEdit] = useState(false)
-  const [gsInput, setGsInput] = useState(() => buildFsaDate(fsaPeriod, 'start'))
-  const [geInput, setGeInput] = useState(() => buildFsaDate(fsaPeriod, 'end'))
+  const [gsInput, setGsInput]           = useState(() => buildFsaDate(fsaPeriod, 'start'))
+  const [geInput, setGeInput]           = useState(() => buildFsaDate(fsaPeriod, 'end'))
 
   useEffect(() => {
     const types = getGrazingPeriods(fips)
@@ -155,7 +241,6 @@ function LivestockPanel({
     setGeInput(buildFsaDate(period, 'end'))
   }, [fips])
 
-  const hasCustomDates = !!searchParams.get('gs') && !!searchParams.get('ge')
   const [dateError, setDateError] = useState<string | null>(null)
 
   function handleTypeChange(typeName: string) {
@@ -194,11 +279,27 @@ function LivestockPanel({
 
   const { maxTier, payments, tiers, currentD2Streak, weeksUntilTier1, grazingPeriod, dataAsOf } = eligibility
   const style = TIER_STYLE[maxTier]
-  const estimate = payments > 0
-    ? estimatePayment(livestock, Math.max(1, headCount), payments)
+
+  const headCountValid   = Number.isFinite(headCount) && headCount > 0
+  const acresVal         = eligibleAcres !== '' ? parseFloat(eligibleAcres) : null
+  const acresPerAUVal    = acresPerAU !== '' ? parseFloat(acresPerAU) : null
+  const acresInputValid  = (acresVal === null || (Number.isFinite(acresVal) && acresVal > 0))
+                        && (acresPerAUVal === null || (Number.isFinite(acresPerAUVal) && acresPerAUVal > 0))
+
+  const estimate: LfpPaymentEstimate | null = (payments > 0 && headCountValid && acresInputValid)
+    ? estimatePayment(
+        livestock,
+        Math.max(1, headCount),
+        payments,
+        {
+          eligibleAcres: acresVal ?? undefined,
+          acresPerAU:    acresPerAUVal ?? undefined,
+        },
+      )
     : null
 
-  const headCountValid = Number.isFinite(headCount) && headCount > 0
+  const maxTierDef  = tiers.find(t => t.tier === maxTier)
+  const tierLabel   = maxTierDef?.label ?? ''
 
   return (
     <div className="space-y-5 p-4 sm:p-6">
@@ -226,7 +327,7 @@ function LivestockPanel({
               className="font-dm-sans text-sm"
               style={{ color: style.fg, opacity: 0.85 }}
             >
-              monthly LFP payment{payments !== 1 ? 's' : ''} — {tiers.find(t => t.tier === maxTier)?.label}
+              monthly LFP payment{payments !== 1 ? 's' : ''} — {tierLabel}
             </p>
           </div>
         ) : (
@@ -249,6 +350,8 @@ function LivestockPanel({
       {maxTier > 0 && (
         <>
           <div className="space-y-3">
+
+            {/* Header */}
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
                 Payment Estimate
@@ -256,6 +359,15 @@ function LivestockPanel({
               <EstimateBadge />
             </div>
 
+            {/* 60% explanation */}
+            <p className="text-xs text-forest-green/60 font-dm-sans">
+              FSA pays <span className="font-semibold text-forest-green/80">60%</span> of your
+              monthly feed cost, for the number of months your county&apos;s drought qualifies.
+              The 60% is applied to whichever is smaller — your herd&apos;s feed cost, or what
+              your land can support by carrying capacity.
+            </p>
+
+            {/* Livestock + head count */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
@@ -266,10 +378,8 @@ function LivestockPanel({
                   onChange={e => setLivestock(e.target.value as LivestockKind)}
                   className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 >
-                  {PAYMENT_RATES_2025.map(r => (
-                    <option key={r.kind} value={r.kind}>
-                      {r.label}{!r.rateConfirmed ? ' *' : ''}
-                    </option>
+                  {PAYMENT_RATES_2026.map(r => (
+                    <option key={r.kind} value={r.kind}>{r.label}</option>
                   ))}
                 </select>
               </div>
@@ -288,30 +398,65 @@ function LivestockPanel({
               </div>
             </div>
 
+            {/* Carrying capacity (optional) */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                  Eligible grazing acres{' '}
+                  <span className="font-normal text-forest-green/35">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="e.g. 640"
+                  value={eligibleAcres}
+                  onChange={e => setEligibleAcres(e.target.value)}
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/25 focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                  Carrying capacity — acres per AU{' '}
+                  <span className="font-normal text-forest-green/35">(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  placeholder="e.g. 5"
+                  value={acresPerAU}
+                  onChange={e => setAcresPerAU(e.target.value)}
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/25 focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                />
+              </div>
+            </div>
+
+            {/* Estimate card */}
             {estimate && headCountValid ? (
-              <div className="rounded-lg bg-cream p-3">
+              <div className="rounded-lg border border-forest-green/10 bg-cream p-3">
                 <p className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-                  {estimate.grossEstimate.toLocaleString('en-US', {
-                    style: 'currency', currency: 'USD', maximumFractionDigits: 0,
-                  })}
+                  {usd(estimate.grossEstimate, 0)}
                 </p>
-                <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans">
-                  {headCount.toLocaleString()} {estimate.livestockLabel.toLowerCase()} ×{' '}
-                  {estimate.monthlyRate.toLocaleString('en-US', {
-                    style: 'currency', currency: 'USD', minimumFractionDigits: 2,
-                  })}/head/mo × {payments} payment{payments !== 1 ? 's' : ''} · 2025 rate
+                <p className="mt-0.5 text-xs text-forest-green/50 font-dm-sans">
+                  2026 FSA rate · head-count{estimate.step2 !== null
+                    ? estimate.limitingStep === 2 ? ' · carrying cap is limiting factor' : ' · head count is limiting factor'
+                    : ' method (enter acres for carrying-cap comparison)'}
                 </p>
-                <p className="mt-1.5 text-xs text-forest-green/40 font-dm-sans">
-                  Upper-bound estimate using the published 2025 FSA rate. Actual payment may be
-                  lower if your acreage&apos;s normal carrying capacity produces a lower monthly
-                  feed cost. FSA determines the final amount at enrollment.
-                  {!PAYMENT_RATES_2025.find(r => r.kind === livestock)?.rateConfirmed && (
-                    <> * Rate for this category estimated from FSA standard ratios — confirm with your FSA office.</>
-                  )}
+
+                <PaymentBreakdown est={estimate} tierLabel={tierLabel} />
+
+                <p className="mt-2 text-xs text-forest-green/40 font-dm-sans">
+                  Maximum LFP payment is 5 monthly payments per livestock category per
+                  calendar year. FSA determines the final amount at enrollment — this estimate
+                  does not account for payment limitations, sequestration, or prior-year
+                  mitigated livestock adjustments.
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-forest-green/40 font-dm-sans">Enter a valid head count to see estimate.</p>
+              <p className="text-xs text-forest-green/40 font-dm-sans">
+                {headCountValid ? 'Enter a valid head count to see estimate.' : 'Enter a valid head count to see estimate.'}
+              </p>
             )}
           </div>
 
@@ -339,7 +484,6 @@ function LivestockPanel({
           Grazing Period
         </p>
 
-        {/* Forage type selector */}
         {allTypes && typeNames.length > 0 && (
           <div className="mb-1">
             {typeNames.length === 1 ? (
@@ -476,7 +620,6 @@ function RowCropPanel({
   return (
     <div className="space-y-5 p-4 sm:p-6">
 
-      {/* Status */}
       <div className={[
         'rounded-xl p-4',
         qualifying
@@ -505,7 +648,6 @@ function RowCropPanel({
         )}
       </div>
 
-      {/* EM Loan explanation */}
       {qualifying && (
         <div className="space-y-3">
           <div>
@@ -558,7 +700,6 @@ function RowCropPanel({
 
       <Divider />
 
-      {/* Important: what we're NOT saying */}
       <div className="rounded-lg bg-cream p-3">
         <p className="text-xs font-semibold text-forest-green/60 font-dm-sans">Not shown here:</p>
         <p className="mt-1 text-xs text-forest-green/50 font-dm-sans">
@@ -569,7 +710,6 @@ function RowCropPanel({
         </p>
       </div>
 
-      {/* Disclaimer */}
       <p className="text-xs text-forest-green/50 font-dm-sans">
         This is an estimate based on U.S. Drought Monitor data. A Secretarial Disaster
         Designation for {countyName} must be formally issued by the Secretary of Agriculture
@@ -603,13 +743,11 @@ export default function ProgramStatus({
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
 
-      {/* Header + toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
           Program Status
         </h2>
 
-        {/* Farmer toggle */}
         <div className="flex rounded-lg border border-forest-green/15 bg-cream p-0.5">
           {(['livestock', 'rowcrop'] as const).map(m => (
             <button
@@ -629,7 +767,6 @@ export default function ProgramStatus({
         </div>
       </div>
 
-      {/* Panels — instant swap, no animation */}
       {mode === 'livestock' && (
         <LivestockPanel eligibility={eligibility} fips={fips} countyName={countyName} />
       )}
