@@ -12,50 +12,30 @@ export interface ForecastOutlook {
   valid_through: string | null
 }
 
-interface NWSPeriod {
-  name: string
-  isDaytime: boolean
-  temperature: number
-  temperatureUnit: string
-  shortForecast: string
-  detailedForecast: string
-  startTime: string
-}
-
-interface LocalForecast {
-  generatedAt: string
-  updateTime: string
-  periods: NWSPeriod[]
-  forecastUrl: string
-}
-
-interface DroughtReading {
-  week_date: string
-  d0: number | null
-  d1: number | null
-  d2: number | null
-  d3: number | null
-  d4: number | null
+export interface DroughtDiscussion {
+  author: string
+  affiliation: string
+  intro: string
+  regionText: string
+  regionName: string
+  releaseDate: string
 }
 
 interface Props {
   countyName: string
-  latestReading: DroughtReading | null
-  nwsForecast: LocalForecast | null
+  stateAbbr: string
+  droughtDiscussion: DroughtDiscussion | null
+  wpcUpdated: string | null
   monthlyOutlook: ForecastOutlook | null
   seasonalOutlook: ForecastOutlook | null
   cpcMonthlyMap: OfficialMapRecord | null
   cpcSeasonalMap: OfficialMapRecord | null
-  hasCoords: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS = ['Now', 'Week', 'Month', 'Season'] as const
 type Tab = typeof TABS[number]
-
-const D_COLORS = ['#FFFF00', '#FCD37F', '#FFAA00', '#E60000', '#730000']
-const D_LABELS = ['Abnormally Dry', 'Moderate', 'Severe', 'Extreme', 'Exceptional']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,15 +45,6 @@ function formatDate(iso: string) {
     day: 'numeric',
     year: 'numeric',
   })
-}
-
-function calcMaxCategory(reading: DroughtReading): number {
-  if ((reading.d4 ?? 0) > 0) return 4
-  if ((reading.d3 ?? 0) > 0) return 3
-  if ((reading.d2 ?? 0) > 0) return 2
-  if ((reading.d1 ?? 0) > 0) return 1
-  if ((reading.d0 ?? 0) > 0) return 0
-  return -1
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -112,130 +83,76 @@ function MapBlock({ map, title }: { map: OfficialMapRecord | null; title: string
 
 // ─── Tab panels ───────────────────────────────────────────────────────────────
 
-function NowPanel({ reading }: { reading: DroughtReading | null }) {
-  if (!reading) {
+function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
+  if (!discussion) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
-        No drought data yet for this county.
+        Drought discussion unavailable.
       </p>
     )
   }
-  const max = calcMaxCategory(reading)
-  const levels: Array<{ key: keyof DroughtReading; pct: number }> = [
-    { key: 'd0', pct: reading.d0 ?? 0 },
-    { key: 'd1', pct: reading.d1 ?? 0 },
-    { key: 'd2', pct: reading.d2 ?? 0 },
-    { key: 'd3', pct: reading.d3 ?? 0 },
-    { key: 'd4', pct: reading.d4 ?? 0 },
-  ]
+
+  const introParagraphs = discussion.intro.split('\n\n').filter(Boolean)
+  const regionParagraphs = discussion.regionText.split('\n\n').filter(Boolean)
+
   return (
     <div className="space-y-4">
-      {/* Current status badge */}
-      <div>
-        {max >= 0 ? (
-          <div className="inline-flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full ring-1 ring-black/10"
-              style={{ backgroundColor: D_COLORS[max] }}
-            />
-            <span className="text-sm font-semibold text-forest-green font-dm-sans">
-              D{max} {D_LABELS[max]}
-            </span>
-            <span className="text-xs text-forest-green/50 font-dm-sans">
-              — current maximum · week of {formatDate(reading.week_date)}
-            </span>
-          </div>
-        ) : (
-          <p className="text-sm text-forest-green/60 font-dm-sans">
-            No drought conditions — week of {formatDate(reading.week_date)}
+      <div className="space-y-3">
+        {introParagraphs.map((p, i) => (
+          <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+            {p}
           </p>
-        )}
+        ))}
       </div>
 
-      {/* Level breakdown */}
-      <dl className="grid grid-cols-5 gap-2">
-        {levels.map(({ key, pct }, i) => (
-          <div key={key} className="rounded-lg bg-cream p-2 text-center">
-            <div
-              className="mx-auto mb-1 h-2 w-2 rounded-full ring-1 ring-forest-green/10"
-              style={{ backgroundColor: D_COLORS[i] }}
-            />
-            <dt className="text-xs text-forest-green/50 font-dm-sans">D{i}</dt>
-            <dd className="font-fraunces text-base font-semibold text-forest-green">
-              {pct.toFixed(1)}
-              <span className="text-xs font-normal text-forest-green/40">%</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {regionParagraphs.length > 0 && (
+        <div className="space-y-3 border-t border-forest-green/10 pt-4">
+          <p className="text-xs font-semibold text-forest-green/50 font-dm-sans uppercase tracking-wide">
+            {discussion.regionName}
+          </p>
+          {regionParagraphs.map((p, i) => (
+            <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+              {p}
+            </p>
+          ))}
+        </div>
+      )}
 
-      <p className="text-xs text-forest-green/40 font-dm-sans">
-        Source: U.S. Drought Monitor · Released Tuesdays
-      </p>
+      <div className="border-t border-forest-green/10 pt-3 space-y-1">
+        <p className="text-sm text-forest-green/60 font-dm-sans">
+          — {discussion.author}, {discussion.affiliation}
+        </p>
+        <p className="text-xs text-forest-green/40 font-dm-sans">
+          U.S. Drought Monitor · Released {discussion.releaseDate}
+        </p>
+      </div>
     </div>
   )
 }
 
-function WeekPanel({
-  nwsForecast,
-  hasCoords,
-}: {
-  nwsForecast: LocalForecast | null
-  hasCoords: boolean
-}) {
-  if (!hasCoords) {
-    return (
-      <div className="rounded-lg bg-cream p-4 text-xs text-forest-green/50 font-dm-sans">
-        County coordinates not yet seeded.{' '}
-        Run <code className="font-mono">npx tsx lib/seed-county-coords.ts</code> to enable NWS forecasts.
-      </div>
-    )
-  }
-  if (!nwsForecast) {
-    return (
-      <p className="text-sm text-forest-green/50 font-dm-sans">
-        NWS forecast unavailable for this location.
-      </p>
-    )
-  }
-
-  const daytimePeriods = nwsForecast.periods.filter(p => p.isDaytime).slice(0, 7)
-
+function WeekPanel({ wpcUpdated }: { wpcUpdated: string | null }) {
   return (
     <div className="space-y-3">
       <ForecastBadge />
-      <p className="text-xs text-forest-green/40 font-dm-sans">
-        NWS 7-day forecast · Updated{' '}
-        {new Date(nwsForecast.updateTime).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-        })} ·{' '}
-        <a href={nwsForecast.forecastUrl} target="_blank" rel="noopener noreferrer" className="underline">
-          Source
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
+        alt="WPC 7-Day Accumulated Precipitation Forecast"
+        className="w-full rounded-lg"
+        loading="lazy"
+      />
+      <p className="text-xs text-forest-green/50 font-dm-sans">
+        WPC 7-Day Accumulated Precipitation Forecast
+        {wpcUpdated ? ` · Updated ${wpcUpdated}` : ''}{' '}·{' '}
+        <a
+          href="https://www.wpc.ncep.noaa.gov/qpf/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+        >
+          Source: NOAA/WPC
         </a>
       </p>
-
-      {/* Scrollable row on mobile, grid on sm+ */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto pb-2 sm:mx-0 sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0">
-        {daytimePeriods.map(period => (
-          <div
-            key={period.name}
-            className="min-w-[80px] shrink-0 rounded-lg border border-forest-green/10 bg-cream p-2.5 text-center sm:min-w-0"
-          >
-            <p className="text-xs font-semibold text-forest-green font-dm-sans leading-tight">
-              {period.name}
-            </p>
-            <p className="mt-1 font-fraunces text-xl font-semibold text-forest-green">
-              {period.temperature}
-              <span className="text-sm font-normal text-forest-green/50">°{period.temperatureUnit}</span>
-            </p>
-            <p className="mt-1 text-xs text-forest-green/60 font-dm-sans leading-tight">
-              {period.shortForecast}
-            </p>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -278,13 +195,12 @@ function OutlookPanel({
 
 export default function ForecastSection({
   countyName,
-  latestReading,
-  nwsForecast,
+  droughtDiscussion,
+  wpcUpdated,
   monthlyOutlook,
   seasonalOutlook,
   cpcMonthlyMap,
   cpcSeasonalMap,
-  hasCoords,
 }: Props) {
   const [active, setActive] = useState<Tab>('Now')
 
@@ -319,8 +235,8 @@ export default function ForecastSection({
 
       {/* Panels — instant show/hide, no animation */}
       <div className="p-4 sm:p-6">
-        {active === 'Now' && <NowPanel reading={latestReading} />}
-        {active === 'Week' && <WeekPanel nwsForecast={nwsForecast} hasCoords={hasCoords} />}
+        {active === 'Now' && <NowPanel discussion={droughtDiscussion} />}
+        {active === 'Week' && <WeekPanel wpcUpdated={wpcUpdated} />}
         {active === 'Month' && (
           <OutlookPanel
             outlook={monthlyOutlook}

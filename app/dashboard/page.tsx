@@ -1,5 +1,4 @@
 import { createServiceClient } from '@/lib/supabase'
-import { getLocalForecast } from '@/lib/nws'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
 import { getGrazingPreset } from '@/lib/grazing-presets'
 import CountySelector from './components/CountySelector'
@@ -7,11 +6,15 @@ import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
+import PrecipForecastSection from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
-import type { ForecastOutlook } from './components/ForecastSection'
+import type { ForecastOutlook, DroughtDiscussion } from './components/ForecastSection'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
+import { getDroughtDiscussion } from '@/lib/drought-discussion'
+import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
+import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -107,8 +110,15 @@ export default async function DashboardPage({
   let cpcSeasonalMap: OfficialMapRecord | null      = null
   let monthlyOutlook: ForecastOutlook | null        = null
   let seasonalOutlook: ForecastOutlook | null       = null
-  let nwsForecast: Awaited<ReturnType<typeof getLocalForecast>> = null
   let lfpResult: LfpEligibilityResult | null        = null
+  let droughtDiscussion: DroughtDiscussion | null   = null
+  let wpcUpdated: string | null                     = null
+  let prcp814Updated: string | null                 = null
+  let prcpWk34Updated: string | null                = null
+  let prcpMonthlyUpdated: string | null             = null
+  let prcpSeasonalUpdated: string | null            = null
+  let nwsDiscussion: NwsDiscussion | null           = null
+  let precipNormal: PrecipNormalData | null         = null
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -121,8 +131,15 @@ export default async function DashboardPage({
       cpcSeasonalMapRes,
       monthlyOutlookRes,
       seasonalOutlookRes,
-      nwsResult,
       lfpRes,
+      discussionRes,
+      wpcHead,
+      prcp814Head,
+      prcpWk34Head,
+      prcpMonthlyHead,
+      prcpSeasonalHead,
+      nwsDiscussionRes,
+      precipNormalRes,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -180,11 +197,6 @@ export default async function DashboardPage({
         .limit(1)
         .maybeSingle(),
 
-      // NWS 7-day forecast (null if coords not seeded)
-      selectedCounty.lat != null && selectedCounty.lon != null
-        ? getLocalForecast(selectedCounty.lat, selectedCounty.lon)
-        : Promise.resolve(null),
-
       // LFP eligibility
       computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
@@ -192,16 +204,74 @@ export default async function DashboardPage({
         if (preset.source === 'county') return { grazingPeriod: { startDate: preset.startDate, endDate: preset.endDate } }
         return {}
       })()),
+
+      // USDM drought discussion narrative (weekly, cached 24h)
+      getDroughtDiscussion(state),
+
+      // WPC 7-day QPF map provenance — HEAD request for Last-Modified (cached 1h)
+      fetch('https://www.wpc.ncep.noaa.gov/qpf/p168i.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      // CPC precipitation outlook map provenances (cached 1h)
+      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif', {
+        method: 'HEAD',
+        next: { revalidate: 3600 },
+      }).catch(() => null),
+
+      // NWS Area Forecast Discussion — .DISCUSSION section for local precip narrative
+      selectedCounty.lat != null && selectedCounty.lon != null
+        ? getNwsDiscussion(selectedCounty.lat, selectedCounty.lon)
+        : Promise.resolve(null),
+
+      // ACIS YTD precipitation vs 30-year normals
+      getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
     ])
 
-    history         = historyRes.data ?? []
-    stateMap        = stateMapRes.data as OfficialMapRecord | null
-    cpcMonthlyMap   = cpcMonthlyMapRes.data as OfficialMapRecord | null
-    cpcSeasonalMap  = cpcSeasonalMapRes.data as OfficialMapRecord | null
-    monthlyOutlook  = monthlyOutlookRes.data as ForecastOutlook | null
-    seasonalOutlook = seasonalOutlookRes.data as ForecastOutlook | null
-    nwsForecast     = nwsResult
-    lfpResult       = lfpRes
+    history            = historyRes.data ?? []
+    stateMap           = stateMapRes.data as OfficialMapRecord | null
+    cpcMonthlyMap      = cpcMonthlyMapRes.data as OfficialMapRecord | null
+    cpcSeasonalMap     = cpcSeasonalMapRes.data as OfficialMapRecord | null
+    monthlyOutlook     = monthlyOutlookRes.data as ForecastOutlook | null
+    seasonalOutlook    = seasonalOutlookRes.data as ForecastOutlook | null
+    lfpResult          = lfpRes
+    droughtDiscussion  = discussionRes
+    const lastMod      = wpcHead?.headers.get('last-modified')
+    if (lastMod) {
+      wpcUpdated = new Date(lastMod).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
+      })
+    }
+    const fmtLM = (res: Response | null) => {
+      const lm = res?.headers.get('last-modified')
+      return lm ? new Date(lm).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
+      }) : null
+    }
+    prcp814Updated      = fmtLM(prcp814Head)
+    prcpWk34Updated     = fmtLM(prcpWk34Head)
+    prcpMonthlyUpdated  = fmtLM(prcpMonthlyHead)
+    prcpSeasonalUpdated = fmtLM(prcpSeasonalHead)
+    nwsDiscussion       = nwsDiscussionRes
+    precipNormal        = precipNormalRes
   }
 
   const latest = history[0] ?? null
@@ -359,15 +429,25 @@ export default async function DashboardPage({
             {/* Conditions & Outlook section */}
             <ForecastSection
               countyName={selectedCounty.name}
-              latestReading={latest}
-              nwsForecast={nwsForecast}
+              stateAbbr={selectedCounty.state}
+              droughtDiscussion={droughtDiscussion}
+              wpcUpdated={wpcUpdated}
               monthlyOutlook={monthlyOutlook}
               seasonalOutlook={seasonalOutlook}
               cpcMonthlyMap={cpcMonthlyMap}
               cpcSeasonalMap={cpcSeasonalMap}
-              hasCoords={selectedCounty.lat != null && selectedCounty.lon != null}
             />
 
+            {/* Precipitation Forecast & Deficit section */}
+            <PrecipForecastSection
+              countyName={selectedCounty.name}
+              nwsDiscussion={nwsDiscussion}
+              precipNormal={precipNormal}
+              day814Updated={prcp814Updated}
+              weeks34Updated={prcpWk34Updated}
+              monthlyUpdated={prcpMonthlyUpdated}
+              seasonalUpdated={prcpSeasonalUpdated}
+            />
 
             {/* FSA disclaimer */}
             <p className="rounded-lg border border-forest-green/10 bg-white px-4 py-3 text-xs text-forest-green/50 font-dm-sans">
