@@ -38,6 +38,12 @@ interface ListingDetail {
   counties:              County
   droughtTier:           number | null
   mine:                  boolean
+  seller_since:          string | null
+  seller_listing_count:  number
+  verified_phone:        boolean
+  display_name:          string | null
+  seller_avg_rating:     number | null
+  seller_review_count:   number
 }
 
 const DROUGHT_LABEL: Record<number, { label: string; cls: string }> = {
@@ -112,6 +118,22 @@ function rfvNote(val: number): string {
   if (val < 125) return 'Good'
   if (val <= 150) return 'Premium'
   return 'Supreme'
+}
+
+function formatSellerSince(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function renderStars(avg: number): string {
+  const n = Math.round(avg)
+  return '★'.repeat(n) + '☆'.repeat(5 - n)
+}
+
+function sellerActivityLabel(sinceStr: string): string | null {
+  const days = Math.floor((Date.now() - new Date(sinceStr).getTime()) / 86400000)
+  if (days < 7) return null
+  if (days <= 30) return 'New to Dryline'
+  return 'Active seller'
 }
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -401,6 +423,51 @@ export default function HayDetailPage() {
           >
             View {county.name} drought dashboard →
           </Link>
+        </div>
+
+        {/* About the Seller */}
+        <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-4 shadow-sm">
+          <h2 className="font-fraunces text-base font-semibold text-forest-green mb-3">About the Seller</h2>
+
+          {/* Name + verified badge */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-medium font-dm-sans text-forest-green">
+              {listing.display_name ?? 'Dryline Member'}
+            </span>
+            {listing.verified_phone && (
+              <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
+                ✓ Verified
+              </span>
+            )}
+          </div>
+
+          {/* Star rating or new seller label */}
+          {listing.seller_review_count > 0 ? (
+            <p className="text-sm font-dm-sans text-forest-green/80 mb-2">
+              {renderStars(listing.seller_avg_rating!)}
+              <span className="ml-1 text-forest-green/50">
+                ({listing.seller_review_count} review{listing.seller_review_count === 1 ? '' : 's'})
+              </span>
+            </p>
+          ) : (
+            <p className="text-xs font-dm-sans text-forest-green/40 mb-2">New seller</p>
+          )}
+
+          {/* Member since + listing count */}
+          {listing.seller_since && (
+            <p className="text-xs font-dm-sans text-forest-green/50">
+              Seller on Dryline since {formatSellerSince(listing.seller_since)}
+              {' · '}
+              {listing.seller_listing_count} active listing{listing.seller_listing_count === 1 ? '' : 's'}
+            </p>
+          )}
+
+          {/* Account age heuristic (Part D) */}
+          {listing.seller_since && sellerActivityLabel(listing.seller_since) && (
+            <p className="mt-1 text-xs font-dm-sans text-forest-green/40">
+              {sellerActivityLabel(listing.seller_since)}
+            </p>
+          )}
         </div>
 
         {/* Footer */}
