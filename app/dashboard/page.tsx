@@ -210,6 +210,8 @@ export default async function DashboardPage({
   let hprcc60dUpdated: string | null                = null
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
+  let hayPrimaryVariety: string | null              = null
+  let hayAvgPrice: number | null                    = null
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -412,7 +414,7 @@ export default async function DashboardPage({
       // Active hay listings — fetched for the nearby card
       db
         .from('hay_listings')
-        .select('id, counties(lat, lon)')
+        .select('id, hay_type, price_per_ton, counties(lat, lon, state)')
         .eq('active', true)
         .gt('expires_at', new Date().toISOString()),
     ])
@@ -465,11 +467,29 @@ export default async function DashboardPage({
     hprcc60dUpdated        = fmtLM(hprcc60dHead)
 
     if (selectedCounty.lat != null && selectedCounty.lon != null) {
-      hayNearbyCount = (hayListingsRes.data ?? []).filter(l => {
-        const c = l.counties as unknown as { lat: number | null; lon: number | null } | null
+      const nearbyListings = (hayListingsRes.data ?? []).filter(l => {
+        const c = l.counties as unknown as { lat: number | null; lon: number | null; state: string | null } | null
         if (!c?.lat || !c?.lon) return false
         return haversineMiles(selectedCounty.lat!, selectedCounty.lon!, c.lat, c.lon) <= 200
-      }).length
+      })
+      hayNearbyCount = nearbyListings.length
+
+      // Forage outlook data for triggered counties
+      if (nearbyListings.length > 0) {
+        const varieties = nearbyListings
+          .map(l => (l as unknown as { hay_type: string | null }).hay_type)
+          .filter(Boolean) as string[]
+        const varietyCounts: Record<string, number> = {}
+        for (const v of varieties) varietyCounts[v] = (varietyCounts[v] ?? 0) + 1
+        hayPrimaryVariety = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+        const prices = nearbyListings
+          .map(l => (l as unknown as { price_per_ton: number | null }).price_per_ton)
+          .filter((p): p is number => p !== null)
+        hayAvgPrice = prices.length > 0
+          ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
+          : null
+      }
     }
 
     if (nationalMap?.release_date) {
@@ -630,51 +650,95 @@ export default async function DashboardPage({
                     <PrecipVsNormalPanel data={precipNormal} />
                   </div>
 
-                  {/* Hay nearby card */}
+                  {/* Forage outlook / Hay nearby card */}
                   <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
-                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Hay nearby</p>
-                    <div className={[
-                      'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
-                      hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
-                    ].join(' ')}>
-                      <div className="p-4 sm:p-5">
-                        {latestInDrought && (
-                          <p className="mb-3 text-xs font-medium text-rust font-dm-sans">
-                            Drought conditions may affect local feed availability.
-                          </p>
-                        )}
-                        {hayNearbyCount > 0 ? (
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                                🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
-                              </p>
-                              <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
-                                Sellers nearby — sorted by distance on the hay board
-                              </p>
-                            </div>
-                            <Link
-                              href="/hay"
-                              className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
-                            >
-                              Find hay near you →
-                            </Link>
-                          </div>
-                        ) : (
-                          <div className="rounded-lg border-2 border-dashed border-forest-green/20 px-4 py-6 text-center">
-                            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-forest-green/8">
-                              <svg className="h-5 w-5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                              </svg>
-                            </div>
-                            <p className="font-fraunces text-sm font-semibold text-forest-green">No hay listings nearby</p>
-                            <p className="mt-1 font-dm-sans text-xs text-forest-green/50">
-                              <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
+                      {lfpResult && lfpResult.maxTier >= 1 ? 'Forage outlook' : 'Hay nearby'}
+                    </p>
+
+                    {lfpResult && lfpResult.maxTier >= 1 ? (
+                      /* Triggered: forage outlook hero */
+                      <div className="space-y-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+                          {/* Left: pasture estimate */}
+                          <div className="flex-1 rounded-lg bg-rust/8 border border-rust/15 px-4 py-3">
+                            <p className="font-dm-sans text-xs font-medium text-rust/70 uppercase tracking-wide mb-1">Pasture outlook</p>
+                            <p className="font-fraunces text-sm font-semibold text-forest-green leading-snug">
+                              {lfpResult.maxTier >= 4
+                                ? 'Pastures may stop carrying cows within ~1 week at this rate.'
+                                : lfpResult.maxTier >= 3
+                                ? 'Pastures will likely stop carrying cows in ~3 weeks at this rate.'
+                                : 'Pastures will likely stop carrying cows in ~6 weeks at this rate.'}
                             </p>
                           </div>
+                          {/* Right: hay supply */}
+                          <div className="flex-1 rounded-lg bg-forest-green/5 border border-forest-green/10 px-4 py-3">
+                            <p className="font-dm-sans text-xs font-medium text-forest-green/40 uppercase tracking-wide mb-1">Hay supply nearby</p>
+                            {hayNearbyCount > 0 ? (
+                              <p className="font-fraunces text-sm font-semibold text-forest-green leading-snug">
+                                {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 mi
+                                {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
+                                {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
+                              </p>
+                            ) : (
+                              <p className="font-fraunces text-sm font-semibold text-forest-green/50 leading-snug">
+                                No hay listed within 200 mi yet.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Link
+                          href={`/hay?state=${selectedCounty.state}`}
+                          className="block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
+                        >
+                          View hay nearby →
+                        </Link>
+                        {hayNearbyCount === 0 && (
+                          <p className="text-center font-dm-sans text-xs text-forest-green/40">
+                            <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                          </p>
                         )}
                       </div>
-                    </div>
+                    ) : (
+                      /* Not triggered: simple hay nearby card */
+                      <div className={[
+                        'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
+                        hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
+                      ].join(' ')}>
+                        <div className="p-4 sm:p-5">
+                          {hayNearbyCount > 0 ? (
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                                  🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
+                                </p>
+                                <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
+                                  Sellers nearby — sorted by distance on the hay board
+                                </p>
+                              </div>
+                              <Link
+                                href="/hay"
+                                className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
+                              >
+                                Find hay near you →
+                              </Link>
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border-2 border-dashed border-forest-green/20 px-4 py-6 text-center">
+                              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-forest-green/8">
+                                <svg className="h-5 w-5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                                </svg>
+                              </div>
+                              <p className="font-fraunces text-sm font-semibold text-forest-green">No hay listings nearby</p>
+                              <p className="mt-1 font-dm-sans text-xs text-forest-green/50">
+                                <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                 </div>
