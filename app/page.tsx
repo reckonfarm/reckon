@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
 import OfficialMap from '@/app/dashboard/components/OfficialMap'
 import CountySearch from '@/app/components/CountySearch'
-import FarmerToggle from '@/app/components/FarmerToggle'
 import SiteHeader from '@/app/components/SiteHeader'
 
 interface DriestyChip {
@@ -74,13 +73,6 @@ async function getDriestChips(): Promise<DriestyChip[]> {
   } catch {
     return []
   }
-}
-
-const TIER_COLORS: Record<number, string> = {
-  1: 'bg-[#FCD37F] text-[#451A00]',
-  2: 'bg-[#FFAA00] text-[#451A00]',
-  3: 'bg-[#E60000] text-white',
-  4: 'bg-[#730000] text-white',
 }
 
 export default async function Home() {
