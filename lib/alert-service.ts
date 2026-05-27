@@ -1,5 +1,7 @@
 import 'server-only'
 import { createServiceClient } from './supabase'
+import { computeLfpEligibility, defaultGrazingPeriod } from './lfp-eligibility'
+import { sendDroughtAlert } from './email'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,4 +122,124 @@ export async function checkAlerts(userId: string): Promise<DroughtAlert[]> {
   }
 
   return alerts
+}
+
+// ─── Fan-out alert sender ─────────────────────────────────────────────────────
+
+export interface AlertSendResult {
+  checked: number
+  sent:    number
+  skipped: number  // dedup hits
+  errors:  string[]
+}
+
+/**
+ * Called by the drought-update cron after each successful ingestion.
+ * Fans out across every authenticated user's watchlist, computes LFP eligibility
+ * per unique county, and sends one email per user/county/week_date via Resend.
+ * Deduplicates via alert_sent — safe to call multiple times for the same week.
+ */
+export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendResult> {
+  const db = createServiceClient()
+
+  // 1. All authenticated watchlist entries (null user_ids are anonymous, skip them)
+  const { data: watchlistData, error: wErr } = await db
+    .from('user_watchlist')
+    .select('user_id, county_id, counties(id, fips, name, state)')
+    .not('user_id', 'is', null)
+
+  if (wErr) throw new Error(`Watchlist fetch failed: ${wErr.message}`)
+  if (!watchlistData || watchlistData.length === 0) {
+    return { checked: 0, sent: 0, skipped: 0, errors: [] }
+  }
+
+  // 2. Resolve email addresses from profiles
+  const userIds = [...new Set(watchlistData.map(w => w.user_id as string))]
+  const { data: profiles } = await db
+    .from('profiles')
+    .select('id, email')
+    .in('id', userIds)
+
+  const emailByUser: Record<string, string> = Object.fromEntries(
+    (profiles ?? []).map(p => [p.id as string, p.email as string]),
+  )
+
+  // 3. Compute LFP eligibility once per unique county (avoids N×users USDM API calls)
+  const uniqueFips = [
+    ...new Set(
+      watchlistData.map(w => (w.counties as unknown as { fips: string }).fips),
+    ),
+  ]
+
+  const gp = defaultGrazingPeriod()
+  const eligibilityByFips: Record<string, Awaited<ReturnType<typeof computeLfpEligibility>>> = {}
+
+  await Promise.allSettled(
+    uniqueFips.map(async fips => {
+      try {
+        eligibilityByFips[fips] = await computeLfpEligibility(fips, { grazingPeriod: gp })
+      } catch {
+        eligibilityByFips[fips] = null
+      }
+    }),
+  )
+
+  // 4. Fan out — one alert per user/county if tier > 0 and not already sent this week
+  let sent    = 0
+  let skipped = 0
+  let checked = 0
+  const errors: string[] = []
+
+  for (const entry of watchlistData) {
+    const userId = entry.user_id as string
+    const email  = emailByUser[userId]
+    if (!email) continue
+
+    const county = entry.counties as unknown as { id: number; fips: string; name: string; state: string }
+    const elig   = eligibilityByFips[county.fips]
+
+    checked++
+
+    if (!elig || elig.maxTier === 0) continue
+
+    // Dedup: one email per user/county per USDM release date
+    const { count } = await db
+      .from('alert_sent')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('county_id', county.id)
+      .eq('week_date', weekDate)
+
+    if ((count ?? 0) > 0) { skipped++; continue }
+
+    try {
+      await sendDroughtAlert({
+        to:                 email,
+        countyName:         elig.countyName,
+        state:              elig.state,
+        fips:               elig.fips,
+        tier:               elig.maxTier,
+        payments:           elig.payments,
+        tierLabel:          elig.tiers[elig.maxTier - 1].label,
+        grazingPeriodStart: gp.startDate,
+        grazingPeriodEnd:   gp.endDate,
+        weekDate,
+      })
+
+      await db.from('alert_sent').insert({
+        user_id:   userId,
+        county_id: county.id,
+        week_date: weekDate,
+        tier:      elig.maxTier,
+      })
+
+      sent++
+    } catch (err) {
+      errors.push(
+        `${county.fips} → ${email}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+
+  return { checked, sent, skipped, errors }
 }
