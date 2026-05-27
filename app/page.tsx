@@ -13,6 +13,7 @@ import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
 import OfficialMap from '@/app/dashboard/components/OfficialMap'
 import CountySearch from '@/app/components/CountySearch'
 import SiteHeader from '@/app/components/SiteHeader'
+import { headers } from 'next/headers'
 
 interface DriestyChip {
   name:  string
@@ -32,7 +33,7 @@ async function getLatestNationalMap(): Promise<OfficialMapRecord | null> {
   return data?.[0] ?? null
 }
 
-async function getDriestChips(): Promise<DriestyChip[]> {
+async function getDriestChips(stateFilter?: string): Promise<DriestyChip[]> {
   try {
     const db = createServiceClient()
     const { data: weekRow } = await db
@@ -44,11 +45,17 @@ async function getDriestChips(): Promise<DriestyChip[]> {
 
     if (!weekRow) return []
 
-    const { data } = await db
+    let query = db
       .from('drought_data')
-      .select('d1, d2, d3, d4, counties(fips, name, state)')
+      .select('d1, d2, d3, d4, counties!inner(fips, name, state)')
       .eq('week_date', weekRow.week_date)
       .gt('d1', 0)
+
+    if (stateFilter) {
+      query = query.eq('counties.state', stateFilter)
+    }
+
+    const { data } = await query
       .order('d4', { ascending: false })
       .order('d3', { ascending: false })
       .order('d2', { ascending: false })
@@ -75,11 +82,38 @@ async function getDriestChips(): Promise<DriestyChip[]> {
   }
 }
 
+async function getNearbyHayCount(stateCode: string): Promise<number> {
+  try {
+    const db = createServiceClient()
+    const { count } = await db
+      .from('hay_listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('active', true)
+      .gt('expires_at', new Date().toISOString())
+    return count ?? 0
+  } catch {
+    return 0
+  }
+}
+
 export default async function Home() {
-  const [map, driestChips] = await Promise.all([
+  const headersList = await headers()
+  const visitorRegion = headersList.get('x-vercel-ip-country-region') ?? ''
+  // x-vercel-ip-country-region returns state codes like "MT", "GA", "TX"
+  const visitorState = visitorRegion.length === 2 ? visitorRegion : ''
+
+  const [map, driestChipsLocal, driestChipsNational, nearbyHayCount] = await Promise.all([
     getLatestNationalMap(),
+    visitorState ? getDriestChips(visitorState) : Promise.resolve([]),
     getDriestChips(),
+    visitorState ? getNearbyHayCount(visitorState) : Promise.resolve(0),
   ])
+
+  // Use local chips if we got at least 2, otherwise fall back to national
+  const driestChips = (driestChipsLocal.length >= 2) ? driestChipsLocal : driestChipsNational
+  const chipsLabel = (driestChipsLocal.length >= 2 && visitorState)
+    ? `Driest counties in ${visitorState} right now:`
+    : 'Driest counties right now:'
 
   return (
     <>
@@ -114,7 +148,7 @@ export default async function Home() {
               {driestChips.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <p className="w-full font-dm-sans text-xs text-forest-green/40">
-                    Tap any county to see its LFP status and payment estimate:
+                    {chipsLabel}
                   </p>
                   {driestChips.map(c => (
                     <Link
@@ -136,6 +170,19 @@ export default async function Home() {
                 </div>
               )}
             </div>
+
+            {nearbyHayCount > 0 && visitorState && (
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-rust/15 bg-rust/5 px-4 py-2.5">
+                <svg className="h-4 w-4 flex-shrink-0 text-rust" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <rect x="2" y="8" width="20" height="10" rx="2"/>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 8V6a2 2 0 012-2h8a2 2 0 012 2v2"/>
+                </svg>
+                <p className="font-dm-sans text-xs text-forest-green">
+                  <span className="font-medium">{nearbyHayCount} hay listing{nearbyHayCount !== 1 ? 's' : ''}</span> available in {visitorState} right now.{' '}
+                  <Link href={`/hay?state=${visitorState}`} className="underline hover:text-rust transition-colors">Browse hay →</Link>
+                </p>
+              </div>
+            )}
 
           </div>
 
