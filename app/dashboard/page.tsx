@@ -764,6 +764,38 @@ export default async function DashboardPage({
                   </DashboardAccordion>
 
                   <DashboardAccordion
+                    title="Regional context"
+                    preview="USDM maps and drought outlook"
+                  >
+                    <div className="space-y-4">
+                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                        <OfficialMap
+                          map={stateMap ?? nationalMap}
+                          title={`USDM — ${selectedCounty.state}`}
+                          note={
+                            stateMap == null && nationalMap != null && regionalMapUrl == null
+                              ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
+                              : undefined
+                          }
+                          regionalMapUrl={regionalMapUrl}
+                        />
+                        <OfficialMap
+                          map={nationalMap}
+                          title="USDM — National"
+                        />
+                        <OfficialMap
+                          map={cpcMonthlyMap}
+                          title="Monthly Drought Outlook"
+                        />
+                        <OfficialMap
+                          map={cpcSeasonalMap}
+                          title="Seasonal Drought Outlook"
+                        />
+                      </div>
+                    </div>
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
                     title="Drought history"
                     preview="3-year and 52-week trend charts"
                   >
@@ -795,38 +827,6 @@ export default async function DashboardPage({
                         monthlyUpdated={prcpMonthlyUpdated}
                         seasonalUpdated={prcpSeasonalUpdated}
                       />
-                    </div>
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Regional context"
-                    preview="USDM maps and drought outlook"
-                  >
-                    <div className="space-y-4">
-                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                        <OfficialMap
-                          map={stateMap ?? nationalMap}
-                          title={`USDM — ${selectedCounty.state}`}
-                          note={
-                            stateMap == null && nationalMap != null && regionalMapUrl == null
-                              ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
-                              : undefined
-                          }
-                          regionalMapUrl={regionalMapUrl}
-                        />
-                        <OfficialMap
-                          map={nationalMap}
-                          title="USDM — National"
-                        />
-                        <OfficialMap
-                          map={cpcMonthlyMap}
-                          title="Monthly Drought Outlook"
-                        />
-                        <OfficialMap
-                          map={cpcSeasonalMap}
-                          title="Seasonal Drought Outlook"
-                        />
-                      </div>
                     </div>
                   </DashboardAccordion>
 
