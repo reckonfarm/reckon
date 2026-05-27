@@ -27,12 +27,20 @@ Phase 1 — COMPLETE
 - Cron scheduled Thursdays 17:00 UTC to match USDM release day
 - vercel.json wired, all migrations run
 
-Phase 2 — Hay Network (active)
-- Lean listings board: hay for sale + hay wanted posts
-- Drought-driven matching: alert nearby sellers when a county hits D2+
-- Haul-distance ranking by county proximity
-- No payments day one — connect buyer and seller, they transact offline
-- Donation/relief flag for disaster coordination
+Phase 2 — COMPLETE
+- hay_listings table + hay_alert_sent dedup table (migration 003)
+- GET/POST/DELETE /api/hay with auth, drought tier badge, mine flag
+- /hay page: two-tab board (For Sale / Wanted), inline post form, county search, haversine distance
+- checkHayMatchAlerts() in lib/hay-service.ts: D2+ detection, 200-mile haversine match, Resend plain-text alert, per-listing-user/county/week dedup
+- Wired into Thursday cron via Promise.allSettled (non-fatal)
+- Hay nav link in SiteHeader
+
+Phase 3 — Operation Ledger (next)
+- Port Fleet Command V9 equipment data into Reckon as the operation equipment ledger
+- Service log per piece of equipment
+- Seed Rate Bible and Spray Rate Brain as operational memory modules
+- Payout history: record each LFP alert sent as a payout event on the operation
+- The switching-cost depth layer — this is what makes leaving hurt
 
 ## Acceptance criteria on every feature
 - Works from the tractor cab on one bar of 3G. Required on every PR, not a someday project.
