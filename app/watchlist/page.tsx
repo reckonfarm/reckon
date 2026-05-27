@@ -67,15 +67,16 @@ export default function WatchlistPage() {
 
         <div className="mt-6">
           {authed === null || loading ? (
-            <p className="text-sm text-forest-green/50 font-dm-sans">Loading…</p>
+            <div className="space-y-3 mt-6">
+              {[1,2,3].map(i => (
+                <div key={i} className="h-16 rounded-lg bg-forest-green/8 animate-pulse" />
+              ))}
+            </div>
           ) : !authed ? (
-            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
-              <p className="text-sm text-forest-green/60 font-dm-sans">
-                <Link href="/signin" className="underline hover:text-forest-green">
-                  Sign in
-                </Link>{' '}
-                to save counties and receive drought alerts.
-              </p>
+            <div className="mt-8 border-2 border-dashed border-forest-green/20 rounded-xl p-8 text-center">
+              <p className="font-fraunces text-xl text-forest-green mb-2">Track drought conditions in your counties</p>
+              <p className="text-sm text-forest-green/60 font-dm-sans mb-6">Get alerted when your counties hit LFP trigger thresholds. Sign in to save your watchlist.</p>
+              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
             </div>
           ) : entries.length === 0 ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">

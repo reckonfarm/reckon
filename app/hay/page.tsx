@@ -518,7 +518,11 @@ export default function HayPage() {
         {/* Listings */}
         <div className="mt-4">
           {listingsLoading ? (
-            <p className="text-sm text-forest-green/50 font-dm-sans">Loading…</p>
+            <div className="space-y-3">
+              {[1,2,3,4].map(i => (
+                <div key={i} className="h-24 rounded-xl bg-forest-green/8 animate-pulse" />
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
               <p className="font-fraunces text-base font-semibold text-forest-green">
