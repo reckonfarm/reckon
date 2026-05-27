@@ -1,7 +1,5 @@
 import { createServiceClient } from '@/lib/supabase'
-import NextDynamic from 'next/dynamic'
-
-const HayMap = NextDynamic(() => import('./HayMapClient'), { ssr: false })
+import HayMapLoader from './HayMapLoader'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +27,7 @@ export default async function HayMapPage() {
     .not('counties', 'is', null)
     .limit(500)
 
-  if (!rows || rows.length === 0) return <HayMap listings={[]} />
+  if (!rows || rows.length === 0) return <HayMapLoader listings={[]} />
 
   // Step 2: fetch latest drought data for the unique county IDs
   const countyIds = [...new Set(
@@ -80,5 +78,5 @@ export default async function HayMapPage() {
     }]
   })
 
-  return <HayMap listings={listings} />
+  return <HayMapLoader listings={listings} />
 }
