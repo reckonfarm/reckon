@@ -661,16 +661,16 @@ export default async function DashboardPage({
                             </Link>
                           </div>
                         ) : (
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-sm text-forest-green/60 font-dm-sans">
-                              No hay listings near this county yet.
+                          <div className="rounded-lg border-2 border-dashed border-forest-green/20 px-4 py-6 text-center">
+                            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-forest-green/8">
+                              <svg className="h-5 w-5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                              </svg>
+                            </div>
+                            <p className="font-fraunces text-sm font-semibold text-forest-green">No hay listings nearby</p>
+                            <p className="mt-1 font-dm-sans text-xs text-forest-green/50">
+                              <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
                             </p>
-                            <Link
-                              href="/hay"
-                              className="shrink-0 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:border-forest-green/40 transition-colors"
-                            >
-                              Be the first to post →
-                            </Link>
                           </div>
                         )}
                       </div>

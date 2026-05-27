@@ -524,20 +524,20 @@ export default function HayPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
-              <p className="font-fraunces text-base font-semibold text-forest-green">
-                No listings in this area yet.
-              </p>
-              <p className="mt-2 text-sm text-forest-green/60 font-dm-sans max-w-sm mx-auto">
-                Be the first to post — ranchers in D2+ counties nearby will be notified automatically when you list hay for sale.
-              </p>
-              {!authed && (
-                <Link href="/signin"
-                  className="mt-4 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70">
-                  Sign in to post your first listing →
-                </Link>
-              )}
-            </div>
+                <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-forest-green/8">
+                    <svg className="h-6 w-6 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                  </div>
+                  <p className="font-fraunces text-base font-semibold text-forest-green">No hay listings yet</p>
+                  <p className="mt-1 font-dm-sans text-sm text-forest-green/50">Be the first to post hay for sale in your area.</p>
+                  {!authed && (
+                    <p className="mt-3 font-dm-sans text-sm text-forest-green/50">
+                      <Link href="/signin" className="underline hover:text-forest-green">Sign in</Link> to post a listing.
+                    </p>
+                  )}
+                </div>
           ) : (
             <ul className="space-y-3">
               {filtered.map(l => {

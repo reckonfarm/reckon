@@ -73,35 +73,25 @@ function Divider() {
 
 function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
   return (
-    <div className={[
-      'flex items-start justify-between gap-3 py-1.5',
-      isMax ? 'font-semibold' : '',
-    ].join(' ')}>
-      <div className="flex min-w-0 items-start gap-2">
-        <span className={[
-          'mt-0.5 shrink-0 text-base leading-none',
-          tier.triggered ? 'text-forest-green' : 'text-forest-green/25',
-        ].join(' ')}>
-          {tier.triggered ? '✓' : '✗'}
-        </span>
-        <span className={[
-          'text-xs font-dm-sans leading-snug',
-          tier.triggered ? 'text-forest-green' : 'text-forest-green/40',
-        ].join(' ')}>
-          <span className="font-semibold">Tier {tier.tier}</span> — {tier.label}
-          {isMax && (
-            <span className="ml-1.5 rounded-full bg-forest-green px-1.5 py-0.5 text-[10px] font-medium text-white">
-              MAX
-            </span>
-          )}
-        </span>
-      </div>
-      <span className={[
-        'shrink-0 text-xs font-dm-sans tabular-nums',
-        tier.triggered ? 'text-forest-green' : 'text-forest-green/30',
-      ].join(' ')}>
-        {tier.payments} pmt{tier.payments !== 1 ? 's' : ''}
+    <div className={`flex items-start gap-3 py-2 ${isMax ? 'opacity-100' : 'opacity-60'}`}>
+      <span className={`mt-0.5 flex-shrink-0 text-sm font-dm-sans leading-none w-4 ${tier.triggered ? 'text-forest-green' : 'text-forest-green/25'}`}>
+        {tier.triggered ? '✓' : '✗'}
       </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <span className={`font-dm-sans text-xs ${tier.triggered ? 'text-forest-green font-medium' : 'text-forest-green/40'}`}>
+            Tier {tier.tier} — {tier.label}
+            {isMax && tier.triggered && (
+              <span className="ml-2 inline-block rounded-full bg-forest-green px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cream">
+                Max
+              </span>
+            )}
+          </span>
+          <span className={`font-dm-sans text-xs tabular-nums flex-shrink-0 ${tier.triggered ? 'text-forest-green/70' : 'text-forest-green/30'}`}>
+            {tier.payments} pmt{tier.payments !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
