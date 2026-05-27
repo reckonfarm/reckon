@@ -90,8 +90,8 @@ export default async function Home() {
             </div>
           </div>
 
-          {/* Right: map — desktop only */}
-          <div className="hidden lg:block">
+          {/* Right: map */}
+          <div>
             <OfficialMap
               map={map}
               title="U.S. Drought Monitor — Current Conditions"
@@ -140,14 +140,6 @@ export default async function Home() {
             </p>
           </div>
 
-        </div>
-
-        {/* ── Map — mobile only, below feature row ──────────────────────────── */}
-        <div className="mt-8 lg:hidden">
-          <OfficialMap
-            map={map}
-            title="U.S. Drought Monitor — Current Conditions"
-          />
         </div>
 
       </div>

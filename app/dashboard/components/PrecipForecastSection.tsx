@@ -197,9 +197,9 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null })
 
       {dataThrough && (
         <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 font-dm-sans">
-          Precipitation data through{' '}
+          Data unavailable after{' '}
           {new Date(`${dataThrough}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}{' '}
-          — station offline since
+          — station offline.
         </p>
       )}
       <p className="text-xs text-forest-green/40 font-dm-sans">
