@@ -77,33 +77,51 @@ function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
 
   return (
     <div className="space-y-4">
-      {expanded && (
-        <div className="mb-4">
-          <div className="space-y-3">
-            {introParagraphs.map((p, i) => (
-              <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
-                {p}
-              </p>
-            ))}
-          </div>
-        </div>
-      )}
-
       {regionParagraphs.length > 0 && (
         <div className="space-y-3 border-t border-forest-green/10 pt-4">
           <p className="text-xs font-semibold text-forest-green/50 font-dm-sans uppercase tracking-wide">
             {discussion.regionName}
           </p>
-          {regionParagraphs.map((p, i) => (
-            <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
-              {p}
+
+          {/* Teaser: first paragraph with left border accent */}
+          <div className="border-l-2 border-forest-green/20 pl-3">
+            <p className="text-sm text-forest-green font-dm-sans leading-relaxed">
+              {regionParagraphs[0].length > 240
+                ? regionParagraphs[0].slice(0, 240).replace(/\s\S+$/, '') + '…'
+                : regionParagraphs[0]}
             </p>
-          ))}
+          </div>
+
+          {/* Expanded: all region paragraphs */}
+          {expanded && (
+            <div className="space-y-3">
+              {regionParagraphs.map((p, i) => (
+                <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+                  {p}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Expanded: national intro */}
+          {expanded && introParagraphs.length > 0 && (
+            <div className="mt-2 space-y-3 border-t border-forest-green/10 pt-3">
+              <p className="text-xs font-semibold text-forest-green/50 font-dm-sans uppercase tracking-wide">
+                National summary
+              </p>
+              {introParagraphs.map((p, i) => (
+                <p key={i} className="text-sm text-forest-green/70 font-dm-sans leading-relaxed">
+                  {p}
+                </p>
+              ))}
+            </div>
+          )}
+
           <button
             onClick={() => setExpanded(!expanded)}
-            className="mt-3 font-dm-sans text-xs text-forest-green/50 underline hover:text-forest-green transition-colors"
+            className="mt-1 font-dm-sans text-xs text-forest-green/50 underline hover:text-forest-green transition-colors"
           >
-            {expanded ? 'Hide national summary ↑' : 'Read full national summary →'}
+            {expanded ? 'Collapse summary ↑' : 'Read full drought summary →'}
           </button>
         </div>
       )}
