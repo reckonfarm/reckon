@@ -6,6 +6,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
 
@@ -86,7 +87,7 @@ export default function DroughtHistoryChart({ data, countyName }: Props) {
   const ticks = yearTicks(data)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
+    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-[#FDFBF7] shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
           3-Year Drought History
@@ -142,11 +143,17 @@ export default function DroughtHistoryChart({ data, countyName }: Props) {
                 dataKey={key}
                 stackId="drought"
                 fill={D_COLORS[i]}
-                fillOpacity={0.75}
+                fillOpacity={1}
                 stroke="none"
                 isAnimationActive={false}
               />
             ))}
+              <ReferenceLine
+                x={data[data.length - 1]?.date}
+                stroke="#1B4332"
+                strokeWidth={1}
+                strokeOpacity={0.25}
+              />
           </BarChart>
         </ResponsiveContainer>
       </div>

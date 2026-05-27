@@ -155,7 +155,7 @@ export default function DroughtTrendChart({ history, countyName }: Props) {
   if (data.length === 0) return null
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
+    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-[#FDFBF7] shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
           52-Week Trend
@@ -199,13 +199,27 @@ export default function DroughtTrendChart({ history, countyName }: Props) {
               width={28}
             />
             <ReferenceLine y={0} stroke="rgba(27,67,50,0.12)" strokeWidth={1} />
+              <ReferenceLine
+                y={3}
+                stroke="#FFAA00"
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                strokeOpacity={0.6}
+                label={{ value: 'LFP trigger', position: 'insideTopRight', fontSize: 9, fill: '#FFAA00', fillOpacity: 0.8 }}
+              />
+              <ReferenceLine
+                x={data[data.length - 1]?.weekDate}
+                stroke="#1B4332"
+                strokeWidth={1}
+                strokeOpacity={0.25}
+              />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(27,67,50,0.06)' }} />
             <Bar dataKey="yValue" stroke="none" isAnimationActive={false}>
               {data.map((d, i) => (
                 <Cell
                   key={i}
                   fill={severityColor(d.maxCategory)}
-                  fillOpacity={0.5}
+                  fillOpacity={1}
                 />
               ))}
             </Bar>
