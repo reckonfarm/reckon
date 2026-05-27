@@ -22,6 +22,7 @@ import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
 import DashboardAccordion from './components/DashboardAccordion'
+import ScrollToTop from './components/ScrollToTop'
 
 export const dynamic = 'force-dynamic'
 
@@ -501,6 +502,7 @@ export default async function DashboardPage({
       />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        <ScrollToTop />
 
         {/* ── County selector ───────────────────────────────────────────────── */}
         <section className="mb-8">

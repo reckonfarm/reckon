@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
+import BottomTabBar from '@/app/components/BottomTabBar'
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -41,7 +42,10 @@ export default function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${dmSans.variable} antialiased`}
     >
-      <body className="min-h-screen bg-cream text-forest-green">{children}</body>
+      <body className="min-h-screen bg-cream text-forest-green">
+        {children}
+        <BottomTabBar />
+      </body>
     </html>
   );
 }
