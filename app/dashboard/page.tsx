@@ -16,6 +16,7 @@ import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getDroughtDiscussion } from '@/lib/drought-discussion'
 import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
+import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 
 // ─── USDM region lookup ───────────────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ export default async function DashboardPage({
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let history: DroughtReading[]                     = []
+  let threeYearHistory: DroughtHistoryWeek[]        = []
   let stateMap: OfficialMapRecord | null            = null
   let cpcMonthlyMap: OfficialMapRecord | null       = null
   let cpcSeasonalMap: OfficialMapRecord | null      = null
@@ -176,6 +178,7 @@ export default async function DashboardPage({
       hprcc30dHead,
       hprcc60dHead,
       priorYearLfpRes,
+      threeYearRaw,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -332,9 +335,34 @@ export default async function DashboardPage({
         const prior = new Date().getFullYear() - 1
         return { grazingPeriod: { startDate: `${prior}-05-01`, endDate: `${prior}-11-30` } }
       })()),
+
+      // 3-year weekly drought history from USDM API (statisticsType=2 = actual per-category %)
+      (() => {
+        const today        = new Date().toISOString().slice(0, 10)
+        const threeYearsAgo = new Date(Date.now() - 3 * 365.25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        return fetch(
+          `https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent` +
+          `?aoi=${selectedCounty.fips}&startdate=${threeYearsAgo}&enddate=${today}&statisticsType=2`,
+          { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } },
+        )
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
+      })(),
     ])
 
     history            = historyRes.data ?? []
+    threeYearHistory   = (Array.isArray(threeYearRaw) ? threeYearRaw : []).map(
+      (row: { mapDate: string; none: number; d0: number; d1: number; d2: number; d3: number; d4: number }) => ({
+        // mapDate is an ISO datetime string: "2026-05-19T00:00:00"
+        date: row.mapDate.slice(0, 10),
+        none: row.none,
+        d0:   row.d0,
+        d1:   row.d1,
+        d2:   row.d2,
+        d3:   row.d3,
+        d4:   row.d4,
+      }),
+    ).reverse()
     stateMap           = stateMapRes.data as OfficialMapRecord | null
     cpcMonthlyMap      = cpcMonthlyMapRes.data as OfficialMapRecord | null
     cpcSeasonalMap     = cpcSeasonalMapRes.data as OfficialMapRecord | null
@@ -512,6 +540,11 @@ export default async function DashboardPage({
                   </a>
                 </p>
               </div>
+            )}
+
+            {/* 3-year drought history chart */}
+            {threeYearHistory.length > 0 && (
+              <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
             )}
 
             {/* 52-week trend chart */}
