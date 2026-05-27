@@ -55,9 +55,9 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
 }
 
 export default function HayPage() {
-  const [authed, setAuthed]     = useState<boolean | null>(null)
-  const [listings, setListings] = useState<Listing[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [authed, setAuthed]         = useState<boolean | null>(null)
+  const [listings, setListings]     = useState<Listing[]>([])
+  const [listingsLoading, setListingsLoading] = useState(true)
   const [tab, setTab]           = useState<'sell' | 'want'>('sell')
   const [showForm, setShowForm] = useState(false)
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
@@ -89,29 +89,32 @@ export default function HayPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    async function load() {
+    // Listings are public — fetch immediately, no auth dependency
+    fetchListings().finally(() => setListingsLoading(false))
+
+    async function checkAuth() {
       const { data: { user } } = await supabase.auth.getUser()
       setAuthed(!!user)
-
-      try {
-        await fetchListings()
-
-        if (user) {
+      if (user) {
+        try {
           const wl = await fetch('/api/watchlist').then(r => r.ok ? r.json() : [])
           const first = Array.isArray(wl) ? wl[0] : null
           if (first?.county?.lat != null && first?.county?.lon != null) {
             setRefPoint({ lat: first.county.lat, lon: first.county.lon })
           }
+        } catch {
+          // non-fatal
         }
-      } catch {
-        // non-fatal
-      } finally {
-        setLoading(false)
       }
     }
 
-    load()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load())
+    checkAuth()
+
+    // Re-check auth and re-fetch listings on login/logout so `mine` flags update
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      checkAuth()
+      fetchListings()
+    })
     return () => subscription.unsubscribe()
   }, [])
 
@@ -213,21 +216,21 @@ export default function HayPage() {
             </p>
           </div>
 
-          {authed === false ? (
-            <Link
-              href="/signin"
-              className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
-            >
-              Sign in to post
-            </Link>
-          ) : authed ? (
+          {authed ? (
             <button
               onClick={() => { setShowForm(v => !v); if (showForm) resetForm() }}
               className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
             >
               {showForm ? 'Cancel' : '+ Post a listing'}
             </button>
-          ) : null}
+          ) : (
+            <Link
+              href="/signin"
+              className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
+            >
+              Sign in to post
+            </Link>
+          )}
         </div>
 
         {/* Add listing form */}
@@ -468,7 +471,7 @@ export default function HayPage() {
 
         {/* Listings */}
         <div className="mt-4">
-          {loading ? (
+          {listingsLoading ? (
             <p className="text-sm text-forest-green/50 font-dm-sans">Loading…</p>
           ) : filtered.length === 0 ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
