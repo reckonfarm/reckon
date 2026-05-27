@@ -23,7 +23,7 @@ export async function GET(
       id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
       description, haul_radius_miles, relief_flag, expires_at, created_at,
       cutting_number, bale_type, bale_weight_lbs, storage_method,
-      hay_test_protein_pct, hay_test_tdnpct, hay_test_rfv, hay_test_moisture_pct,
+      hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
       counties(id, fips, name, state, lat, lon)
     `)
     .eq('id', numId)
@@ -110,7 +110,7 @@ export async function GET(
     bale_weight_lbs:       row.bale_weight_lbs,
     storage_method:        row.storage_method,
     hay_test_protein_pct:  row.hay_test_protein_pct,
-    hay_test_tdnpct:       row.hay_test_tdnpct,
+    hay_test_tdn_pct:       row.hay_test_tdn_pct,
     hay_test_rfv:          row.hay_test_rfv,
     hay_test_moisture_pct: row.hay_test_moisture_pct,
     counties:              row.counties,

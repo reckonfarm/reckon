@@ -21,7 +21,7 @@ const FULL_LISTING_SELECT = `
   id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
   description, haul_radius_miles, relief_flag, expires_at, created_at,
   cutting_number, bale_type, bale_weight_lbs, storage_method,
-  hay_test_protein_pct, hay_test_tdnpct, hay_test_rfv, hay_test_moisture_pct,
+  hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
   counties(id, fips, name, state, lat, lon)
 `
 
@@ -87,7 +87,7 @@ export async function GET() {
         bale_weight_lbs:       row.bale_weight_lbs,
         storage_method:        row.storage_method,
         hay_test_protein_pct:  row.hay_test_protein_pct,
-        hay_test_tdnpct:       row.hay_test_tdnpct,
+        hay_test_tdn_pct:       row.hay_test_tdn_pct,
         hay_test_rfv:          row.hay_test_rfv,
         hay_test_moisture_pct: row.hay_test_moisture_pct,
         counties:              row.counties,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     county_id, listing_type, hay_type, contact,
     tonnage, price_per_ton, description, haul_radius_miles, relief_flag,
     cutting_number, bale_type, bale_weight_lbs, storage_method,
-    hay_test_protein_pct, hay_test_tdnpct, hay_test_rfv, hay_test_moisture_pct,
+    hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
   } = body ?? {}
 
   if (!county_id || typeof county_id !== 'number') {
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
       bale_weight_lbs:       bale_weight_lbs       != null ? Number(bale_weight_lbs)       : null,
       storage_method:        storage_method        ?? null,
       hay_test_protein_pct:  hay_test_protein_pct  != null ? Number(hay_test_protein_pct)  : null,
-      hay_test_tdnpct:       hay_test_tdnpct       != null ? Number(hay_test_tdnpct)       : null,
+      hay_test_tdn_pct:       hay_test_tdn_pct       != null ? Number(hay_test_tdn_pct)       : null,
       hay_test_rfv:          hay_test_rfv          != null ? Number(hay_test_rfv)          : null,
       hay_test_moisture_pct: hay_test_moisture_pct != null ? Number(hay_test_moisture_pct) : null,
     })
