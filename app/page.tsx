@@ -1,5 +1,14 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabase'
+
+export const metadata: Metadata = {
+  title: {
+    absolute: 'Reckon — Drought & LFP Eligibility for Every U.S. County',
+  },
+  description:
+    'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',
+}
 import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
 import OfficialMap from '@/app/dashboard/components/OfficialMap'
 import CountySearch from '@/app/components/CountySearch'

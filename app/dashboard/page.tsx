@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
@@ -94,6 +95,30 @@ function formatDate(iso: string) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ fips?: string }>
+}): Promise<Metadata> {
+  const { fips } = await searchParams
+  if (!fips) return { title: 'County Dashboard' }
+
+  const db = createServiceClient()
+  const { data } = await db
+    .from('counties')
+    .select('name, state')
+    .eq('fips', fips)
+    .single()
+
+  if (!data) return { title: 'County Dashboard' }
+
+  const place = `${data.name}, ${data.state}`
+  return {
+    title: `${place} — Drought & LFP Eligibility`,
+    description: `Current drought conditions, LFP tier status, and estimated FSA payments for ${place}. Updated weekly from the U.S. Drought Monitor.`,
+  }
+}
 
 export default async function DashboardPage({
   searchParams,
