@@ -1,0 +1,154 @@
+import { ImageResponse } from 'next/og'
+import { createServiceClient } from '@/lib/supabase'
+
+export const alt = 'County drought and LFP status'
+export const size = { width: 1200, height: 630 }
+export const contentType = 'image/png'
+
+export default async function Image({
+  searchParams,
+}: {
+  searchParams: Promise<{ fips?: string }>
+}) {
+  const { fips } = await searchParams
+
+  const FOREST_GREEN = '#1B4332'
+  const CREAM = '#FDFBF7'
+  const RUST = '#C2410C'
+
+  if (!fips) {
+    return new ImageResponse(
+      <div
+        style={{
+          width: '1200px',
+          height: '630px',
+          background: FOREST_GREEN,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span style={{ color: CREAM, fontSize: '48px', fontWeight: 700 }}>Dryline</span>
+      </div>
+    )
+  }
+
+  const db = createServiceClient()
+  const { data: county } = await db
+    .from('counties')
+    .select('name, state, fips')
+    .eq('fips', fips)
+    .single()
+
+  if (!county) {
+    return new ImageResponse(
+      <div
+        style={{
+          width: '1200px',
+          height: '630px',
+          background: FOREST_GREEN,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <span style={{ color: CREAM, fontSize: '48px', fontWeight: 700 }}>Dryline</span>
+      </div>
+    )
+  }
+
+  // Get county_id first
+  const { data: countyWithId } = await db
+    .from('counties')
+    .select('id')
+    .eq('fips', fips)
+    .single()
+
+  let dLevel: number | null = null
+  let payLabel: string | null = null
+
+  if (countyWithId) {
+    // Get most recent drought row
+    const { data: droughtRow } = await db
+      .from('drought_data')
+      .select('d0, d1, d2, d3, d4')
+      .eq('county_id', countyWithId.id)
+      .order('week_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (droughtRow) {
+      // Highest active drought level (d4 > 0 = D4, etc.)
+      if (droughtRow.d4 > 0) dLevel = 4
+      else if (droughtRow.d3 > 0) dLevel = 3
+      else if (droughtRow.d2 > 0) dLevel = 2
+      else if (droughtRow.d1 > 0) dLevel = 1
+      else if (droughtRow.d0 > 0) dLevel = 0
+    }
+
+    // Get LFP payment estimate
+    if (dLevel !== null && dLevel >= 2) {
+      const { computeLfpEligibility } = await import('@/lib/lfp-eligibility')
+      const lfp = await computeLfpEligibility(fips, {})
+      if (lfp?.payments && lfp.payments > 0) {
+        const est = lfp.payments * 197
+        payLabel = `$${Math.round(est).toLocaleString()}`
+      }
+    }
+  }
+
+  const triggered = dLevel !== null && dLevel >= 2
+  const dLabel = dLevel !== null ? `D${dLevel}` : 'No data'
+
+  return new ImageResponse(
+    <div
+      style={{
+        width: '1200px',
+        height: '630px',
+        background: FOREST_GREEN,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '72px 80px',
+      }}
+    >
+      <span style={{ color: CREAM, fontSize: '28px', fontWeight: 400, opacity: 0.6 }}>
+        Dryline · Drought & LFP Intelligence
+      </span>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <span style={{ color: CREAM, fontSize: '72px', fontWeight: 700, lineHeight: 1.1 }}>
+          {county.name}, {county.state}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginTop: '8px' }}>
+          <span
+            style={{
+              background: triggered ? RUST : CREAM,
+              color: triggered ? CREAM : FOREST_GREEN,
+              fontSize: '32px',
+              fontWeight: 700,
+              padding: '10px 24px',
+              borderRadius: '8px',
+            }}
+          >
+            {dLabel}
+          </span>
+          {triggered && payLabel && (
+            <span style={{ color: CREAM, fontSize: '40px', fontWeight: 700 }}>
+              {payLabel} est. payment
+            </span>
+          )}
+          {!triggered && (
+            <span style={{ color: CREAM, fontSize: '32px', fontWeight: 400, opacity: 0.7 }}>
+              Not triggered
+            </span>
+          )}
+        </div>
+      </div>
+
+      <span style={{ color: CREAM, fontSize: '24px', opacity: 0.5 }}>
+        dryline.farm
+      </span>
+    </div>
+  )
+}

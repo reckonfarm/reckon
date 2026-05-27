@@ -130,9 +130,23 @@ export async function generateMetadata({
   if (!data) return { title: 'County Dashboard' }
 
   const place = `${data.name}, ${data.state}`
+  const title = `${place} — Drought & LFP Eligibility`
+  const description = `Current drought conditions, LFP tier status, and estimated FSA payments for ${place}. Updated weekly from the U.S. Drought Monitor.`
+  const ogImageUrl = `/dashboard/opengraph-image?fips=${fips}`
   return {
-    title: `${place} — Drought & LFP Eligibility`,
-    description: `Current drought conditions, LFP tier status, and estimated FSA payments for ${place}. Updated weekly from the U.S. Drought Monitor.`,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: `${place} drought and LFP status` }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImageUrl],
+    },
   }
 }
 
