@@ -31,6 +31,11 @@ export interface HayListing {
   mine: boolean
   counties: HayCounty | null
   droughtTier: number | null
+  display_name: string | null
+  verified_phone: boolean | null
+  seller_listing_count: number | null
+  seller_avg_rating: number | null
+  seller_review_count: number | null
 }
 
 export interface HayListingDetail extends HayListing {

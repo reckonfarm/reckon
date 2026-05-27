@@ -824,6 +824,31 @@ export default function HayPage() {
                           </button>
                         )}
                       </div>
+
+                      {/* Trust strip */}
+                      {(l.display_name || l.verified_phone || (l.seller_review_count ?? 0) > 0 || (l.seller_listing_count ?? 0) > 0) && (
+                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-forest-green/8 pt-3 w-full">
+                          {l.display_name && (
+                            <span className="font-dm-sans text-xs text-forest-green/60">{l.display_name}</span>
+                          )}
+                          {l.verified_phone && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/8 px-2 py-0.5 font-dm-sans text-[10px] font-medium text-forest-green">
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                              Phone verified
+                            </span>
+                          )}
+                          {(l.seller_avg_rating ?? 0) > 0 && (l.seller_review_count ?? 0) > 0 && (
+                            <span className="font-dm-sans text-xs text-forest-green/60">
+                              {'★'.repeat(Math.round(l.seller_avg_rating ?? 0))}{'☆'.repeat(5 - Math.round(l.seller_avg_rating ?? 0))} ({l.seller_review_count})
+                            </span>
+                          )}
+                          {(l.seller_listing_count ?? 0) > 0 && (
+                            <span className="font-dm-sans text-xs text-forest-green/40">{l.seller_listing_count} sale{(l.seller_listing_count ?? 0) !== 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </li>
                 )
