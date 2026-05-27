@@ -56,6 +56,28 @@ export default async function Home() {
                 Find your county
               </p>
               <CountySearch />
+
+              {/* Quick-pick counties */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <p className="w-full font-dm-sans text-xs text-forest-green/40">
+                  Try a county:
+                </p>
+                {[
+                  { name: 'Petroleum Co., MT', fips: '30069' },
+                  { name: 'Cascade Co., MT',   fips: '30013' },
+                  { name: 'Custer Co., MT',    fips: '30011' },
+                  { name: 'Armstrong Co., TX', fips: '48011' },
+                  { name: 'Harding Co., SD',   fips: '46063' },
+                ].map(c => (
+                  <Link
+                    key={c.fips}
+                    href={`/dashboard?fips=${c.fips}`}
+                    className="rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 hover:border-forest-green/30 hover:text-forest-green transition-colors"
+                  >
+                    {c.name}
+                  </Link>
+                ))}
+              </div>
             </div>
 
             <div className="mt-5">
