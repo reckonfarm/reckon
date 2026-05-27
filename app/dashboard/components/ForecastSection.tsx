@@ -51,7 +51,10 @@ function formatDate(iso: string) {
 
 // ─── Tab panels ───────────────────────────────────────────────────────────────
 
+// TODO Sprint 5: Replace intro display with Claude-generated plain-language summary stored on drought_data per-county-week
 function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
+  const [expanded, setExpanded] = useState(false)
+
   if (!discussion) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
@@ -65,13 +68,17 @@ function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3">
-        {introParagraphs.map((p, i) => (
-          <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
-            {p}
-          </p>
-        ))}
-      </div>
+      {expanded && (
+        <div className="mb-4">
+          <div className="space-y-3">
+            {introParagraphs.map((p, i) => (
+              <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+                {p}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {regionParagraphs.length > 0 && (
         <div className="space-y-3 border-t border-forest-green/10 pt-4">
@@ -83,6 +90,12 @@ function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
               {p}
             </p>
           ))}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-3 font-dm-sans text-xs text-forest-green/50 underline hover:text-forest-green transition-colors"
+          >
+            {expanded ? 'Hide national summary ↑' : 'Read full national summary →'}
+          </button>
         </div>
       )}
 
