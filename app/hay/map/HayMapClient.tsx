@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import Link from 'next/link'
 import 'leaflet/dist/leaflet.css'
 
@@ -29,6 +30,28 @@ const DROUGHT_COLORS: Record<number, string> = {
 function pinColor(tier: number | null): string {
   if (tier === null) return '#1B4332'
   return DROUGHT_COLORS[tier] ?? '#1B4332'
+}
+
+function clusterColor(markers: { options: { fillColor?: string } }[]): string {
+  const priority = ['#7B2D00', '#C2410C', '#D97706', '#92400E', '#1B4332']
+  for (const color of priority) {
+    if (markers.some(m => m.options?.fillColor === color)) return color
+  }
+  return '#1B4332'
+}
+
+function createClusterIcon(cluster: { getChildCount: () => number; getAllChildMarkers: () => { options: { fillColor?: string } }[] }) {
+  const count = cluster.getChildCount()
+  const markers = cluster.getAllChildMarkers()
+  const color = clusterColor(markers)
+  const size = count < 10 ? 32 : count < 50 ? 38 : 44
+  const L = (window as unknown as { L: { divIcon: (opts: object) => object } }).L
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2.5px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:600;font-family:var(--font-dm-sans);box-shadow:0 1px 4px rgba(0,0,0,0.25)">${count}</div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
 }
 
 function ResetButton() {
@@ -66,35 +89,43 @@ export default function HayMapClient({ listings }: { listings: MapListing[] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {listings.map(l => (
-          <CircleMarker
-            key={l.id}
-            center={[l.lat, l.lon]}
-            radius={8}
-            pathOptions={{
-              fillColor: pinColor(l.drought_tier),
-              fillOpacity: 0.85,
-              color: '#fff',
-              weight: 1.5,
-            }}
-          >
-            <Popup>
-              <div style={{ fontFamily: 'var(--font-dm-sans)', minWidth: 160 }}>
-                <p style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {l.hay_type ?? 'Hay'} — {l.county_name}, {l.state}
-                </p>
-                {l.tonnage && <p style={{ fontSize: 12, color: '#555' }}>{l.tonnage} tons</p>}
-                {l.price_per_ton && <p style={{ fontSize: 12, color: '#555' }}>${l.price_per_ton}/ton</p>}
-                <Link
-                  href={`/hay/${l.id}`}
-                  style={{ fontSize: 12, color: '#1B4332', textDecoration: 'underline', display: 'block', marginTop: 6 }}
-                >
-                  View listing →
-                </Link>
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
+        <MarkerClusterGroup
+          chunkedLoading
+          iconCreateFunction={createClusterIcon}
+          maxClusterRadius={50}
+          showCoverageOnHover={false}
+          zoomToBoundsOnClick
+        >
+          {listings.map(l => (
+            <CircleMarker
+              key={l.id}
+              center={[l.lat, l.lon]}
+              radius={8}
+              pathOptions={{
+                fillColor: pinColor(l.drought_tier),
+                fillOpacity: 0.85,
+                color: '#fff',
+                weight: 1.5,
+              }}
+            >
+              <Popup>
+                <div style={{ fontFamily: 'var(--font-dm-sans)', minWidth: 160 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {l.hay_type ?? 'Hay'} — {l.county_name}, {l.state}
+                  </p>
+                  {l.tonnage && <p style={{ fontSize: 12, color: '#555' }}>{l.tonnage} tons</p>}
+                  {l.price_per_ton && <p style={{ fontSize: 12, color: '#555' }}>${l.price_per_ton}/ton</p>}
+                  <Link
+                    href={`/hay/${l.id}`}
+                    style={{ fontSize: 12, color: '#1B4332', textDecoration: 'underline', display: 'block', marginTop: 6 }}
+                  >
+                    View listing →
+                  </Link>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
+        </MarkerClusterGroup>
         <ResetButton />
       </MapContainer>
 
