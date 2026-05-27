@@ -4,6 +4,7 @@ import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
 import OfficialMap from '@/app/dashboard/components/OfficialMap'
 import CountySearch from '@/app/components/CountySearch'
 import FarmerToggle from '@/app/components/FarmerToggle'
+import SiteHeader from '@/app/components/SiteHeader'
 
 async function getLatestNationalMap(): Promise<OfficialMapRecord | null> {
   const db = createServiceClient()
@@ -20,21 +21,10 @@ export default async function Home() {
   const map = await getLatestNationalMap()
 
   return (
-    <main className="min-h-screen bg-cream">
+    <>
+      <SiteHeader />
+      <main className="min-h-screen bg-cream">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:py-16">
-
-        {/* ── Top bar ───────────────────────────────────────────────────────── */}
-        <div className="mb-12 flex items-center justify-between">
-          <Link href="/">
-            <span className="font-fraunces text-xl font-semibold text-forest-green">Reckon</span>
-          </Link>
-          <Link
-            href="/watchlist"
-            className="font-dm-sans text-sm font-medium text-forest-green/60 hover:text-forest-green"
-          >
-            My Counties
-          </Link>
-        </div>
 
         {/* ── Split hero ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
@@ -153,5 +143,6 @@ export default async function Home() {
 
       </div>
     </main>
+    </>
   )
 }

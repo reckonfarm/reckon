@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { createClient } from '@/lib/supabase-server'
 import {
   getWatchlist,
   addToWatchlist,
@@ -6,17 +7,17 @@ import {
 } from '@/lib/concierge-service'
 import { checkAlerts } from '@/lib/alert-service'
 
-// userId comes from the X-User-Id header, populated by the browser with a UUID
-// stored in localStorage. Replace with session.user.id once auth is wired up.
-function getUserId(req: NextRequest): string | null {
-  return req.headers.get('x-user-id')?.trim() || null
+async function getAuthUserId(): Promise<string | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id ?? null
 }
 
 // GET /api/watchlist          → watchlist entries
 // GET /api/watchlist?alerts=1 → active drought alerts for the watchlist
 export async function GET(request: NextRequest) {
-  const userId = getUserId(request)
-  if (!userId) return Response.json({ error: 'Missing X-User-Id header' }, { status: 400 })
+  const userId = await getAuthUserId()
+  if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
   try {
     if (request.nextUrl.searchParams.get('alerts') === '1') {
@@ -34,8 +35,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/watchlist  { countyId, alertLevel? }
 export async function POST(request: NextRequest) {
-  const userId = getUserId(request)
-  if (!userId) return Response.json({ error: 'Missing X-User-Id header' }, { status: 400 })
+  const userId = await getAuthUserId()
+  if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
   const body = await request.json()
   const { countyId, alertLevel = 3 } = body ?? {}
@@ -55,8 +56,8 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/watchlist  { countyId }
 export async function DELETE(request: NextRequest) {
-  const userId = getUserId(request)
-  if (!userId) return Response.json({ error: 'Missing X-User-Id header' }, { status: 400 })
+  const userId = await getAuthUserId()
+  if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
   const body = await request.json()
   const { countyId } = body ?? {}

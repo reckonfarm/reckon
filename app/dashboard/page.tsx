@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase'
+import SiteHeader from '@/app/components/SiteHeader'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
 import { getGrazingPeriod } from '@/lib/grazing-periods'
 import Link from 'next/link'
@@ -413,22 +414,10 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-cream">
 
-      {/* ── Sticky header ─────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <Link href="/">
-            <p className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
-              Reckon
-            </p>
-            <p className="text-xs text-forest-green/50 font-dm-sans">Drought Monitor</p>
-          </Link>
-          {selectedCounty && (
-            <p className="hidden text-sm text-forest-green/60 font-dm-sans sm:block">
-              {selectedCounty.name}, {selectedCounty.state}
-            </p>
-          )}
-        </div>
-      </header>
+      <SiteHeader
+        subtitle="Drought Monitor"
+        center={selectedCounty ? `${selectedCounty.name}, ${selectedCounty.state}` : undefined}
+      />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
 
@@ -468,18 +457,10 @@ export default async function DashboardPage({
                   {selectedCounty.state} · FIPS {selectedCounty.fips}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/watchlist"
-                  className="font-dm-sans text-sm text-forest-green/60 underline hover:text-forest-green"
-                >
-                  My Counties
-                </Link>
-                <WatchlistButton
-                  countyId={selectedCounty.id}
-                  countyName={selectedCounty.name}
-                />
-              </div>
+              <WatchlistButton
+                countyId={selectedCounty.id}
+                countyName={selectedCounty.name}
+              />
             </div>
 
             {/* No data yet */}
