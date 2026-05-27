@@ -609,7 +609,12 @@ export default async function DashboardPage({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="mb-4 text-5xl select-none">🌾</div>
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-forest-green/8 mx-auto">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/60">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="m21 21-4.35-4.35"/>
+        </svg>
+      </div>
       <h2 className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
         Select a county to begin
       </h2>
