@@ -387,7 +387,7 @@ export default async function DashboardPage({
 
       {/* ── Sticky header ─────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <Link href="/">
             <p className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
               Reckon
@@ -402,7 +402,7 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
 
         {/* ── County selector ───────────────────────────────────────────────── */}
         <section className="mb-8">
