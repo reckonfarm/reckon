@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
@@ -51,8 +51,20 @@ export default function HayPage() {
   const [authed, setAuthed]         = useState<boolean | null>(null)
   const [listings, setListings]     = useState<HayListing[]>([])
   const [listingsLoading, setListingsLoading] = useState(true)
+  const searchParams    = useSearchParams()
   const [tab, setTab]           = useState<'sell' | 'want'>('sell')
   const [showForm, setShowForm] = useState(false)
+  const [filterState,   setFilterState]   = useState(searchParams.get('state')   ?? '')
+  const [filterVariety, setFilterVariety] = useState(searchParams.get('variety') ?? '')
+  const [filterType,    setFilterType]    = useState(searchParams.get('type')    ?? '')
+
+  const pushFilters = useCallback((st: string, va: string, ty: string) => {
+    const p = new URLSearchParams()
+    if (st) p.set('state', st)
+    if (va) p.set('variety', va)
+    if (ty) p.set('type', ty)
+    router.replace(`/hay${p.toString() ? '?' + p.toString() : ''}`, { scroll: false })
+  }, [router])
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [removing, setRemoving] = useState<Set<string>>(new Set())
 
@@ -251,7 +263,14 @@ export default function HayPage() {
 
   const sellListings = listings.filter(l => l.listing_type !== 'want')
   const wantListings = listings.filter(l => l.listing_type === 'want')
-  const filtered     = tab === 'sell' ? sellListings : wantListings
+  const baseFiltered = tab === 'sell' ? sellListings : wantListings
+  const filtered = baseFiltered
+    .filter(l => !filterState   || l.counties?.state === filterState)
+    .filter(l => !filterVariety || (l.hay_type ?? '').toLowerCase() === filterVariety.toLowerCase())
+    .filter(l => !filterType    || l.listing_type === filterType)
+
+  const availableStates    = [...new Set(listings.map(l => l.counties?.state).filter(Boolean))].sort() as string[]
+  const availableVarieties = [...new Set(listings.map(l => l.hay_type).filter(Boolean))].sort() as string[]
 
   return (
     <>
@@ -572,6 +591,47 @@ export default function HayPage() {
 
         {/* Listings */}
         <div className="mt-4">
+          {/* Filter bar */}
+          {!listingsLoading && listings.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-2">
+              <select
+                value={filterState}
+                onChange={e => { setFilterState(e.target.value); pushFilters(e.target.value, filterVariety, filterType) }}
+                className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+              >
+                <option value="">All states</option>
+                {availableStates.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+
+              <select
+                value={filterVariety}
+                onChange={e => { setFilterVariety(e.target.value); pushFilters(filterState, e.target.value, filterType) }}
+                className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+              >
+                <option value="">All varieties</option>
+                {availableVarieties.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+
+              <select
+                value={filterType}
+                onChange={e => { setFilterType(e.target.value); pushFilters(filterState, filterVariety, e.target.value) }}
+                className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+              >
+                <option value="">For sale &amp; wanted</option>
+                <option value="sell">For sale only</option>
+                <option value="want">Wanted only</option>
+              </select>
+
+              {(filterState || filterVariety || filterType) && (
+                <button
+                  onClick={() => { setFilterState(''); setFilterVariety(''); setFilterType(''); pushFilters('', '', '') }}
+                  className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs text-forest-green/50 hover:text-forest-green transition-colors"
+                >
+                  Clear filters ×
+                </button>
+              )}
+            </div>
+          )}
           {listingsLoading ? (
             <div className="space-y-3">
               {[1,2,3,4].map(i => (
@@ -585,8 +645,15 @@ export default function HayPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                     </svg>
                   </div>
-                  <p className="font-fraunces text-base font-semibold text-forest-green">No hay listings yet</p>
-                  <p className="mt-1 font-dm-sans text-sm text-forest-green/50">Be the first to post hay for sale in your area.</p>
+                  <p className="font-fraunces text-base font-semibold text-forest-green">
+                    {(filterState || filterVariety || filterType) ? 'No listings match these filters' : 'No hay listings yet'}
+                  </p>
+                  <p className="mt-1 font-dm-sans text-sm text-forest-green/50">
+                    {(filterState || filterVariety || filterType)
+                      ? <button onClick={() => { setFilterState(''); setFilterVariety(''); setFilterType(''); pushFilters('', '', '') }} className="underline hover:text-forest-green">Clear filters</button>
+                      : 'Be the first to post hay for sale in your area.'
+                    }
+                  </p>
                   {!authed && (
                     <p className="mt-3 font-dm-sans text-sm text-forest-green/50">
                       <Link href="/signin" className="underline hover:text-forest-green">Sign in</Link> to post a listing.
