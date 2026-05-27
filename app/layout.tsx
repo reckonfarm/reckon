@@ -16,15 +16,15 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Reckon',
-    template: '%s — Reckon',
+    default: 'Dryline',
+    template: '%s — Dryline',
   },
   description:
     'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',
   openGraph: {
     type: 'website',
-    siteName: 'Reckon',
-    images: [{ url: '/og-image.svg', width: 1200, height: 630, alt: 'Reckon' }],
+    siteName: 'Dryline',
+    images: [{ url: '/og-image.svg', width: 1200, height: 630, alt: 'Dryline' }],
   },
   twitter: {
     card: 'summary_large_image',

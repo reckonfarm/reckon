@@ -1,9 +1,9 @@
 @AGENTS.md
 
-# Reckon — Project Bible
+# Dryline — Project Bible
 
 ## What this is
-Drought + FSA program dashboard for ranchers at reckon.farm.
+Drought + FSA program dashboard for ranchers at dryline.farm.
 Stack: Next.js 14, TypeScript, Tailwind v4, Supabase/Postgres, Vercel.
 Solo build — one rancher, one AI, Claude Code. Research → Confirm → Build, one prompt at a time.
 
@@ -36,7 +36,7 @@ Phase 2 — COMPLETE
 - Hay nav link in SiteHeader
 
 Phase 3 — Operation Ledger (next)
-- Port Fleet Command V9 equipment data into Reckon as the operation equipment ledger
+- Port Fleet Command V9 equipment data into Dryline as the operation equipment ledger
 - Service log per piece of equipment
 - Seed Rate Bible and Spray Rate Brain as operational memory modules
 - Payout history: record each LFP alert sent as a payout event on the operation

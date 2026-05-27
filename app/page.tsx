@@ -4,7 +4,7 @@ import { createServiceClient } from '@/lib/supabase'
 
 export const metadata: Metadata = {
   title: {
-    absolute: 'Reckon — Drought & LFP Eligibility for Every U.S. County',
+    absolute: 'Dryline — Drought & LFP Eligibility for Every U.S. County',
   },
   description:
     'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',

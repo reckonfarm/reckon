@@ -20,7 +20,7 @@ export interface LocalForecast {
   forecastUrl: string
 }
 
-const UA = 'Reckon/1.0 (ranch drought monitor; opensource)'
+const UA = 'Dryline/1.0 (ranch drought monitor; opensource)'
 
 export async function getLocalForecast(lat: number, lon: number): Promise<LocalForecast | null> {
   try {

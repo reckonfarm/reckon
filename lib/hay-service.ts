@@ -114,18 +114,18 @@ export async function checkHayMatchAlerts(weekDate: string): Promise<HayMatchRes
       const body = [
         `${dry.name} County, ${dry.state} entered severe drought (D2) this week.`,
         '',
-        `Ranchers in that area may be looking to buy hay. Your Reckon listing in`,
+        `Ranchers in that area may be looking to buy hay. Your Dryline listing in`,
         `${county.name}, ${county.state} is ${mi} mile${mi !== 1 ? 's' : ''} away.`,
         '',
-        'View the Hay Network: https://reckon.farm/hay',
+        'View the Hay Network: https://dryline.farm/hay',
         '',
-        'You are receiving this because you have an active hay listing on Reckon.',
-        'Manage your listings: https://reckon.farm/hay',
+        'You are receiving this because you have an active hay listing on Dryline.',
+        'Manage your listings: https://dryline.farm/hay',
       ].join('\n')
 
       try {
         const { error } = await resend.emails.send({
-          from: 'Reckon Alerts <alerts@reckon.farm>',
+          from: 'Dryline Alerts <alerts@dryline.farm>',
           to: email,
           subject,
           text: body,

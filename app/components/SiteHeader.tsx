@@ -33,7 +33,7 @@ export default function SiteHeader({ subtitle, center }: Props) {
 
         <Link href="/" className="flex flex-col leading-tight">
           <span className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
-            Reckon
+            Dryline
           </span>
           {subtitle && (
             <span className="text-xs text-forest-green/50 font-dm-sans">{subtitle}</span>

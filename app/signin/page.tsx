@@ -125,7 +125,7 @@ export default function SignInPage() {
       <main className="flex min-h-screen items-center justify-center bg-cream px-4">
         <div className="w-full max-w-sm">
           <p className="font-fraunces text-2xl font-semibold text-forest-green">
-            Sign in to Reckon
+            Sign in to Dryline
           </p>
           <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
             We&apos;ll send a 6-digit code to your email.
@@ -153,7 +153,7 @@ export default function SignInPage() {
             href="/"
             className="mt-6 inline-block font-dm-sans text-sm text-forest-green/50 hover:text-forest-green"
           >
-            ← Back to Reckon
+            ← Back to Dryline
           </Link>
         </div>
       </main>

@@ -2,7 +2,7 @@ import 'server-only'
 
 const NWS_BASE = 'https://api.weather.gov'
 const HEADERS = {
-  'User-Agent': 'reckon.farm/1.0 contact@reckon.farm',
+  'User-Agent': 'dryline.farm/1.0 contact@dryline.farm',
   Accept: 'application/json',
 }
 

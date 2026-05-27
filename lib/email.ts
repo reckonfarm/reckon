@@ -58,17 +58,17 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
     '',
     'This is a reference estimate only. Your actual payment depends on your enrolled',
     'head count and eligible acreage. Enter your numbers at:',
-    `https://reckon.farm/dashboard?fips=${fips}`,
+    `https://dryline.farm/dashboard?fips=${fips}`,
     '',
     '─'.repeat(60),
     LFP_DISCLAIMER,
     '',
-    'You are receiving this alert because you added this county to your Reckon watchlist.',
-    'Manage your counties: https://reckon.farm/watchlist',
+    'You are receiving this alert because you added this county to your Dryline watchlist.',
+    'Manage your counties: https://dryline.farm/watchlist',
   ].join('\n')
 
   const { error } = await resend.emails.send({
-    from: 'Reckon Alerts <alerts@reckon.farm>',
+    from: 'Dryline Alerts <alerts@dryline.farm>',
     to,
     subject,
     text: body,

@@ -70,7 +70,7 @@ async function main() {
 
   const db = createClient(url, key, { auth: { persistSession: false } })
 
-  console.log('\nReckon — County Seed\n')
+  console.log('\nDryline — County Seed\n')
   const counties = await fetchCensusCounties()
   console.log(`  parsed   ${counties.length} county records\n`)
 

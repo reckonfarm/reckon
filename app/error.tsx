@@ -13,7 +13,7 @@ export default function Error({
       <header className="border-b border-forest-green/10">
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
           <Link href="/" className="font-fraunces text-2xl font-bold text-forest-green hover:opacity-80 transition-opacity">
-            Reckon
+            Dryline
           </Link>
         </div>
       </header>

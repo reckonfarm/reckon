@@ -315,7 +315,7 @@ function ActionCards({ year, currentYear }: {
               5. Pre-filled application
             </p>
             <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
-              Coming soon — Reckon will pre-fill your CCC-853 with your county, drought dates, and livestock data so you walk into your FSA office ready to sign.
+              Coming soon — Dryline will pre-fill your CCC-853 with your county, drought dates, and livestock data so you walk into your FSA office ready to sign.
             </p>
             <span className="mt-1 inline-block rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-semibold text-forest-green/70 font-dm-sans">
               Coming soon
