@@ -24,6 +24,7 @@ export async function GET(
       description, haul_radius_miles, relief_flag, expires_at, created_at,
       cutting_number, bale_type, bale_weight_lbs, storage_method,
       hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
+      photo_urls,
       counties(id, fips, name, state, lat, lon)
     `)
     .eq('id', numId)
@@ -113,6 +114,7 @@ export async function GET(
     hay_test_tdn_pct:       row.hay_test_tdn_pct,
     hay_test_rfv:          row.hay_test_rfv,
     hay_test_moisture_pct: row.hay_test_moisture_pct,
+    photo_urls:            (row as unknown as { photo_urls: string[] | null }).photo_urls ?? [],
     counties:              row.counties,
     mine:                  currentUserId !== null && row.user_id === currentUserId,
     droughtTier,
@@ -123,4 +125,37 @@ export async function GET(
     seller_avg_rating:     sellerAvgRating,
     seller_review_count:   sellerReviewCount,
   })
+}
+
+// PATCH /api/hay/[id] — update own listing fields (currently: photo_urls)
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json().catch(() => null)
+  if (!body) return Response.json({ error: 'Invalid body' }, { status: 400 })
+
+  const allowed = ['photo_urls']
+  const update: Record<string, unknown> = {}
+  for (const key of allowed) {
+    if (key in body) update[key] = body[key]
+  }
+  if (Object.keys(update).length === 0) {
+    return Response.json({ error: 'Nothing to update' }, { status: 400 })
+  }
+
+  const db = createServiceClient()
+  const { error } = await db
+    .from('hay_listings')
+    .update(update)
+    .eq('id', parseInt(id, 10))
+    .eq('user_id', user.id)
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json({ ok: true })
 }

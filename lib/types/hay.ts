@@ -27,6 +27,7 @@ export interface HayListing {
   hay_test_tdn_pct: number | null
   hay_test_rfv: number | null
   hay_test_moisture_pct: number | null
+  photo_urls: string[]
   mine: boolean
   counties: HayCounty | null
   droughtTier: number | null

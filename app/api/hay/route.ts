@@ -22,6 +22,7 @@ const FULL_LISTING_SELECT = `
   description, haul_radius_miles, relief_flag, expires_at, created_at,
   cutting_number, bale_type, bale_weight_lbs, storage_method,
   hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
+  photo_urls,
   counties(id, fips, name, state, lat, lon)
 `
 
@@ -90,6 +91,7 @@ export async function GET() {
         hay_test_tdn_pct:       row.hay_test_tdn_pct,
         hay_test_rfv:          row.hay_test_rfv,
         hay_test_moisture_pct: row.hay_test_moisture_pct,
+        photo_urls:            (row as unknown as { photo_urls: string[] | null }).photo_urls ?? [],
         counties:              row.counties,
         mine:                  currentUserId !== null && row.user_id === currentUserId,
         droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,

@@ -87,6 +87,11 @@ export default function HayPage() {
   const [description, setDescription] = useState('')
   const [reliefFlag, setReliefFlag]   = useState(false)
 
+  // ── Form: Group 6 — photos ────────────────────────────────────────────────
+  const [photoFiles, setPhotoFiles]         = useState<File[]>([])
+  const [photoUrls, setPhotoUrls]           = useState<string[]>([])
+  const [photoUploading, setPhotoUploading] = useState(false)
+
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError]   = useState('')
 
@@ -139,6 +144,28 @@ export default function HayPage() {
     return () => { if (countyTimer.current) clearTimeout(countyTimer.current) }
   }, [countyQuery])
 
+  async function uploadPhotos(listingId: string): Promise<string[]> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || photoFiles.length === 0) return []
+
+    const urls: string[] = []
+    for (const file of photoFiles) {
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage
+        .from('hay-photos')
+        .upload(path, file, { contentType: file.type, upsert: false })
+      if (!error) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('hay-photos')
+          .getPublicUrl(path)
+        urls.push(publicUrl)
+      }
+    }
+    return urls
+  }
+
   function resetForm() {
     setSelectedCounty(null); setCountyQuery('')
     setListingType('sell'); setHayType('')
@@ -146,6 +173,7 @@ export default function HayPage() {
     setTonnage(''); setPricePerTon('')
     setShowHayTest(false); setHayTestProtein(''); setHayTestTdn(''); setHayTestMoisture(''); setHayTestRfv('')
     setHaulRadius(''); setContact(''); setDescription(''); setReliefFlag(false)
+    setPhotoFiles([]); setPhotoUrls([])
     setFormError('')
   }
 
@@ -185,6 +213,21 @@ export default function HayPage() {
         const json = await res.json().catch(() => ({}))
         setFormError((json as { error?: string }).error ?? 'Failed to post listing.')
         return
+      }
+
+      const { id: newListingId } = await res.json().catch(() => ({})) as { id?: number }
+
+      if (photoFiles.length > 0 && newListingId) {
+        setPhotoUploading(true)
+        const urls = await uploadPhotos(String(newListingId))
+        if (urls.length > 0) {
+          await fetch(`/api/hay/${newListingId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photo_urls: urls }),
+          })
+        }
+        setPhotoUploading(false)
       }
 
       resetForm()
@@ -450,14 +493,59 @@ export default function HayPage() {
               </div>
             </div>
 
+            {/* Group 6: Photos */}
+            <div className="mt-5 border-t border-forest-green/8 pt-5">
+              <p className="mb-1 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
+                Photos (up to 5)
+              </p>
+              <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-forest-green/20 bg-forest-green/5 px-4 py-6 hover:border-forest-green/40 transition-colors">
+                <svg className="h-6 w-6 text-forest-green/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <span className="font-dm-sans text-xs text-forest-green/50">
+                  {photoFiles.length === 0 ? 'Tap to add photos' : `${photoFiles.length} photo${photoFiles.length !== 1 ? 's' : ''} selected`}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic"
+                  multiple
+                  className="sr-only"
+                  onChange={e => {
+                    const files = Array.from(e.target.files ?? []).slice(0, 5)
+                    setPhotoFiles(files)
+                    setPhotoUrls(files.map(f => URL.createObjectURL(f)))
+                  }}
+                />
+              </label>
+              {photoUrls.length > 0 && (
+                <div className="mt-2 flex gap-2 flex-wrap">
+                  {photoUrls.map((url, i) => (
+                    <div key={i} className="relative">
+                      <img src={url} alt="" className="h-16 w-16 rounded-lg object-cover border border-forest-green/10" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhotoFiles(prev => prev.filter((_, j) => j !== i))
+                          setPhotoUrls(prev => prev.filter((_, j) => j !== i))
+                        }}
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-forest-green text-cream text-[10px] font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {formError && (
               <p className="mt-3 text-sm text-red-600 font-dm-sans">{formError}</p>
             )}
 
             <div className="mt-5 flex gap-3">
-              <button onClick={submitListing} disabled={submitting}
+              <button onClick={submitListing} disabled={submitting || photoUploading}
                 className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors">
-                {submitting ? 'Posting…' : 'Post listing'}
+                {photoUploading ? 'Uploading photos…' : submitting ? 'Posting…' : 'Post listing'}
               </button>
               <button onClick={() => { setShowForm(false); resetForm() }}
                 className="rounded-lg border border-forest-green/20 px-5 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream transition-colors">
@@ -543,6 +631,20 @@ export default function HayPage() {
                     onClick={() => router.push(`/hay/${l.id}`)}
                     className="rounded-xl border border-forest-green/10 bg-white shadow-sm cursor-pointer"
                   >
+                    {l.photo_urls && l.photo_urls.length > 0 && (
+                      <div className="relative h-32 w-full overflow-hidden rounded-t-xl">
+                        <img
+                          src={l.photo_urls[0]}
+                          alt={`${l.hay_type ?? 'Hay'} listing photo`}
+                          className="h-full w-full object-cover"
+                        />
+                        {l.photo_urls.length > 1 && (
+                          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-[10px] text-white">
+                            +{l.photo_urls.length - 1} more
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="px-4 py-4 sm:px-5 flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
 

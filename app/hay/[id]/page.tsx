@@ -273,6 +273,21 @@ export default function HayDetailPage() {
           </p>
         </div>
 
+        {/* Photo grid */}
+        {listing.photo_urls && listing.photo_urls.length > 0 && (
+          <div className={`mb-6 grid gap-2 ${listing.photo_urls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {listing.photo_urls.map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt={`Photo ${i + 1}`}
+                className="w-full rounded-xl object-cover"
+                style={{ maxHeight: i === 0 && listing.photo_urls!.length > 1 ? 240 : 200 }}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Relief banner */}
         {listing.relief_flag && (
           <div className="mb-5 rounded-xl bg-forest-green/8 border border-forest-green/15 px-4 py-3">
