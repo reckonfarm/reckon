@@ -11,6 +11,7 @@ import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
 import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
+import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
 import type { ForecastOutlook, DroughtDiscussion } from './components/ForecastSection'
@@ -19,6 +20,19 @@ import { getDroughtDiscussion } from '@/lib/drought-discussion'
 import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
+import { estimatePayment } from '@/lib/lfp-payment'
+
+// ─── Haversine ───────────────────────────────────────────────────────────────
+
+function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8 // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 // ─── USDM region lookup ───────────────────────────────────────────────────────
 
@@ -177,6 +191,7 @@ export default async function DashboardPage({
   let hprcc30dUpdated: string | null                = null
   let hprcc60dUpdated: string | null                = null
   let regionalMapUrl: string | null                 = null
+  let hayNearbyCount: number                        = 0
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -205,6 +220,7 @@ export default async function DashboardPage({
       hprcc60dHead,
       priorYearLfpRes,
       threeYearRaw,
+      hayListingsRes,
     ] = await Promise.all([
       // 52 weeks of drought data for this county
       db
@@ -374,6 +390,13 @@ export default async function DashboardPage({
           .then(r => r.ok ? r.json() : [])
           .catch(() => [])
       })(),
+
+      // Active hay listings — fetched for the nearby card
+      db
+        .from('hay_listings')
+        .select('id, counties(lat, lon)')
+        .eq('active', true)
+        .gt('expires_at', new Date().toISOString()),
     ])
 
     history            = historyRes.data ?? []
@@ -423,6 +446,14 @@ export default async function DashboardPage({
     hprcc30dUpdated        = fmtLM(hprcc30dHead)
     hprcc60dUpdated        = fmtLM(hprcc60dHead)
 
+    if (selectedCounty.lat != null && selectedCounty.lon != null) {
+      hayNearbyCount = (hayListingsRes.data ?? []).filter(l => {
+        const c = l.counties as unknown as { lat: number | null; lon: number | null } | null
+        if (!c?.lat || !c?.lon) return false
+        return haversineMiles(selectedCounty.lat!, selectedCounty.lon!, c.lat, c.lon) <= 200
+      }).length
+    }
+
     if (nationalMap?.release_date) {
       const region = getUsdmRegion(selectedCounty.state)
       if (region !== 'national') {
@@ -435,6 +466,14 @@ export default async function DashboardPage({
   }
 
   const latest = history[0] ?? null
+
+  // Default estimate for the triggered banner (100 head beef_adult)
+  const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
+    ? estimatePayment('beef_adult', 100, lfpResult.payments).grossEstimate
+    : 0
+
+  // D2+ drought flag for hay card context
+  const latestInDrought = (latest?.d2 ?? 0) > 0
 
   return (
     <div className="min-h-screen bg-cream">
@@ -471,6 +510,17 @@ export default async function DashboardPage({
         {/* ── Ranch view (county selected) ──────────────────────────────────── */}
         {selectedCounty && (
           <div className="space-y-6">
+
+            {/* Triggered alert banner — shown above everything when maxTier ≥ 1 */}
+            {lfpResult && lfpResult.maxTier >= 1 && (
+              <TriggeredBanner
+                countyName={selectedCounty.name}
+                maxTier={lfpResult.maxTier}
+                payments={lfpResult.payments}
+                defaultEstimate={bannerDefaultEstimate}
+                grazingEndDate={lfpResult.grazingPeriod.endDate}
+              />
+            )}
 
             {/* County heading + watchlist button */}
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -565,6 +615,50 @@ export default async function DashboardPage({
               fips={selectedCounty.fips}
               countyName={selectedCounty.name}
             />
+
+            {/* Drought-to-hay connection card */}
+            <div className={[
+              'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
+              hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
+            ].join(' ')}>
+              <div className="p-4 sm:p-5">
+                {latestInDrought && (
+                  <p className="mb-3 text-xs font-medium text-rust font-dm-sans">
+                    Drought conditions may affect local feed availability.
+                  </p>
+                )}
+                {hayNearbyCount > 0 ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                        🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
+                      </p>
+                      <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
+                        Sellers nearby — sorted by distance on the hay board
+                      </p>
+                    </div>
+                    <Link
+                      href="/hay"
+                      className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
+                    >
+                      Find hay near you →
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-forest-green/60 font-dm-sans">
+                      No hay listings near this county yet.
+                    </p>
+                    <Link
+                      href="/hay"
+                      className="shrink-0 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:border-forest-green/40 transition-colors"
+                    >
+                      Be the first to post →
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Precipitation vs Normal card */}
             {precipNormal !== null && precipNormal.dailyData.length > 0 && (

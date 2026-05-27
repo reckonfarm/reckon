@@ -15,6 +15,13 @@ import CountySearch from '@/app/components/CountySearch'
 import FarmerToggle from '@/app/components/FarmerToggle'
 import SiteHeader from '@/app/components/SiteHeader'
 
+interface DriestyChip {
+  name:  string
+  state: string
+  fips:  string
+  tier:  number  // highest D tier with coverage (1–4)
+}
+
 async function getLatestNationalMap(): Promise<OfficialMapRecord | null> {
   const db = createServiceClient()
   const { data } = await db
@@ -26,8 +33,61 @@ async function getLatestNationalMap(): Promise<OfficialMapRecord | null> {
   return data?.[0] ?? null
 }
 
+async function getDriestChips(): Promise<DriestyChip[]> {
+  try {
+    const db = createServiceClient()
+    const { data: weekRow } = await db
+      .from('drought_data')
+      .select('week_date')
+      .order('week_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!weekRow) return []
+
+    const { data } = await db
+      .from('drought_data')
+      .select('d1, d2, d3, d4, counties(fips, name, state)')
+      .eq('week_date', weekRow.week_date)
+      .gt('d1', 0)
+      .order('d4', { ascending: false })
+      .order('d3', { ascending: false })
+      .order('d2', { ascending: false })
+      .order('d1', { ascending: false })
+      .limit(6)
+
+    if (!data) return []
+
+    return data.map(row => {
+      const c = row.counties as unknown as { fips: string; name: string; state: string } | null
+      const d4 = row.d4 ?? 0
+      const d3 = row.d3 ?? 0
+      const d2 = row.d2 ?? 0
+      const tier = d4 > 0 ? 4 : d3 > 0 ? 3 : d2 > 0 ? 2 : 1
+      return {
+        name:  c?.name ?? 'Unknown',
+        state: c?.state ?? '',
+        fips:  c?.fips ?? '',
+        tier,
+      }
+    }).filter(c => c.fips)
+  } catch {
+    return []
+  }
+}
+
+const TIER_COLORS: Record<number, string> = {
+  1: 'bg-[#FCD37F] text-[#451A00]',
+  2: 'bg-[#FFAA00] text-[#451A00]',
+  3: 'bg-[#E60000] text-white',
+  4: 'bg-[#730000] text-white',
+}
+
 export default async function Home() {
-  const map = await getLatestNationalMap()
+  const [map, driestChips] = await Promise.all([
+    getLatestNationalMap(),
+    getDriestChips(),
+  ])
 
   return (
     <>
@@ -56,27 +116,26 @@ export default async function Home() {
               </p>
               <CountySearch />
 
-              {/* Quick-pick counties */}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <p className="w-full font-dm-sans text-xs text-forest-green/40">
-                  Try a county:
-                </p>
-                {[
-                  { name: 'Petroleum Co., MT', fips: '30069' },
-                  { name: 'Cascade Co., MT',   fips: '30013' },
-                  { name: 'Custer Co., MT',    fips: '30011' },
-                  { name: 'Armstrong Co., TX', fips: '48011' },
-                  { name: 'Harding Co., SD',   fips: '46063' },
-                ].map(c => (
-                  <Link
-                    key={c.fips}
-                    href={`/dashboard?fips=${c.fips}`}
-                    className="rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 hover:border-forest-green/30 hover:text-forest-green transition-colors"
-                  >
-                    {c.name}
-                  </Link>
-                ))}
-              </div>
+              {/* Quick-pick counties — top 6 driest nationally */}
+              {driestChips.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <p className="w-full font-dm-sans text-xs text-forest-green/40">
+                    Driest counties right now:
+                  </p>
+                  {driestChips.map(c => (
+                    <Link
+                      key={c.fips}
+                      href={`/dashboard?fips=${c.fips}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 hover:border-forest-green/30 hover:text-forest-green transition-colors"
+                    >
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TIER_COLORS[c.tier]}`}>
+                        D{c.tier}
+                      </span>
+                      {c.name}, {c.state}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-5">

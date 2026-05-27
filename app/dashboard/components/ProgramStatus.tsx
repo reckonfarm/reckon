@@ -194,6 +194,17 @@ function buildFsaDate(period: GrazingPeriodEntry | null, field: 'start' | 'end')
   return `${year}-${mmdd}`
 }
 
+// ─── Pulse indicator ─────────────────────────────────────────────────────────
+
+function PulseIndicator() {
+  return (
+    <span className="relative ml-2 inline-flex h-2.5 w-2.5 shrink-0">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-50" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white/80" />
+    </span>
+  )
+}
+
 // ─── Action Cards ────────────────────────────────────────────────────────────
 
 function ActionCards({ year, currentYear }: {
@@ -205,7 +216,7 @@ function ActionCards({ year, currentYear }: {
   const signupClosed = year === 'prior'
 
   return (
-    <div className="space-y-2">
+    <div id="action-cards" className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
         Next Steps
       </p>
@@ -448,12 +459,15 @@ function LivestockPanel({
       >
         {maxTier > 0 ? (
           <div>
-            <p
-              className="font-dm-sans text-xs font-semibold uppercase tracking-wider"
-              style={{ color: style.fg, opacity: 0.8 }}
-            >
-              {droughtLabel(maxTier)}
-            </p>
+            <div className="flex items-center">
+              <p
+                className="font-dm-sans text-xs font-semibold uppercase tracking-wider"
+                style={{ color: style.fg, opacity: 0.8 }}
+              >
+                {droughtLabel(maxTier)}
+              </p>
+              <PulseIndicator />
+            </div>
             <p
               className="mt-1 font-fraunces text-4xl font-semibold tabular-nums sm:text-5xl"
               style={{ color: style.fg }}
@@ -465,6 +479,12 @@ function LivestockPanel({
               style={{ color: style.fg, opacity: 0.85 }}
             >
               monthly LFP payment{payments !== 1 ? 's' : ''} — {tierLabel}
+            </p>
+            <p
+              className="mt-2 font-dm-sans text-sm font-medium"
+              style={{ color: style.fg, opacity: 0.9 }}
+            >
+              You&apos;re triggered. Don&apos;t wait — sign up at your local FSA office.
             </p>
           </div>
         ) : (
@@ -576,9 +596,14 @@ function LivestockPanel({
             {/* Estimate card */}
             {estimate && headCountValid ? (
               <div className="rounded-lg border border-forest-green/10 bg-cream p-3">
-                <p className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-                  {usd(estimate.grossEstimate, 0)}
-                </p>
+                <div className="flex items-baseline gap-2">
+                  <p className="font-fraunces text-3xl font-semibold text-forest-green sm:text-4xl">
+                    {usd(estimate.grossEstimate, 0)}
+                  </p>
+                  <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-[10px] font-semibold text-white">
+                    ✓ triggered
+                  </span>
+                </div>
                 <p className="mt-0.5 text-xs text-forest-green/50 font-dm-sans">
                   2026 FSA rate · head-count{estimate.step2 !== null
                     ? estimate.limitingStep === 2 ? ' · carrying cap is limiting factor' : ' · head count is limiting factor'
