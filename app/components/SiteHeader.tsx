@@ -53,6 +53,12 @@ export default function SiteHeader({ subtitle, center }: Props) {
           >
             My Counties
           </Link>
+          <Link
+            href="/hay"
+            className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+          >
+            Hay
+          </Link>
 
           {user ? (
             <>

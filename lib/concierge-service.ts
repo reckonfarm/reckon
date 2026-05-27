@@ -9,9 +9,11 @@ export interface WatchlistEntry {
   alertLevel: number  // 0-4: fire when any drought at this D-level or above is > 0%
   createdAt: string
   county: {
-    fips: string
-    name: string
+    fips:  string
+    name:  string
     state: string
+    lat:   number | null
+    lon:   number | null
   }
 }
 
@@ -22,18 +24,18 @@ export async function getWatchlist(userId: string): Promise<WatchlistEntry[]> {
 
   const { data, error } = await db
     .from('user_watchlist')
-    .select('id, county_id, alert_level, created_at, counties(fips, name, state)')
+    .select('id, county_id, alert_level, created_at, counties(fips, name, state, lat, lon)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`getWatchlist failed: ${error.message}`)
 
   return (data ?? []).map(row => ({
-    id: row.id,
-    countyId: row.county_id,
+    id:         row.id,
+    countyId:   row.county_id,
     alertLevel: row.alert_level,
-    createdAt: row.created_at,
-    county: row.counties as unknown as { fips: string; name: string; state: string },
+    createdAt:  row.created_at,
+    county:     row.counties as unknown as { fips: string; name: string; state: string; lat: number | null; lon: number | null },
   }))
 }
 
