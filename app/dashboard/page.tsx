@@ -21,6 +21,7 @@ import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
+import DashboardAccordion from './components/DashboardAccordion'
 
 export const dynamic = 'force-dynamic'
 
@@ -523,11 +524,11 @@ export default async function DashboardPage({
           </p>
         )}
 
-        {/* ── Ranch view (county selected) ──────────────────────────────────── */}
+        {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
-          <div className="space-y-6">
+          <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
 
-            {/* Triggered alert banner — shown above everything when maxTier ≥ 1 */}
+            {/* LAYER 1 — The answer */}
             {lfpResult && lfpResult.maxTier >= 1 && (
               <TriggeredBanner
                 countyName={selectedCounty.name}
@@ -538,14 +539,14 @@ export default async function DashboardPage({
               />
             )}
 
-            {/* County heading + watchlist button */}
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            {/* County heading */}
+            <div className="flex items-center justify-between pt-2">
               <div>
-                <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-                  {selectedCounty.name}
+                <h1 className="font-fraunces text-2xl font-semibold text-forest-green">
+                  {selectedCounty.name}, {selectedCounty.state}
                 </h1>
-                <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
-                  {selectedCounty.state} · FIPS {selectedCounty.fips}
+                <p className="text-sm text-forest-green/50 font-dm-sans mt-0.5">
+                  FIPS {selectedCounty.fips}
                 </p>
               </div>
               <WatchlistButton
@@ -554,198 +555,221 @@ export default async function DashboardPage({
               />
             </div>
 
-            {/* No data yet */}
-            {!latest && (
-              <div className="rounded-xl border border-forest-green/10 bg-white p-6 text-center">
+            {!history.length && (
+              <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
                 <p className="text-sm text-forest-green/60 font-dm-sans">
-                  No drought data yet for this county. Trigger the ingestion cron to populate it.
+                  No drought data yet for this county.
                 </p>
               </div>
             )}
 
-            {/* Latest reading card */}
-            {latest && (
-              <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                    Latest Reading
-                  </h2>
-                  <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
-                    Week of {formatDate(latest.week_date)}
-                  </span>
-                </div>
-
-                <DroughtBar reading={latest} />
-
-                {/* Compact legend — actual per-category, only categories > 0.5% */}
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
-                  {(() => {
-                    const d0 = latest.d0 ?? 0
-                    const d1 = latest.d1 ?? 0
-                    const d2 = latest.d2 ?? 0
-                    const d3 = latest.d3 ?? 0
-                    const d4 = latest.d4 ?? 0
-                    const items = [
-                      { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
-                      { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
-                      { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
-                      { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
-                      { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
-                    ].filter(c => c.pct > 0.5)
-                    if (items.length === 0) {
-                      return <span className="text-forest-green/40">No drought this week.</span>
-                    }
-                    return items.map((c, i) => (
-                      <span key={i} className="inline-flex items-center gap-1">
-                        {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
-                        <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
-                        {c.label} {c.pct.toFixed(1)}%
-                      </span>
-                    ))
-                  })()}
-                </div>
-
-                <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
-                  Source:{' '}
-                  <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
-                    U.S. Drought Monitor
-                  </a>
-                </p>
-              </div>
-            )}
-
-            {/* 3-year drought history chart */}
-            {threeYearHistory.length > 0 && (
-              <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
-            )}
-
-            {/* 52-week trend chart */}
             {history.length > 0 && (
-              <DroughtTrendChart history={history} countyName={selectedCounty.name} />
-            )}
+              <>
+                {/* LAYER 2 — The why (compact cards, always visible) */}
+                <div className="space-y-3">
 
-            {/* Program Status — LFP eligibility and row crop programs */}
-            <ProgramStatus
-              eligibility={lfpResult}
-              priorYearEligibility={priorYearLfpResult}
-              fips={selectedCounty.fips}
-              countyName={selectedCounty.name}
-            />
+                  {/* Current conditions card */}
+                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
+                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Current conditions</p>
+                    {latest && (
+                      <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                          <h2 className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                            Latest Reading
+                          </h2>
+                          <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
+                            Week of {formatDate(latest.week_date)}
+                          </span>
+                        </div>
 
-            {/* Drought-to-hay connection card */}
-            <div className={[
-              'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
-              hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
-            ].join(' ')}>
-              <div className="p-4 sm:p-5">
-                {latestInDrought && (
-                  <p className="mb-3 text-xs font-medium text-rust font-dm-sans">
-                    Drought conditions may affect local feed availability.
-                  </p>
-                )}
-                {hayNearbyCount > 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                        🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
-                      </p>
-                      <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
-                        Sellers nearby — sorted by distance on the hay board
-                      </p>
+                        <DroughtBar reading={latest} />
+
+                        {/* Compact legend — actual per-category, only categories > 0.5% */}
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
+                          {(() => {
+                            const d0 = latest.d0 ?? 0
+                            const d1 = latest.d1 ?? 0
+                            const d2 = latest.d2 ?? 0
+                            const d3 = latest.d3 ?? 0
+                            const d4 = latest.d4 ?? 0
+                            const items = [
+                              { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
+                              { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
+                              { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
+                              { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
+                              { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
+                            ].filter(c => c.pct > 0.5)
+                            if (items.length === 0) {
+                              return <span className="text-forest-green/40">No drought this week.</span>
+                            }
+                            return items.map((c, i) => (
+                              <span key={i} className="inline-flex items-center gap-1">
+                                {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
+                                <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
+                                {c.label} {c.pct.toFixed(1)}%
+                              </span>
+                            ))
+                          })()}
+                        </div>
+
+                        <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+                          Source:{' '}
+                          <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
+                            U.S. Drought Monitor
+                          </a>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rainfall vs normal card */}
+                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
+                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
+                    <PrecipVsNormalPanel data={precipNormal} />
+                  </div>
+
+                  {/* Hay nearby card */}
+                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
+                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Hay nearby</p>
+                    <div className={[
+                      'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
+                      hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
+                    ].join(' ')}>
+                      <div className="p-4 sm:p-5">
+                        {latestInDrought && (
+                          <p className="mb-3 text-xs font-medium text-rust font-dm-sans">
+                            Drought conditions may affect local feed availability.
+                          </p>
+                        )}
+                        {hayNearbyCount > 0 ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                                🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
+                              </p>
+                              <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
+                                Sellers nearby — sorted by distance on the hay board
+                              </p>
+                            </div>
+                            <Link
+                              href="/hay"
+                              className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
+                            >
+                              Find hay near you →
+                            </Link>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm text-forest-green/60 font-dm-sans">
+                              No hay listings near this county yet.
+                            </p>
+                            <Link
+                              href="/hay"
+                              className="shrink-0 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:border-forest-green/40 transition-colors"
+                            >
+                              Be the first to post →
+                            </Link>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <Link
-                      href="/hay"
-                      className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
-                    >
-                      Find hay near you →
-                    </Link>
                   </div>
-                ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm text-forest-green/60 font-dm-sans">
-                      No hay listings near this county yet.
-                    </p>
-                    <Link
-                      href="/hay"
-                      className="shrink-0 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:border-forest-green/40 transition-colors"
-                    >
-                      Be the first to post →
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* Precipitation vs Normal card */}
-            {precipNormal !== null && precipNormal.dailyData.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
-                <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-                  <h2 className="font-fraunces text-base font-semibold text-forest-green">
-                    Precipitation vs Normal — {selectedCounty.name}
-                  </h2>
                 </div>
-                <div className="p-4 sm:p-6">
-                  <PrecipVsNormalPanel data={precipNormal} />
+
+                {/* LAYER 3 — Deep dive accordions */}
+                <div className="space-y-2 pt-2">
+
+                  <DashboardAccordion
+                    title="Eligibility math"
+                    preview={lfpResult && lfpResult.maxTier >= 1 ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}` : 'Not currently triggered'}
+                  >
+                    {lfpResult && (
+                      <ProgramStatus
+                        eligibility={lfpResult}
+                        priorYearEligibility={priorYearLfpResult}
+                        fips={selectedCounty.fips}
+                        countyName={selectedCounty.name}
+                      />
+                    )}
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Drought history"
+                    preview="3-year and 52-week trend charts"
+                  >
+                    <div className="space-y-6">
+                      <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
+                      <DroughtTrendChart history={history} countyName={selectedCounty.name} />
+                    </div>
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Forecast"
+                    preview="NWS discussion, rainfall outlook, soil moisture"
+                  >
+                    <div className="space-y-6">
+                      <ForecastSection
+                        stateAbbr={selectedCounty.state}
+                        droughtDiscussion={droughtDiscussion}
+                        cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
+                        vhiUpdated={vhiUpdated}
+                        hprcc14dUpdated={hprcc14dUpdated}
+                        hprcc30dUpdated={hprcc30dUpdated}
+                        hprcc60dUpdated={hprcc60dUpdated}
+                      />
+                      <PrecipForecastSection
+                        nwsDiscussion={nwsDiscussion}
+                        wpcUpdated={wpcUpdated}
+                        day814Updated={prcp814Updated}
+                        weeks34Updated={prcpWk34Updated}
+                        monthlyUpdated={prcpMonthlyUpdated}
+                        seasonalUpdated={prcpSeasonalUpdated}
+                      />
+                    </div>
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Regional context"
+                    preview="USDM maps and drought outlook"
+                  >
+                    <div className="space-y-4">
+                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                        <OfficialMap
+                          map={stateMap ?? nationalMap}
+                          title={`USDM — ${selectedCounty.state}`}
+                          note={
+                            stateMap == null && nationalMap != null && regionalMapUrl == null
+                              ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
+                              : undefined
+                          }
+                          regionalMapUrl={regionalMapUrl}
+                        />
+                        <OfficialMap
+                          map={nationalMap}
+                          title="USDM — National"
+                        />
+                        <OfficialMap
+                          map={cpcMonthlyMap}
+                          title="Monthly Drought Outlook"
+                        />
+                        <OfficialMap
+                          map={cpcSeasonalMap}
+                          title="Seasonal Drought Outlook"
+                        />
+                      </div>
+                    </div>
+                  </DashboardAccordion>
+
                 </div>
-              </div>
+
+                {/* FSA disclaimer */}
+                <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
+                  LFP payment estimates are for planning purposes only. Contact your local FSA office for official determinations.
+                </p>
+              </>
             )}
 
-            {/* Official maps row: regional + national + monthly + seasonal */}
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              <OfficialMap
-                map={stateMap ?? nationalMap}
-                title={`USDM — ${selectedCounty.state}`}
-                note={
-                  stateMap == null && nationalMap != null && regionalMapUrl == null
-                    ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
-                    : undefined
-                }
-                regionalMapUrl={regionalMapUrl}
-              />
-              <OfficialMap
-                map={nationalMap}
-                title="USDM — National"
-              />
-              <OfficialMap
-                map={cpcMonthlyMap}
-                title="Monthly Drought Outlook"
-              />
-              <OfficialMap
-                map={cpcSeasonalMap}
-                title="Seasonal Drought Outlook"
-              />
-            </div>
-
-            {/* Conditions & Outlook section */}
-            <ForecastSection
-              stateAbbr={selectedCounty.state}
-              droughtDiscussion={droughtDiscussion}
-              cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
-              vhiUpdated={vhiUpdated}
-              hprcc14dUpdated={hprcc14dUpdated}
-              hprcc30dUpdated={hprcc30dUpdated}
-              hprcc60dUpdated={hprcc60dUpdated}
-            />
-
-            {/* Precipitation Forecast & Deficit section */}
-            <PrecipForecastSection
-              nwsDiscussion={nwsDiscussion}
-              wpcUpdated={wpcUpdated}
-              day814Updated={prcp814Updated}
-              weeks34Updated={prcpWk34Updated}
-              monthlyUpdated={prcpMonthlyUpdated}
-              seasonalUpdated={prcpSeasonalUpdated}
-            />
-
-            {/* FSA disclaimer */}
-            <p className="rounded-lg border border-forest-green/10 bg-white px-4 py-3 text-xs text-forest-green/50 font-dm-sans">
-              Drought data is provided for general awareness only. Your local FSA office makes
-              the final determination for all program eligibility and assistance decisions.
-              Data sources:{' '}
-              <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">U.S. Drought Monitor</a>,{' '}
-              <a href="https://weather.gov" target="_blank" rel="noopener noreferrer" className="underline">NOAA/NWS</a>,{' '}
-              <a href="https://cpc.ncep.noaa.gov" target="_blank" rel="noopener noreferrer" className="underline">NOAA CPC</a>.
-            </p>
           </div>
         )}
       </main>
