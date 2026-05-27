@@ -475,21 +475,20 @@ export default function HayPage() {
             <p className="text-sm text-forest-green/50 font-dm-sans">Loading…</p>
           ) : filtered.length === 0 ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
-              <p className="text-sm text-forest-green/60 font-dm-sans">
-                No listings yet.{' '}
-                {authed ? (
-                  <button
-                    onClick={() => setShowForm(true)}
-                    className="underline hover:text-forest-green"
-                  >
-                    Be the first to post.
-                  </button>
-                ) : (
-                  <Link href="/signin" className="underline hover:text-forest-green">
-                    Sign in to be the first to post.
-                  </Link>
-                )}
+              <p className="font-fraunces text-base font-semibold text-forest-green">
+                No listings in this area yet.
               </p>
+              <p className="mt-2 text-sm text-forest-green/60 font-dm-sans max-w-sm mx-auto">
+                Be the first to post — ranchers in D2+ counties nearby will be notified automatically when you list hay for sale.
+              </p>
+              {!authed && (
+                <Link
+                  href="/signin"
+                  className="mt-4 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70"
+                >
+                  Sign in to post your first listing →
+                </Link>
+              )}
             </div>
           ) : (
             <ul className="space-y-3">
