@@ -53,7 +53,20 @@ export default function WatchlistPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+    <>
+      <header className="sticky top-0 z-50 border-b border-forest-green/10 bg-cream/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="font-fraunces text-2xl font-bold text-forest-green hover:opacity-80 transition-opacity">
+              Reckon
+            </Link>
+            <Link href="/" className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors">
+              ← Back to search
+            </Link>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
         My Counties
       </h1>
@@ -146,5 +159,6 @@ export default function WatchlistPage() {
         )}
       </div>
     </main>
+    </>
   )
 }
