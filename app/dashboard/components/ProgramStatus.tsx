@@ -194,16 +194,152 @@ function buildFsaDate(period: GrazingPeriodEntry | null, field: 'start' | 'end')
   return `${year}-${mmdd}`
 }
 
+// ─── Action Cards ────────────────────────────────────────────────────────────
+
+function ActionCards({ year, currentYear }: {
+  year: 'current' | 'prior'
+  currentYear: number
+}) {
+  const programYear = year === 'current' ? currentYear : currentYear - 1
+  const deadlineYear = programYear + 1
+  const signupClosed = year === 'prior'
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+        Next Steps
+      </p>
+
+      <div className="rounded-xl border border-forest-green/10 bg-cream divide-y divide-forest-green/8">
+
+        {/* Step 1 */}
+        <div className="flex gap-3 p-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+              1. Report your acreage
+            </p>
+            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              File an acreage report for all grazing land where the loss occurred. Required before your application can be approved.
+            </p>
+          </div>
+        </div>
+
+        {/* Step 2 */}
+        <div className="flex gap-3 p-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+              2. Contact your FSA office
+            </p>
+            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              Call or visit your local FSA office to begin your LFP application. Bring livestock inventory records and grazing land documentation.
+            </p>
+            <a href="https://www.farmers.gov/service-center-locator" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+              Find your FSA office →
+            </a>
+          </div>
+        </div>
+
+        {/* Step 3 */}
+        <div className="flex gap-3 p-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+              3. Complete Form CCC-853
+            </p>
+            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              Submit the LFP application with supporting documentation to your FSA county office.
+            </p>
+            <a href="https://www.fsa.usda.gov/Assets/USDA-FSA-Public/usdafiles/Farm-Bill/pdf/ccc853.pdf" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+              Download Form CCC-853 →
+            </a>
+          </div>
+        </div>
+
+        {/* Step 4 — deadline */}
+        <div className="flex gap-3 p-3">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+              4. File by the deadline
+            </p>
+            {signupClosed ? (
+              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+                Applications for {programYear} losses were due March 1, {deadlineYear}. Contact your FSA office if you have not yet enrolled.
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+                Applications for {programYear} losses are due by March 1, {deadlineYear}. Do not wait — FSA offices get busy as the deadline approaches.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Step 5 — form pre-fill hook (future feature) */}
+        <div className="flex gap-3 p-3 bg-forest-green/[0.03] rounded-b-xl">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+              5. Pre-filled application
+            </p>
+            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              Coming soon — Reckon will pre-fill your CCC-853 with your county, drought dates, and livestock data so you walk into your FSA office ready to sign.
+            </p>
+            <span className="mt-1 inline-block rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-semibold text-forest-green/70 font-dm-sans">
+              Coming soon
+            </span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ─── Livestock Panel ─────────────────────────────────────────────────────────
 
 function LivestockPanel({
   eligibility,
   fips,
   countyName,
+  year,
 }: {
   eligibility: LfpEligibilityResult | null
   fips: string
   countyName: string
+  year: 'current' | 'prior'
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -346,6 +482,10 @@ function LivestockPanel({
           </div>
         )}
       </div>
+
+      {maxTier > 0 && (
+        <ActionCards year={year} currentYear={new Date().getFullYear()} />
+      )}
 
       {/* ── Payment calculator ── */}
       {maxTier > 0 && (
@@ -805,7 +945,7 @@ export default function ProgramStatus({
       )}
 
       {mode === 'livestock' && (
-        <LivestockPanel eligibility={activeEligibility} fips={fips} countyName={countyName} />
+        <LivestockPanel eligibility={activeEligibility} fips={fips} countyName={countyName} year={year} />
       )}
       {mode === 'rowcrop' && (
         <RowCropPanel eligibility={activeEligibility} countyName={countyName} />
