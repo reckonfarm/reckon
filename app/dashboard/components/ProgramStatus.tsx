@@ -748,7 +748,7 @@ export default function ProgramStatus({
   const priorYear   = priorYearEligibility?.grazingPeriod.startDate.slice(0, 4) ?? String(new Date().getFullYear() - 1)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">

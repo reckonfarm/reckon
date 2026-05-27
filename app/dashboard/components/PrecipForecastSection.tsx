@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import TabBar from './TabBar'
 import {
   ComposedChart,
   Line,
@@ -257,24 +258,11 @@ export default function PrecipForecastSection({
         </h2>
       </div>
 
-      <div className="border-b border-forest-green/10 overflow-x-auto">
-        <div className="flex min-w-max">
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActive(tab)}
-              className={[
-                'px-4 py-2.5 text-sm font-medium font-dm-sans whitespace-nowrap transition-colors',
-                active === tab
-                  ? 'border-b-2 border-forest-green text-forest-green'
-                  : 'text-forest-green/50 hover:text-forest-green/80',
-              ].join(' ')}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      </div>
+      <TabBar
+        tabs={TABS.map(t => ({ id: t, label: t }))}
+        activeTab={active}
+        onChange={id => setActive(id as Tab)}
+      />
 
       <div className="p-4 sm:p-6">
         {active === 'Local Discussion' && (

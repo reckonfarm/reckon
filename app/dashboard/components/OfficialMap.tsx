@@ -68,7 +68,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm ${className}`}
+      className={`overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm transition-shadow hover:shadow-md ${className}`}
     >
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">{displayTitle}</h2>
