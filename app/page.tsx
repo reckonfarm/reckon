@@ -120,7 +120,7 @@ export default async function Home() {
               {driestChips.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <p className="w-full font-dm-sans text-xs text-forest-green/40">
-                    Driest counties right now:
+                    Tap any county to see its LFP status and payment estimate:
                   </p>
                   {driestChips.map(c => (
                     <Link
@@ -128,9 +128,14 @@ export default async function Home() {
                       href={`/dashboard?fips=${c.fips}`}
                       className="inline-flex items-center gap-1.5 rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 hover:border-forest-green/30 hover:text-forest-green transition-colors"
                     >
-                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${TIER_COLORS[c.tier]}`}>
-                        D{c.tier}
-                      </span>
+                      <span
+                        className="inline-block rounded-full flex-shrink-0"
+                        style={{
+                          width: 8,
+                          height: 8,
+                          background: c.tier === 4 ? '#7B2D00' : c.tier === 3 ? '#C2410C' : c.tier === 2 ? '#D97706' : c.tier === 1 ? '#92400E' : '#78716C'
+                        }}
+                      />
                       {c.name}, {c.state}
                     </Link>
                   ))}
@@ -138,15 +143,6 @@ export default async function Home() {
               )}
             </div>
 
-            <div className="mt-5">
-              <p className="mb-2 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
-                Operation type
-              </p>
-              <FarmerToggle />
-              <p className="mt-2 font-dm-sans text-xs text-forest-green/40">
-                Your selection carries into the dashboard.
-              </p>
-            </div>
           </div>
 
           {/* Right: map */}
