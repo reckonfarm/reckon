@@ -5,40 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-
-interface County {
-  id:    number
-  fips:  string
-  name:  string
-  state: string
-  lat:   number | null
-  lon:   number | null
-}
-
-interface Listing {
-  id:                    number
-  listing_type:          'sell' | 'want' | 'donate'
-  hay_type:              string
-  cutting_number:        number | null
-  bale_type:             string | null
-  bale_weight_lbs:       number | null
-  storage_method:        string | null
-  tonnage:               number | null
-  price_per_ton:         number | null
-  contact:               string
-  description:           string | null
-  haul_radius_miles:     number | null
-  relief_flag:           boolean
-  expires_at:            string
-  created_at:            string
-  hay_test_protein_pct:  number | null
-  hay_test_tdnpct:       number | null
-  hay_test_rfv:          number | null
-  hay_test_moisture_pct: number | null
-  mine:                  boolean
-  counties:              County
-  droughtTier:           number | null
-}
+import type { HayListing, HayCounty } from '@/lib/types/hay'
 
 const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -82,17 +49,17 @@ export default function HayPage() {
   const router = useRouter()
 
   const [authed, setAuthed]         = useState<boolean | null>(null)
-  const [listings, setListings]     = useState<Listing[]>([])
+  const [listings, setListings]     = useState<HayListing[]>([])
   const [listingsLoading, setListingsLoading] = useState(true)
   const [tab, setTab]           = useState<'sell' | 'want'>('sell')
   const [showForm, setShowForm] = useState(false)
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
-  const [removing, setRemoving] = useState<Set<number>>(new Set())
+  const [removing, setRemoving] = useState<Set<string>>(new Set())
 
   // ── Form: Group 1 — core ──────────────────────────────────────────────────
-  const [selectedCounty, setSelectedCounty] = useState<County | null>(null)
+  const [selectedCounty, setSelectedCounty] = useState<HayCounty | null>(null)
   const [countyQuery, setCountyQuery]       = useState('')
-  const [countyResults, setCountyResults]   = useState<County[]>([])
+  const [countyResults, setCountyResults]   = useState<HayCounty[]>([])
   const [countyDropOpen, setCountyDropOpen] = useState(false)
   const [listingType, setListingType]       = useState<'sell' | 'want' | 'donate'>('sell')
   const [hayType, setHayType]               = useState('')
@@ -164,7 +131,7 @@ export default function HayPage() {
     countyTimer.current = setTimeout(async () => {
       const res = await fetch(`/api/counties?search=${encodeURIComponent(countyQuery.trim())}`)
       if (res.ok) {
-        const data: County[] = await res.json()
+        const data: HayCounty[] = await res.json()
         setCountyResults(data)
         setCountyDropOpen(data.length > 0)
       }
@@ -208,7 +175,7 @@ export default function HayPage() {
           bale_weight_lbs:       baleWeightLbs     ? parseInt(baleWeightLbs) : null,
           storage_method:        storageMethod     || null,
           hay_test_protein_pct:  hayTestProtein    ? parseFloat(hayTestProtein)  : null,
-          hay_test_tdnpct:       hayTestTdn        ? parseFloat(hayTestTdn)      : null,
+          hay_test_tdn_pct:      hayTestTdn        ? parseFloat(hayTestTdn)      : null,
           hay_test_rfv:          hayTestRfv        ? parseInt(hayTestRfv)        : null,
           hay_test_moisture_pct: hayTestMoisture   ? parseFloat(hayTestMoisture) : null,
         }),
@@ -228,7 +195,7 @@ export default function HayPage() {
     }
   }
 
-  async function removeListing(id: number) {
+  async function removeListing(id: string) {
     setRemoving(prev => new Set(prev).add(id))
     await fetch('/api/hay', {
       method: 'DELETE',
@@ -543,11 +510,11 @@ export default function HayPage() {
               {filtered.map(l => {
                 const county  = l.counties
                 const daysLeft = Math.max(0, Math.ceil(
-                  (new Date(l.expires_at).getTime() - Date.now()) / 86400000,
+                  (new Date(l.expires_at ?? Date.now()).getTime() - Date.now()) / 86400000,
                 ))
                 const badge = l.droughtTier !== null ? DROUGHT_BADGE[l.droughtTier] : null
                 const dist  =
-                  refPoint && county.lat != null && county.lon != null
+                  refPoint && county != null && county.lat != null && county.lon != null
                     ? Math.round(haversine(refPoint.lat, refPoint.lon, county.lat, county.lon))
                     : null
 
@@ -560,11 +527,11 @@ export default function HayPage() {
 
                 const hasTest =
                   l.hay_test_protein_pct  != null ||
-                  l.hay_test_tdnpct       != null ||
+                  l.hay_test_tdn_pct      != null ||
                   l.hay_test_rfv          != null ||
                   l.hay_test_moisture_pct != null
 
-                const emailContact = isEmail(l.contact)
+                const emailContact = isEmail(l.contact ?? '')
                 const contactHref  = emailContact ? `mailto:${l.contact}` : `tel:${l.contact}`
                 const contactLabel = l.listing_type === 'want'
                   ? 'Contact'
@@ -628,7 +595,7 @@ export default function HayPage() {
 
                         {/* Location */}
                         <p className="mt-1 text-sm text-forest-green/60 font-dm-sans">
-                          {county.name}, {county.state}
+                          {county?.name}, {county?.state}
                           {dist !== null && (
                             <span className="ml-1 text-forest-green/40">· {dist} mi away</span>
                           )}

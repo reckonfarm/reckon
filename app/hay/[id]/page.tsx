@@ -5,46 +5,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-
-interface County {
-  id:    number
-  fips:  string
-  name:  string
-  state: string
-  lat:   number | null
-  lon:   number | null
-}
-
-interface ListingDetail {
-  id:                    number
-  listing_type:          'sell' | 'want' | 'donate'
-  hay_type:              string
-  cutting_number:        number | null
-  bale_type:             string | null
-  bale_weight_lbs:       number | null
-  storage_method:        string | null
-  tonnage:               number | null
-  price_per_ton:         number | null
-  contact:               string
-  description:           string | null
-  haul_radius_miles:     number | null
-  relief_flag:           boolean
-  expires_at:            string
-  created_at:            string
-  hay_test_protein_pct:  number | null
-  hay_test_tdnpct:       number | null
-  hay_test_rfv:          number | null
-  hay_test_moisture_pct: number | null
-  counties:              County
-  droughtTier:           number | null
-  mine:                  boolean
-  seller_since:          string | null
-  seller_listing_count:  number
-  verified_phone:        boolean
-  display_name:          string | null
-  seller_avg_rating:     number | null
-  seller_review_count:   number
-}
+import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
 
 const DROUGHT_LABEL: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1 County', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -163,7 +124,7 @@ function TestRow({ label, value, note }: { label: string; value: string; note: s
 
 export default function HayDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [listing, setListing]   = useState<ListingDetail | null>(null)
+  const [listing, setListing]   = useState<HayListingDetail | null>(null)
   const [loading, setLoading]   = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
@@ -222,19 +183,19 @@ export default function HayDetailPage() {
     )
   }
 
-  const county     = listing.counties
+  const county     = listing.counties ?? null
   const droughtBadge = listing.droughtTier !== null ? DROUGHT_LABEL[listing.droughtTier] : null
-  const emailContact = isEmail(listing.contact)
+  const emailContact = isEmail(listing.contact ?? '')
   const contactHref  = emailContact ? `mailto:${listing.contact}` : `tel:${listing.contact}`
   const contactLabel = listing.listing_type === 'want' ? 'Contact Buyer' : (emailContact ? 'Email Seller' : 'Call Seller')
 
-  const dist = refPoint && county.lat != null && county.lon != null
+  const dist = refPoint && county != null && county.lat != null && county.lon != null
     ? Math.round(haversine(refPoint.lat, refPoint.lon, county.lat, county.lon))
     : null
 
   const hasTest =
     listing.hay_test_protein_pct  != null ||
-    listing.hay_test_tdnpct       != null ||
+    listing.hay_test_tdn_pct      != null ||
     listing.hay_test_rfv          != null ||
     listing.hay_test_moisture_pct != null
 
@@ -272,8 +233,8 @@ export default function HayDetailPage() {
     :                                     { label: 'WANTED',   cls: 'bg-amber-100 text-amber-800 ring-amber-200' }
 
   const droughtContextText = listing.droughtTier !== null
-    ? `${county.name} County is currently in D${listing.droughtTier} drought. Ranchers in this area may need feed urgently.`
-    : `${county.name} County is not currently in drought.`
+    ? `${county?.name ?? ''} County is currently in D${listing.droughtTier} drought. Ranchers in this area may need feed urgently.`
+    : `${county?.name ?? ''} County is not currently in drought.`
 
   return (
     <>
@@ -305,7 +266,7 @@ export default function HayDetailPage() {
             {title}
           </h1>
           <p className="mt-1 text-sm text-forest-green/60 font-dm-sans">
-            {county.name}, {county.state}
+            {county?.name}, {county?.state}
             {dist !== null && (
               <span className="ml-1 text-forest-green/40">· {dist} miles from your watched county</span>
             )}
@@ -356,7 +317,7 @@ export default function HayDetailPage() {
               <DetailRow label="Storage" value={STORAGE_LABELS[listing.storage_method] ?? listing.storage_method} />
             )}
             <DetailRow label="Delivery" value={haulDisplay} />
-            <DetailRow label="Location" value={`${county.name}, ${county.state}`} />
+            <DetailRow label="Location" value={`${county?.name ?? ''}, ${county?.state ?? ''}`} />
             {dist !== null && (
               <DetailRow label="Distance" value={`${dist} miles from your watched county`} />
             )}
@@ -392,11 +353,11 @@ export default function HayDetailPage() {
                   note={moistureNote(listing.hay_test_moisture_pct)}
                 />
               )}
-              {listing.hay_test_tdnpct != null && (
+              {listing.hay_test_tdn_pct != null && (
                 <TestRow
                   label="TDN"
-                  value={`${listing.hay_test_tdnpct}%`}
-                  note={tdnNote(listing.hay_test_tdnpct)}
+                  value={`${listing.hay_test_tdn_pct}%`}
+                  note={tdnNote(listing.hay_test_tdn_pct)}
                 />
               )}
               {listing.hay_test_rfv != null && (
@@ -418,10 +379,10 @@ export default function HayDetailPage() {
           <h2 className="font-fraunces text-base font-semibold text-forest-green mb-2">Drought Context</h2>
           <p className="text-sm font-dm-sans text-forest-green/80">{droughtContextText}</p>
           <Link
-            href={`/dashboard?fips=${county.fips}`}
+            href={`/dashboard?fips=${county?.fips ?? ''}`}
             className="mt-2 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70"
           >
-            View {county.name} drought dashboard →
+            View {county?.name ?? ''} drought dashboard →
           </Link>
         </div>
 
@@ -442,7 +403,7 @@ export default function HayDetailPage() {
           </div>
 
           {/* Star rating or new seller label */}
-          {listing.seller_review_count > 0 ? (
+          {(listing.seller_review_count ?? 0) > 0 ? (
             <p className="text-sm font-dm-sans text-forest-green/80 mb-2">
               {renderStars(listing.seller_avg_rating!)}
               <span className="ml-1 text-forest-green/50">
@@ -473,9 +434,9 @@ export default function HayDetailPage() {
         {/* Footer */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forest-green/40 font-dm-sans">
           <span>{daysAgo(listing.created_at)}</span>
-          <span>Expires {formatExpiry(listing.expires_at)}</span>
+          <span>Expires {formatExpiry(listing.expires_at ?? '')}</span>
           <a
-            href={`mailto:kiehl.preston@gmail.com?subject=Report hay listing %23${listing.id}&body=Listing ID: ${listing.id}%0ACounty: ${county.name}, ${county.state}%0AReason: `}
+            href={`mailto:kiehl.preston@gmail.com?subject=Report hay listing %23${listing.id}&body=Listing ID: ${listing.id}%0ACounty: ${county?.name ?? ''}, ${county?.state ?? ''}%0AReason: `}
             className="hover:text-forest-green/70 transition-colors"
           >
             Report this listing
