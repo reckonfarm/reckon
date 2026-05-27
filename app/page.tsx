@@ -21,46 +21,112 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-cream">
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:py-16">
 
-        <div className="mb-10">
-          <div className="flex items-start justify-between">
-            <h1 className="font-fraunces text-4xl font-semibold text-forest-green sm:text-5xl">
-              Reckon
+        {/* ── Top bar ───────────────────────────────────────────────────────── */}
+        <div className="mb-12 flex items-center justify-between">
+          <Link href="/">
+            <span className="font-fraunces text-xl font-semibold text-forest-green">Reckon</span>
+          </Link>
+          <Link
+            href="/watchlist"
+            className="font-dm-sans text-sm font-medium text-forest-green/60 hover:text-forest-green"
+          >
+            My Counties
+          </Link>
+        </div>
+
+        {/* ── Split hero ────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
+
+          {/* Left: headline + search + toggle */}
+          <div>
+            <h1 className="font-fraunces text-3xl font-semibold leading-tight sm:text-4xl">
+              <span className="text-rust">Know your drought.</span>
+              <br />
+              <span className="text-forest-green">Know your programs.</span>
             </h1>
-            <Link
-              href="/watchlist"
-              className="mt-1.5 font-dm-sans text-sm font-medium text-forest-green/60 hover:text-forest-green"
-            >
-              My Counties
-            </Link>
+
+            <p className="mt-4 font-dm-sans text-base leading-relaxed text-forest-green/60">
+              Real-time drought conditions and FSA disaster program eligibility for every county in America.
+            </p>
+
+            <div className="mt-8">
+              <p className="mb-2 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
+                Find your county
+              </p>
+              <CountySearch />
+            </div>
+
+            <div className="mt-5">
+              <p className="mb-2 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
+                Operation type
+              </p>
+              <FarmerToggle />
+              <p className="mt-2 font-dm-sans text-xs text-forest-green/40">
+                Your selection carries into the dashboard.
+              </p>
+            </div>
           </div>
-          <p className="mt-2 font-dm-sans text-base text-forest-green/60">
-            Drought and FSA program status for your county.
-          </p>
+
+          {/* Right: map — desktop only */}
+          <div className="hidden lg:block">
+            <OfficialMap
+              map={map}
+              title="U.S. Drought Monitor — Current Conditions"
+            />
+          </div>
         </div>
 
-        <OfficialMap
-          map={map}
-          title="U.S. Drought Monitor — Current Conditions"
-          className="mb-8"
-        />
+        {/* ── Feature row ───────────────────────────────────────────────────── */}
+        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-3">
 
-        <div className="mb-8">
-          <p className="mb-2 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
-            Find your county
-          </p>
-          <CountySearch />
+          <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
+              <svg className="h-5 w-5 text-forest-green" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="10" cy="10" r="8" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l2 2 4-4" />
+              </svg>
+            </div>
+            <p className="font-fraunces text-base font-semibold text-forest-green">LFP Eligibility</p>
+            <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+              See exactly which drought tiers your county has triggered and your estimated payment.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
+              <svg className="h-5 w-5 text-forest-green" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <polyline points="2,14 7,9 11,12 18,5" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="2" y1="17" x2="18" y2="17" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="font-fraunces text-base font-semibold text-forest-green">52-Week Trends</p>
+            <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+              Track drought intensity week by week across the full grazing season.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
+              <svg className="h-5 w-5 text-forest-green" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 3c0 0-6 6.5-6 10a6 6 0 0012 0c0-3.5-6-10-6-10z" />
+              </svg>
+            </div>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Precipitation vs Normal</p>
+            <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+              Compare actual rainfall against 30-year normals from the nearest station.
+            </p>
+          </div>
+
         </div>
 
-        <div>
-          <p className="mb-2 font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
-            Operation type
-          </p>
-          <FarmerToggle />
-          <p className="mt-2 font-dm-sans text-xs text-forest-green/40">
-            Your selection carries into the dashboard.
-          </p>
+        {/* ── Map — mobile only, below feature row ──────────────────────────── */}
+        <div className="mt-8 lg:hidden">
+          <OfficialMap
+            map={map}
+            title="U.S. Drought Monitor — Current Conditions"
+          />
         </div>
 
       </div>
