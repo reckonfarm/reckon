@@ -567,15 +567,12 @@ export default function HayPage() {
                   : (emailContact ? 'Email' : 'Call')
 
                 return (
-                  <li key={l.id} className="relative rounded-xl border border-forest-green/10 bg-white shadow-sm">
-                    {/* Stretched link — entire card navigates to detail */}
-                    <Link
-                      href={`/hay/${l.id}`}
-                      className="absolute inset-0 z-0 rounded-xl"
-                      aria-label={`View ${l.hay_type} listing details`}
-                    />
-
-                    <div className="relative z-10 px-4 py-4 sm:px-5 flex flex-wrap items-start justify-between gap-3">
+                  <li
+                    key={l.id}
+                    onClick={() => router.push(`/hay/${l.id}`)}
+                    className="rounded-xl border border-forest-green/10 bg-white shadow-sm cursor-pointer"
+                  >
+                    <div className="px-4 py-4 sm:px-5 flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
 
                         {/* Title + badges row */}
@@ -656,16 +653,16 @@ export default function HayPage() {
                         <a
                           href={contactHref}
                           onClick={e => e.stopPropagation()}
-                          className="relative z-20 rounded-lg bg-forest-green px-3 py-1.5 text-xs font-medium text-cream font-dm-sans hover:bg-forest-green/90 transition-colors"
+                          className="rounded-lg bg-forest-green px-3 py-1.5 text-xs font-medium text-cream font-dm-sans hover:bg-forest-green/90 transition-colors"
                         >
                           {contactLabel}
                         </a>
 
                         {l.mine && (
                           <button
-                            onClick={e => { e.stopPropagation(); e.preventDefault(); removeListing(l.id) }}
+                            onClick={e => { e.stopPropagation(); removeListing(l.id) }}
                             disabled={removing.has(l.id)}
-                            className="relative z-20 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
                           >
                             {removing.has(l.id) ? '…' : 'Remove'}
                           </button>
