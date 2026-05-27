@@ -22,6 +22,8 @@ import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
 
+export const dynamic = 'force-dynamic'
+
 // ─── Haversine ───────────────────────────────────────────────────────────────
 
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
