@@ -96,10 +96,12 @@ export default async function Home() {
               <span className="text-rust">Know your drought.</span>
               <br />
               <span className="text-forest-green">Know your programs.</span>
+              <br />
+              <span className="text-forest-green/60">Find your feed.</span>
             </h1>
 
             <p className="mt-4 font-dm-sans text-base leading-relaxed text-forest-green/60">
-              Real-time drought conditions and FSA disaster program eligibility for every county in America.
+              Real-time drought conditions, FSA disaster program eligibility, and the best place to buy and sell hay — for every county in America.
             </p>
 
             <div className="mt-8">
@@ -147,7 +149,7 @@ export default async function Home() {
         </div>
 
         {/* ── Feature row ───────────────────────────────────────────────────── */}
-        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
           <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
@@ -156,9 +158,9 @@ export default async function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l2 2 4-4" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">LFP Eligibility</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Know your check</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              See exactly which drought tiers your county has triggered and your estimated payment.
+              See exactly how much FSA disaster money your operation qualifies for — before your neighbor finds out.
             </p>
           </div>
 
@@ -169,9 +171,9 @@ export default async function Home() {
                 <line x1="2" y1="17" x2="18" y2="17" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">52-Week Trends</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Track the drought</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              Track drought intensity week by week across the full grazing season.
+              Week-by-week drought intensity for your county over the full grazing season. Know if it's getting better or worse.
             </p>
           </div>
 
@@ -181,10 +183,27 @@ export default async function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 3c0 0-6 6.5-6 10a6 6 0 0012 0c0-3.5-6-10-6-10z" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">Precipitation vs Normal</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Know your rainfall deficit</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              Compare actual rainfall against 30-year normals from the nearest station.
+              How far behind are you? Compare this season's rain against 30-year averages for your exact county.
             </p>
+          </div>
+
+          <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-rust/10">
+              <svg className="h-5 w-5 text-rust" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="8" width="16" height="8" rx="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8V6a2 2 0 012-2h6a2 2 0 012 2v2" />
+                <line x1="10" y1="8" x2="10" y2="16" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Find your feed</p>
+            <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+              Browse hay listings from sellers across the country. Filter by state and variety. Post your own listing in 60 seconds.
+            </p>
+            <Link href="/hay" className="mt-3 inline-block font-dm-sans text-xs font-medium text-rust hover:text-rust/70 transition-colors">
+              Browse hay listings →
+            </Link>
           </div>
 
         </div>
