@@ -3,8 +3,6 @@ import { Resend } from 'resend'
 import { LFP_DISCLAIMER } from './lfp-eligibility'
 import { estimatePayment } from './lfp-payment'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export interface DroughtAlertEmailParams {
   to:                 string
   countyName:         string
@@ -31,6 +29,10 @@ function formatDollars(n: number): string {
 }
 
 export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+  const resend = new Resend(apiKey)
+
   const {
     to, countyName, state, fips, tier, payments,
     tierLabel, grazingPeriodStart, grazingPeriodEnd, weekDate,
