@@ -17,6 +17,14 @@ async function getAuthUserId(): Promise<string | null> {
   return user?.id ?? null
 }
 
+const FULL_LISTING_SELECT = `
+  id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
+  description, haul_radius_miles, relief_flag, expires_at, created_at,
+  cutting_number, bale_type, bale_weight_lbs, storage_method,
+  hay_test_protein_pct, hay_test_tdnpct, hay_test_rfv, hay_test_moisture_pct,
+  counties(id, fips, name, state, lat, lon)
+`
+
 // GET /api/hay — all active listings with county info and drought tier
 export async function GET() {
   const currentUserId = await getAuthUserId()
@@ -31,11 +39,7 @@ export async function GET() {
 
   const { data, error } = await db
     .from('hay_listings')
-    .select(`
-      id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
-      description, haul_radius_miles, relief_flag, expires_at, created_at,
-      counties(id, fips, name, state, lat, lon)
-    `)
+    .select(FULL_LISTING_SELECT)
     .eq('active', true)
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
@@ -67,20 +71,28 @@ export async function GET() {
     listings.map(l => {
       const row = l as typeof l & { user_id: string }
       return {
-        id:                row.id,
-        listing_type:      row.listing_type,
-        hay_type:          row.hay_type,
-        tonnage:           row.tonnage,
-        price_per_ton:     row.price_per_ton,
-        contact:           row.contact,
-        description:       row.description,
-        haul_radius_miles: row.haul_radius_miles,
-        relief_flag:       row.relief_flag,
-        expires_at:        row.expires_at,
-        created_at:        row.created_at,
-        counties:          row.counties,
-        mine:              currentUserId !== null && row.user_id === currentUserId,
-        droughtTier:       tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
+        id:                    row.id,
+        listing_type:          row.listing_type,
+        hay_type:              row.hay_type,
+        tonnage:               row.tonnage,
+        price_per_ton:         row.price_per_ton,
+        contact:               row.contact,
+        description:           row.description,
+        haul_radius_miles:     row.haul_radius_miles,
+        relief_flag:           row.relief_flag,
+        expires_at:            row.expires_at,
+        created_at:            row.created_at,
+        cutting_number:        row.cutting_number,
+        bale_type:             row.bale_type,
+        bale_weight_lbs:       row.bale_weight_lbs,
+        storage_method:        row.storage_method,
+        hay_test_protein_pct:  row.hay_test_protein_pct,
+        hay_test_tdnpct:       row.hay_test_tdnpct,
+        hay_test_rfv:          row.hay_test_rfv,
+        hay_test_moisture_pct: row.hay_test_moisture_pct,
+        counties:              row.counties,
+        mine:                  currentUserId !== null && row.user_id === currentUserId,
+        droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
       }
     }),
   )
@@ -95,6 +107,8 @@ export async function POST(request: NextRequest) {
   const {
     county_id, listing_type, hay_type, contact,
     tonnage, price_per_ton, description, haul_radius_miles, relief_flag,
+    cutting_number, bale_type, bale_weight_lbs, storage_method,
+    hay_test_protein_pct, hay_test_tdnpct, hay_test_rfv, hay_test_moisture_pct,
   } = body ?? {}
 
   if (!county_id || typeof county_id !== 'number') {
@@ -110,20 +124,41 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'contact is required' }, { status: 400 })
   }
 
+  const VALID_BALE_TYPES = ['large_round', 'small_round', 'small_square', '3string_square', '4string_square']
+  const VALID_STORAGE    = ['outside', 'covered', 'barn']
+
+  if (bale_type != null && !VALID_BALE_TYPES.includes(bale_type)) {
+    return Response.json({ error: 'Invalid bale_type' }, { status: 400 })
+  }
+  if (storage_method != null && !VALID_STORAGE.includes(storage_method)) {
+    return Response.json({ error: 'Invalid storage_method' }, { status: 400 })
+  }
+  if (cutting_number != null && ![1, 2, 3].includes(Number(cutting_number))) {
+    return Response.json({ error: 'cutting_number must be 1, 2, or 3' }, { status: 400 })
+  }
+
   const db = createServiceClient()
   const { data, error } = await db
     .from('hay_listings')
     .insert({
-      user_id: userId,
+      user_id:               userId,
       county_id,
       listing_type,
-      hay_type:          hay_type.trim(),
-      contact:           contact.trim(),
-      tonnage:           tonnage != null ? Number(tonnage) : null,
-      price_per_ton:     price_per_ton != null ? Number(price_per_ton) : null,
-      description:       description?.trim() || null,
-      haul_radius_miles: haul_radius_miles != null ? Number(haul_radius_miles) : null,
-      relief_flag:       relief_flag === true,
+      hay_type:              hay_type.trim(),
+      contact:               contact.trim(),
+      tonnage:               tonnage               != null ? Number(tonnage)               : null,
+      price_per_ton:         price_per_ton         != null ? Number(price_per_ton)         : null,
+      description:           description?.trim()   || null,
+      haul_radius_miles:     haul_radius_miles     != null ? Number(haul_radius_miles)     : null,
+      relief_flag:           relief_flag === true,
+      cutting_number:        cutting_number        != null ? Number(cutting_number)        : null,
+      bale_type:             bale_type             ?? null,
+      bale_weight_lbs:       bale_weight_lbs       != null ? Number(bale_weight_lbs)       : null,
+      storage_method:        storage_method        ?? null,
+      hay_test_protein_pct:  hay_test_protein_pct  != null ? Number(hay_test_protein_pct)  : null,
+      hay_test_tdnpct:       hay_test_tdnpct       != null ? Number(hay_test_tdnpct)       : null,
+      hay_test_rfv:          hay_test_rfv          != null ? Number(hay_test_rfv)          : null,
+      hay_test_moisture_pct: hay_test_moisture_pct != null ? Number(hay_test_moisture_pct) : null,
     })
     .select('id')
     .single()
