@@ -288,6 +288,22 @@ export default function HayPage() {
             </p>
           </div>
 
+          {/* List / Map toggle */}
+          <div className="flex items-center gap-1 rounded-lg border border-forest-green/20 bg-white p-1">
+            <Link
+              href="/hay"
+              className="rounded-md px-3 py-1 font-dm-sans text-xs font-medium text-forest-green bg-forest-green/8"
+            >
+              List
+            </Link>
+            <Link
+              href="/hay/map"
+              className="rounded-md px-3 py-1 font-dm-sans text-xs font-medium text-forest-green/50 hover:text-forest-green transition-colors"
+            >
+              Map
+            </Link>
+          </div>
+
           {authed ? (
             <button
               onClick={() => { setShowForm(v => !v); if (showForm) resetForm() }}
