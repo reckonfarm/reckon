@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
+import SiteHeader from '@/app/components/SiteHeader'
 
 export default function SignInPage() {
   const [email, setEmail]     = useState('')
@@ -31,7 +32,9 @@ export default function SignInPage() {
 
   if (sent) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-cream px-4">
+      <>
+        <SiteHeader />
+        <main className="flex min-h-screen items-center justify-center bg-cream px-4">
         <div className="w-full max-w-sm text-center">
           <p className="font-fraunces text-2xl font-semibold text-forest-green">
             Check your email
@@ -48,11 +51,14 @@ export default function SignInPage() {
           </Link>
         </div>
       </main>
+      </>
     )
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-cream px-4">
+    <>
+      <SiteHeader />
+      <main className="flex min-h-screen items-center justify-center bg-cream px-4">
       <div className="w-full max-w-sm">
         <p className="font-fraunces text-2xl font-semibold text-forest-green">
           Sign in to Reckon
@@ -91,5 +97,6 @@ export default function SignInPage() {
         </Link>
       </div>
     </main>
+    </>
   )
 }
