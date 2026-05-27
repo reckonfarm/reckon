@@ -19,28 +19,28 @@ The drought data feeds the hay matching. The hay network makes the product viral
 4. Insurance Brain — PRF rainfall-index grid modeling, rancher-facing.
 
 ## Current phase
-Phase 1 — COMPLETE
-- Supabase magic-link auth, shared SiteHeader, profiles table
-- Operation profiles with operations table
-- Watchlist migrated to authenticated user_ids
-- Push alerts via Resend with per-release dedup (alert_sent table)
-- Cron scheduled Thursdays 17:00 UTC to match USDM release day
-- vercel.json wired, all migrations run
+Sprint 1 — COMPLETE
+- Hay listing detail page at /hay/[id]
+- Schema v2: cutting, bale type, bale weight, storage, forage
+  test fields (protein, TDN, moisture, RFV)
+- Richer listing cards with quality badges
+- Expanded post form with forage test section
+- Single listing API at /api/hay/[id]
 
-Phase 2 — COMPLETE
-- hay_listings table + hay_alert_sent dedup table (migration 003)
-- GET/POST/DELETE /api/hay with auth, drought tier badge, mine flag
-- /hay page: two-tab board (For Sale / Wanted), inline post form, county search, haversine distance
-- checkHayMatchAlerts() in lib/hay-service.ts: D2+ detection, 200-mile haversine match, Resend plain-text alert, per-listing-user/county/week dedup
-- Wired into Thursday cron via Promise.allSettled (non-fatal)
-- Hay nav link in SiteHeader
+Sprint 2 — COMPLETE
+- Triggered dashboard banner (forest-green, payment estimate,
+  FSA checklist scroll)
+- Pulsing trigger indicator on LFP tier badge
+- Hay nearby card on dashboard (haversine-filtered, D2+ context)
+- Dynamic homepage chips showing top 6 driest counties live
 
-Phase 3 — Operation Ledger (next)
-- Port Fleet Command V9 equipment data into Dryline as the operation equipment ledger
-- Service log per piece of equipment
-- Seed Rate Bible and Spray Rate Brain as operational memory modules
-- Payout history: record each LFP alert sent as a payout event on the operation
-- The switching-cost depth layer — this is what makes leaving hurt
+Sprint 3 — Trust architecture (active)
+- Verified phone for sellers (SMS verification before first post)
+- Member since + listing count on seller profiles and detail pages
+- Post-transaction buyer review system (1-5 stars)
+- Hay test verified badge (seller uploaded lab results)
+- Multi-county ops view on watchlist (combined payment estimate,
+  sortable table, alert preferences per county)
 
 ## Acceptance criteria on every feature
 - Works from the tractor cab on one bar of 3G. Required on every PR, not a someday project.
