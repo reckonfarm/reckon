@@ -749,6 +749,9 @@ export default async function DashboardPage({
                   <DashboardAccordion
                     title="Eligibility math"
                     preview={lfpResult && lfpResult.maxTier >= 1 ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}` : 'Not currently triggered'}
+                    previewAmount={lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
+                    highlight={!!(lfpResult && lfpResult.maxTier >= 1)}
+                    defaultOpen={!!(lfpResult && lfpResult.maxTier >= 1)}
                   >
                     {lfpResult && (
                       <ProgramStatus

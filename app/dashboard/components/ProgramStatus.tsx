@@ -905,6 +905,18 @@ export default function ProgramStatus({
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
 
+      {eligibility && eligibility.maxTier >= 1 && (
+        <div className="mb-6 rounded-xl bg-forest-green px-5 py-4 text-cream">
+          <p className="font-dm-sans text-xs font-medium text-cream/60 uppercase tracking-wide mb-1">Estimated payment</p>
+          <p className="font-fraunces text-3xl font-semibold text-cream">
+            ~${Math.round(estimatePayment('beef_adult', 100, eligibility.payments).grossEstimate).toLocaleString()}
+          </p>
+          <p className="font-dm-sans text-xs text-cream/60 mt-1">
+            Based on 100 head beef cattle · {eligibility.payments} payment{eligibility.payments !== 1 ? 's' : ''} · Tier {eligibility.maxTier}
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <h2 className="font-fraunces text-base font-semibold text-forest-green">
           Program Status
