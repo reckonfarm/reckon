@@ -42,6 +42,8 @@ function ForecastBadge() {
 }
 
 function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null }) {
+  const [expanded, setExpanded] = useState(false)
+
   if (!discussion) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
@@ -59,6 +61,10 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
     .map(p => p.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
 
+  const fullText = paragraphs.join(' ')
+  const previewMatch = fullText.match(/^((?:[^.!?]+[.!?]+){1,2})/)
+  const preview = previewMatch ? previewMatch[1].trim() : fullText.slice(0, 300)
+
   const issued = new Date(discussion.issuanceTime).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
@@ -68,12 +74,24 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
     <div className="space-y-4">
       <ForecastBadge />
       <div className="space-y-3">
-        {paragraphs.map((p, i) => (
-          <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
-            {p}
+        {expanded ? (
+          paragraphs.map((p, i) => (
+            <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+              {p}
+            </p>
+          ))
+        ) : (
+          <p className="text-sm text-forest-green font-dm-sans leading-relaxed">
+            {preview}
           </p>
-        ))}
+        )}
       </div>
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="text-xs font-dm-sans text-forest-green/50 hover:text-forest-green transition-colors"
+      >
+        {expanded ? 'Collapse ↑' : 'Read full discussion ↓'}
+      </button>
       <div className="border-t border-forest-green/10 pt-3">
         <p className="text-xs text-forest-green/50 font-dm-sans">
           NWS Area Forecast Discussion · {discussion.wfo} · Issued {issued}
