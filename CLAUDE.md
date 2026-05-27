@@ -19,9 +19,20 @@ The drought data feeds the hay matching. The hay network makes the product viral
 4. Insurance Brain — PRF rainfall-index grid modeling, rancher-facing.
 
 ## Current phase
-Phase 1 — Finishing the Money Engine.
-- Operation profiles: Supabase Auth (magic link), operations + operation_counties tables, migrate /watchlist to read from profile.
-- Push alerts: email-first via Resend, tier-trigger detection in existing cron, dedupe per USDM release.
+Phase 1 — COMPLETE
+- Supabase magic-link auth, shared SiteHeader, profiles table
+- Operation profiles with operations table
+- Watchlist migrated to authenticated user_ids
+- Push alerts via Resend with per-release dedup (alert_sent table)
+- Cron scheduled Thursdays 17:00 UTC to match USDM release day
+- vercel.json wired, all migrations run
+
+Phase 2 — Hay Network (active)
+- Lean listings board: hay for sale + hay wanted posts
+- Drought-driven matching: alert nearby sellers when a county hits D2+
+- Haul-distance ranking by county proximity
+- No payments day one — connect buyer and seller, they transact offline
+- Donation/relief flag for disaster coordination
 
 ## Acceptance criteria on every feature
 - Works from the tractor cab on one bar of 3G. Required on every PR, not a someday project.
