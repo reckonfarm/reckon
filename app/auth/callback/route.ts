@@ -1,23 +1,26 @@
 import { createServerClient } from '@supabase/ssr'
 import { createServiceClient } from '@/lib/supabase'
-import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
 
+  // Build the redirect response first so we can write session cookies onto it.
+  // Using cookieStore (next/headers) instead would write to a separate response
+  // object and the Set-Cookie headers would never reach the browser.
+  const response = NextResponse.redirect(new URL('/watchlist', request.url))
+
   if (code) {
-    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          getAll() { return cookieStore.getAll() },
+          getAll() { return request.cookies.getAll() },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              response.cookies.set(name, value, options),
             )
           },
         },
@@ -35,5 +38,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(new URL('/watchlist', request.url))
+  return response
 }
