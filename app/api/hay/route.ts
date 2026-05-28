@@ -23,6 +23,7 @@ const FULL_LISTING_SELECT = `
   cutting_number, bale_type, bale_weight_lbs, storage_method,
   hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
   photo_urls,
+  profiles(display_name, verified_phone, total_sales, seller_avg_rating, seller_review_count),
   counties(id, fips, name, state, lat, lon)
 `
 
@@ -99,11 +100,11 @@ export async function GET() {
         counties:              row.counties,
         mine:                  currentUserId !== null && row.user_id === currentUserId,
         droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
-        display_name:          null,
-        verified_phone:        null,
-        seller_listing_count:  null,
-        seller_avg_rating:     null,
-        seller_review_count:   null,
+        display_name:          (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.display_name ?? null,
+        verified_phone:        (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.verified_phone ?? null,
+        seller_listing_count:  (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.total_sales ?? null,
+        seller_avg_rating:     (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.seller_avg_rating ?? null,
+        seller_review_count:   (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.seller_review_count ?? null,
       }
     }),
   )
