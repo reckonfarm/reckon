@@ -62,9 +62,12 @@ export default function SiteHeader({ subtitle, center }: Props) {
 
           {user ? (
             <>
-              <span className="hidden max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans sm:block">
+              <Link
+                href="/profile"
+                className="hidden max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans hover:text-forest-green transition-colors sm:block"
+              >
                 {user.email}
-              </span>
+              </Link>
               <button
                 onClick={signOut}
                 className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
