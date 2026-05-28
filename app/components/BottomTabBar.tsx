@@ -34,6 +34,18 @@ export default function BottomTabBar() {
       ),
     },
     {
+      href: '/radar',
+      label: 'Radar',
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a10 10 0 1 0 10 10"/>
+          <path d="M12 8a6 6 0 1 0 6 6"/>
+          <path d="M12 12l9-9"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+      ),
+    },
+    {
       href: '/watchlist',
       label: 'My Counties',
       icon: (active: boolean) => (

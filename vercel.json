@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/drought-update",
       "schedule": "0 17 * * 4"
+    },
+    {
+      "path": "/api/cron/hay-radar",
+      "schedule": "0 14 * * *"
     }
   ]
 }

@@ -76,6 +76,9 @@ export async function checkHayMatchAlerts(weekDate: string): Promise<HayMatchRes
     (profiles ?? []).map(p => [p.id as string, p.email as string]),
   )
 
+  // TODO: this inline Resend usage predates lib/email.ts. It should eventually be
+  // refactored into a sendHayMatchAlert() in lib/email.ts to share the single email
+  // pattern (see sendDroughtAlert / sendHayRadarMatch). Left unchanged for now.
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return { checked: 0, sent: 0, skipped: 0, errors: ['RESEND_API_KEY not set'] }
   const resend = new Resend(apiKey)

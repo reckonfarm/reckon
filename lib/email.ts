@@ -76,3 +76,60 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
 
   if (error) throw new Error(`Resend error: ${error.message}`)
 }
+
+// ─── Hay Radar match ────────────────────────────────────────────────────────
+
+export interface HayRadarMatchEmailParams {
+  to:          string
+  hayType:     string
+  countyName:  string
+  state:       string
+  pricePerTon: number | null
+  tonnage:     number | null
+  listingType: string          // 'sell' | 'donate'
+  listingId:   number
+  searchLabel: string | null
+}
+
+export async function sendHayRadarMatch(params: HayRadarMatchEmailParams): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+  const resend = new Resend(apiKey)
+
+  const {
+    to, hayType, countyName, state, pricePerTon, tonnage, listingType, listingId, searchLabel,
+  } = params
+
+  const priceLine =
+    listingType === 'donate'
+      ? 'Donation / relief listing'
+      : pricePerTon != null
+        ? `${formatDollars(pricePerTon)}/ton`
+        : 'Price: contact seller'
+
+  const subject = `New hay matches your search: ${hayType} in ${state}`
+
+  const body = [
+    searchLabel
+      ? `A new listing matches your saved search "${searchLabel}":`
+      : 'A new listing matches a search you saved on Dryline Hay Radar:',
+    '',
+    `${hayType} — ${countyName}, ${state}`,
+    priceLine,
+    tonnage != null ? `${tonnage} tons available` : null,
+    '',
+    `View the listing: https://dryline.farm/hay/${listingId}`,
+    '',
+    'You are receiving this because it matched a search you saved on Dryline Hay Radar.',
+    'Manage your searches: https://dryline.farm/radar',
+  ].filter((line): line is string => line !== null).join('\n')
+
+  const { error } = await resend.emails.send({
+    from: 'Dryline Alerts <alerts@dryline.farm>',
+    to,
+    subject,
+    text: body,
+  })
+
+  if (error) throw new Error(`Resend error: ${error.message}`)
+}

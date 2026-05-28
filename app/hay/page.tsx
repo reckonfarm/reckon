@@ -73,6 +73,16 @@ export default function HayPage() {
   const deliverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [sortChosen, setSortChosen] = useState<SortKey | null>(null)
 
+  // ── Hay Radar: save this search ───────────────────────────────────────────
+  const [showSave,     setShowSave]     = useState(false)
+  const [saveLabel,    setSaveLabel]    = useState('')
+  const [saveMaxPrice, setSaveMaxPrice] = useState('')
+  const [saveMaxDist,  setSaveMaxDist]  = useState('')
+  const [saveType,     setSaveType]     = useState<'' | 'sell' | 'donate'>('')
+  const [saving,       setSaving]       = useState(false)
+  const [saveDone,     setSaveDone]     = useState(false)
+  const [saveError,    setSaveError]    = useState('')
+
   const pushFilters = useCallback((st: string, va: string, ty: string) => {
     const p = new URLSearchParams()
     if (st) p.set('state', st)
@@ -370,6 +380,36 @@ export default function HayPage() {
     if (filterType)    p.set('type', filterType)
     if (c)             p.set('deliverTo', c.fips)
     router.replace(`/hay${p.toString() ? '?' + p.toString() : ''}`, { scroll: false })
+  }
+
+  async function saveSearch() {
+    setSaving(true); setSaveError(''); setSaveDone(false)
+    try {
+      const res = await fetch('/api/radar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          state:              filterState || null,
+          hay_type:           filterVariety || null,
+          listing_type:       saveType || null,
+          max_price_per_ton:  saveMaxPrice ? Number(saveMaxPrice) : null,
+          max_distance_miles: saveMaxDist ? Number(saveMaxDist) : null,
+          origin_county_id:   buyerCounty?.id ?? null,
+          label:              saveLabel || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setSaveError((j as { error?: string }).error ?? 'Could not save search.')
+        return
+      }
+      setShowSave(false)
+      setSaveLabel(''); setSaveMaxPrice(''); setSaveMaxDist(''); setSaveType('')
+      setSaveDone(true)
+      setTimeout(() => setSaveDone(false), 3500)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const sellListings = listings.filter(l => l.listing_type !== 'want')
@@ -853,6 +893,82 @@ export default function HayPage() {
                   Clear filters ×
                 </button>
               )}
+
+              {authed ? (
+                <button
+                  onClick={() => { setShowSave(v => !v); setSaveError('') }}
+                  className="rounded-lg border border-forest-green/30 bg-forest-green/5 px-3 py-1.5 font-dm-sans text-xs font-medium text-forest-green hover:bg-forest-green/10 transition-colors"
+                >
+                  {showSave ? 'Cancel' : '🔔 Save this search'}
+                </button>
+              ) : (
+                <Link
+                  href="/signin"
+                  className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs text-forest-green/60 hover:text-forest-green transition-colors"
+                >
+                  Sign in to save this search
+                </Link>
+              )}
+              {saveDone && (
+                <span className="inline-flex items-center font-dm-sans text-xs font-medium text-forest-green">
+                  Saved — see it on <Link href="/radar" className="ml-1 underline">Hay Radar</Link>
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Save-this-search panel */}
+          {showSave && authed && !listingsLoading && listings.length > 0 && (
+            <div className="mb-4 rounded-xl border border-forest-green/15 bg-white px-4 py-4 shadow-sm">
+              <p className="font-dm-sans text-sm font-semibold text-forest-green">Save this search to Hay Radar</p>
+              <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
+                We&apos;ll email you when a new listing matches. Uses your current filters
+                {filterState || filterVariety ? ` (${[filterVariety, filterState].filter(Boolean).join(', ')})` : ' (all listings)'}.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Name (optional)</label>
+                  <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)} maxLength={80}
+                    placeholder="e.g. Alfalfa near home" className={INPUT_CLS} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Listing type</label>
+                  <select value={saveType} onChange={e => setSaveType(e.target.value as '' | 'sell' | 'donate')} className={SELECT_CLS}>
+                    <option value="">Any (sale + donations)</option>
+                    <option value="sell">For sale only</option>
+                    <option value="donate">Donations only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Max price $/ton (optional)</label>
+                  <input type="number" min="0" step="1" value={saveMaxPrice} onChange={e => setSaveMaxPrice(e.target.value)}
+                    placeholder="e.g. 180" className={INPUT_CLS} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">
+                    Max distance, miles {buyerCounty ? `from ${buyerCounty.name}, ${buyerCounty.state}` : ''}
+                  </label>
+                  <input type="number" min="0" step="1" value={saveMaxDist} onChange={e => setSaveMaxDist(e.target.value)}
+                    placeholder={buyerCounty ? 'e.g. 150' : 'Set a county above first'} disabled={!buyerCounty}
+                    className={`${INPUT_CLS} disabled:opacity-50`} />
+                  {!buyerCounty && (
+                    <p className="mt-1 font-dm-sans text-[11px] text-forest-green/40">
+                      Set a &ldquo;Deliver to&rdquo; county above to filter by distance.
+                    </p>
+                  )}
+                </div>
+              </div>
+              {saveError && <p className="mt-2 font-dm-sans text-sm text-rust">{saveError}</p>}
+              <div className="mt-3 flex gap-3">
+                <button onClick={saveSearch} disabled={saving}
+                  className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors">
+                  {saving ? 'Saving…' : 'Save search'}
+                </button>
+                <button onClick={() => { setShowSave(false); setSaveError('') }}
+                  className="rounded-lg border border-forest-green/20 px-5 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream transition-colors">
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
           {listingsLoading ? (
