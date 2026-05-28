@@ -266,7 +266,7 @@ export default function HayDetailPage() {
           <p className="mt-2 text-sm text-forest-green/60 font-dm-sans">
             This listing may have expired or been removed.
           </p>
-          <Link href="/hay" className="mt-4 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70">
+          <Link href={`/hay${deliverToParam ? `?deliverTo=${deliverToParam}` : ''}`} className="mt-4 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70">
             ← Back to Hay Network
           </Link>
         </main>
@@ -343,7 +343,7 @@ export default function HayDetailPage() {
 
         {/* Back link */}
         <Link
-          href="/hay"
+          href={`/hay${deliverToParam ? `?deliverTo=${deliverToParam}` : ''}`}
           className="inline-flex items-center gap-1 text-sm font-dm-sans text-forest-green/60 hover:text-forest-green transition-colors mb-6"
         >
           ← Back to Hay Network
