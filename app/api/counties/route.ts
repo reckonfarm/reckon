@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   let query = db
     .from('counties')
-    .select('id, fips, name, state')
+    .select('id, fips, name, state, lat, lon')
     .order('name')
     .limit(30)
 

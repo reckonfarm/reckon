@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-import type { HayListingDetail } from '@/lib/types/hay'
+import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
+import { deliveredCost, FREIGHT_RATE_PER_TON_MILE, ROAD_CIRCUITY_FACTOR } from '@/lib/freight'
 
 const DROUGHT_LABEL: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1 County', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -127,10 +128,14 @@ function TestRow({ label, value, note }: { label: string; value: string; note: s
 
 export default function HayDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const [listing, setListing]   = useState<HayListingDetail | null>(null)
   const [loading, setLoading]   = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
+  const [refName, setRefName]   = useState<string | null>(null)
+  const [deliverPoint, setDeliverPoint] = useState<{ lat: number; lon: number } | null>(null)
+  const [deliverName, setDeliverName]   = useState<string | null>(null)
   const [authed, setAuthed]     = useState<boolean | null>(null)
 
   // Deal action state
@@ -168,11 +173,32 @@ export default function HayDetailPage() {
           const first = Array.isArray(wl) ? wl[0] : null
           if (first?.county?.lat != null && first?.county?.lon != null) {
             setRefPoint({ lat: first.county.lat, lon: first.county.lon })
+            setRefName(`${first.county.name}, ${first.county.state}`)
           }
         })
         .catch(() => {})
     })
   }, [id, loadListing])
+
+  // Resolve ?deliverTo=fips → buyer county for the delivered-cost breakdown.
+  // Falls back to the watchlist county when no param is set.
+  const deliverToParam = searchParams.get('deliverTo')
+  useEffect(() => {
+    if (!deliverToParam) { setDeliverPoint(null); setDeliverName(null); return }
+    let cancelled = false
+    fetch(`/api/counties?search=${encodeURIComponent(deliverToParam)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: HayCounty[]) => {
+        if (cancelled) return
+        const exact = Array.isArray(rows) ? rows.find(c => c.fips === deliverToParam) : null
+        if (exact && exact.lat != null && exact.lon != null) {
+          setDeliverPoint({ lat: exact.lat, lon: exact.lon })
+          setDeliverName(`${exact.name}, ${exact.state}`)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [deliverToParam])
 
   // ── Deal actions ───────────────────────────────────────────────────────────
   async function runAction(path: string, method: 'POST' | 'DELETE', body?: unknown) {
@@ -256,8 +282,13 @@ export default function HayDetailPage() {
 
   const isSold = listing.sold_at != null
 
-  const dist = refPoint && county != null && county.lat != null && county.lon != null
-    ? Math.round(haversine(refPoint.lat, refPoint.lon, county.lat, county.lon))
+  // Buyer county: explicit ?deliverTo override, else the watchlist county.
+  const buyerPoint = deliverPoint ?? refPoint
+  const buyerName  = deliverName ?? refName
+  const dc = deliveredCost(buyerPoint, listing)
+
+  const dist = buyerPoint && county != null && county.lat != null && county.lon != null
+    ? Math.round(haversine(buyerPoint.lat, buyerPoint.lon, county.lat, county.lon))
     : null
 
   const hasTest =
@@ -483,6 +514,42 @@ export default function HayDetailPage() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Estimated delivered cost — the number a rancher actually decides on */}
+        {dc && (
+          <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
+            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-1">Estimated delivered cost</h2>
+            <p className="font-fraunces text-3xl font-semibold text-forest-green leading-none">
+              ${dc.delivered}
+              <span className="ml-1.5 font-dm-sans text-base font-medium text-forest-green/60">/ton est. delivered</span>
+            </p>
+            {buyerName && (
+              <p className="mt-1 text-sm font-dm-sans text-forest-green/60">to {buyerName}</p>
+            )}
+
+            <dl className="mt-4 space-y-2 border-t border-forest-green/8 pt-4">
+              <div className="flex items-center justify-between">
+                <dt className="text-sm font-dm-sans text-forest-green/70">Listing price</dt>
+                <dd className="text-sm font-dm-sans font-medium text-forest-green">${dc.base}/ton</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-sm font-dm-sans text-forest-green/70">Est. freight (~{dc.miles} mi road)</dt>
+                <dd className="text-sm font-dm-sans font-medium text-forest-green">+ ${dc.freightPerTon}/ton</dd>
+              </div>
+              <div className="flex items-center justify-between border-t border-forest-green/8 pt-2">
+                <dt className="text-sm font-dm-sans font-semibold text-forest-green">Est. delivered</dt>
+                <dd className="text-sm font-dm-sans font-semibold text-forest-green">${dc.delivered}/ton</dd>
+              </div>
+            </dl>
+
+            <p className="mt-3 text-xs text-forest-green/45 font-dm-sans leading-snug">
+              Estimate only — not a freight quote. Assumes a full truckload (~28 tons) at
+              {' '}${FREIGHT_RATE_PER_TON_MILE.toFixed(2)}/ton-mile over road miles
+              (straight-line distance × {ROAD_CIRCUITY_FACTOR} for road circuity).
+              Partial loads cost more per ton. Confirm actual freight with your hauler.
+            </p>
           </div>
         )}
 

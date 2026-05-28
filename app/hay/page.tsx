@@ -6,6 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
+import { deliveredCost } from '@/lib/freight'
+
+type SortKey = 'delivered' | 'newest' | 'price'
 
 const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -58,14 +61,26 @@ export default function HayPage() {
   const [filterVariety, setFilterVariety] = useState(searchParams.get('variety') ?? '')
   const [filterType,    setFilterType]    = useState(searchParams.get('type')    ?? '')
 
+  // Deliver-to: explicit county override (URL ?deliverTo=fips or picker),
+  // falling back to the buyer's most-recent watchlist county.
+  const [watchlistCounty, setWatchlistCounty] = useState<HayCounty | null>(null)
+  const [deliverCounty,   setDeliverCounty]   = useState<HayCounty | null>(null)
+  const deliverFipsRef = useRef<string | null>(null)
+  const [editingDeliver,  setEditingDeliver]  = useState(false)
+  const [deliverQuery,    setDeliverQuery]    = useState('')
+  const [deliverResults,  setDeliverResults]  = useState<HayCounty[]>([])
+  const [deliverDropOpen, setDeliverDropOpen] = useState(false)
+  const deliverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [sortChosen, setSortChosen] = useState<SortKey | null>(null)
+
   const pushFilters = useCallback((st: string, va: string, ty: string) => {
     const p = new URLSearchParams()
     if (st) p.set('state', st)
     if (va) p.set('variety', va)
     if (ty) p.set('type', ty)
+    if (deliverFipsRef.current) p.set('deliverTo', deliverFipsRef.current)
     router.replace(`/hay${p.toString() ? '?' + p.toString() : ''}`, { scroll: false })
   }, [router])
-  const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [removing, setRemoving] = useState<Set<string>>(new Set())
 
   // ── Form: Group 1 — core ──────────────────────────────────────────────────
@@ -127,7 +142,14 @@ export default function HayPage() {
           const wl = await fetch('/api/watchlist').then(r => r.ok ? r.json() : [])
           const first = Array.isArray(wl) ? wl[0] : null
           if (first?.county?.lat != null && first?.county?.lon != null) {
-            setRefPoint({ lat: first.county.lat, lon: first.county.lon })
+            setWatchlistCounty({
+              id:    first.countyId ?? 0,
+              fips:  first.county.fips,
+              name:  first.county.name,
+              state: first.county.state,
+              lat:   first.county.lat,
+              lon:   first.county.lon,
+            })
           }
         } catch { /* non-fatal */ }
       }
@@ -155,6 +177,39 @@ export default function HayPage() {
     }, 300)
     return () => { if (countyTimer.current) clearTimeout(countyTimer.current) }
   }, [countyQuery])
+
+  // Resolve ?deliverTo=fips into the explicit deliver county (source of truth,
+  // survives refresh and is shareable). Cleared when the param is absent.
+  const deliverToParam = searchParams.get('deliverTo')
+  useEffect(() => {
+    deliverFipsRef.current = deliverToParam
+    if (!deliverToParam) { setDeliverCounty(null); return }
+    let cancelled = false
+    fetch(`/api/counties?search=${encodeURIComponent(deliverToParam)}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: HayCounty[]) => {
+        if (cancelled) return
+        const exact = Array.isArray(rows) ? rows.find(c => c.fips === deliverToParam) : null
+        if (exact && exact.lat != null && exact.lon != null) setDeliverCounty(exact)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [deliverToParam])
+
+  // Debounced county search for the "Deliver to" picker
+  useEffect(() => {
+    if (deliverTimer.current) clearTimeout(deliverTimer.current)
+    if (!deliverQuery.trim()) { setDeliverResults([]); setDeliverDropOpen(false); return }
+    deliverTimer.current = setTimeout(async () => {
+      const res = await fetch(`/api/counties?search=${encodeURIComponent(deliverQuery.trim())}`)
+      if (res.ok) {
+        const data: HayCounty[] = await res.json()
+        setDeliverResults(data)
+        setDeliverDropOpen(data.length > 0)
+      }
+    }, 300)
+    return () => { if (deliverTimer.current) clearTimeout(deliverTimer.current) }
+  }, [deliverQuery])
 
   async function compressImage(file: File, maxMB = 4): Promise<File> {
     return new Promise((resolve) => {
@@ -294,6 +349,29 @@ export default function HayPage() {
     setRemoving(prev => { const n = new Set(prev); n.delete(id); return n })
   }
 
+  // Effective buyer county: explicit deliver-to override, else watchlist county.
+  const buyerCounty = deliverCounty ?? watchlistCounty
+  const buyerPoint = buyerCounty && buyerCounty.lat != null && buyerCounty.lon != null
+    ? { lat: buyerCounty.lat, lon: buyerCounty.lon }
+    : null
+  // Default to delivered-price sort once a buyer county is known; respect manual choice.
+  const effectiveSort: SortKey = sortChosen ?? (buyerPoint ? 'delivered' : 'newest')
+
+  function applyDeliverCounty(c: HayCounty | null) {
+    setDeliverCounty(c)
+    deliverFipsRef.current = c?.fips ?? null
+    setEditingDeliver(false)
+    setDeliverQuery('')
+    setDeliverResults([])
+    setDeliverDropOpen(false)
+    const p = new URLSearchParams()
+    if (filterState)   p.set('state', filterState)
+    if (filterVariety) p.set('variety', filterVariety)
+    if (filterType)    p.set('type', filterType)
+    if (c)             p.set('deliverTo', c.fips)
+    router.replace(`/hay${p.toString() ? '?' + p.toString() : ''}`, { scroll: false })
+  }
+
   const sellListings = listings.filter(l => l.listing_type !== 'want')
   const wantListings = listings.filter(l => l.listing_type === 'want')
   const baseFiltered = tab === 'sell' ? sellListings : wantListings
@@ -301,6 +379,19 @@ export default function HayPage() {
     .filter(l => !filterState   || l.counties?.state === filterState)
     .filter(l => !filterVariety || (l.hay_type ?? '').toLowerCase() === filterVariety.toLowerCase())
     .filter(l => !filterType    || l.listing_type === filterType)
+
+  // Sort. 'newest' keeps API order (created_at desc). Listings without a
+  // delivered cost (no buyer county / no price / want) sort to the end.
+  const sorted = [...filtered]
+  if (effectiveSort === 'delivered') {
+    sorted.sort((a, b) => {
+      const da = deliveredCost(buyerPoint, a)?.delivered ?? Number.POSITIVE_INFINITY
+      const db = deliveredCost(buyerPoint, b)?.delivered ?? Number.POSITIVE_INFINITY
+      return da - db
+    })
+  } else if (effectiveSort === 'price') {
+    sorted.sort((a, b) => (a.price_per_ton ?? Number.POSITIVE_INFINITY) - (b.price_per_ton ?? Number.POSITIVE_INFINITY))
+  }
 
   const availableStates    = [...new Set(listings.map(l => l.counties?.state).filter(Boolean))].sort() as string[]
   const availableVarieties = [...new Set(listings.map(l => l.hay_type).filter(Boolean))].sort() as string[]
@@ -623,6 +714,77 @@ export default function HayPage() {
           </div>
         )}
 
+        {/* ── Deliver to ───────────────────────────────────────────────────── */}
+        <div className="mt-6 rounded-xl border border-forest-green/10 bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/50">
+              Deliver to
+            </span>
+            {buyerCounty && !editingDeliver ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-lg bg-cream px-3 py-1.5 font-dm-sans text-sm font-medium text-forest-green">
+                  {buyerCounty.name}, {buyerCounty.state}
+                </span>
+                {!deliverCounty && (
+                  <span className="font-dm-sans text-xs text-forest-green/40">your watched county</span>
+                )}
+                <button
+                  onClick={() => { setEditingDeliver(true); setDeliverQuery('') }}
+                  className="font-dm-sans text-xs text-forest-green/60 underline hover:text-forest-green"
+                >
+                  Change
+                </button>
+                {deliverCounty && (
+                  <button
+                    onClick={() => applyDeliverCounty(null)}
+                    className="font-dm-sans text-xs text-forest-green/40 hover:text-forest-green"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="relative min-w-[220px] flex-1">
+                <input
+                  value={deliverQuery}
+                  onChange={e => setDeliverQuery(e.target.value)}
+                  onBlur={() => setTimeout(() => setDeliverDropOpen(false), 150)}
+                  placeholder="Search your county — e.g. Lincoln, NE"
+                  className={INPUT_CLS}
+                />
+                {deliverDropOpen && (
+                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-y-auto rounded-xl border border-forest-green/15 bg-white shadow-lg">
+                    {deliverResults.map(c => (
+                      <li key={c.fips}>
+                        <button
+                          type="button"
+                          onMouseDown={() => applyDeliverCounty(c)}
+                          className="w-full px-4 py-2.5 text-left text-sm font-dm-sans text-forest-green hover:bg-cream"
+                        >
+                          {c.name}, {c.state}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {buyerCounty && editingDeliver && (
+                  <button
+                    onClick={() => { setEditingDeliver(false); setDeliverQuery('') }}
+                    className="mt-1 font-dm-sans text-xs text-forest-green/40 hover:text-forest-green"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+            {buyerPoint
+              ? 'Prices below show est. delivered cost per ton to this county (assumes full truckload).'
+              : 'Set your county to see est. delivered cost per ton — freight included.'}
+          </p>
+        </div>
+
         {/* Tab bar */}
         <div className="mt-6 flex gap-1 rounded-lg bg-forest-green/5 p-1 w-fit">
           {(['sell', 'want'] as const).map(t => (
@@ -671,6 +833,18 @@ export default function HayPage() {
                 <option value="want">Wanted only</option>
               </select>
 
+              <select
+                value={effectiveSort}
+                onChange={e => setSortChosen(e.target.value as SortKey)}
+                className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+              >
+                <option value="delivered" disabled={!buyerPoint}>
+                  {buyerPoint ? 'Delivered price (low→high)' : 'Delivered price — set county'}
+                </option>
+                <option value="newest">Newest</option>
+                <option value="price">Listing price (low→high)</option>
+              </select>
+
               {(filterState || filterVariety || filterType) && (
                 <button
                   onClick={() => { setFilterState(''); setFilterVariety(''); setFilterType(''); pushFilters('', '', '') }}
@@ -711,15 +885,16 @@ export default function HayPage() {
                 </div>
           ) : (
             <ul className="space-y-3">
-              {filtered.map(l => {
+              {sorted.map(l => {
                 const county  = l.counties
                 const daysLeft = Math.max(0, Math.ceil(
                   (new Date(l.expires_at ?? Date.now()).getTime() - Date.now()) / 86400000,
                 ))
                 const badge = l.droughtTier !== null ? DROUGHT_BADGE[l.droughtTier] : null
+                const dc = deliveredCost(buyerPoint, l)
                 const dist  =
-                  refPoint && county != null && county.lat != null && county.lon != null
-                    ? Math.round(haversine(refPoint.lat, refPoint.lon, county.lat, county.lon))
+                  buyerPoint && county != null && county.lat != null && county.lon != null
+                    ? Math.round(haversine(buyerPoint.lat, buyerPoint.lon, county.lat, county.lon))
                     : null
 
                 const priceLabel =
@@ -744,7 +919,7 @@ export default function HayPage() {
                 return (
                   <li
                     key={l.id}
-                    onClick={() => router.push(`/hay/${l.id}`)}
+                    onClick={() => router.push(`/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`)}
                     className="rounded-xl border border-forest-green/10 bg-white shadow-sm cursor-pointer"
                   >
                     {l.photo_urls && l.photo_urls.length > 0 && (
@@ -821,14 +996,30 @@ export default function HayPage() {
                         {/* Location */}
                         <p className="mt-1 text-sm text-forest-green/60 font-dm-sans">
                           {county?.name}, {county?.state}
-                          {dist !== null && (
+                          {dist !== null && !dc && (
                             <span className="ml-1 text-forest-green/40">· {dist} mi away</span>
                           )}
                         </p>
 
-                        {/* Price + tonnage row */}
+                        {/* Price — delivered headline when a buyer county is known */}
+                        {dc ? (
+                          <div className="mt-1.5">
+                            <p className="font-fraunces text-xl font-semibold text-forest-green leading-none">
+                              ${dc.delivered}
+                              <span className="ml-1 font-dm-sans text-xs font-medium text-forest-green/60">/ton est. delivered</span>
+                            </p>
+                            <p className="mt-1 text-xs text-forest-green/50 font-dm-sans">
+                              ${dc.base}/ton hay + ~${dc.freightPerTon}/ton est. freight · ~{dc.miles} mi
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="mt-1.5 font-fraunces text-base font-semibold text-forest-green">
+                            {priceLabel}
+                          </p>
+                        )}
+
+                        {/* Meta row */}
                         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-forest-green/50 font-dm-sans">
-                          <span>{priceLabel}</span>
                           {l.tonnage != null && <span>{l.tonnage} tons</span>}
                           {l.haul_radius_miles != null && (
                             <span>Hauls up to {l.haul_radius_miles} mi</span>
