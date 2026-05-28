@@ -172,7 +172,10 @@ export async function POST(request: NextRequest) {
     .select('id')
     .single()
 
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('hay_listings insert error:', error)
+    return Response.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
+  }
   return Response.json({ ok: true, id: data.id })
 }
 
