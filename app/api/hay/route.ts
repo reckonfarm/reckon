@@ -23,8 +23,7 @@ const FULL_LISTING_SELECT = `
   cutting_number, bale_type, bale_weight_lbs, storage_method,
   hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
   photo_urls,
-  display_name, verified_phone, seller_listing_count,
-  seller_avg_rating, seller_review_count,
+  profiles(display_name, verified_phone),
   counties(id, fips, name, state, lat, lon)
 `
 
@@ -34,14 +33,13 @@ export async function GET() {
   const currentUserId = await getAuthUserId()
   const db = createServiceClient()
 
-  const { data: latest, error: latestError } = await db
+  const { data: latest } = await db
     .from('drought_data')
     .select('week_date')
     .order('week_date', { ascending: false })
     .limit(1)
     .single()
 
-  if (latestError) console.error('drought_data latest error:', latestError)
 
   const { data, error } = await db
     .from('hay_listings')
@@ -51,7 +49,6 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error('hay_listings GET error:', error)
     return Response.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
   }
 
@@ -103,16 +100,15 @@ export async function GET() {
         counties:              row.counties,
         mine:                  currentUserId !== null && row.user_id === currentUserId,
         droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
-        display_name:          (row as unknown as { display_name: string | null }).display_name ?? null,
-        verified_phone:        (row as unknown as { verified_phone: boolean | null }).verified_phone ?? null,
-        seller_listing_count:  (row as unknown as { seller_listing_count: number | null }).seller_listing_count ?? null,
-        seller_avg_rating:     (row as unknown as { seller_avg_rating: number | null }).seller_avg_rating ?? null,
-        seller_review_count:   (row as unknown as { seller_review_count: number | null }).seller_review_count ?? null,
+        display_name:          (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null } | null }).profiles?.display_name ?? null,
+        verified_phone:        (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null } | null }).profiles?.verified_phone ?? null,
+        seller_listing_count:  null,
+        seller_avg_rating:     null,
+        seller_review_count:   null,
       }
     }),
   )
   } catch (e) {
-    console.error('GET /api/hay uncaught error:', e)
     return Response.json({ error: 'Internal server error', message: String(e) }, { status: 500 })
   }
 }

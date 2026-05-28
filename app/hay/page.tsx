@@ -197,7 +197,6 @@ export default function HayPage() {
 
     setSubmitting(true)
     try {
-      console.log('Submitting listing with county_id:', Number(selectedCounty.id), 'type:', typeof Number(selectedCounty.id))
       const res = await fetch('/api/hay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,7 +224,6 @@ export default function HayPage() {
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         const errMsg = (json as { error?: string }).error ?? 'Failed to post listing.'
-        console.error('POST /api/hay failed:', res.status, json)
         setFormError(errMsg)
         return
       }
