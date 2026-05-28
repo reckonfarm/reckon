@@ -30,15 +30,18 @@ const FULL_LISTING_SELECT = `
 
 // GET /api/hay — all active listings with county info and drought tier
 export async function GET() {
+  try {
   const currentUserId = await getAuthUserId()
   const db = createServiceClient()
 
-  const { data: latest } = await db
+  const { data: latest, error: latestError } = await db
     .from('drought_data')
     .select('week_date')
     .order('week_date', { ascending: false })
     .limit(1)
     .single()
+
+  if (latestError) console.error('drought_data latest error:', latestError)
 
   const { data, error } = await db
     .from('hay_listings')
@@ -47,7 +50,10 @@ export async function GET() {
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
 
-  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('hay_listings GET error:', error)
+    return Response.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
+  }
 
   const listings = data ?? []
   if (listings.length === 0) return Response.json([])
@@ -105,6 +111,10 @@ export async function GET() {
       }
     }),
   )
+  } catch (e) {
+    console.error('GET /api/hay uncaught error:', e)
+    return Response.json({ error: 'Internal server error', message: String(e) }, { status: 500 })
+  }
 }
 
 // POST /api/hay — create a listing (auth required)
