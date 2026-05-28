@@ -156,6 +156,38 @@ export default function HayPage() {
     return () => { if (countyTimer.current) clearTimeout(countyTimer.current) }
   }, [countyQuery])
 
+  async function compressImage(file: File, maxMB = 4): Promise<File> {
+    return new Promise((resolve) => {
+      const maxBytes = maxMB * 1024 * 1024
+      if (file.size <= maxBytes) { resolve(file); return }
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const canvas = document.createElement('canvas')
+        let { width, height } = img
+        // Scale down proportionally until estimated size is under limit
+        const scale = Math.sqrt(maxBytes / file.size) * 0.9
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { resolve(file); return }
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }))
+          },
+          'image/jpeg',
+          0.85,
+        )
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+      img.src = url
+    })
+  }
+
   async function uploadPhotos(listingId: string): Promise<string[]> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -163,14 +195,11 @@ export default function HayPage() {
 
     const urls: string[] = []
     for (const file of photoFiles) {
-      const ext = file.name.split('.').pop() ?? 'jpg'
-      const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const compressed = await compressImage(file)
+      const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
       const { error } = await supabase.storage
         .from('hay-photos')
-        .upload(path, file, { contentType: file.type, upsert: false })
-      if (error) {
-        console.error('Storage upload error:', error, 'path:', path, 'userId:', user.id)
-      }
+        .upload(path, compressed, { contentType: 'image/jpeg', upsert: false })
       if (!error) {
         const { data: { publicUrl } } = supabase.storage
           .from('hay-photos')
