@@ -201,7 +201,7 @@ export default function HayPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          county_id:             selectedCounty.id,
+          county_id:             Number(selectedCounty.id),
           listing_type:          listingType,
           hay_type:              hayType.trim(),
           contact:               contact.trim(),
