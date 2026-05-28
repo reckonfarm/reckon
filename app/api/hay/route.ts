@@ -17,15 +17,26 @@ async function getAuthUserId(): Promise<string | null> {
   return user?.id ?? null
 }
 
+// NOTE: profiles is fetched in a separate batched query, NOT embedded here.
+// hay_listings.user_id references auth.users (not profiles), so PostgREST has
+// no FK relationship to embed `profiles(...)` — attempting it 400s the whole
+// query and empties the list. See /api/hay/[id] for the same separate-fetch pattern.
 const FULL_LISTING_SELECT = `
   id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
   description, haul_radius_miles, relief_flag, expires_at, created_at,
   cutting_number, bale_type, bale_weight_lbs, storage_method,
   hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
   photo_urls, claim_status, sold_at,
-  profiles(display_name, verified_phone, total_sales, seller_avg_rating, seller_review_count),
   counties(id, fips, name, state, lat, lon)
 `
+
+interface SellerProfile {
+  display_name:        string | null
+  verified_phone:      boolean | null
+  total_sales:         number | null
+  seller_avg_rating:   number | null
+  seller_review_count: number | null
+}
 
 // GET /api/hay — all active listings with county info and drought tier
 export async function GET() {
@@ -55,6 +66,19 @@ export async function GET() {
   const listings = data ?? []
   if (listings.length === 0) return Response.json([])
 
+  // Seller trust fields — fetched separately and stitched by user_id.
+  // (No FK from hay_listings to profiles, so this can't be a PostgREST embed.)
+  const sellerIds = [...new Set(listings.map(l => (l as typeof l & { user_id: string }).user_id))]
+  const { data: profileRows } = await db
+    .from('profiles')
+    .select('id, display_name, verified_phone, total_sales, seller_avg_rating, seller_review_count')
+    .in('id', sellerIds)
+
+  const profileById: Record<string, SellerProfile> = {}
+  for (const p of (profileRows ?? []) as (SellerProfile & { id: string })[]) {
+    profileById[p.id] = p
+  }
+
   // Drought tier (highest D1–D4 with coverage > 0) per listing county
   let tierByCounty: Record<number, number> = {}
   if (latest) {
@@ -76,6 +100,7 @@ export async function GET() {
   return Response.json(
     listings.map(l => {
       const row = l as typeof l & { user_id: string }
+      const profile = profileById[row.user_id] ?? null
       return {
         id:                    row.id,
         listing_type:          row.listing_type,
@@ -102,11 +127,11 @@ export async function GET() {
         counties:              row.counties,
         mine:                  currentUserId !== null && row.user_id === currentUserId,
         droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
-        display_name:          (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.display_name ?? null,
-        verified_phone:        (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.verified_phone ?? null,
-        seller_listing_count:  (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.total_sales ?? null,
-        seller_avg_rating:     (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.seller_avg_rating ?? null,
-        seller_review_count:   (row as unknown as { profiles: { display_name: string | null; verified_phone: boolean | null; total_sales: number | null; seller_avg_rating: number | null; seller_review_count: number | null } | null }).profiles?.seller_review_count ?? null,
+        display_name:          profile?.display_name ?? null,
+        verified_phone:        profile?.verified_phone ?? null,
+        seller_listing_count:  profile?.total_sales ?? null,
+        seller_avg_rating:     profile?.seller_avg_rating ?? null,
+        seller_review_count:   profile?.seller_review_count ?? null,
       }
     }),
   )
