@@ -1,6 +1,7 @@
 import 'server-only'
 import { createServiceClient } from './supabase'
-import { computeLfpEligibility, defaultGrazingPeriod } from './lfp-eligibility'
+import { computeLfpEligibility, defaultGrazingPeriod, type GrazingPeriod } from './lfp-eligibility'
+import { getGrazingPeriods } from './grazing-periods'
 import { sendDroughtAlert } from './email'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -171,12 +172,42 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
     ),
   ]
 
-  const gp = defaultGrazingPeriod()
   const eligibilityByFips: Record<string, Awaited<ReturnType<typeof computeLfpEligibility>>> = {}
-
+  const gpByFips: Record<string, GrazingPeriod> = {}
   await Promise.allSettled(
     uniqueFips.map(async fips => {
       try {
+        // Use the county-specific FSA grazing period (same as the dashboard).
+        // Fall back to defaultGrazingPeriod() only if no county-specific period exists.
+        const countyPeriods = getGrazingPeriods(fips)
+        let gp: GrazingPeriod
+        if (countyPeriods && Object.keys(countyPeriods).length > 0) {
+          // Use the earliest start and latest end across all forage types for this county.
+          // This gives the broadest window — if ANY forage type qualifies, the alert is valid.
+          const today = new Date()
+          const programYear = today.getUTCMonth() >= 9
+            ? today.getUTCFullYear()
+            : today.getUTCFullYear() - 1
+          const entries = Object.values(countyPeriods)
+          const starts = entries.map(e => `${programYear}-${e.start}`)
+          const ends   = entries.map(e => {
+            // If end month < start month, the period crosses a year boundary
+            const startMonth = parseInt(e.start.split('-')[0])
+            const endMonth   = parseInt(e.end.split('-')[0])
+            const endYear    = endMonth < startMonth ? programYear + 1 : programYear
+            return `${endYear}-${e.end}`
+          })
+          const earliestStart = starts.sort()[0]
+          const latestEnd     = ends.sort().reverse()[0]
+          const todayStr      = today.toISOString().slice(0, 10)
+          gp = {
+            startDate: earliestStart,
+            endDate:   latestEnd < todayStr ? latestEnd : todayStr,
+          }
+        } else {
+          gp = defaultGrazingPeriod()
+        }
+        gpByFips[fips] = gp
         eligibilityByFips[fips] = await computeLfpEligibility(fips, { grazingPeriod: gp })
       } catch {
         eligibilityByFips[fips] = null
@@ -221,8 +252,8 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
         tier:               elig.maxTier,
         payments:           elig.payments,
         tierLabel:          elig.tiers[elig.maxTier - 1].label,
-        grazingPeriodStart: gp.startDate,
-        grazingPeriodEnd:   gp.endDate,
+        grazingPeriodStart: (gpByFips[county.fips] ?? defaultGrazingPeriod()).startDate,
+        grazingPeriodEnd:   (gpByFips[county.fips] ?? defaultGrazingPeriod()).endDate,
         weekDate,
       })
 
