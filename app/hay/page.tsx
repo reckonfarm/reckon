@@ -168,6 +168,9 @@ export default function HayPage() {
       const { error } = await supabase.storage
         .from('hay-photos')
         .upload(path, file, { contentType: file.type, upsert: false })
+      if (error) {
+        console.error('Storage upload error:', error, 'path:', path, 'userId:', user.id)
+      }
       if (!error) {
         const { data: { publicUrl } } = supabase.storage
           .from('hay-photos')
