@@ -2,7 +2,8 @@ import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
 
-// GET /api/hay/[id] — single listing with drought tier and seller trust info
+// GET /api/hay/[id] — single listing with drought tier, seller trust info,
+// and the viewer's relationship to the deal (claim / sold / review state).
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -21,24 +22,39 @@ export async function GET(
     .from('hay_listings')
     .select(`
       id, user_id, listing_type, hay_type, tonnage, price_per_ton, contact,
-      description, haul_radius_miles, relief_flag, expires_at, created_at,
+      description, haul_radius_miles, relief_flag, expires_at, created_at, active,
       cutting_number, bale_type, bale_weight_lbs, storage_method,
       hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct,
       photo_urls,
+      claim_status, buyer_claim_user_id, sold_to_user_id, sold_external, sold_at,
       counties(id, fips, name, state, lat, lon)
     `)
     .eq('id', numId)
-    .eq('active', true)
-    .gt('expires_at', new Date().toISOString())
     .single()
 
   if (error || !data) return Response.json({ error: 'Not found' }, { status: 404 })
 
-  const row = data as typeof data & { user_id: string }
-  const county = data.counties as unknown as { id: number }
-  const sellerUserId = row.user_id
+  const row = data as typeof data & {
+    user_id: string
+    active: boolean
+    claim_status: string
+    buyer_claim_user_id: string | null
+    sold_to_user_id: string | null
+    sold_external: boolean
+    sold_at: string | null
+  }
 
-  // Parallel: drought week + seller profile + listing count + seller ratings
+  // Visibility: sold listings stay viewable (so the parties can review);
+  // otherwise must be active and unexpired. Removed listings 404.
+  const isSold = row.sold_at != null
+  const visible = isSold || (row.active && new Date(row.expires_at ?? 0).getTime() > Date.now())
+  if (!visible) return Response.json({ error: 'Not found' }, { status: 404 })
+
+  const county        = data.counties as unknown as { id: number }
+  const sellerUserId  = row.user_id
+  const buyerUserId   = row.sold_to_user_id
+
+  // Parallel: drought week + seller profile + active listing count + reviews of seller
   const [latestWeekRes, profileRes, listingCountRes, reviewsRes] = await Promise.all([
     db.from('drought_data')
       .select('week_date')
@@ -55,7 +71,7 @@ export async function GET(
       .eq('active', true),
     db.from('hay_reviews')
       .select('rating')
-      .eq('seller_user_id', sellerUserId),
+      .eq('reviewee_user_id', sellerUserId),
   ])
 
   // Drought tier (sequential — needs latest week date)
@@ -75,24 +91,65 @@ export async function GET(
     }
   }
 
-  // Seller info
   const profile = profileRes.data as {
     created_at: string | null
     verified_phone: boolean | null
     display_name: string | null
   } | null
 
-  const sellerSince         = profile?.created_at ?? null
-  const verifiedPhone       = profile?.verified_phone ?? false
-  const displayName         = profile?.display_name ?? null
-  const sellerListingCount  = listingCountRes.count ?? 0
+  const sellerSince        = profile?.created_at ?? null
+  const verifiedPhone      = profile?.verified_phone ?? false
+  const displayName        = profile?.display_name ?? null
+  const sellerListingCount = listingCountRes.count ?? 0
 
-  // Seller ratings
-  const reviews          = (reviewsRes.data ?? []) as { rating: number }[]
+  const reviews           = (reviewsRes.data ?? []) as { rating: number }[]
   const sellerReviewCount = reviews.length
-  const sellerAvgRating  = sellerReviewCount > 0
+  const sellerAvgRating   = sellerReviewCount > 0
     ? reviews.reduce((sum, r) => sum + r.rating, 0) / sellerReviewCount
     : null
+
+  // ── Viewer relationship to the deal ───────────────────────────────────────
+  const isOwner         = currentUserId !== null && currentUserId === sellerUserId
+  const viewerIsClaimant = currentUserId !== null && currentUserId === row.buyer_claim_user_id
+  const viewerIsBuyer   = currentUserId !== null && currentUserId === buyerUserId
+
+  // Owner sees who is claiming (display_name only — never contact info)
+  let buyerClaimName: string | null = null
+  if (isOwner && row.claim_status === 'pending' && row.buyer_claim_user_id) {
+    const { data: c } = await db
+      .from('profiles')
+      .select('display_name')
+      .eq('id', row.buyer_claim_user_id)
+      .single()
+    buyerClaimName = c?.display_name ?? 'A Dryline member'
+  }
+
+  // Review eligibility — only the two parties of a confirmed on-platform deal
+  let viewerCanReview     = false
+  let viewerHasReviewed   = false
+  let counterpartyUserId: string | null = null
+  let counterpartyName: string | null = null
+  let counterpartyRole: 'seller' | 'buyer' | null = null
+  if (
+    row.claim_status === 'confirmed' &&
+    buyerUserId &&
+    !row.sold_external &&
+    (isOwner || viewerIsBuyer)
+  ) {
+    counterpartyUserId = isOwner ? buyerUserId : sellerUserId
+    counterpartyRole   = isOwner ? 'buyer' : 'seller'
+    const [cpRes, existingRes] = await Promise.all([
+      db.from('profiles').select('display_name').eq('id', counterpartyUserId).single(),
+      db.from('hay_reviews')
+        .select('id')
+        .eq('listing_id', numId)
+        .eq('reviewer_user_id', currentUserId!)
+        .maybeSingle(),
+    ])
+    counterpartyName  = cpRes.data?.display_name ?? (counterpartyRole === 'seller' ? 'the seller' : 'the buyer')
+    viewerHasReviewed = !!existingRes.data
+    viewerCanReview   = !existingRes.data
+  }
 
   return Response.json({
     id:                    row.id,
@@ -116,14 +173,28 @@ export async function GET(
     hay_test_moisture_pct: row.hay_test_moisture_pct,
     photo_urls:            (row as unknown as { photo_urls: string[] | null }).photo_urls ?? [],
     counties:              row.counties,
-    mine:                  currentUserId !== null && row.user_id === currentUserId,
+    mine:                  isOwner,
     droughtTier,
+    seller_user_id:        sellerUserId,
     seller_since:          sellerSince,
     seller_listing_count:  sellerListingCount,
     verified_phone:        verifiedPhone,
     display_name:          displayName,
     seller_avg_rating:     sellerAvgRating,
     seller_review_count:   sellerReviewCount,
+    // Deal / claim state
+    claim_status:          row.claim_status,
+    sold_external:         row.sold_external,
+    sold_at:               row.sold_at,
+    // Viewer relationship
+    is_owner:              isOwner,
+    viewer_is_claimant:    viewerIsClaimant,
+    buyer_claim_name:      buyerClaimName,
+    viewer_can_review:     viewerCanReview,
+    viewer_has_reviewed:   viewerHasReviewed,
+    counterparty_user_id:  counterpartyUserId,
+    counterparty_name:     counterpartyName,
+    counterparty_role:     counterpartyRole,
   })
 }
 

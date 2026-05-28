@@ -12,8 +12,8 @@ export async function GET(
   const db = createServiceClient()
   const { data, error } = await db
     .from('hay_reviews')
-    .select('id, rating, comment, created_at')
-    .eq('seller_user_id', userId)
+    .select('id, rating, comment, created_at, verified_deal, reviewee_role')
+    .eq('reviewee_user_id', userId)
     .order('created_at', { ascending: false })
 
   if (error) return Response.json({ error: error.message }, { status: 500 })

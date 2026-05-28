@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
+import type { HayListingDetail } from '@/lib/types/hay'
 
 const DROUGHT_LABEL: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1 County', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -29,6 +29,9 @@ const STORAGE_LABELS: Record<string, string> = {
 }
 
 const ORDINALS: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' }
+
+const INPUT_CLS =
+  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
 
 function isEmail(contact: string) {
   return contact.includes('@')
@@ -128,20 +131,36 @@ export default function HayDetailPage() {
   const [loading, setLoading]   = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [refPoint, setRefPoint] = useState<{ lat: number; lon: number } | null>(null)
+  const [authed, setAuthed]     = useState<boolean | null>(null)
 
-  useEffect(() => {
-    if (!id) return
+  // Deal action state
+  const [acting, setActing]       = useState(false)
+  const [actionError, setActionError] = useState('')
 
-    fetch(`/api/hay/${id}`)
+  // Review modal state
+  const [showReview, setShowReview]   = useState(false)
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewComment, setReviewComment] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+
+  const loadListing = useCallback(() => {
+    return fetch(`/api/hay/${id}`)
       .then(r => {
         if (r.status === 404) { setNotFound(true); return null }
         return r.ok ? r.json() : null
       })
-      .then(data => { if (data) setListing(data) })
-      .finally(() => setLoading(false))
+      .then(data => { if (data) { setListing(data); setNotFound(false) } })
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+
+    loadListing().finally(() => setLoading(false))
 
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
+      setAuthed(!!user)
       if (!user) return
       fetch('/api/watchlist')
         .then(r => r.ok ? r.json() : [])
@@ -153,7 +172,53 @@ export default function HayDetailPage() {
         })
         .catch(() => {})
     })
-  }, [id])
+  }, [id, loadListing])
+
+  // ── Deal actions ───────────────────────────────────────────────────────────
+  async function runAction(path: string, method: 'POST' | 'DELETE', body?: unknown) {
+    setActing(true)
+    setActionError('')
+    try {
+      const res = await fetch(path, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setActionError((json as { error?: string }).error ?? 'Something went wrong.')
+        return false
+      }
+      await loadListing()
+      return true
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function submitReview() {
+    if (reviewRating < 1) { setReviewError('Pick a star rating.'); return }
+    setSubmittingReview(true)
+    setReviewError('')
+    try {
+      const res = await fetch(`/api/hay/${id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setReviewError((json as { error?: string }).error ?? 'Could not submit review.')
+        return
+      }
+      setShowReview(false)
+      setReviewRating(0)
+      setReviewComment('')
+      await loadListing()
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -183,11 +248,13 @@ export default function HayDetailPage() {
     )
   }
 
-  const county     = listing.counties ?? null
+  const county       = listing.counties ?? null
   const droughtBadge = listing.droughtTier !== null ? DROUGHT_LABEL[listing.droughtTier] : null
   const emailContact = isEmail(listing.contact ?? '')
   const contactHref  = emailContact ? `mailto:${listing.contact}` : `tel:${listing.contact}`
   const contactLabel = listing.listing_type === 'want' ? 'Contact Buyer' : (emailContact ? 'Email Seller' : 'Call Seller')
+
+  const isSold = listing.sold_at != null
 
   const dist = refPoint && county != null && county.lat != null && county.lon != null
     ? Math.round(haversine(refPoint.lat, refPoint.lon, county.lat, county.lon))
@@ -203,7 +270,6 @@ export default function HayDetailPage() {
     ? `${listing.hay_type} — ${ORDINALS[listing.cutting_number]} Cutting`
     : listing.hay_type
 
-  // Quantity display
   let quantityDisplay: string | null = null
   if (listing.tonnage != null && listing.bale_weight_lbs != null) {
     const estimatedBales = Math.round((listing.tonnage * 2000) / listing.bale_weight_lbs)
@@ -212,7 +278,6 @@ export default function HayDetailPage() {
     quantityDisplay = `${listing.tonnage} tons`
   }
 
-  // Price display
   const priceDisplay =
     listing.listing_type === 'donate'
       ? 'Donation'
@@ -220,13 +285,11 @@ export default function HayDetailPage() {
         ? `$${listing.price_per_ton.toFixed(0)}/ton`
         : 'Make offer'
 
-  // Haul display
   const haulDisplay =
     listing.haul_radius_miles && listing.haul_radius_miles > 0
       ? `Will deliver up to ${listing.haul_radius_miles} miles`
       : 'Pickup only'
 
-  // Listing type badge
   const typeBadge =
     listing.listing_type === 'sell'    ? { label: 'FOR SALE',  cls: 'bg-rust/10 text-rust ring-rust/20' }
     : listing.listing_type === 'donate' ? { label: 'DONATION', cls: 'bg-forest-green/10 text-forest-green ring-forest-green/20' }
@@ -235,6 +298,12 @@ export default function HayDetailPage() {
   const droughtContextText = listing.droughtTier !== null
     ? `${county?.name ?? ''} County is currently in D${listing.droughtTier} drought. Ranchers in this area may need feed urgently.`
     : `${county?.name ?? ''} County is not currently in drought.`
+
+  // CTA visibility
+  const canClaim =
+    authed && !listing.is_owner && !isSold &&
+    (listing.claim_status === 'none' || listing.claim_status === 'rejected')
+  const claimPending = listing.claim_status === 'pending'
 
   return (
     <>
@@ -255,6 +324,11 @@ export default function HayDetailPage() {
             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold font-dm-sans tracking-wide ring-1 ${typeBadge.cls}`}>
               {typeBadge.label}
             </span>
+            {isSold && (
+              <span className="inline-flex items-center rounded-full bg-forest-green px-2.5 py-0.5 text-xs font-semibold font-dm-sans tracking-wide text-cream">
+                SOLD
+              </span>
+            )}
             {droughtBadge && (
               <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium font-dm-sans ring-1 ${droughtBadge.cls}`}>
                 {droughtBadge.label}
@@ -297,18 +371,120 @@ export default function HayDetailPage() {
           </div>
         )}
 
-        {/* CTA — above the fold on mobile */}
-        <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-          <a
-            href={contactHref}
-            className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 transition-colors"
-          >
-            {contactLabel}
-          </a>
-          <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/70">
-            {listing.contact}
-          </p>
-        </div>
+        {/* ── OWNER: pending-claim banner (must never be missed) ─────────────── */}
+        {listing.is_owner && claimPending && (
+          <div className="mb-5 rounded-xl border-2 border-rust/40 bg-rust/5 px-5 py-4">
+            <p className="font-fraunces text-base font-semibold text-rust">
+              {listing.buyer_claim_name ?? 'A buyer'} claims they purchased this hay
+            </p>
+            <p className="mt-1 text-sm font-dm-sans text-forest-green/70">
+              Confirm if you sold to them — this records the sale and lets you both leave reviews.
+              Reject if you don&apos;t recognize this buyer.
+            </p>
+            {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'claim' })}
+                disabled={acting}
+                className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+              >
+                {acting ? '…' : 'Confirm sale'}
+              </button>
+              <button
+                onClick={() => runAction(`/api/hay/${id}/claim`, 'DELETE')}
+                disabled={acting}
+                className="rounded-lg border border-rust/30 px-4 py-2 font-dm-sans text-sm font-medium text-rust hover:bg-rust/5 disabled:opacity-50 transition-colors"
+              >
+                Reject claim
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Deal action / contact card ────────────────────────────────────── */}
+        {isSold ? (
+          <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
+            <p className="font-fraunces text-base font-semibold text-forest-green">This listing has been sold</p>
+            {listing.viewer_has_reviewed ? (
+              <p className="mt-2 text-sm font-dm-sans text-forest-green/60">
+                Thanks — you&apos;ve reviewed this deal.
+              </p>
+            ) : listing.viewer_can_review ? (
+              <>
+                <p className="mt-2 text-sm font-dm-sans text-forest-green/70">
+                  How did it go with {listing.counterparty_name}? Your review builds trust on the network.
+                </p>
+                {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+                <button
+                  onClick={() => { setShowReview(true); setReviewError('') }}
+                  className="mt-3 rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
+                >
+                  Rate {listing.counterparty_role === 'seller' ? 'the seller' : 'the buyer'}
+                </button>
+              </>
+            ) : (
+              <p className="mt-2 text-sm font-dm-sans text-forest-green/60">
+                This hay is no longer available.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
+            <a
+              href={contactHref}
+              className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 transition-colors"
+            >
+              {contactLabel}
+            </a>
+            <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/70">
+              {listing.contact}
+            </p>
+
+            {/* Buyer claim CTA */}
+            {canClaim && (
+              <div className="mt-4 border-t border-forest-green/8 pt-4">
+                <p className="text-sm font-dm-sans text-forest-green/70">
+                  Already bought this hay? Let the seller confirm the deal so you can both leave reviews.
+                </p>
+                {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+                <button
+                  onClick={() => runAction(`/api/hay/${id}/claim`, 'POST')}
+                  disabled={acting}
+                  className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                >
+                  {acting ? '…' : 'I bought this hay'}
+                </button>
+              </div>
+            )}
+
+            {/* Claimant waiting state */}
+            {listing.viewer_is_claimant && claimPending && (
+              <div className="mt-4 border-t border-forest-green/8 pt-4">
+                <p className="text-sm font-dm-sans text-forest-green/60">
+                  You&apos;ve claimed this purchase — waiting for the seller to confirm. Once they do,
+                  you can leave a review.
+                </p>
+              </div>
+            )}
+
+            {/* Owner mark-sold (no pending claim) */}
+            {listing.is_owner && !claimPending && (
+              <div className="mt-4 border-t border-forest-green/8 pt-4">
+                <p className="text-sm font-dm-sans text-forest-green/70">
+                  Sold this hay off-platform? Mark it sold to close the listing.
+                </p>
+                {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+                <button
+                  onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'external' })}
+                  disabled={acting}
+                  className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                >
+                  {acting ? '…' : 'Mark sold (off-platform)'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Key details */}
         <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
@@ -405,11 +581,19 @@ export default function HayDetailPage() {
         <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-4 shadow-sm">
           <h2 className="font-fraunces text-base font-semibold text-forest-green mb-3">About the Seller</h2>
 
-          {/* Name + verified badge */}
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium font-dm-sans text-forest-green">
-              {listing.display_name ?? 'Dryline Member'}
-            </span>
+            {listing.seller_user_id ? (
+              <Link
+                href={`/sellers/${listing.seller_user_id}`}
+                className="text-sm font-medium font-dm-sans text-forest-green underline hover:text-forest-green/70"
+              >
+                {listing.display_name ?? 'Dryline Member'}
+              </Link>
+            ) : (
+              <span className="text-sm font-medium font-dm-sans text-forest-green">
+                {listing.display_name ?? 'Dryline Member'}
+              </span>
+            )}
             {listing.verified_phone && (
               <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                 ✓ Verified
@@ -417,7 +601,6 @@ export default function HayDetailPage() {
             )}
           </div>
 
-          {/* Star rating or new seller label */}
           {(listing.seller_review_count ?? 0) > 0 ? (
             <p className="text-sm font-dm-sans text-forest-green/80 mb-2">
               {renderStars(listing.seller_avg_rating!)}
@@ -429,7 +612,6 @@ export default function HayDetailPage() {
             <p className="text-xs font-dm-sans text-forest-green/40 mb-2">New seller</p>
           )}
 
-          {/* Member since + listing count */}
           {listing.seller_since && (
             <p className="text-xs font-dm-sans text-forest-green/50">
               Seller on Dryline since {formatSellerSince(listing.seller_since)}
@@ -438,7 +620,6 @@ export default function HayDetailPage() {
             </p>
           )}
 
-          {/* Account age heuristic (Part D) */}
           {listing.seller_since && sellerActivityLabel(listing.seller_since) && (
             <p className="mt-1 text-xs font-dm-sans text-forest-green/40">
               {sellerActivityLabel(listing.seller_since)}
@@ -459,6 +640,64 @@ export default function HayDetailPage() {
         </div>
 
       </main>
+
+      {/* ── Review modal ─────────────────────────────────────────────────────── */}
+      {showReview && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl bg-cream px-5 py-6 shadow-xl">
+            <h2 className="font-fraunces text-lg font-semibold text-forest-green">
+              Rate {listing.counterparty_name ?? (listing.counterparty_role === 'seller' ? 'the seller' : 'the buyer')}
+            </h2>
+            <p className="mt-1 text-sm font-dm-sans text-forest-green/60">
+              Your review is tied to this completed deal and helps other ranchers trade with confidence.
+            </p>
+
+            {/* Stars */}
+            <div className="mt-4 flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setReviewRating(n)}
+                  className={`text-3xl leading-none transition-colors ${
+                    n <= reviewRating ? 'text-rust' : 'text-forest-green/20 hover:text-forest-green/40'
+                  }`}
+                  aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={reviewComment}
+              onChange={e => setReviewComment(e.target.value)}
+              placeholder="How was the hay, the haul, the communication? (optional)"
+              rows={4}
+              maxLength={1000}
+              className={`${INPUT_CLS} mt-4 resize-none`}
+            />
+
+            {reviewError && <p className="mt-2 text-sm font-dm-sans text-rust">{reviewError}</p>}
+
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={submitReview}
+                disabled={submittingReview}
+                className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+              >
+                {submittingReview ? 'Submitting…' : 'Submit review'}
+              </button>
+              <button
+                onClick={() => { setShowReview(false); setReviewError('') }}
+                className="rounded-lg border border-forest-green/20 px-5 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

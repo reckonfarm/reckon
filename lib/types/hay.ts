@@ -36,13 +36,40 @@ export interface HayListing {
   seller_listing_count: number | null
   seller_avg_rating: number | null
   seller_review_count: number | null
+  // Deal state (list view surfaces claim_status for the owner's own cards)
+  claim_status: string | null
+  sold_at: string | null
 }
 
 export interface HayListingDetail extends HayListing {
+  seller_user_id: string | null
   seller_since: string | null
   seller_listing_count: number | null
   verified_phone: boolean | null
   display_name: string | null
   seller_avg_rating: number | null
   seller_review_count: number | null
+  // Deal / claim state
+  claim_status: string
+  sold_external: boolean
+  sold_at: string | null
+  // Viewer relationship to this deal
+  is_owner: boolean
+  viewer_is_claimant: boolean
+  buyer_claim_name: string | null
+  // Review eligibility (post-confirmed-sale)
+  viewer_can_review: boolean
+  viewer_has_reviewed: boolean
+  counterparty_user_id: string | null
+  counterparty_name: string | null
+  counterparty_role: 'seller' | 'buyer' | null
+}
+
+export interface HayReview {
+  id: number
+  rating: number
+  comment: string | null
+  created_at: string
+  verified_deal: boolean
+  reviewee_role: 'seller' | 'buyer' | null
 }

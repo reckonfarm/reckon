@@ -54,9 +54,22 @@ interface ProfileRow {
   seller_review_count: number | null
 }
 
+interface ReviewRow {
+  id:            number
+  rating:        number
+  comment:       string | null
+  created_at:    string
+  verified_deal: boolean
+  reviewee_role: 'seller' | 'buyer' | null
+}
+
 function renderStars(avg: number): string {
   const n = Math.round(avg)
   return '★'.repeat(n) + '☆'.repeat(5 - n)
+}
+
+function reviewDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default async function SellerPage(
@@ -88,15 +101,21 @@ export default async function SellerPage(
     )
   }
 
-  const { data: listingsData } = await db
-    .from('hay_listings')
-    .select('id, listing_type, hay_type, cutting_number, bale_type, tonnage, price_per_ton, storage_method, relief_flag, description, photo_urls, created_at, counties(id, fips, name, state)')
-    .eq('user_id', id)
-    .eq('active', true)
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
+  const [{ data: listingsData }, { data: reviewsData }] = await Promise.all([
+    db.from('hay_listings')
+      .select('id, listing_type, hay_type, cutting_number, bale_type, tonnage, price_per_ton, storage_method, relief_flag, description, photo_urls, created_at, counties(id, fips, name, state)')
+      .eq('user_id', id)
+      .eq('active', true)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false }),
+    db.from('hay_reviews')
+      .select('id, rating, comment, created_at, verified_deal, reviewee_role')
+      .eq('reviewee_user_id', id)
+      .order('created_at', { ascending: false }),
+  ])
 
   const listings = (listingsData ?? []) as unknown as ListingRow[]
+  const reviews  = (reviewsData ?? []) as unknown as ReviewRow[]
 
   // Drought tier (highest D1–D4 with coverage > 0) per listing county
   const tierByCounty: Record<number, number> = {}
@@ -182,6 +201,53 @@ export default async function SellerPage(
             </p>
           )}
         </div>
+
+        {/* Reviews */}
+        <h2 className="mt-8 mb-4 font-fraunces text-lg font-semibold text-forest-green">
+          Reviews
+          {(profile.seller_review_count ?? 0) > 0 && (
+            <span className="ml-2 font-dm-sans text-sm font-normal text-forest-green/50">
+              {renderStars(profile.seller_avg_rating ?? 0)} {(profile.seller_avg_rating ?? 0).toFixed(1)} · {profile.seller_review_count}
+            </span>
+          )}
+        </h2>
+
+        {reviews.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-10 text-center">
+            <p className="font-dm-sans text-sm text-forest-green/50">
+              No reviews yet. Reviews appear after a completed hay deal on Dryline.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {reviews.map(r => (
+              <li key={r.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-dm-sans text-sm text-rust">{renderStars(r.rating)}</span>
+                  {r.verified_deal && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Verified deal
+                    </span>
+                  )}
+                  {r.reviewee_role === 'buyer' && (
+                    <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-forest-green/60 ring-1 ring-forest-green/15">
+                      As a buyer
+                    </span>
+                  )}
+                  <span className="ml-auto font-dm-sans text-xs text-forest-green/40">{reviewDate(r.created_at)}</span>
+                </div>
+                {r.comment && (
+                  <p className="mt-2 font-dm-sans text-sm text-forest-green/80 leading-relaxed whitespace-pre-wrap">
+                    {r.comment}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Active listings */}
         <h2 className="mt-8 mb-4 font-fraunces text-lg font-semibold text-forest-green">
