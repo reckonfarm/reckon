@@ -767,18 +767,18 @@ export default async function DashboardPage({
                     title="Regional context"
                     preview="USDM maps and drought outlook"
                   >
-                    <div className="space-y-4">
-                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                        <OfficialMap
-                          map={stateMap ?? nationalMap}
-                          title={`USDM — ${selectedCounty.state}`}
-                          note={
-                            stateMap == null && nationalMap != null && regionalMapUrl == null
-                              ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
-                              : undefined
-                          }
-                          regionalMapUrl={regionalMapUrl}
-                        />
+                    <div className="space-y-6">
+                      <OfficialMap
+                        map={stateMap ?? nationalMap}
+                        title={`USDM — ${selectedCounty.state}`}
+                        note={
+                          stateMap == null && nationalMap != null && regionalMapUrl == null
+                            ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
+                            : undefined
+                        }
+                        regionalMapUrl={regionalMapUrl}
+                      />
+                      <div className="grid gap-4 sm:grid-cols-3">
                         <OfficialMap
                           map={nationalMap}
                           title="USDM — National"
