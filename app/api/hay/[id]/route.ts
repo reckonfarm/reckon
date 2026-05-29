@@ -157,7 +157,8 @@ export async function GET(
     hay_type:              row.hay_type,
     tonnage:               row.tonnage,
     price_per_ton:         row.price_per_ton,
-    contact:               row.contact,
+    // Contact (raw phone/email) is private — only serialized to the owner.
+    contact:               isOwner ? row.contact : null,
     description:           row.description,
     haul_radius_miles:     row.haul_radius_miles,
     relief_flag:           row.relief_flag,

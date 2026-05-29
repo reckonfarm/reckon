@@ -104,13 +104,15 @@ export async function GET() {
     listings.map(l => {
       const row = l as typeof l & { user_id: string }
       const profile = profileById[row.user_id] ?? null
+      const mine = currentUserId !== null && row.user_id === currentUserId
       return {
         id:                    row.id,
         listing_type:          row.listing_type,
         hay_type:              row.hay_type,
         tonnage:               row.tonnage,
         price_per_ton:         row.price_per_ton,
-        contact:               row.contact,
+        // Contact (raw phone/email) is private — only serialized to the owner.
+        contact:               mine ? row.contact : null,
         description:           row.description,
         haul_radius_miles:     row.haul_radius_miles,
         relief_flag:           row.relief_flag,
@@ -128,7 +130,7 @@ export async function GET() {
         claim_status:          (row as unknown as { claim_status: string | null }).claim_status ?? null,
         sold_at:               (row as unknown as { sold_at: string | null }).sold_at ?? null,
         counties:              row.counties,
-        mine:                  currentUserId !== null && row.user_id === currentUserId,
+        mine,
         droughtTier:           tierByCounty[(row.counties as unknown as CountyRow).id] ?? null,
         display_name:          profile?.display_name ?? null,
         verified_phone:        profile?.verified_phone ?? null,
