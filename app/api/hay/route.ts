@@ -3,6 +3,7 @@ import { after } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
 import { matchNewListing } from '@/lib/hay-radar-service'
+import { routeDemand } from '@/lib/demand-routing-service'
 
 interface CountyRow {
   id:    number
@@ -212,11 +213,16 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: error.message, details: error.details, hint: error.hint }, { status: 500 })
   }
 
-  // Hay Radar: fire-and-forget after the response so it never blocks or fails
-  // the listing POST. A thrown error here is swallowed; the daily cron catches misses.
+  // Fire-and-forget after the response so neither path can block or fail the POST.
+  // A thrown error here is swallowed; the daily cron catches misses.
   const newId = Number(data.id)
   after(async () => {
+    // Hay Radar (no-ops on 'want' internally): push new sell/donate listings to buyers.
     try { await matchNewListing(newId) } catch { /* daily cron is the safety net */ }
+    // Demand routing: push new 'want' listings to opted-in sellers in haul range.
+    if (listing_type === 'want') {
+      try { await routeDemand(newId) } catch { /* daily cron is the safety net */ }
+    }
   })
 
   return Response.json({ ok: true, id: data.id })

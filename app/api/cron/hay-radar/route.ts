@@ -1,10 +1,11 @@
 import type { NextRequest } from 'next/server'
 import { sweepRecentRadar } from '@/lib/hay-radar-service'
+import { sweepRecentDemand } from '@/lib/demand-routing-service'
 
-// Daily safety-net for Hay Radar (vercel.json: 0 14 * * *).
-// The primary path is the inline match-on-create in POST /api/hay; this sweep
-// re-checks sell/donate listings from the last ~48h to catch any inline misses.
-// Dedup means already-emailed (search, listing) pairs are skipped.
+// Daily safety-net for Hay Radar + Demand Routing (vercel.json: 0 13 * * *).
+// Primary paths are the inline after() hooks in POST /api/hay; these sweeps
+// re-check the last ~48h of listings/wants to catch any inline misses.
+// Dedup (and the demand 7-day cap) mean already-handled pairs are skipped.
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization')
   const expected = `Bearer ${process.env.CRON_SECRET}`
@@ -14,8 +15,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await sweepRecentRadar()
-    return Response.json({ ok: true, ...result })
+    const [radar, demand] = await Promise.all([
+      sweepRecentRadar(),
+      sweepRecentDemand(),
+    ])
+    return Response.json({ ok: true, radar, demand })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return Response.json({ ok: false, error: message }, { status: 500 })

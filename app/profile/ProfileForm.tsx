@@ -17,6 +17,7 @@ interface Profile {
   seller_review_count: number | null
   operation_type:      string | null
   region:              string | null
+  demand_routing_opt_in: boolean | null
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -39,6 +40,7 @@ export default function ProfileForm() {
   const [phone, setPhone]               = useState('')
   const [operationType, setOperationType] = useState('')
   const [region, setRegion]             = useState('')
+  const [demandOptIn, setDemandOptIn]   = useState(false)
 
   const [saving, setSaving]   = useState(false)
   const [saved, setSaved]     = useState(false)
@@ -56,6 +58,7 @@ export default function ProfileForm() {
           setPhone(p.phone ?? '')
           setOperationType(p.operation_type ?? '')
           setRegion(p.region ?? '')
+          setDemandOptIn(!!p.demand_routing_opt_in)
         }
       })
       .catch((e: Error) => setLoadError(e.message))
@@ -76,6 +79,7 @@ export default function ProfileForm() {
           phone,
           operation_type: operationType,
           region,
+          demand_routing_opt_in: demandOptIn,
         }),
       })
       if (!res.ok) {
@@ -189,6 +193,27 @@ export default function ProfileForm() {
           />
           <p className="mt-1 text-right text-xs font-dm-sans text-forest-green/40">{bio.length}/500</p>
         </Field>
+
+        {/* Buyer-demand alerts opt-in */}
+        <div className="rounded-xl border border-forest-green/15 bg-cream/60 px-4 py-3">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={demandOptIn}
+              onChange={e => setDemandOptIn(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-forest-green"
+            />
+            <span>
+              <span className="block text-sm font-medium font-dm-sans text-forest-green">
+                Email me when a buyer near me is looking for hay I have
+              </span>
+              <span className="mt-0.5 block text-xs font-dm-sans text-forest-green/55">
+                When a rancher posts a &ldquo;wanted&rdquo; listing for hay you have within haul range,
+                we&apos;ll email you so you can respond. Off by default; at most a few per week. Turn off anytime.
+              </span>
+            </span>
+          </label>
+        </div>
 
         {saveError && (
           <p className="text-sm font-dm-sans text-rust">{saveError}</p>

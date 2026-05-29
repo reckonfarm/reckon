@@ -77,6 +77,52 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
   if (error) throw new Error(`Resend error: ${error.message}`)
 }
 
+// ─── Demand routing (buyer want → opted-in seller) ────────────────────────────
+
+export interface DemandRoutingEmailParams {
+  to:         string
+  hayType:    string
+  countyName: string
+  state:      string
+  tonnage:    number | null
+  miles:      number
+  wantId:     number
+}
+
+export async function sendDemandRoutingMatch(params: DemandRoutingEmailParams): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+  const resend = new Resend(apiKey)
+
+  const { to, hayType, countyName, state, tonnage, miles, wantId } = params
+
+  const wantingLine = tonnage != null
+    ? `is looking for about ${tonnage} tons of ${hayType}`
+    : `is looking for ${hayType}`
+
+  const subject = `A buyer near you is looking for ${hayType}`
+
+  const body = [
+    `A rancher in ${countyName}, ${state} ${wantingLine}.`,
+    `That's roughly ${miles} mile${miles !== 1 ? 's' : ''} from your hay.`,
+    '',
+    'If you can supply it, respond directly to the buyer here:',
+    `https://dryline.farm/hay/${wantId}`,
+    '',
+    "You're receiving this because you opted into buyer-demand alerts.",
+    'Turn these off in your profile: https://dryline.farm/profile',
+  ].join('\n')
+
+  const { error } = await resend.emails.send({
+    from: 'Dryline Alerts <alerts@dryline.farm>',
+    to,
+    subject,
+    text: body,
+  })
+
+  if (error) throw new Error(`Resend error: ${error.message}`)
+}
+
 // ─── Hay Radar match ────────────────────────────────────────────────────────
 
 export interface HayRadarMatchEmailParams {

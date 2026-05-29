@@ -12,7 +12,7 @@ export async function GET() {
   const db = createServiceClient()
   const { data, error } = await db
     .from('profiles')
-    .select('id, email, display_name, bio, phone, verified_phone, total_sales, seller_avg_rating, seller_review_count, operation_type, region')
+    .select('id, email, display_name, bio, phone, verified_phone, total_sales, seller_avg_rating, seller_review_count, operation_type, region, demand_routing_opt_in')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -36,6 +36,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.phone === 'string') update.phone = body.phone.trim().slice(0, 20) || null
   if (typeof body.operation_type === 'string') update.operation_type = body.operation_type.trim().slice(0, 60) || null
   if (typeof body.region === 'string') update.region = body.region.trim().slice(0, 80) || null
+  if (typeof body.demand_routing_opt_in === 'boolean') update.demand_routing_opt_in = body.demand_routing_opt_in
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
