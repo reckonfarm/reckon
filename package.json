@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:report": "playwright show-report e2e/playwright-report"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -22,6 +24,7 @@
     "resend": "^6.12.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
