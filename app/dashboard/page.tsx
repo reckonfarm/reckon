@@ -21,22 +21,11 @@ import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
+import { deliveredCost, type DeliveredCost } from '@/lib/freight'
 import DashboardAccordion from './components/DashboardAccordion'
 import ScrollToTop from './components/ScrollToTop'
 
 export const dynamic = 'force-dynamic'
-
-// ─── Haversine ───────────────────────────────────────────────────────────────
-
-function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 3958.8 // Earth radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
 
 // ─── USDM region lookup ───────────────────────────────────────────────────────
 
@@ -211,7 +200,7 @@ export default async function DashboardPage({
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
   let hayPrimaryVariety: string | null              = null
-  let hayAvgPrice: number | null                    = null
+  let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
   if (selectedCounty) {
     const state = selectedCounty.state
@@ -411,10 +400,10 @@ export default async function DashboardPage({
           .catch(() => [])
       })(),
 
-      // Active hay listings — fetched for the nearby card
+      // Active hay listings — fetched for the nearby + cash-to-hay cards
       db
         .from('hay_listings')
-        .select('id, hay_type, price_per_ton, counties(lat, lon, state)')
+        .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
         .eq('active', true)
         .gt('expires_at', new Date().toISOString()),
     ])
@@ -467,28 +456,38 @@ export default async function DashboardPage({
     hprcc60dUpdated        = fmtLM(hprcc60dHead)
 
     if (selectedCounty.lat != null && selectedCounty.lon != null) {
-      const nearbyListings = (hayListingsRes.data ?? []).filter(l => {
-        const c = l.counties as unknown as { lat: number | null; lon: number | null; state: string | null } | null
-        if (!c?.lat || !c?.lon) return false
-        return haversineMiles(selectedCounty.lat!, selectedCounty.lon!, c.lat, c.lon) <= 200
-      })
-      hayNearbyCount = nearbyListings.length
+      const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
 
-      // Forage outlook data for triggered counties
-      if (nearbyListings.length > 0) {
-        const varieties = nearbyListings
-          .map(l => (l as unknown as { hay_type: string | null }).hay_type)
-          .filter(Boolean) as string[]
+      // One consistent set: ACTIVE SELL listings, priced, with seller coords,
+      // within 200 ROAD miles (haversine × 1.2). deliveredCost enforces sell +
+      // price + coords and returns the road-mile distance we gate and average on.
+      const nearbySell = (hayListingsRes.data ?? [])
+        .map(l => {
+          const row = l as unknown as {
+            hay_type: string | null
+            listing_type: string
+            price_per_ton: number | null
+            counties: { lat: number | null; lon: number | null } | null
+          }
+          return { hayType: row.hay_type, dc: deliveredCost(buyer, row) }
+        })
+        .filter((x): x is { hayType: string | null; dc: DeliveredCost } =>
+          x.dc !== null && x.dc.miles <= 200,
+        )
+
+      hayNearbyCount = nearbySell.length
+
+      if (nearbySell.length > 0) {
+        // Most common hay variety among the nearby sell listings
         const varietyCounts: Record<string, number> = {}
-        for (const v of varieties) varietyCounts[v] = (varietyCounts[v] ?? 0) + 1
+        for (const { hayType } of nearbySell) {
+          if (hayType) varietyCounts[hayType] = (varietyCounts[hayType] ?? 0) + 1
+        }
         hayPrimaryVariety = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
 
-        const prices = nearbyListings
-          .map(l => (l as unknown as { price_per_ton: number | null }).price_per_ton)
-          .filter((p): p is number => p !== null)
-        hayAvgPrice = prices.length > 0
-          ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-          : null
+        // Average DELIVERED price/ton (not raw price) — matches the delivered framing
+        const sum = nearbySell.reduce((acc, { dc }) => acc + dc.delivered, 0)
+        hayAvgPrice = Math.round(sum / nearbySell.length)
       }
     }
 
@@ -512,6 +511,13 @@ export default async function DashboardPage({
 
   // D2+ drought flag for hay card context
   const latestInDrought = (latest?.d2 ?? 0) > 0
+
+  // Cash-to-hay: how many tons the estimated LFP check buys at the average
+  // delivered price nearby. Honest only when both the estimate and a real
+  // delivered average exist; otherwise null → soft browse fallback.
+  const cashToHayTons = (bannerDefaultEstimate > 0 && hayAvgPrice != null && hayAvgPrice > 0)
+    ? Math.round(bannerDefaultEstimate / hayAvgPrice)
+    : null
 
   return (
     <div className="min-h-screen bg-cream">
@@ -688,7 +694,7 @@ export default async function DashboardPage({
                           </div>
                         </div>
                         <Link
-                          href={`/hay?state=${selectedCounty.state}`}
+                          href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
                           className="block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
                         >
                           View hay nearby →
@@ -717,7 +723,7 @@ export default async function DashboardPage({
                                 </p>
                               </div>
                               <Link
-                                href="/hay"
+                                href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
                                 className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
                               >
                                 Find hay near you →
@@ -740,6 +746,51 @@ export default async function DashboardPage({
                       </div>
                     )}
                   </div>
+
+                  {/* Cash-to-hay loop — only when triggered with a real estimate */}
+                  {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
+                    <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
+                      <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
+                        Put your LFP toward hay
+                      </p>
+
+                      {cashToHayTons != null && hayAvgPrice != null ? (
+                        <>
+                          <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
+                            Your estimated LFP payment of ~${Math.round(bannerDefaultEstimate).toLocaleString()} could buy
+                            roughly ~{cashToHayTons.toLocaleString()} ton{cashToHayTons !== 1 ? 's' : ''} of hay delivered
+                            to {selectedCounty.name} County.
+                          </p>
+                          <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+                            Based on ~${hayAvgPrice.toLocaleString()}/ton average delivered price from {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 miles.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
+                            Your estimated LFP payment is ~${Math.round(bannerDefaultEstimate).toLocaleString()}.
+                          </p>
+                          <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+                            No priced hay listed within 200 miles yet — browse what&apos;s posted, priced to your county.
+                          </p>
+                        </>
+                      )}
+
+                      <Link
+                        href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
+                        className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
+                      >
+                        {cashToHayTons != null
+                          ? `Shop hay delivered to ${selectedCounty.name} →`
+                          : `Browse hay delivered to ${selectedCounty.name} →`}
+                      </Link>
+
+                      <p className="mt-3 font-dm-sans text-xs text-forest-green/40 leading-snug">
+                        Estimate assumes ~100 head of adult beef cattle — your actual payment and tonnage depend on your
+                        herd. Not a guarantee of payment or price.
+                      </p>
+                    </div>
+                  )}
 
                 </div>
 
