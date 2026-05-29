@@ -659,11 +659,20 @@ export default function HayPage() {
             <div className="mt-5 border-t border-forest-green/8 pt-5">
               <div className="grid gap-4 sm:grid-cols-2">
 
-                {listingType !== 'want' && (
+                {listingType !== 'want' ? (
                   <div>
                     <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Haul radius, miles (optional)</label>
                     <input type="number" min="0" step="1" value={haulRadius}
                       onChange={e => setHaulRadius(e.target.value)} placeholder="e.g. 100" className={INPUT_CLS} />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Source radius, miles (optional)</label>
+                    <input type="number" min="0" step="1" value={haulRadius}
+                      onChange={e => setHaulRadius(e.target.value)} placeholder="e.g. 150" className={INPUT_CLS} />
+                    <p className="mt-1 text-xs text-forest-green/40 font-dm-sans">
+                      How far you&apos;d haul hay from — leave blank for a 250-mile default.
+                    </p>
                   </div>
                 )}
 
