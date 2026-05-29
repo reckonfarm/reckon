@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
+import FeedbackWidget from '@/app/components/FeedbackWidget'
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -45,6 +46,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-cream text-forest-green">
         {children}
         <BottomTabBar />
+        <FeedbackWidget />
       </body>
     </html>
   );
