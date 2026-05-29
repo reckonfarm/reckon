@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
@@ -33,10 +33,6 @@ const ORDINALS: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' }
 
 const INPUT_CLS =
   'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
-
-function isEmail(contact: string) {
-  return contact.includes('@')
-}
 
 function daysAgo(dateStr: string): string {
   const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000)
@@ -129,6 +125,8 @@ function TestRow({ label, value, note }: { label: string; value: string; note: s
 export default function HayDetailPage() {
   const { id } = useParams<{ id: string }>()
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const [openingThread, setOpeningThread] = useState(false)
   const [listing, setListing]   = useState<HayListingDetail | null>(null)
   const [loading, setLoading]   = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -222,6 +220,27 @@ export default function HayDetailPage() {
     }
   }
 
+  async function messageOwner() {
+    setOpeningThread(true)
+    setActionError('')
+    try {
+      const res = await fetch('/api/threads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: Number(id) }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setActionError((json as { error?: string }).error ?? 'Could not open a conversation.')
+        return
+      }
+      const { id: threadId } = await res.json()
+      router.push(`/messages?thread=${threadId}`)
+    } finally {
+      setOpeningThread(false)
+    }
+  }
+
   async function submitReview() {
     if (reviewRating < 1) { setReviewError('Pick a star rating.'); return }
     setSubmittingReview(true)
@@ -276,9 +295,7 @@ export default function HayDetailPage() {
 
   const county       = listing.counties ?? null
   const droughtBadge = listing.droughtTier !== null ? DROUGHT_LABEL[listing.droughtTier] : null
-  const emailContact = isEmail(listing.contact ?? '')
-  const contactHref  = emailContact ? `mailto:${listing.contact}` : `tel:${listing.contact}`
-  const contactLabel = listing.listing_type === 'want' ? 'Contact Buyer' : (emailContact ? 'Email Seller' : 'Call Seller')
+  const messageLabel = listing.listing_type === 'want' ? 'Message buyer' : 'Message seller'
 
   const isSold = listing.sold_at != null
 
@@ -329,12 +346,6 @@ export default function HayDetailPage() {
   const droughtContextText = listing.droughtTier !== null
     ? `${county?.name ?? ''} County is currently in D${listing.droughtTier} drought. Ranchers in this area may need feed urgently.`
     : `${county?.name ?? ''} County is not currently in drought.`
-
-  // CTA visibility
-  const canClaim =
-    authed && !listing.is_owner && !isSold &&
-    (listing.claim_status === 'none' || listing.claim_status === 'rejected')
-  const claimPending = listing.claim_status === 'pending'
 
   return (
     <>
@@ -402,37 +413,7 @@ export default function HayDetailPage() {
           </div>
         )}
 
-        {/* ── OWNER: pending-claim banner (must never be missed) ─────────────── */}
-        {listing.is_owner && claimPending && (
-          <div className="mb-5 rounded-xl border-2 border-rust/40 bg-rust/5 px-5 py-4">
-            <p className="font-fraunces text-base font-semibold text-rust">
-              {listing.buyer_claim_name ?? 'A buyer'} claims they purchased this hay
-            </p>
-            <p className="mt-1 text-sm font-dm-sans text-forest-green/70">
-              Confirm if you sold to them — this records the sale and lets you both leave reviews.
-              Reject if you don&apos;t recognize this buyer.
-            </p>
-            {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
-            <div className="mt-3 flex flex-wrap gap-3">
-              <button
-                onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'claim' })}
-                disabled={acting}
-                className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
-              >
-                {acting ? '…' : 'Confirm sale'}
-              </button>
-              <button
-                onClick={() => runAction(`/api/hay/${id}/claim`, 'DELETE')}
-                disabled={acting}
-                className="rounded-lg border border-rust/30 px-4 py-2 font-dm-sans text-sm font-medium text-rust hover:bg-rust/5 disabled:opacity-50 transition-colors"
-              >
-                Reject claim
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Deal action / contact card ────────────────────────────────────── */}
+        {/* ── Deal action / messaging card ──────────────────────────────────── */}
         {isSold ? (
           <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
             <p className="font-fraunces text-base font-semibold text-forest-green">This listing has been sold</p>
@@ -461,58 +442,57 @@ export default function HayDetailPage() {
           </div>
         ) : (
           <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-            <a
-              href={contactHref}
-              className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 transition-colors"
-            >
-              {contactLabel}
-            </a>
-            <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/70">
-              {listing.contact}
-            </p>
-
-            {/* Buyer claim CTA */}
-            {canClaim && (
-              <div className="mt-4 border-t border-forest-green/8 pt-4">
-                <p className="text-sm font-dm-sans text-forest-green/70">
-                  Already bought this hay? Let the seller confirm the deal so you can both leave reviews.
-                </p>
-                {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
-                <button
-                  onClick={() => runAction(`/api/hay/${id}/claim`, 'POST')}
-                  disabled={acting}
-                  className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+            {listing.is_owner ? (
+              <>
+                <Link
+                  href="/messages"
+                  className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 transition-colors"
                 >
-                  {acting ? '…' : 'I bought this hay'}
-                </button>
-              </div>
-            )}
-
-            {/* Claimant waiting state */}
-            {listing.viewer_is_claimant && claimPending && (
-              <div className="mt-4 border-t border-forest-green/8 pt-4">
-                <p className="text-sm font-dm-sans text-forest-green/60">
-                  You&apos;ve claimed this purchase — waiting for the seller to confirm. Once they do,
-                  you can leave a review.
+                  View messages
+                </Link>
+                <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/60">
+                  Buyers reach you through private messages — your contact details stay hidden.
                 </p>
-              </div>
-            )}
-
-            {/* Owner mark-sold (no pending claim) */}
-            {listing.is_owner && !claimPending && (
-              <div className="mt-4 border-t border-forest-green/8 pt-4">
-                <p className="text-sm font-dm-sans text-forest-green/70">
-                  Sold this hay off-platform? Mark it sold to close the listing.
-                </p>
-                {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+                <div className="mt-4 border-t border-forest-green/8 pt-4">
+                  <p className="text-sm font-dm-sans text-forest-green/70">
+                    Sold this hay off-platform? Mark it sold to close the listing.
+                  </p>
+                  {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
+                  <button
+                    onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'external' })}
+                    disabled={acting}
+                    className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                  >
+                    {acting ? '…' : 'Mark sold (off-platform)'}
+                  </button>
+                </div>
+              </>
+            ) : authed ? (
+              <>
                 <button
-                  onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'external' })}
-                  disabled={acting}
-                  className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                  onClick={messageOwner}
+                  disabled={openingThread}
+                  className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
                 >
-                  {acting ? '…' : 'Mark sold (off-platform)'}
+                  {openingThread ? 'Opening…' : messageLabel}
                 </button>
-              </div>
+                {actionError && <p className="mt-2 text-center text-sm font-dm-sans text-rust">{actionError}</p>}
+                <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/60">
+                  Message privately and make an offer — no phone numbers exchanged until you choose to.
+                </p>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/signin"
+                  className="flex w-full items-center justify-center rounded-xl bg-forest-green px-6 py-4 font-dm-sans text-base font-semibold text-cream hover:bg-forest-green/90 transition-colors"
+                >
+                  Sign in to {messageLabel.toLowerCase()}
+                </Link>
+                <p className="mt-3 text-center text-sm font-dm-sans text-forest-green/60">
+                  Contact happens through private messages on Dryline.
+                </p>
+              </>
             )}
           </div>
         )}

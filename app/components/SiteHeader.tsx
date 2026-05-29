@@ -12,6 +12,7 @@ interface Props {
 
 export default function SiteHeader({ subtitle, center }: Props) {
   const [user, setUser] = useState<User | null>(null)
+  const [unread, setUnread] = useState(0)
 
   useEffect(() => {
     const supabase = createClient()
@@ -21,6 +22,14 @@ export default function SiteHeader({ subtitle, center }: Props) {
     })
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!user) { setUnread(0); return }
+    fetch('/api/threads/unread')
+      .then(r => r.ok ? r.json() : { count: 0 })
+      .then(d => setUnread(typeof d?.count === 'number' ? d.count : 0))
+      .catch(() => {})
+  }, [user])
 
   async function signOut() {
     const supabase = createClient()
@@ -59,6 +68,18 @@ export default function SiteHeader({ subtitle, center }: Props) {
           >
             Hay
           </Link>
+          {user && (
+            <Link
+              href="/messages"
+              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+            >
+              Messages{unread > 0 && (
+                <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-white align-middle">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </Link>
+          )}
           <Link
             href="/radar"
             className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"

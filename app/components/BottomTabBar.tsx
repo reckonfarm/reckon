@@ -2,9 +2,21 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export default function BottomTabBar() {
   const pathname = usePathname()
+  const [unread, setUnread] = useState(0)
+
+  // Refresh the messages unread badge on navigation (tolerates signed-out 401).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/threads/unread')
+      .then(r => r.ok ? r.json() : { count: 0 })
+      .then(d => { if (!cancelled) setUnread(typeof d?.count === 'number' ? d.count : 0) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [pathname])
 
   // Hide on auth pages
   if (pathname.startsWith('/signin') || pathname.startsWith('/auth')) {
@@ -34,6 +46,15 @@ export default function BottomTabBar() {
       ),
     },
     {
+      href: '/messages',
+      label: 'Messages',
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8A8.38 8.38 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>
+        </svg>
+      ),
+    },
+    {
       href: '/radar',
       label: 'Radar',
       icon: (active: boolean) => (
@@ -47,7 +68,7 @@ export default function BottomTabBar() {
     },
     {
       href: '/watchlist',
-      label: 'My Counties',
+      label: 'Counties',
       icon: (active: boolean) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
@@ -78,12 +99,17 @@ export default function BottomTabBar() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[10px] font-dm-sans font-medium transition-colors min-h-[56px] ${
+              className={`relative flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[10px] font-dm-sans font-medium transition-colors min-h-[56px] ${
                 active
                   ? 'text-forest-green'
                   : 'text-forest-green/35 hover:text-forest-green/60'
               }`}
             >
+              {tab.href === '/messages' && unread > 0 && (
+                <span className="absolute top-1 right-[calc(50%-18px)] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[9px] font-semibold text-white">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
               {tab.icon(active)}
               {tab.label}
             </Link>

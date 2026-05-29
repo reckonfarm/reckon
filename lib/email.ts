@@ -77,6 +77,48 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
   if (error) throw new Error(`Resend error: ${error.message}`)
 }
 
+// ─── Messaging (new message in a thread, recipient away) ──────────────────────
+
+export interface MessageNotificationParams {
+  to:         string
+  senderName: string
+  hayType:    string | null
+  snippet:    string
+  threadId:   number
+}
+
+export async function sendMessageNotification(params: MessageNotificationParams): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+  const resend = new Resend(apiKey)
+
+  const { to, senderName, hayType, snippet, threadId } = params
+
+  const subject = hayType
+    ? `New message about your ${hayType} listing`
+    : 'New message on Dryline'
+
+  const body = [
+    `${senderName} sent you a message on Dryline:`,
+    '',
+    `“${snippet}”`,
+    '',
+    `Reply in your messages: https://dryline.farm/messages?thread=${threadId}`,
+    '',
+    'You receive these when you have an unread message and have been away.',
+    'View all your conversations: https://dryline.farm/messages',
+  ].join('\n')
+
+  const { error } = await resend.emails.send({
+    from: 'Dryline Alerts <alerts@dryline.farm>',
+    to,
+    subject,
+    text: body,
+  })
+
+  if (error) throw new Error(`Resend error: ${error.message}`)
+}
+
 // ─── Demand routing (buyer want → opted-in seller) ────────────────────────────
 
 export interface DemandRoutingEmailParams {

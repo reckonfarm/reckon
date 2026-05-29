@@ -46,7 +46,6 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
   return R * 2 * Math.asin(Math.sqrt(a))
 }
 
-function isEmail(contact: string) { return contact.includes('@') }
 
 export default function HayPage() {
   const router = useRouter()
@@ -1035,11 +1034,7 @@ export default function HayPage() {
                   l.hay_test_rfv          != null ||
                   l.hay_test_moisture_pct != null
 
-                const emailContact = isEmail(l.contact ?? '')
-                const contactHref  = emailContact ? `mailto:${l.contact}` : `tel:${l.contact}`
-                const contactLabel = l.listing_type === 'want'
-                  ? 'Contact'
-                  : (emailContact ? 'Email' : 'Call')
+                const contactLabel = l.listing_type === 'want' ? 'Contact' : 'Message'
 
                 return (
                   <li
@@ -1162,13 +1157,12 @@ export default function HayPage() {
                       <div className="flex shrink-0 flex-col items-end gap-2">
                         <span className="text-xs text-forest-green/40 font-dm-sans">{daysLeft}d left</span>
 
-                        <a
-                          href={contactHref}
-                          onClick={e => e.stopPropagation()}
+                        <button
+                          onClick={e => { e.stopPropagation(); router.push(`/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`) }}
                           className="rounded-lg bg-forest-green px-3 py-1.5 text-xs font-medium text-cream font-dm-sans hover:bg-forest-green/90 transition-colors"
                         >
                           {contactLabel}
-                        </a>
+                        </button>
 
                         {l.mine && (
                           <button
