@@ -3,6 +3,13 @@ import { Resend } from 'resend'
 import { LFP_DISCLAIMER } from './lfp-eligibility'
 import { estimatePayment } from './lfp-payment'
 
+// Kill-switch: when EMAILS_DISABLED=1, every sender no-ops and returns immediately.
+// Defaults to sending — only non-production environments (e.g. the e2e preview
+// deploy) set this, so prod-targeted tests cannot email real users.
+export function emailsDisabled(): boolean {
+  return process.env.EMAILS_DISABLED === '1'
+}
+
 export interface DroughtAlertEmailParams {
   to:                 string
   countyName:         string
@@ -29,6 +36,7 @@ function formatDollars(n: number): string {
 }
 
 export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise<void> {
+  if (emailsDisabled()) return
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)
@@ -88,6 +96,7 @@ export interface MessageNotificationParams {
 }
 
 export async function sendMessageNotification(params: MessageNotificationParams): Promise<void> {
+  if (emailsDisabled()) return
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)
@@ -132,6 +141,7 @@ export interface DemandRoutingEmailParams {
 }
 
 export async function sendDemandRoutingMatch(params: DemandRoutingEmailParams): Promise<void> {
+  if (emailsDisabled()) return
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)
@@ -180,6 +190,7 @@ export interface HayRadarMatchEmailParams {
 }
 
 export async function sendHayRadarMatch(params: HayRadarMatchEmailParams): Promise<void> {
+  if (emailsDisabled()) return
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)

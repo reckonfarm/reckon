@@ -26,6 +26,9 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
  * within 200 miles and emails the listing owner once per county per week.
  */
 export async function checkHayMatchAlerts(weekDate: string): Promise<HayMatchResult> {
+  // Email kill-switch (see lib/email.ts) — no-op so prod-targeted tests can't send.
+  if (process.env.EMAILS_DISABLED === '1') return { checked: 0, sent: 0, skipped: 0, errors: [] }
+
   const db = createServiceClient()
 
   // 1. Counties in D2+ this week
