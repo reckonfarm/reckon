@@ -3,6 +3,8 @@ import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
+import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -47,6 +49,8 @@ export default function RootLayout({
         {children}
         <BottomTabBar />
         <FeedbackWidget />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
