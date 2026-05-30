@@ -9,8 +9,7 @@ export const metadata: Metadata = {
   description:
     'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',
 }
-import type { OfficialMapRecord } from '@/app/dashboard/components/OfficialMap'
-import OfficialMap from '@/app/dashboard/components/OfficialMap'
+import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import CountySearch from '@/app/components/CountySearch'
 import SiteHeader from '@/app/components/SiteHeader'
 import { headers } from 'next/headers'
@@ -20,17 +19,6 @@ interface DriestyChip {
   state: string
   fips:  string
   tier:  number  // highest D tier with coverage (1–4)
-}
-
-async function getLatestNationalMap(): Promise<OfficialMapRecord | null> {
-  const db = createServiceClient()
-  const { data } = await db
-    .from('official_maps')
-    .select('id, map_type, scope, release_date, image_url, source_url')
-    .eq('map_type', 'usdm_national')
-    .order('release_date', { ascending: false })
-    .limit(1)
-  return data?.[0] ?? null
 }
 
 async function getDriestChips(stateFilter?: string): Promise<DriestyChip[]> {
@@ -102,8 +90,7 @@ export default async function Home() {
   // x-vercel-ip-country-region returns state codes like "MT", "GA", "TX"
   const visitorState = visitorRegion.length === 2 ? visitorRegion : ''
 
-  const [map, driestChipsLocal, driestChipsNational, nearbyHayCount] = await Promise.all([
-    getLatestNationalMap(),
+  const [driestChipsLocal, driestChipsNational, nearbyHayCount] = await Promise.all([
     visitorState ? getDriestChips(visitorState) : Promise.resolve([]),
     getDriestChips(),
     visitorState ? getNearbyHayCount(visitorState) : Promise.resolve(0),
@@ -188,28 +175,16 @@ export default async function Home() {
 
           {/* Right: map */}
           <div>
-            <OfficialMap
-              map={map}
-              title="U.S. Drought Monitor — Current Conditions"
-            />
+            <HomeDroughtMap />
           </div>
         </div>
 
         {/* ── Feature row ───────────────────────────────────────────────────── */}
-        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <h2 className="mt-16 font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
+          Track your drought, know your checks, find your feed.
+        </h2>
 
-          <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
-              <svg className="h-5 w-5 text-forest-green" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="10" cy="10" r="8" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l2 2 4-4" />
-              </svg>
-            </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">Know your check</p>
-            <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              See exactly how much FSA disaster money your operation qualifies for — before your neighbor finds out.
-            </p>
-          </div>
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
           <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
@@ -218,21 +193,22 @@ export default async function Home() {
                 <line x1="2" y1="17" x2="18" y2="17" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">Track the drought</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Track your drought.</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              Week-by-week drought intensity for your county over the full grazing season. Know if it's getting better or worse.
+              Official US Drought Monitor conditions for your county, on a map you can actually read.
             </p>
           </div>
 
           <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">
               <svg className="h-5 w-5 text-forest-green" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 3c0 0-6 6.5-6 10a6 6 0 0012 0c0-3.5-6-10-6-10z" />
+                <circle cx="10" cy="10" r="8" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l2 2 4-4" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">Know your rainfall deficit</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Know your checks.</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              How far behind are you? Compare this season's rain against 30-year averages for your exact county.
+              Check whether your county qualifies for Livestock Forage Disaster Program payments — and roughly what it&apos;s worth — before you file.
             </p>
           </div>
 
@@ -244,9 +220,9 @@ export default async function Home() {
                 <line x1="10" y1="8" x2="10" y2="16" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="font-fraunces text-base font-semibold text-forest-green">Find your feed</p>
+            <p className="font-fraunces text-base font-semibold text-forest-green">Find your feed.</p>
             <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-              Browse hay listings from sellers across the country. Filter by state and variety. Post your own listing in 60 seconds.
+              Find hay near you, or list what you&apos;ve got. No middleman.
             </p>
             <Link href="/hay" className="mt-3 inline-block font-dm-sans text-xs font-medium text-rust hover:text-rust/70 transition-colors">
               Browse hay listings →

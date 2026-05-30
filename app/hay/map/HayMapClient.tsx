@@ -95,7 +95,25 @@ function droughtLayerStyle(feature?: Feature) {
 
 type DroughtStatus = 'loading' | 'ok' | 'error'
 
-export default function HayMapClient({ listings }: { listings: MapListing[] }) {
+interface HayMapClientProps {
+  listings: MapListing[]
+  // Preview mode (homepage): fixed view, all interaction off, no pins/legend.
+  // Defaults preserve the full interactive listing-map behavior.
+  center?: [number, number]
+  zoom?: number
+  height?: string
+  interactive?: boolean
+  showLegend?: boolean
+}
+
+export default function HayMapClient({
+  listings,
+  center = [39.5, -98.5],
+  zoom = 4,
+  height = 'calc(100vh - 64px)',
+  interactive = true,
+  showLegend = true,
+}: HayMapClientProps) {
   const [drought, setDrought] = useState<FeatureCollection | null>(null)
   const [releaseDate, setReleaseDate] = useState<number | null>(null)
   const [status, setStatus] = useState<DroughtStatus>('loading')
@@ -129,12 +147,18 @@ export default function HayMapClient({ listings }: { listings: MapListing[] }) {
     : null
 
   return (
-    <div style={{ height: 'calc(100vh - 64px)', width: '100%', position: 'relative' }}>
+    <div style={{ height, width: '100%', position: 'relative' }}>
       <MapContainer
-        center={[39.5, -98.5]}
-        zoom={4}
+        center={center}
+        zoom={zoom}
         style={{ height: '100%', width: '100%' }}
-        scrollWheelZoom
+        scrollWheelZoom={interactive}
+        dragging={interactive}
+        doubleClickZoom={interactive}
+        touchZoom={interactive}
+        boxZoom={interactive}
+        keyboard={interactive}
+        zoomControl={interactive}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -188,10 +212,11 @@ export default function HayMapClient({ listings }: { listings: MapListing[] }) {
             </CircleMarker>
           ))}
         </MarkerClusterGroup>
-        <ResetButton />
+        {interactive && <ResetButton />}
       </MapContainer>
 
       {/* Legend — drought layer (shaded regions) + pins, one shared D-scale */}
+      {showLegend && (
       <div style={{
         position: 'absolute', bottom: 32, right: 12, zIndex: 1000,
         background: 'white', border: '1px solid rgba(0,0,0,0.1)',
@@ -231,6 +256,7 @@ export default function HayMapClient({ listings }: { listings: MapListing[] }) {
           Shaded regions show drought severity. Pins are hay listings, colored by their county&apos;s level.
         </div>
       </div>
+      )}
     </div>
   )
 }
