@@ -147,6 +147,13 @@ export default function HayDetailPage() {
   const [submittingReview, setSubmittingReview] = useState(false)
   const [reviewError, setReviewError] = useState('')
 
+  const [showReport, setShowReport]       = useState(false)
+  const [reportReason, setReportReason]   = useState('')
+  const [reportNote, setReportNote]       = useState('')
+  const [submittingReport, setSubmittingReport] = useState(false)
+  const [reportError, setReportError]     = useState('')
+  const [reportDone, setReportDone]       = useState(false)
+
   const loadListing = useCallback(() => {
     return fetch(`/api/hay/${id}`)
       .then(r => {
@@ -262,6 +269,35 @@ export default function HayDetailPage() {
       await loadListing()
     } finally {
       setSubmittingReview(false)
+    }
+  }
+
+  function openReport() {
+    setReportReason('')
+    setReportNote('')
+    setReportError('')
+    setReportDone(false)
+    setShowReport(true)
+  }
+
+  async function submitReport() {
+    if (!reportReason) { setReportError('Pick a reason.'); return }
+    setSubmittingReport(true)
+    setReportError('')
+    try {
+      const res = await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: listing?.id, reason: reportReason, note: reportNote }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setReportError((json as { error?: string }).error ?? 'Could not file report.')
+        return
+      }
+      setReportDone(true)
+    } finally {
+      setSubmittingReport(false)
     }
   }
 
@@ -678,12 +714,13 @@ export default function HayDetailPage() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forest-green/40 font-dm-sans">
           <span>{daysAgo(listing.created_at)}</span>
           <span>Expires {formatExpiry(listing.expires_at ?? '')}</span>
-          <a
-            href={`mailto:kiehl.preston@gmail.com?subject=Report hay listing %23${listing.id}&body=Listing ID: ${listing.id}%0ACounty: ${county?.name ?? ''}, ${county?.state ?? ''}%0AReason: `}
+          <button
+            type="button"
+            onClick={openReport}
             className="hover:text-forest-green/70 transition-colors"
           >
             Report this listing
-          </a>
+          </button>
         </div>
 
       </main>
@@ -742,6 +779,93 @@ export default function HayDetailPage() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Report modal ─────────────────────────────────────────────────────── */}
+      {showReport && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl bg-cream px-5 py-6 shadow-xl">
+            {reportDone ? (
+              <div className="py-2 text-center">
+                <p className="font-fraunces text-lg font-semibold text-forest-green">
+                  Thanks — I read every report and I&rsquo;ll take a look.
+                </p>
+                <button
+                  onClick={() => setShowReport(false)}
+                  className="mt-5 rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className="font-fraunces text-lg font-semibold text-forest-green">
+                  Report this listing
+                </h2>
+                <p className="mt-1 text-sm font-dm-sans text-forest-green/60">
+                  What&rsquo;s wrong with it? This goes straight to me.
+                </p>
+
+                <div className="mt-4 space-y-2">
+                  {([
+                    ['spam', 'Spam'],
+                    ['scam', 'Scam / fraud'],
+                    ['sold', 'Already sold or expired'],
+                    ['inappropriate', 'Offensive / inappropriate'],
+                    ['wrong_info', 'Wrong or misleading info'],
+                    ['other', 'Something else'],
+                  ] as const).map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-dm-sans transition-colors ${
+                        reportReason === value
+                          ? 'border-forest-green bg-forest-green/5 text-forest-green'
+                          : 'border-forest-green/15 text-forest-green/70 hover:border-forest-green/30'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="report-reason"
+                        value={value}
+                        checked={reportReason === value}
+                        onChange={() => setReportReason(value)}
+                        className="accent-forest-green"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+
+                <textarea
+                  value={reportNote}
+                  onChange={e => setReportNote(e.target.value)}
+                  placeholder="Anything else I should know? (optional)"
+                  rows={3}
+                  maxLength={2000}
+                  className={`${INPUT_CLS} mt-4 resize-none`}
+                />
+
+                {reportError && <p className="mt-2 text-sm font-dm-sans text-rust">{reportError}</p>}
+
+                <div className="mt-4 flex gap-3">
+                  <button
+                    onClick={submitReport}
+                    disabled={submittingReport}
+                    className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+                  >
+                    {submittingReport ? 'Sending…' : 'Send report'}
+                  </button>
+                  <button
+                    onClick={() => { setShowReport(false); setReportError('') }}
+                    className="rounded-lg border border-forest-green/20 px-5 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
