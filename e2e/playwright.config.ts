@@ -10,7 +10,7 @@ const BYPASS = process.env.VERCEL_BYPASS ?? ''
 
 // Vercel Protection Bypass for Automation — sent on EVERY request so the browser
 // (and in-page fetches) get past the Preview auth wall. Also set the bypass cookie.
-const extraHTTPHeaders = BYPASS
+const extraHTTPHeaders: Record<string, string> = BYPASS
   ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' }
   : {}
 

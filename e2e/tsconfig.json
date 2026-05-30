@@ -1,0 +1,10 @@
+{
+  "//": "Typechecks the Playwright suite independently. The app's tsconfig excludes e2e/, so test tooling can never gate a production deploy; this keeps the test code itself type-correct. Run with `npm run e2e:typecheck`.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "playwright-report"]
+}
