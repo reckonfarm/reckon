@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
+import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
 import { deliveredCost, FREIGHT_RATE_PER_TON_MILE, ROAD_CIRCUITY_FACTOR } from '@/lib/freight'
 
@@ -722,6 +723,8 @@ export default function HayDetailPage() {
             Report this listing
           </button>
         </div>
+
+        <MarketplaceDisclaimer className="mt-6 border-t border-forest-green/10 pt-4" />
 
       </main>
 

@@ -1,5 +1,7 @@
 'use client'
 
+import LfpDisclaimer from '@/app/components/LfpDisclaimer'
+
 interface TriggeredBannerProps {
   countyName:      string
   maxTier:         number
@@ -59,6 +61,8 @@ export default function TriggeredBanner({
           View FSA checklist →
         </button>
       </div>
+
+      <LfpDisclaimer className="mt-3 !text-white/55" />
     </div>
   )
 }

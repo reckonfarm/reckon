@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
+import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
 
@@ -759,6 +760,8 @@ export default function HayPage() {
                 Cancel
               </button>
             </div>
+
+            <MarketplaceDisclaimer className="mt-5 border-t border-forest-green/10 pt-4" />
           </div>
         )}
 

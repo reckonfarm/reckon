@@ -12,6 +12,7 @@ import {
 } from '@/lib/lfp-payment'
 import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
+import LfpDisclaimer from '@/app/components/LfpDisclaimer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -727,7 +728,7 @@ function LivestockPanel({
         </p>
       </div>
 
-      {/* ── Provenance + disclaimer ── */}
+      {/* ── Provenance ── */}
       <div className="space-y-1">
         <p className="text-xs text-forest-green/40 font-dm-sans">
           USDM data as of {formatDateShort(dataAsOf)} ·{' '}
@@ -748,10 +749,6 @@ function LivestockPanel({
           >
             NDMC FSA Tool
           </a>
-        </p>
-        <p className="text-xs text-forest-green/50 font-dm-sans">
-          This is an estimate based on U.S. Drought Monitor data. Your local FSA office makes
-          the final eligibility and payment determination at signup.
         </p>
       </div>
     </div>
@@ -977,6 +974,10 @@ export default function ProgramStatus({
       {mode === 'rowcrop' && (
         <RowCropPanel eligibility={activeEligibility} countyName={countyName} />
       )}
+
+      <div className="border-t border-forest-green/10 px-4 py-4 sm:px-6">
+        <LfpDisclaimer />
+      </div>
     </div>
   )
 }

@@ -304,6 +304,15 @@ export default function SignInForm() {
         </button>
       </form>
 
+      {isSignup && (
+        <p className="mt-3 font-dm-sans text-xs leading-relaxed text-forest-green/50">
+          By creating an account you agree to our{' '}
+          <Link href="/terms" className="underline hover:text-forest-green">Terms</Link>
+          {' '}and{' '}
+          <Link href="/privacy" className="underline hover:text-forest-green">Privacy Policy</Link>.
+        </p>
+      )}
+
       {!isSignup && (
         <Link href="/auth/reset" className={`mt-3 inline-block ${LINK_CLS}`}>
           Forgot password?
