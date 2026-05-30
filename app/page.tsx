@@ -12,6 +12,8 @@ export const metadata: Metadata = {
 import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import CountySearch from '@/app/components/CountySearch'
 import SiteHeader from '@/app/components/SiteHeader'
+import ComingSoon from '@/app/components/ComingSoon'
+import { createClient } from '@/lib/supabase-server'
 import { headers } from 'next/headers'
 
 interface DriestyChip {
@@ -95,6 +97,17 @@ export default async function Home() {
     getDriestChips(),
     visitorState ? getNearbyHayCount(visitorState) : Promise.resolve(0),
   ])
+
+  // Optional: whether the visitor is signed in, so the Coming-soon tiles can skip
+  // the email prompt for logged-in ranchers. Best-effort — never blocks the page.
+  let signedIn = false
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    signedIn = !!user
+  } catch {
+    signedIn = false
+  }
 
   // Use local chips if we got at least 2, otherwise fall back to national
   const driestChips = (driestChipsLocal.length >= 2) ? driestChipsLocal : driestChipsNational
@@ -230,6 +243,9 @@ export default async function Home() {
           </div>
 
         </div>
+
+        {/* ── Coming soon — free demand probe ───────────────────────────────── */}
+        <ComingSoon signedIn={signedIn} />
 
       </div>
     </main>
