@@ -43,10 +43,15 @@ export interface PrecipNormalData {
 }
 
 // Result of a precip lookup:
-//   PrecipNormalData       — usable series (station primary, or grid failsafe)
-//   'no_qualifying_station'— no current station AND grid/normal unavailable
-//   null                   — transient error / no data at all
-export type PrecipNormalResult = PrecipNormalData | 'no_qualifying_station' | null
+//   PrecipNormalData        — usable series (station primary, or grid failsafe)
+//   'no_qualifying_station' — ACIS responded successfully (200), but no station was
+//                             full + current + with-normals, AND the grid failsafe
+//                             produced no usable series. A genuine data-absence.
+//   'data_unavailable'      — could NOT get a trustworthy answer from ACIS: a call
+//                             returned non-2xx, threw, or was unparseable after
+//                             retries. An AVAILABILITY failure, NOT data absence.
+//   null                    — default / not-yet-fetched sentinel (no county selected)
+export type PrecipNormalResult = PrecipNormalData | 'no_qualifying_station' | 'data_unavailable' | null
 
 type AcisStn = {
   meta?: { uid?: number; name?: string; ll?: [number, number] }
@@ -183,56 +188,86 @@ function pickNearestFull(cands: Candidate[]): Candidate | null {
 
 const ELEMS = [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }]
 
-async function fetchMultiStn(body: Record<string, unknown>): Promise<AcisStn[]> {
-  const res = await fetch(`${ACIS_BASE}/MultiStnData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...body, meta: ['uid', 'name', 'll'], elems: ELEMS, output: 'json' }),
-    next: { revalidate: REVALIDATE },
-  })
-  if (!res.ok) return []
-  const json = await res.json() as { data?: AcisStn[] }
-  return json.data ?? []
+// Descriptive UA: ACIS publishes no UA requirement, but UA-less requests from
+// datacenter IPs (Vercel's egress) are a common block trigger — cheap insurance.
+const ACIS_UA = 'Dryline/1.0 (+reckonfarm.com)'
+const ACIS_MAX_RETRIES = 2   // initial attempt + up to 2 retries on failure
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+// Low-level ACIS POST with UA header, retry-on-failure, and status logging.
+// Returns a discriminated outcome so callers can tell an AVAILABILITY failure
+// (non-2xx, thrown, or unparseable — even after retries) apart from a successful
+// response that simply carried no data. NOTE: POST requests are NOT cached by
+// Next's Data Cache, so retries here always re-hit ACIS (no memoized failure).
+async function acisPost(
+  endpoint: string,
+  body: Record<string, unknown>,
+  callType: string,
+  fips: string,
+): Promise<{ ok: true; json: unknown } | { ok: false }> {
+  let lastStatus: number | string = 'no-response'
+  for (let attempt = 0; attempt <= ACIS_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${ACIS_BASE}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': ACIS_UA },
+        body: JSON.stringify(body),
+        next: { revalidate: REVALIDATE },
+      })
+      lastStatus = res.status
+      if (res.ok) {
+        try {
+          return { ok: true, json: await res.json() }
+        } catch {
+          lastStatus = `${res.status} (unparseable body)`
+        }
+      }
+    } catch (e) {
+      lastStatus = e instanceof Error ? `threw: ${e.message}` : 'threw'
+    }
+    if (attempt < ACIS_MAX_RETRIES) await sleep(300 * (attempt + 1))  // 300ms, then 600ms
+  }
+  // Decisive evidence for the real availability fix: what ACIS actually returned.
+  console.error(`[precip] ACIS ${endpoint} (${callType}) failed after retries: status=${lastStatus} fips=${fips}`)
+  return { ok: false }
 }
+
+type MultiStnOutcome = { ok: true; stations: AcisStn[] } | { ok: false }
+
+async function fetchMultiStn(body: Record<string, unknown>, callType: string, fips: string): Promise<MultiStnOutcome> {
+  const r = await acisPost('MultiStnData', { ...body, meta: ['uid', 'name', 'll'], elems: ELEMS, output: 'json' }, callType, fips)
+  if (!r.ok) return { ok: false }
+  const stations = (r.json as { data?: AcisStn[] }).data ?? []
+  if (stations.length === 0) console.error(`[precip] ACIS MultiStnData (${callType}) returned empty 200 fips=${fips}`)
+  return { ok: true, stations }
+}
+
+type StnRowsOutcome = { ok: true; rows: Array<[string, string, string]> | null } | { ok: false }
 
 // Dated daily [date, actual, normal] for one station.
-async function fetchStnRows(uid: number, sdate: string, edate: string): Promise<Array<[string, string, string]> | null> {
-  const res = await fetch(`${ACIS_BASE}/StnData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid, sdate, edate, elems: ELEMS, output: 'json' }),
-    next: { revalidate: REVALIDATE },
-  })
-  if (!res.ok) return null
-  const json = await res.json() as { data?: Array<[string, string, string]> }
-  const rows = json.data ?? []
-  return rows.length ? rows : null
+async function fetchStnRows(uid: number, sdate: string, edate: string, fips: string): Promise<StnRowsOutcome> {
+  const r = await acisPost('StnData', { uid, sdate, edate, elems: ELEMS, output: 'json' }, `StnData uid=${uid}`, fips)
+  if (!r.ok) return { ok: false }
+  const rows = (r.json as { data?: Array<[string, string, string]> }).data ?? []
+  return { ok: true, rows: rows.length ? rows : null }
 }
 
-async function fetchGridActual(
-  lat: number,
-  lon: number,
-  sdate: string,
-  edate: string,
-): Promise<Array<{ date: string; actual: number | null }> | null> {
-  const res = await fetch(`${ACIS_BASE}/GridData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      loc: `${lon},${lat}`,
-      grid: PRISM_GRID,
-      sdate,
-      edate,
-      elems: [{ name: 'pcpn', interval: 'dly' }],
-      output: 'json',
-    }),
-    next: { revalidate: REVALIDATE },
-  })
-  if (!res.ok) return null
-  const j = await res.json() as { data?: Array<[string, number | string]> }
-  const rows = j.data ?? []
-  if (rows.length === 0) return null
-  return rows.map(([date, v]) => ({ date, actual: parseGridValue(v) }))
+type GridOutcome = { ok: true; rows: Array<{ date: string; actual: number | null }> | null } | { ok: false }
+
+async function fetchGridActual(lat: number, lon: number, sdate: string, edate: string, fips: string): Promise<GridOutcome> {
+  const r = await acisPost('GridData', {
+    loc: `${lon},${lat}`,
+    grid: PRISM_GRID,
+    sdate,
+    edate,
+    elems: [{ name: 'pcpn', interval: 'dly' }],
+    output: 'json',
+  }, 'GridData', fips)
+  if (!r.ok) return { ok: false }
+  const rows = (r.json as { data?: Array<[string, number | string]> }).data ?? []
+  if (rows.length === 0) return { ok: true, rows: null }
+  return { ok: true, rows: rows.map(([date, v]) => ({ date, actual: parseGridValue(v) })) }
 }
 
 // ─── Cumulative series builder ────────────────────────────────────────────────
@@ -285,7 +320,10 @@ function buildSeries(
 //   2. FAILSAFE — only if no current full station exists: PRISM grid actual at the
 //      county centroid + the nearest full station's normal, labeled as a modeled
 //      estimate, with the gauge's last-valid date for context.
-//   3. 'no_qualifying_station' — only if even the grid fails (effectively unreachable).
+//   3. 'no_qualifying_station' — ACIS answered (200) but produced no usable series.
+//   4. 'data_unavailable' — an ACIS call failed (non-2xx/threw/unparseable). We must
+//      NEVER report this as "no qualifying station": it's an availability failure,
+//      not data absence.
 
 export async function getPrecipNormal(
   fips: string,
@@ -300,9 +338,16 @@ export async function getPrecipNormal(
   const edateStr = edate.toISOString().slice(0, 10)
   const nowMs = Date.now()
 
+  // Tracks whether ANY ACIS call failed to return a usable response (after
+  // retries). If we end with no series AND this is set, we return
+  // 'data_unavailable' rather than falsely claiming no station exists.
+  let availabilityFailure = false
+
   try {
     // Gather candidates: in-county first.
-    let cands = buildCandidates(await fetchMultiStn({ county: fips }), lat, lon, sdate, true)
+    const countyRes = await fetchMultiStn({ county: fips }, 'county', fips)
+    if (!countyRes.ok) availabilityFailure = true
+    let cands = buildCandidates(countyRes.ok ? countyRes.stations : [], lat, lon, sdate, true)
     let primary = pickNearestCurrentFull(cands, nowMs)
 
     // No current full station in-county → expand by bbox (50 → 100 → 150 mi),
@@ -310,7 +355,9 @@ export async function getPrecipNormal(
     if (primary == null && lat != null && lon != null) {
       const seen = new Set(cands.map(c => c.uid))
       for (const distance of [50, 100, 150]) {
-        const ring = buildCandidates(await fetchMultiStn({ bbox: bboxFor(lat, lon, distance) }), lat, lon, sdate, false)
+        const ringRes = await fetchMultiStn({ bbox: bboxFor(lat, lon, distance) }, `bbox ${distance}mi`, fips)
+        if (!ringRes.ok) { availabilityFailure = true; continue }
+        const ring = buildCandidates(ringRes.stations, lat, lon, sdate, false)
           .filter(c => c.distanceMiles <= distance && !seen.has(c.uid))
         for (const c of ring) seen.add(c.uid)
         cands = cands.concat(ring)
@@ -321,10 +368,11 @@ export async function getPrecipNormal(
 
     // 1. PRIMARY — the current full station, its own actual + own normal.
     if (primary) {
-      const rows = await fetchStnRows(primary.uid, sdate, edateStr)
-      if (rows) {
-        const actual = rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
-        const normalByDate = new Map(rows.map(r => [r[0], parseValue(r[2])]))
+      const rowsRes = await fetchStnRows(primary.uid, sdate, edateStr, fips)
+      if (!rowsRes.ok) availabilityFailure = true
+      else if (rowsRes.rows) {
+        const actual = rowsRes.rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
+        const normalByDate = new Map(rowsRes.rows.map(r => [r[0], parseValue(r[2])]))
         const series = buildSeries(actual, normalByDate, 'station', primary.name, primary.distanceMiles)
         if (series) return { ...series, context: null }
       }
@@ -334,13 +382,14 @@ export async function getPrecipNormal(
     if (lat != null && lon != null) {
       const normalStn = pickNearestFull(cands)
       if (normalStn) {
-        const [gridActual, normRows] = await Promise.all([
-          fetchGridActual(lat, lon, sdate, edateStr),
-          fetchStnRows(normalStn.uid, sdate, edateStr),
+        const [gridRes, normRes] = await Promise.all([
+          fetchGridActual(lat, lon, sdate, edateStr, fips),
+          fetchStnRows(normalStn.uid, sdate, edateStr, fips),
         ])
-        if (gridActual && normRows) {
-          const normalByDate = new Map(normRows.map(r => [r[0], parseValue(r[2])]))
-          const series = buildSeries(gridActual, normalByDate, 'grid', 'PRISM county estimate', 0)
+        if (!gridRes.ok || !normRes.ok) availabilityFailure = true
+        if (gridRes.ok && gridRes.rows && normRes.ok && normRes.rows) {
+          const normalByDate = new Map(normRes.rows.map(r => [r[0], parseValue(r[2])]))
+          const series = buildSeries(gridRes.rows, normalByDate, 'grid', 'PRISM county estimate', 0)
           if (series) {
             return {
               ...series,
@@ -351,9 +400,11 @@ export async function getPrecipNormal(
       }
     }
 
-    // 3. Nothing usable.
-    return 'no_qualifying_station'
-  } catch {
-    return null
+    // 3. Nothing usable — distinguish an ACIS availability failure from a genuine
+    //    "ACIS answered but no qualifying station" result.
+    return availabilityFailure ? 'data_unavailable' : 'no_qualifying_station'
+  } catch (e) {
+    console.error(`[precip] getPrecipNormal threw fips=${fips}:`, e instanceof Error ? e.message : e)
+    return 'data_unavailable'
   }
 }

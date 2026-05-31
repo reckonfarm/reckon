@@ -135,6 +135,16 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
     )
   }
 
+  // Availability failure (ACIS unreachable / blocked / errored) — NOT data absence.
+  // Never let an outage masquerade as "no nearby weather station has enough history."
+  if (data === 'data_unavailable') {
+    return (
+      <p className="text-sm text-forest-green/50 font-dm-sans">
+        Precipitation data is temporarily unavailable — check back shortly.
+      </p>
+    )
+  }
+
   // Defense in depth: never render a deficit/surplus or claim 30-year normals when
   // no station with usable normals + enough history exists, or normals are zero.
   if (data === 'no_qualifying_station' || data.ytdNormal === 0) {
