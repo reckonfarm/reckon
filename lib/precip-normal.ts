@@ -1,18 +1,19 @@
 import 'server-only'
 
 const ACIS_BASE = 'https://data.rcc-acis.org'
-const PRISM_GRID = '21'          // ACIS grid 21 = PRISM daily precip — whole-county coverage, no station outages
+const PRISM_GRID = '21'          // ACIS grid 21 = PRISM daily precip — whole-county, no station outages
 const REVALIDATE = 86400         // 24h Data Cache
 
-// A station whose most recent valid reading is older than this many days beyond
-// the window end is treated as stale ("offline"), triggering the radius search.
-const STALE_TRAILING_DAYS = 5
-
-// Minimum share of the YTD window a station must have valid actual readings for
-// before it can be selected as a gauge. A cumulative built from a mostly-missing
-// station under-counts and reads as a fake deficit; below half a year of daily
-// reports the comparison against the climatological normal isn't honest.
+// Coverage floor: a station must have valid actual readings for ≥50% of the YTD
+// window to be a usable gauge. Below half a year of daily reports the cumulative
+// under-counts and reads as a fake deficit.
 const COVERAGE_FLOOR = 0.5
+
+// Currency: a station is "current" only if its most recent valid reading is within
+// this many days of today. ACIS lags ~4 days, so 10 days tolerates a few extra
+// missed days but DEMOTES a station that went quiet weeks ago (e.g. one whose last
+// reading is 3 weeks old) so the grid failsafe can keep the card current.
+const CURRENT_MAX_AGE_DAYS = 10
 
 export interface DailyCumulative {
   date: string
@@ -20,34 +21,30 @@ export interface DailyCumulative {
   normalCumulative: number
 }
 
-// Secondary "nearest gauge" readout — a real COOP station, shown alongside the
-// grid estimate and used as the full fallback when the grid is unavailable.
-export interface GaugeReadout {
+// Grid-failsafe context: the nearest full station, shown for provenance and used
+// as the normal source when no current station exists.
+export interface StationContext {
   name: string
   distanceMiles: number
-  through: string | null  // last valid actual date; null = current through window end
-  ytdActual: number
-  ytdNormal: number
-  deficit: number
-  deficitPct: number
+  lastValid: string | null
 }
 
 export interface PrecipNormalData {
-  source: 'grid' | 'station'   // grid = PRISM county estimate (primary); station = gauge fallback
-  label: string                // honest source label for the card
-  distanceMiles: number        // gauge distance from county center (0 for grid / in-county)
+  source: 'station' | 'grid'   // station = authoritative gauge (primary); grid = PRISM failsafe
+  label: string                // station name, or "PRISM county estimate"
+  distanceMiles: number        // gauge distance from county center (0 in grid mode)
   dailyData: DailyCumulative[]
   ytdActual: number
   ytdNormal: number
   deficit: number
   deficitPct: number
-  dataThrough: string | null   // last valid actual date; null = current through window end
-  gauge: GaugeReadout | null   // secondary gauge readout (present only when source = 'grid')
+  dataThrough: string | null   // last valid actual date (= series end)
+  context: StationContext | null  // grid mode only: the station supplying the normal
 }
 
 // Result of a precip lookup:
-//   PrecipNormalData       — a usable series (grid primary, or station fallback)
-//   'no_qualifying_station'— no grid AND no station with usable normals + history
+//   PrecipNormalData       — usable series (station primary, or grid failsafe)
+//   'no_qualifying_station'— no current station AND grid/normal unavailable
 //   null                   — transient error / no data at all
 export type PrecipNormalResult = PrecipNormalData | 'no_qualifying_station' | null
 
@@ -83,143 +80,134 @@ function parseGridValue(v: number | string): number | null {
   return n
 }
 
-// Bounding box (W,S,E,N) roughly `miles` around a point — ACIS MultiStnData area
-// specifier. NOTE: ACIS does NOT support an `ll`+`distance` radius for stations
-// (it silently returns zero), so we use bbox and filter by true great-circle dist.
+function addDaysISO(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+// Bounding box (W,S,E,N) ~`miles` around a point — ACIS MultiStnData area specifier.
+// NOTE: ACIS does NOT support `ll`+`distance` for stations (silently returns zero),
+// so we use bbox and filter by true great-circle distance.
 function bboxFor(lat: number, lon: number, miles: number): string {
   const dLat = miles / 69
   const dLon = miles / (69 * Math.cos((lat * Math.PI) / 180))
   return `${lon - dLon},${lat - dLat},${lon + dLon},${lat + dLat}`
 }
 
-interface StnQuality {
-  latestValidIdx: number  // index of most recent valid actual; -1 if none
-  actValid:       number  // count of valid actual readings
-  hasNormals:     boolean // station carries usable 30-year normals
-  total:          number  // window length in days
-}
+// ─── Candidate assessment ─────────────────────────────────────────────────────
 
-function assessStation(stn: AcisStn): StnQuality {
-  const rows = stn.data ?? []
-  let latestValidIdx = -1
-  let actValid = 0
-  let hasNormals = false
-  for (let i = 0; i < rows.length; i++) {
-    const a = rows[i]?.[0]
-    const n = rows[i]?.[1]
-    if (a !== 'M' && a != null) { actValid++; latestValidIdx = i }
-    if (n !== 'M' && n != null) hasNormals = true
-  }
-  return { latestValidIdx, actValid, hasNormals, total: rows.length }
-}
-
-// Floors applied BEFORE recency: usable normals AND coverage. Recency never
-// overrides either (that was the recency-first regression).
-function clearsFloors(q: StnQuality): boolean {
-  return q.hasNormals && q.total > 0 && q.actValid >= Math.floor(q.total * COVERAGE_FLOOR)
-}
-
-// Among stations clearing both floors, keep the freshest (latest valid reading),
-// breaking ties by most valid readings. Returns null when none qualify.
-function pickQualifiedStation(stations: AcisStn[]): { stn: AcisStn; q: StnQuality } | null {
-  let best: { stn: AcisStn; q: StnQuality } | null = null
-  for (const stn of stations) {
-    const q = assessStation(stn)
-    if (!clearsFloors(q)) continue
-    if (
-      best == null ||
-      q.latestValidIdx > best.q.latestValidIdx ||
-      (q.latestValidIdx === best.q.latestValidIdx && q.actValid > best.q.actValid)
-    ) {
-      best = { stn, q }
-    }
-  }
-  return best
-}
-
-function trailingGap(best: { q: StnQuality } | null): number {
-  if (best == null) return Infinity
-  return (best.q.total - 1) - best.q.latestValidIdx
-}
-
-// ─── Selection: freshest qualifying gauge, county first then bbox radius ───────
-
-interface SelectedStation {
+interface Candidate {
   name: string
+  uid: number
   distanceMiles: number
-  rows: Array<[string, string, string]>  // dated [date, actual, normal] from StnData
+  actValid: number
+  total: number
+  hasNormals: boolean
+  lastValid: string | null   // ISO date of most recent valid actual
+  inCounty: boolean
 }
 
-async function selectStation(
-  fips: string,
+function buildCandidates(
+  stations: AcisStn[],
   lat: number | null,
   lon: number | null,
   sdate: string,
-  edate: string,
-): Promise<SelectedStation | null> {
-  const elems = [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }]
-
-  const countyRes = await fetch(`${ACIS_BASE}/MultiStnData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ county: fips, meta: ['uid', 'name', 'll'], sdate, edate, elems, output: 'json' }),
-    next: { revalidate: REVALIDATE },
-  })
-  if (!countyRes.ok) return null
-  const countyData = await countyRes.json() as { data?: AcisStn[] }
-  let best = pickQualifiedStation(countyData.data ?? [])
-
-  // Staleness-gated radius search via bbox (50 → 100 → 150 mi). Only adopt a
-  // neighbor that ALSO clears both floors AND is fresher.
-  if ((best == null || trailingGap(best) > STALE_TRAILING_DAYS) && lat != null && lon != null) {
-    for (const distance of [50, 100, 150]) {
-      const radiusRes = await fetch(`${ACIS_BASE}/MultiStnData`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bbox: bboxFor(lat, lon, distance), meta: ['uid', 'name', 'll'], sdate, edate, elems, output: 'json' }),
-        next: { revalidate: REVALIDATE },
-      })
-      if (!radiusRes.ok) continue
-      const radiusData = await radiusRes.json() as { data?: AcisStn[] }
-      // bbox is a rectangle; keep only stations truly within `distance` miles.
-      const within = (radiusData.data ?? []).filter(s => {
-        const ll = s.meta?.ll
-        return ll ? haversineMiles(lat, lon, ll[1], ll[0]) <= distance : false
-      })
-      const radiusBest = pickQualifiedStation(within)
-      if (radiusBest) {
-        const curIdx = best ? best.q.latestValidIdx : -2
-        if (radiusBest.q.latestValidIdx > curIdx) best = radiusBest
-        if (trailingGap(best) <= STALE_TRAILING_DAYS) break
-      }
+  inCounty: boolean,
+): Candidate[] {
+  const out: Candidate[] = []
+  for (const s of stations) {
+    const uid = s.meta?.uid
+    if (uid == null) continue
+    const rows = s.data ?? []
+    let latestValidIdx = -1
+    let actValid = 0
+    let hasNormals = false
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i]?.[0]
+      const n = rows[i]?.[1]
+      if (a !== 'M' && a != null) { actValid++; latestValidIdx = i }
+      if (n !== 'M' && n != null) hasNormals = true
     }
+    const ll = s.meta?.ll
+    const distanceMiles = lat != null && lon != null && ll
+      ? Math.round(haversineMiles(lat, lon, ll[1], ll[0]))
+      : 0
+    out.push({
+      name: s.meta?.name ?? 'Unknown Station',
+      uid,
+      distanceMiles,
+      actValid,
+      total: rows.length,
+      hasNormals,
+      lastValid: latestValidIdx >= 0 ? addDaysISO(sdate, latestValidIdx) : null,
+      inCounty,
+    })
   }
-
-  if (best == null) return null
-  const uid = best.stn.meta?.uid
-  if (uid == null) return null
-
-  const ll = best.stn.meta?.ll
-  const distanceMiles = lat != null && lon != null && ll
-    ? Math.round(haversineMiles(lat, lon, ll[1], ll[0]))
-    : 0
-
-  // Dated daily actual + normal for the chosen station.
-  const stnRes = await fetch(`${ACIS_BASE}/StnData`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid, sdate, edate, elems, output: 'json' }),
-    next: { revalidate: REVALIDATE },
-  })
-  if (!stnRes.ok) return null
-  const stnData = await stnRes.json() as { meta?: { name?: string }; data?: Array<[string, string, string]> }
-  const rows = stnData.data ?? []
-  if (rows.length === 0) return null
-  const name = stnData.meta?.name ?? best.stn.meta?.name ?? 'Unknown Station'
-  return { name, distanceMiles, rows }
+  return out
 }
 
-// ─── PRISM grid actual at the county centroid ─────────────────────────────────
+// "Full/good": usable normals AND enough YTD coverage to trust the cumulative.
+function isFull(c: Candidate): boolean {
+  return c.hasNormals && c.total > 0 && c.actValid >= Math.floor(c.total * COVERAGE_FLOOR)
+}
+
+// "Current": most recent valid reading within CURRENT_MAX_AGE_DAYS of today.
+function isCurrent(c: Candidate, today: number): boolean {
+  if (!c.lastValid) return false
+  const ageDays = (today - Date.parse(`${c.lastValid}T00:00:00Z`)) / 86_400_000
+  return ageDays <= CURRENT_MAX_AGE_DAYS
+}
+
+// Nearest station that is full AND current — the authoritative gauge. Prefer
+// in-county; otherwise nearest by great-circle distance.
+function pickNearestCurrentFull(cands: Candidate[], today: number): Candidate | null {
+  const ok = cands.filter(c => isFull(c) && isCurrent(c, today))
+  if (ok.length === 0) return null
+  const inCounty = ok.filter(c => c.inCounty)
+  const pool = inCounty.length ? inCounty : ok
+  return pool.sort((a, b) => a.distanceMiles - b.distanceMiles)[0]
+}
+
+// Nearest full station regardless of currency — supplies the normal climatology
+// (and provenance) for the grid failsafe. Prefer in-county.
+function pickNearestFull(cands: Candidate[]): Candidate | null {
+  const ok = cands.filter(isFull)
+  if (ok.length === 0) return null
+  const inCounty = ok.filter(c => c.inCounty)
+  const pool = inCounty.length ? inCounty : ok
+  return pool.sort((a, b) => a.distanceMiles - b.distanceMiles)[0]
+}
+
+// ─── ACIS fetch helpers ───────────────────────────────────────────────────────
+
+const ELEMS = [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }]
+
+async function fetchMultiStn(body: Record<string, unknown>): Promise<AcisStn[]> {
+  const res = await fetch(`${ACIS_BASE}/MultiStnData`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, meta: ['uid', 'name', 'll'], elems: ELEMS, output: 'json' }),
+    next: { revalidate: REVALIDATE },
+  })
+  if (!res.ok) return []
+  const json = await res.json() as { data?: AcisStn[] }
+  return json.data ?? []
+}
+
+// Dated daily [date, actual, normal] for one station.
+async function fetchStnRows(uid: number, sdate: string, edate: string): Promise<Array<[string, string, string]> | null> {
+  const res = await fetch(`${ACIS_BASE}/StnData`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid, sdate, edate, elems: ELEMS, output: 'json' }),
+    next: { revalidate: REVALIDATE },
+  })
+  if (!res.ok) return null
+  const json = await res.json() as { data?: Array<[string, string, string]> }
+  const rows = json.data ?? []
+  return rows.length ? rows : null
+}
 
 async function fetchGridActual(
   lat: number,
@@ -249,18 +237,18 @@ async function fetchGridActual(
 
 // ─── Cumulative series builder ────────────────────────────────────────────────
 //
-// Accumulates actual (from `actualSeries`) and normal (climatology, by date)
-// through the window, trims trailing days with no actual, and stops the normal at
-// the last valid actual so the deficit can't be inflated by a station/grid that
-// stopped reporting. Returns null if no actual exists or the normal is zero.
+// Accumulates actual + normal through the window, trims trailing days with no
+// actual, and stops the normal at the last valid actual so the deficit can't be
+// inflated by a source that stopped reporting. Returns null if no actual exists
+// or the normal is zero.
 
 function buildSeries(
   actualSeries: Array<{ date: string; actual: number | null }>,
   normalByDate: Map<string, number | null>,
-  source: 'grid' | 'station',
+  source: 'station' | 'grid',
   label: string,
   distanceMiles: number,
-): Omit<PrecipNormalData, 'gauge'> | null {
+): Omit<PrecipNormalData, 'context'> | null {
   let dailyData: DailyCumulative[] = []
   let actualCum = 0
   let normalCum = 0
@@ -275,43 +263,29 @@ function buildSeries(
   }
 
   if (dailyData.length === 0 || lastValidIdx === -1) return null
-
-  let dataThrough: string | null = null
-  if (lastValidIdx < actualSeries.length - 1) {
-    dailyData = dailyData.slice(0, lastValidIdx + 1)
-    dataThrough = dailyData[lastValidIdx].date
-  }
+  if (lastValidIdx < actualSeries.length - 1) dailyData = dailyData.slice(0, lastValidIdx + 1)
 
   const last = dailyData[dailyData.length - 1]
   const ytdActual = last.actualCumulative
   const ytdNormal = last.normalCumulative
-  if (ytdNormal === 0) return null  // no usable normal — never render a deficit against zero
+  if (ytdNormal === 0) return null  // never render a deficit against a zero normal
 
   const deficit = ytdActual - ytdNormal
   const deficitPct = (deficit / ytdNormal) * 100
-  return { source, label, distanceMiles, dailyData, ytdActual, ytdNormal, deficit, deficitPct, dataThrough }
-}
-
-function toGauge(series: Omit<PrecipNormalData, 'gauge'>, name: string): GaugeReadout {
-  return {
-    name,
-    distanceMiles: series.distanceMiles,
-    through: series.dataThrough,
-    ytdActual: series.ytdActual,
-    ytdNormal: series.ytdNormal,
-    deficit: series.deficit,
-    deficitPct: series.deficitPct,
-  }
+  return { source, label, distanceMiles, dailyData, ytdActual, ytdNormal, deficit, deficitPct, dataThrough: last.date }
 }
 
 // ─── Main entrypoint ──────────────────────────────────────────────────────────
 //
-// Failsafe order:
-//   1. PRISM grid county estimate (actual) + nearest qualifying station's normal
-//      climatology  — primary; whole-county, no station outages, current.
-//   2. Freshest qualifying station (actual + normal)  — labeled gauge fallback.
-//   3. 'no_qualifying_station'  — only if neither a grid nor any station normal
-//      exists in range (effectively unreachable once the grid is up).
+// Priority:
+//   1. PRIMARY (authoritative) — nearest NOAA station that is full (coverage +
+//      normals) AND current (reported within CURRENT_MAX_AGE_DAYS). Uses its OWN
+//      actual and OWN normal — location-consistent, never stitched, never
+//      overridden by the grid.
+//   2. FAILSAFE — only if no current full station exists: PRISM grid actual at the
+//      county centroid + the nearest full station's normal, labeled as a modeled
+//      estimate, with the gauge's last-valid date for context.
+//   3. 'no_qualifying_station' — only if even the grid fails (effectively unreachable).
 
 export async function getPrecipNormal(
   fips: string,
@@ -322,37 +296,60 @@ export async function getPrecipNormal(
   const edate = new Date(today)
   edate.setDate(today.getDate() - 4)   // ACIS reporting lag
 
-  const year = today.getFullYear()
-  const sdate = `${year}-01-01`
+  const sdate = `${today.getFullYear()}-01-01`
   const edateStr = edate.toISOString().slice(0, 10)
+  const nowMs = Date.now()
 
   try {
-    // Run grid (primary actual) and station selection (normal source + gauge) together.
-    const [gridActual, station] = await Promise.all([
-      lat != null && lon != null ? fetchGridActual(lat, lon, sdate, edateStr) : Promise.resolve(null),
-      selectStation(fips, lat, lon, sdate, edateStr),
-    ])
+    // Gather candidates: in-county first.
+    let cands = buildCandidates(await fetchMultiStn({ county: fips }), lat, lon, sdate, true)
+    let primary = pickNearestCurrentFull(cands, nowMs)
 
-    // Station series (actual + its own normal) — the gauge readout and fallback.
-    let stationSeries: Omit<PrecipNormalData, 'gauge'> | null = null
-    let stationNormalByDate: Map<string, number | null> | null = null
-    if (station) {
-      stationNormalByDate = new Map(station.rows.map(r => [r[0], parseValue(r[2])]))
-      const stationActual = station.rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
-      stationSeries = buildSeries(stationActual, stationNormalByDate, 'station', station.name, station.distanceMiles)
-    }
-
-    // 1. PRIMARY — PRISM grid actual + station normal climatology.
-    if (gridActual && stationNormalByDate) {
-      const gridSeries = buildSeries(gridActual, stationNormalByDate, 'grid', 'PRISM county estimate', 0)
-      if (gridSeries) {
-        const gauge = stationSeries && station ? toGauge(stationSeries, station.name) : null
-        return { ...gridSeries, gauge }
+    // No current full station in-county → expand by bbox (50 → 100 → 150 mi),
+    // accumulating candidates, until a current full station appears.
+    if (primary == null && lat != null && lon != null) {
+      const seen = new Set(cands.map(c => c.uid))
+      for (const distance of [50, 100, 150]) {
+        const ring = buildCandidates(await fetchMultiStn({ bbox: bboxFor(lat, lon, distance) }), lat, lon, sdate, false)
+          .filter(c => c.distanceMiles <= distance && !seen.has(c.uid))
+        for (const c of ring) seen.add(c.uid)
+        cands = cands.concat(ring)
+        primary = pickNearestCurrentFull(cands, nowMs)
+        if (primary) break
       }
     }
 
-    // 2. FALLBACK — the gauge itself becomes the primary series.
-    if (stationSeries) return { ...stationSeries, gauge: null }
+    // 1. PRIMARY — the current full station, its own actual + own normal.
+    if (primary) {
+      const rows = await fetchStnRows(primary.uid, sdate, edateStr)
+      if (rows) {
+        const actual = rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
+        const normalByDate = new Map(rows.map(r => [r[0], parseValue(r[2])]))
+        const series = buildSeries(actual, normalByDate, 'station', primary.name, primary.distanceMiles)
+        if (series) return { ...series, context: null }
+      }
+    }
+
+    // 2. FAILSAFE — PRISM grid actual + nearest full station's normal climatology.
+    if (lat != null && lon != null) {
+      const normalStn = pickNearestFull(cands)
+      if (normalStn) {
+        const [gridActual, normRows] = await Promise.all([
+          fetchGridActual(lat, lon, sdate, edateStr),
+          fetchStnRows(normalStn.uid, sdate, edateStr),
+        ])
+        if (gridActual && normRows) {
+          const normalByDate = new Map(normRows.map(r => [r[0], parseValue(r[2])]))
+          const series = buildSeries(gridActual, normalByDate, 'grid', 'PRISM county estimate', 0)
+          if (series) {
+            return {
+              ...series,
+              context: { name: normalStn.name, distanceMiles: normalStn.distanceMiles, lastValid: normalStn.lastValid },
+            }
+          }
+        }
+      }
+    }
 
     // 3. Nothing usable.
     return 'no_qualifying_station'

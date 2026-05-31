@@ -146,7 +146,7 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
     )
   }
 
-  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, dataThrough, gauge } = data
+  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, context } = data
   const isDeficit = deficit < 0
 
   const monthTicks = dailyData
@@ -228,35 +228,30 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
         </div>
       </div>
 
-      {/* Offline note applies only when the PRIMARY series itself stopped early.
-          The grid is current, so this shows only in station-fallback mode. */}
-      {dataThrough && (
-        <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 font-dm-sans">
-          Data unavailable after {fmtDate(dataThrough)} — station offline.
-        </p>
-      )}
-
-      {/* Honest source label — a modeled grid estimate is never implied to be a gauge. */}
+      {/* Honest source label. Station mode is authoritative (its own gauge + own
+          normal); grid mode is a clearly-labeled modeled estimate, never a gauge. */}
       {source === 'grid' ? (
-        <p className="text-xs text-forest-green/40 font-dm-sans">
-          PRISM county estimate{throughDate ? ` · current through ${fmtDate(throughDate)}` : ''}
-          {' '}· NOAA/ACIS gridded · 1991–2020 normals (NOAA)
-        </p>
+        <>
+          <p className="text-xs text-forest-green/40 font-dm-sans">
+            PRISM county estimate{throughDate ? ` · current through ${fmtDate(throughDate)}` : ''}
+            {' '}· no current NOAA station
+            {context ? ` · normal from ${context.name}` : ''}{' '}
+            · 1991–2020 (NOAA)
+          </p>
+          {context && (
+            <p className="text-xs text-forest-green/40 font-dm-sans">
+              Nearest full station: {context.name}
+              {context.distanceMiles > 0 ? ` (${context.distanceMiles} mi)` : ''}
+              {context.lastValid ? ` — last reported ${fmtDate(context.lastValid)}` : ''}
+            </p>
+          )}
+        </>
       ) : (
         <p className="text-xs text-forest-green/40 font-dm-sans">
           Station: {label}
           {distanceMiles > 0 ? ` (${distanceMiles} miles from county center)` : ''}
           {throughDate ? ` · through ${fmtDate(throughDate)}` : ''}{' '}
           · NOAA/ACIS · 1991–2020 normals (NOAA)
-        </p>
-      )}
-
-      {/* Secondary nearest-gauge readout (grid mode only). */}
-      {gauge && (
-        <p className="text-xs text-forest-green/40 font-dm-sans">
-          Nearest gauge: {gauge.name}
-          {gauge.distanceMiles > 0 ? ` (${gauge.distanceMiles} mi)` : ''} — {gauge.ytdActual.toFixed(2)}&quot;
-          {gauge.through ? ` through ${fmtDate(gauge.through)} (offline since)` : ' · current'}
         </p>
       )}
     </div>
