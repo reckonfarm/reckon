@@ -467,7 +467,7 @@ export default async function DashboardPage({
       const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
 
       // One consistent set: ACTIVE SELL listings, priced, with seller coords,
-      // within 200 ROAD miles (haversine × 1.2). deliveredCost enforces sell +
+      // within 200 ROAD miles (haversine × circuity factor). deliveredCost enforces sell +
       // price + coords and returns the road-mile distance we gate and average on.
       const nearbySell = (hayListingsRes.data ?? [])
         .map(l => {

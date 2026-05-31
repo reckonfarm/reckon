@@ -1,6 +1,7 @@
 import 'server-only'
 import { Resend } from 'resend'
 import { createServiceClient } from './supabase'
+import { ROAD_CIRCUITY_FACTOR } from './freight'
 
 export interface HayMatchResult {
   checked: number
@@ -99,7 +100,9 @@ export async function checkHayMatchAlerts(weekDate: string): Promise<HayMatchRes
       }
       if (county.lat == null || county.lon == null) continue
 
-      const distMiles = haversine(dry.lat, dry.lon, county.lat, county.lon)
+      // Circuity-adjusted road miles, so "within 200 miles" means the same here
+      // as on the dashboard delivered-cost card (which gates on roadMiles).
+      const distMiles = haversine(dry.lat, dry.lon, county.lat, county.lon) * ROAD_CIRCUITY_FACTOR
       if (distMiles > 200) continue
 
       checked++

@@ -562,7 +562,7 @@ export default function HayDetailPage() {
             </dl>
 
             <p className="mt-3 text-xs text-forest-green/45 font-dm-sans leading-snug">
-              Estimate only — not a freight quote. Assumes a full truckload (~28 tons) at
+              Estimate only — not a freight quote. Assumes a full truckload (~25 tons) at
               {' '}${FREIGHT_RATE_PER_TON_MILE.toFixed(2)}/ton-mile over road miles
               (straight-line distance × {ROAD_CIRCUITY_FACTOR} for road circuity).
               Partial loads cost more per ton. Confirm actual freight with your hauler.
