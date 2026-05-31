@@ -9,6 +9,7 @@ import { createServiceClient } from '@/lib/supabase'
 const FEATURE_KEYS = [
   'lfp_alerts',
   'cattle_dashboard',
+  'hay_hauler',
 ] as const
 type FeatureKey = (typeof FEATURE_KEYS)[number]
 

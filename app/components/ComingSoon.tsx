@@ -24,6 +24,11 @@ const FEATURES: Feature[] = [
     title: 'Cattle market dashboard',
     body: 'Local feeder-cattle prices by weight class, updated from USDA auction reports — see what your calves are bringing.',
   },
+  {
+    key: 'hay_hauler',
+    title: 'Find a hay hauler',
+    body: "Need your hay moved? We'll match you with truckers hauling your way — see the rate per mile and book the haul, right from your listing.",
+  },
 ]
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
