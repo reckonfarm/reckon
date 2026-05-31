@@ -514,7 +514,7 @@ export default async function DashboardPage({
 
   // Default estimate for the triggered banner (100 head beef_adult)
   const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
-    ? estimatePayment('beef_adult', 100, lfpResult.payments).grossEstimate
+    ? estimatePayment('beef_adult', 100, lfpResult.payments).cappedEstimate
     : 0
 
   // D2+ drought flag for hay card context

@@ -58,7 +58,10 @@ export interface LfpPaymentEstimate {
   step2:          number | null // carrying-capacity monthly cost; null if no acres given
   limitingStep:   1 | 2         // which step was the lesser (determines payment basis)
   monthlyPayment: number        // min(step1, step2) × 0.60
-  grossEstimate:  number        // monthlyPayment × numPayments
+  grossEstimate:  number        // monthlyPayment × numPayments (uncapped)
+  paymentCap:     number        // LFP per-person/entity program-year limit ($125k)
+  cappedEstimate: number        // min(grossEstimate, paymentCap) — the payable figure
+  isCapped:       boolean       // true when grossEstimate exceeds the cap
   // Carrying-capacity inputs
   eligibleAcres:  number | null
   acresPerAU:     number | null
@@ -68,9 +71,18 @@ export interface LfpPaymentEstimate {
 }
 
 // ─── 2026 rates ───────────────────────────────────────────────────────────────
-// Per-head rates = AU_equivalent × $35.66/AUM (Exhibit 6, Handbook 1-LFP)
+// Each per-head rate is the EXPLICIT published "Payment Rate Per Head" from the
+// official 2026 FSA LFP table — NOT derived as an AU multiple of the beef base.
+// Only the cattle family is a tidy multiple (non-adult 0.75×/0.50× of adult; dairy
+// adult 2.6× beef adult); equine, elk, emu, llama, ostrich, sheep/goats/deer, and
+// alpaca/reindeer do NOT follow any beef multiple — store the table value verbatim.
+// DAILY_FEED_RATE_2026 below uses $35.66/AUM only for the Step-2 acreage method.
 
 export const DAILY_FEED_RATE_2026 = 35.66 / 30  // ≈ $1.18867/day per AU
+
+// LFP payment limit: $125,000 per person/legal entity per program year
+// (2018 Farm Bill, unchanged by OBBB — the $155k increase applies to ARC/PLC, not LFP).
+export const LFP_PAYMENT_CAP = 125_000
 
 export const PAYMENT_RATES_2026: PaymentRate[] = [
   {
@@ -249,6 +261,11 @@ export function estimatePayment(
   const monthlyPayment       = limitingCost * 0.60
   const grossEstimate        = monthlyPayment * numPayments
 
+  // Clamp to the $125k per-person/entity program-year limit. We keep the uncapped
+  // grossEstimate so the UI can show "Estimated $X; capped at $125,000".
+  const cappedEstimate       = Math.min(grossEstimate, LFP_PAYMENT_CAP)
+  const isCapped             = grossEstimate > LFP_PAYMENT_CAP
+
   const unconfirmedNote = rate.rateConfirmed
     ? ''
     : ' Rate for this category estimated from FSA AU ratios — confirm with your FSA office.'
@@ -264,6 +281,9 @@ export function estimatePayment(
     limitingStep,
     monthlyPayment,
     grossEstimate,
+    paymentCap:     LFP_PAYMENT_CAP,
+    cappedEstimate,
+    isCapped,
     eligibleAcres,
     acresPerAU,
     dailyFeedRate:  DAILY_FEED_RATE_2026,
@@ -287,5 +307,8 @@ export function formatPaymentLine(est: LfpPaymentEstimate): string {
     step2Line,
     `60% of Step ${est.limitingStep}:          ${fmt(est.limitingStep === 2 ? est.step2! : est.step1)} × 0.60 = ${fmt(est.monthlyPayment)}/mo`,
     `× ${est.numPayments} monthly payment${est.numPayments !== 1 ? 's' : ''}:  ${fmt(est.grossEstimate)} total`,
+    ...(est.isCapped
+      ? [`Capped at program limit: ${fmt(est.grossEstimate)} → ${fmt(est.cappedEstimate)} (${fmt(est.paymentCap)} cap)`]
+      : []),
   ].join('\n')
 }

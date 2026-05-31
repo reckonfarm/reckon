@@ -49,7 +49,7 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
   // Per-100-head adult beef reference — we don't have user head counts yet.
   // Once operation profiles are built, swap in the user's actual head count.
   const est = estimatePayment('beef_adult', 100, payments)
-  const estAmount = formatDollars(est.grossEstimate)
+  const estAmount = formatDollars(est.cappedEstimate)
 
   const subject =
     `${countyName}, ${state} just hit LFP Tier ${tier} — est. ${estAmount} available`

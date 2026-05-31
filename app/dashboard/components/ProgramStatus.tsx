@@ -169,6 +169,19 @@ function PaymentBreakdown({
           {usd(est.grossEstimate, 0)}
         </span>
       </div>
+
+      {/* Program-year cap */}
+      {est.isCapped && (
+        <div className="flex justify-between gap-2 border-t border-forest-green/10 pt-1">
+          <span>
+            Capped at program limit{' '}
+            <span className="text-forest-green/50">({usd(est.paymentCap, 0)}/yr per person)</span>
+          </span>
+          <span className="tabular-nums font-semibold text-rust">
+            {usd(est.cappedEstimate, 0)}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -589,12 +602,17 @@ function LivestockPanel({
               <div className="rounded-lg border border-forest-green/10 bg-cream p-3">
                 <div className="flex items-baseline gap-2">
                   <p className="font-fraunces text-3xl font-semibold text-forest-green sm:text-4xl">
-                    {usd(estimate.grossEstimate, 0)}
+                    {usd(estimate.cappedEstimate, 0)}
                   </p>
                   <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-[10px] font-semibold text-white">
                     ✓ triggered
                   </span>
                 </div>
+                {estimate.isCapped && (
+                  <p className="mt-0.5 text-xs font-medium text-rust font-dm-sans">
+                    Estimated {usd(estimate.grossEstimate, 0)}; capped at {usd(estimate.paymentCap, 0)} program-year limit.
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-forest-green/50 font-dm-sans">
                   2026 FSA rate · head-count{estimate.step2 !== null
                     ? estimate.limitingStep === 2 ? ' · carrying cap is limiting factor' : ' · head count is limiting factor'
@@ -906,7 +924,7 @@ export default function ProgramStatus({
         <div className="mb-6 rounded-xl bg-forest-green px-5 py-4 text-cream">
           <p className="font-dm-sans text-xs font-medium text-cream/60 uppercase tracking-wide mb-1">Estimated payment</p>
           <p className="font-fraunces text-3xl font-semibold text-cream">
-            ~${Math.round(estimatePayment('beef_adult', 100, eligibility.payments).grossEstimate).toLocaleString()}
+            ~${Math.round(estimatePayment('beef_adult', 100, eligibility.payments).cappedEstimate).toLocaleString()}
           </p>
           <p className="font-dm-sans text-xs text-cream/60 mt-1">
             Based on 100 head beef cattle · {eligibility.payments} payment{eligibility.payments !== 1 ? 's' : ''} · Tier {eligibility.maxTier}
