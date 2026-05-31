@@ -18,7 +18,7 @@ import type { ForecastOutlook, DroughtDiscussion } from './components/ForecastSe
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getDroughtDiscussion } from '@/lib/drought-discussion'
 import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
-import { getPrecipNormal, type PrecipNormalData } from '@/lib/precip-normal'
+import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, type DeliveredCost } from '@/lib/freight'
@@ -192,7 +192,7 @@ export default async function DashboardPage({
   let prcpMonthlyUpdated: string | null             = null
   let prcpSeasonalUpdated: string | null            = null
   let nwsDiscussion: NwsDiscussion | null           = null
-  let precipNormal: PrecipNormalData | null         = null
+  let precipNormal: PrecipNormalResult              = null
   let cpcSoilMoistureUpdated: string | null         = null
   let vhiUpdated: string | null                     = null
   let hprcc14dUpdated: string | null                = null

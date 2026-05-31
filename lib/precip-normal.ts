@@ -18,9 +18,16 @@ export interface PrecipNormalData {
   dataThrough: string | null  // null = complete; date string = last day with valid actual
 }
 
+// Result of a precip lookup:
+//   PrecipNormalData       — a usable series from a station that clears both floors
+//   'no_qualifying_station'— stations exist near the county but none have usable
+//                            30-year normals AND enough YTD reporting history
+//   null                   — transient error / no rows / no stations at all
+export type PrecipNormalResult = PrecipNormalData | 'no_qualifying_station' | null
+
 type AcisStn = {
   meta?: { uid?: number; name?: string; ll?: [number, number] }
-  data?: Array<[string]>
+  data?: Array<[string, string]>  // [actual, normal] per day; date is implicit by index from sdate
 }
 
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -48,52 +55,72 @@ function parseValue(v: string): number | null {
 // shows a small trailing gap; a large one means the station has gone quiet.
 const STALE_TRAILING_DAYS = 5
 
-// A station's recency + completeness over the daily window. latestValidIdx is the
-// array index (≈ day offset from sdate) of the most recent non-missing reading;
-// higher = more recent. missing counts 'M'/absent days. We select on recency so
-// the station reporting NOW wins over one merely more complete across the year.
-function stationScore(stn: AcisStn): { latestValidIdx: number; missing: number } {
-  const rows = stn.data ?? []
-  let latestValidIdx = -1
-  let missing = 0
-  for (let i = 0; i < rows.length; i++) {
-    const v = rows[i]?.[0]
-    if (v === 'M' || v == null) missing++
-    else latestValidIdx = i
-  }
-  return { latestValidIdx, missing }
+// Minimum share of the YTD window a station must have valid actual readings for
+// before it can be selected. A YTD cumulative built from a mostly-missing station
+// under-counts and reads as a fake deficit; below half a year of daily reports
+// the comparison against the climatological normal isn't honest. 0.50 cleanly
+// separates real recorders from near-empty COOP sites (e.g. Petroleum County:
+// ~87% vs 0–1% coverage).
+const COVERAGE_FLOOR = 0.5
+
+interface StnQuality {
+  latestValidIdx: number  // index of most recent valid actual reading; -1 if none
+  actValid:       number  // count of valid actual readings in the window
+  hasNormals:     boolean // station carries usable 30-year normals
+  total:          number  // window length in days
 }
 
-// Prefer the most recent valid reading; break ties by fewest missing days.
-function pickFreshestStation(stations: AcisStn[]): AcisStn | null {
-  let best: AcisStn | null = null
-  let bestIdx = -2
-  let bestMissing = Infinity
+// Each station's daily rows are [actual, normal]; the date is implicit by index.
+function assessStation(stn: AcisStn): StnQuality {
+  const rows = stn.data ?? []
+  let latestValidIdx = -1
+  let actValid = 0
+  let hasNormals = false
+  for (let i = 0; i < rows.length; i++) {
+    const a = rows[i]?.[0]
+    const n = rows[i]?.[1]
+    if (a !== 'M' && a != null) { actValid++; latestValidIdx = i }
+    if (n !== 'M' && n != null) hasNormals = true
+  }
+  return { latestValidIdx, actValid, hasNormals, total: rows.length }
+}
+
+// Floors applied BEFORE recency: a station must carry usable normals AND clear the
+// coverage floor. Recency never overrides either — overriding them was the
+// recency-first regression that picked a 2-of-146, normal-less station.
+function clearsFloors(q: StnQuality): boolean {
+  return q.hasNormals && q.total > 0 && q.actValid >= Math.floor(q.total * COVERAGE_FLOOR)
+}
+
+// Among stations clearing both floors, keep the freshest (latest valid reading),
+// breaking ties by most valid readings. Returns null when none qualify.
+function pickQualifiedStation(stations: AcisStn[]): { stn: AcisStn; q: StnQuality } | null {
+  let best: { stn: AcisStn; q: StnQuality } | null = null
   for (const stn of stations) {
-    const { latestValidIdx, missing } = stationScore(stn)
-    if (latestValidIdx > bestIdx || (latestValidIdx === bestIdx && missing < bestMissing)) {
-      best = stn
-      bestIdx = latestValidIdx
-      bestMissing = missing
+    const q = assessStation(stn)
+    if (!clearsFloors(q)) continue
+    if (
+      best == null ||
+      q.latestValidIdx > best.q.latestValidIdx ||
+      (q.latestValidIdx === best.q.latestValidIdx && q.actValid > best.q.actValid)
+    ) {
+      best = { stn, q }
     }
   }
   return best
 }
 
-// Trailing missing days between a station's last valid reading and the window end.
-function trailingGapDays(stn: AcisStn | null): number {
-  if (!stn) return Infinity
-  const rows = stn.data ?? []
-  const { latestValidIdx } = stationScore(stn)
-  if (latestValidIdx < 0) return Infinity
-  return (rows.length - 1) - latestValidIdx
+// Trailing missing days between a qualifier's last valid reading and window end.
+function trailingGap(best: { q: StnQuality } | null): number {
+  if (best == null) return Infinity
+  return (best.q.total - 1) - best.q.latestValidIdx
 }
 
 export async function getPrecipNormal(
   fips: string,
   lat: number | null,
   lon: number | null,
-): Promise<PrecipNormalData | null> {
+): Promise<PrecipNormalResult> {
   const today = new Date()
   const edate = new Date(today)
   edate.setDate(today.getDate() - 4)
@@ -112,7 +139,7 @@ export async function getPrecipNormal(
         meta: ['uid', 'name', 'll'],
         sdate,
         edate: edateStr,
-        elems: 'pcpn',
+        elems: [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }],
         output: 'json',
       }),
       next: { revalidate: 86400 },
@@ -121,16 +148,17 @@ export async function getPrecipNormal(
 
     const multiData = await multiRes.json() as { data?: AcisStn[] }
 
-    // Pick the freshest in-county station (most recent reading, then completeness).
-    let bestStation = pickFreshestStation(multiData.data ?? [])
+    // Pick the freshest in-county station that clears the normals + coverage floors.
+    let best = pickQualifiedStation(multiData.data ?? [])
     let fromRadius = false
 
-    // Radius fallback (50 → 100 → 150 mi) when the county has NO station OR its
-    // best station has gone quiet. We adopt a nearby station only when it is
-    // strictly fresher than what we have, and stop expanding the moment we land a
-    // non-stale one. If nothing fresher exists in range, we keep the in-county
-    // station and let the pre-period clip + "station offline" note tell the truth.
-    if ((bestStation == null || trailingGapDays(bestStation) > STALE_TRAILING_DAYS) && lat != null && lon != null) {
+    // Staleness-gated radius search (50 → 100 → 150 mi): run it when there is NO
+    // qualifying in-county station OR the best one has gone quiet. Only adopt a
+    // neighbor that ALSO clears both floors AND is fresher — never trade a complete
+    // station for a near-empty one just because it reported more recently. If
+    // nothing nearby qualifies, keep the in-county qualifier and let the pre-period
+    // clip + "station offline" note tell the truth.
+    if ((best == null || trailingGap(best) > STALE_TRAILING_DAYS) && lat != null && lon != null) {
       for (const distance of [50, 100, 150]) {
         const radiusRes = await fetch(`${ACIS_BASE}/MultiStnData`, {
           method: 'POST',
@@ -141,26 +169,29 @@ export async function getPrecipNormal(
             meta: ['uid', 'name', 'll'],
             sdate,
             edate: edateStr,
-            elems: 'pcpn',
+            elems: [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }],
             output: 'json',
           }),
           next: { revalidate: 86400 },
         })
         if (!radiusRes.ok) continue
         const radiusData = await radiusRes.json() as { data?: AcisStn[] }
-        const radiusBest = pickFreshestStation(radiusData.data ?? [])
+        const radiusBest = pickQualifiedStation(radiusData.data ?? [])
         if (radiusBest) {
-          const curIdx = bestStation ? stationScore(bestStation).latestValidIdx : -2
-          if (stationScore(radiusBest).latestValidIdx > curIdx) {
-            bestStation = radiusBest
+          const curIdx = best ? best.q.latestValidIdx : -2
+          if (radiusBest.q.latestValidIdx > curIdx) {
+            best = radiusBest
             fromRadius = true
           }
-          if (trailingGapDays(bestStation) <= STALE_TRAILING_DAYS) break
+          if (trailingGap(best) <= STALE_TRAILING_DAYS) break
         }
       }
     }
 
-    if (bestStation == null) return null
+    // No station with usable normals AND enough reporting history anywhere in
+    // range — honest explicit state; never render a card/deficit against a 0 normal.
+    if (best == null) return 'no_qualifying_station'
+    const bestStation = best.stn
 
     // ACIS returns ll as [longitude, latitude]
     const distanceMiles =

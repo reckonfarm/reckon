@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { NwsDiscussion } from '@/lib/nws-discussion'
-import type { PrecipNormalData } from '@/lib/precip-normal'
+import type { PrecipNormalResult } from '@/lib/precip-normal'
 
 interface Props {
   nwsDiscussion: NwsDiscussion | null
@@ -125,12 +125,23 @@ function PrecipTooltip({
   )
 }
 
-export function PrecipVsNormalPanel({ data }: { data: PrecipNormalData | null }) {
-  if (!data) {
+export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
+  if (data == null) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
         No precipitation station data available for this county. Sparse rural counties may not have
         nearby COOP weather stations in the NOAA network.
+      </p>
+    )
+  }
+
+  // Defense in depth: never render a deficit/surplus or claim 30-year normals when
+  // no station with usable normals + enough history exists, or normals are zero.
+  if (data === 'no_qualifying_station' || data.ytdNormal === 0) {
+    return (
+      <p className="text-sm text-forest-green/50 font-dm-sans">
+        No nearby weather station has enough reporting history this year to compare against its
+        30-year normal. We&apos;d rather show nothing than a misleading total.
       </p>
     )
   }
