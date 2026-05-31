@@ -235,8 +235,17 @@ async function acisPost(
 
 type MultiStnOutcome = { ok: true; stations: AcisStn[] } | { ok: false }
 
-async function fetchMultiStn(body: Record<string, unknown>, callType: string, fips: string): Promise<MultiStnOutcome> {
-  const r = await acisPost('MultiStnData', { ...body, meta: ['uid', 'name', 'll'], elems: ELEMS, output: 'json' }, callType, fips)
+// `area` is the spatial selector ({ county } or { bbox }). The date window is
+// REQUIRED by ACIS — MultiStnData 400s with "Need date range" without it — so we
+// thread the same sdate/edate the StnData/GridData calls use.
+async function fetchMultiStn(
+  area: Record<string, unknown>,
+  sdate: string,
+  edate: string,
+  callType: string,
+  fips: string,
+): Promise<MultiStnOutcome> {
+  const r = await acisPost('MultiStnData', { ...area, sdate, edate, meta: ['uid', 'name', 'll'], elems: ELEMS, output: 'json' }, callType, fips)
   if (!r.ok) return { ok: false }
   const stations = (r.json as { data?: AcisStn[] }).data ?? []
   if (stations.length === 0) console.error(`[precip] ACIS MultiStnData (${callType}) returned empty 200 fips=${fips}`)
@@ -345,7 +354,7 @@ export async function getPrecipNormal(
 
   try {
     // Gather candidates: in-county first.
-    const countyRes = await fetchMultiStn({ county: fips }, 'county', fips)
+    const countyRes = await fetchMultiStn({ county: fips }, sdate, edateStr, 'county', fips)
     if (!countyRes.ok) availabilityFailure = true
     let cands = buildCandidates(countyRes.ok ? countyRes.stations : [], lat, lon, sdate, true)
     let primary = pickNearestCurrentFull(cands, nowMs)
@@ -355,7 +364,7 @@ export async function getPrecipNormal(
     if (primary == null && lat != null && lon != null) {
       const seen = new Set(cands.map(c => c.uid))
       for (const distance of [50, 100, 150]) {
-        const ringRes = await fetchMultiStn({ bbox: bboxFor(lat, lon, distance) }, `bbox ${distance}mi`, fips)
+        const ringRes = await fetchMultiStn({ bbox: bboxFor(lat, lon, distance) }, sdate, edateStr, `bbox ${distance}mi`, fips)
         if (!ringRes.ok) { availabilityFailure = true; continue }
         const ring = buildCandidates(ringRes.stations, lat, lon, sdate, false)
           .filter(c => c.distanceMiles <= distance && !seen.has(c.uid))
