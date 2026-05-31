@@ -257,9 +257,14 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           )}
         </>
       ) : outOfCounty ? (
-        /* Out-of-county gauge: make the "outside the county" fact explicit, not just a mileage. */
+        /* Out-of-county gauge: make the "outside the county" fact explicit, not just a mileage.
+           Don't double "County" — some county names already include the word. */
         <p className="text-xs text-forest-green/40 font-dm-sans">
-          Station: {label} — nearest current gauge, outside {countyName ? `${countyName} County` : 'the county'}
+          Station: {label} — nearest current gauge, outside {
+            countyName
+              ? /\bcounty$/i.test(countyName.trim()) ? countyName.trim() : `${countyName.trim()} County`
+              : 'the county'
+          }
           {distanceMiles > 0 ? ` (${distanceMiles} mi)` : ''}
           {throughDate ? ` · through ${fmtDate(throughDate)}` : ''}{' '}
           · NOAA/ACIS · 1991–2020 normals (NOAA)
