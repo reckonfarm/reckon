@@ -15,6 +15,15 @@ const COVERAGE_FLOOR = 0.5
 // reading is 3 weeks old) so the grid failsafe can keep the card current.
 const CURRENT_MAX_AGE_DAYS = 10
 
+// Distance cap for accepting an OUT-OF-COUNTY station as the PRIMARY gauge. An
+// in-county station is representative at any distance (no cap); an out-of-county
+// gauge is trusted only within this radius. Past it, a real gauge is no longer
+// representative of the county, so the in-county PRISM grid failsafe is the better
+// read and takes over. NOTE: the bbox search may still reach 150 mi to SOURCE a
+// normal for that grid failsafe — only primary-station ACCEPTANCE is capped here.
+// Env-overridable.
+const STATION_MAX_MILES = Number(process.env.PRECIP_STATION_MAX_MILES) || 100
+
 export interface DailyCumulative {
   date: string
   actualCumulative: number
@@ -40,6 +49,7 @@ export interface PrecipNormalData {
   deficitPct: number
   dataThrough: string | null   // last valid actual date (= series end)
   context: StationContext | null  // grid mode only: the station supplying the normal
+  outOfCounty: boolean         // station mode only: true if the gauge is outside the county (≤STATION_MAX_MILES away)
 }
 
 // Result of a precip lookup:
@@ -164,14 +174,18 @@ function isCurrent(c: Candidate, today: number): boolean {
   return ageDays <= CURRENT_MAX_AGE_DAYS
 }
 
-// Nearest station that is full AND current — the authoritative gauge. Prefer
-// in-county; otherwise nearest by great-circle distance.
+// Nearest station that is full AND current — the authoritative gauge. Hierarchy:
+//   1. nearest IN-COUNTY full+current station (any distance — always representative)
+//   2. else nearest OUT-OF-COUNTY full+current station, but ONLY within
+//      STATION_MAX_MILES; past that the grid failsafe is the better read.
 function pickNearestCurrentFull(cands: Candidate[], today: number): Candidate | null {
   const ok = cands.filter(c => isFull(c) && isCurrent(c, today))
   if (ok.length === 0) return null
   const inCounty = ok.filter(c => c.inCounty)
-  const pool = inCounty.length ? inCounty : ok
-  return pool.sort((a, b) => a.distanceMiles - b.distanceMiles)[0]
+  if (inCounty.length) return inCounty.sort((a, b) => a.distanceMiles - b.distanceMiles)[0]
+  const nearbyOut = ok.filter(c => c.distanceMiles <= STATION_MAX_MILES)
+  if (nearbyOut.length === 0) return null
+  return nearbyOut.sort((a, b) => a.distanceMiles - b.distanceMiles)[0]
 }
 
 // Nearest full station regardless of currency — supplies the normal climatology
@@ -292,7 +306,7 @@ function buildSeries(
   source: 'station' | 'grid',
   label: string,
   distanceMiles: number,
-): Omit<PrecipNormalData, 'context'> | null {
+): Omit<PrecipNormalData, 'context' | 'outOfCounty'> | null {
   let dailyData: DailyCumulative[] = []
   let actualCum = 0
   let normalCum = 0
@@ -383,7 +397,7 @@ export async function getPrecipNormal(
         const actual = rowsRes.rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
         const normalByDate = new Map(rowsRes.rows.map(r => [r[0], parseValue(r[2])]))
         const series = buildSeries(actual, normalByDate, 'station', primary.name, primary.distanceMiles)
-        if (series) return { ...series, context: null }
+        if (series) return { ...series, context: null, outOfCounty: !primary.inCounty }
       }
     }
 
@@ -403,6 +417,7 @@ export async function getPrecipNormal(
             return {
               ...series,
               context: { name: normalStn.name, distanceMiles: normalStn.distanceMiles, lastValid: normalStn.lastValid },
+              outOfCounty: false,
             }
           }
         }

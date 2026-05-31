@@ -661,7 +661,7 @@ export default async function DashboardPage({
                   {/* Rainfall vs normal card */}
                   <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
                     <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
-                    <PrecipVsNormalPanel data={precipNormal} />
+                    <PrecipVsNormalPanel data={precipNormal} countyName={selectedCounty.name} />
                   </div>
 
                   {/* Forage outlook / Hay nearby card */}

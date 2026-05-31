@@ -125,7 +125,7 @@ function PrecipTooltip({
   )
 }
 
-export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
+export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalResult; countyName?: string }) {
   if (data == null) {
     return (
       <p className="text-sm text-forest-green/50 font-dm-sans">
@@ -156,7 +156,7 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
     )
   }
 
-  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, context } = data
+  const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, context, outOfCounty } = data
   const isDeficit = deficit < 0
 
   const monthTicks = dailyData
@@ -256,6 +256,14 @@ export function PrecipVsNormalPanel({ data }: { data: PrecipNormalResult }) {
             </p>
           )}
         </>
+      ) : outOfCounty ? (
+        /* Out-of-county gauge: make the "outside the county" fact explicit, not just a mileage. */
+        <p className="text-xs text-forest-green/40 font-dm-sans">
+          Station: {label} — nearest current gauge, outside {countyName ? `${countyName} County` : 'the county'}
+          {distanceMiles > 0 ? ` (${distanceMiles} mi)` : ''}
+          {throughDate ? ` · through ${fmtDate(throughDate)}` : ''}{' '}
+          · NOAA/ACIS · 1991–2020 normals (NOAA)
+        </p>
       ) : (
         <p className="text-xs text-forest-green/40 font-dm-sans">
           Station: {label}
