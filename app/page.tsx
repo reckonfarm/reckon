@@ -188,16 +188,12 @@ export default async function Home() {
 
           {/* Right: map */}
           <div>
-            <HomeDroughtMap />
+            <HomeDroughtMap visitorState={visitorState} />
           </div>
         </div>
 
         {/* ── Feature row ───────────────────────────────────────────────────── */}
-        <h2 className="mt-16 font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-          Track your drought, know your checks, find your feed.
-        </h2>
-
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
           <div className="rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-forest-green/10">

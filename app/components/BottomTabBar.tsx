@@ -3,10 +3,24 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase-browser'
+import type { User } from '@supabase/supabase-js'
 
 export default function BottomTabBar() {
   const pathname = usePathname()
   const [unread, setUnread] = useState(0)
+  const [user, setUser] = useState<User | null>(null)
+
+  // Same auth signal SiteHeader uses, so signed-out visitors don't see the
+  // Radar tab (Radar requires a free account).
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   // Refresh the messages unread badge on navigation (tolerates signed-out 401).
   useEffect(() => {
@@ -91,7 +105,7 @@ export default function BottomTabBar() {
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe">
       <div className="flex items-stretch">
-        {tabs.map((tab) => {
+        {tabs.filter(tab => tab.href !== '/radar' || user).map((tab) => {
           const active = tab.href === '/'
             ? pathname === '/' || pathname.startsWith('/dashboard')
             : pathname.startsWith(tab.href)

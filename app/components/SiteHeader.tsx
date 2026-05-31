@@ -80,12 +80,14 @@ export default function SiteHeader({ subtitle, center }: Props) {
               )}
             </Link>
           )}
-          <Link
-            href="/radar"
-            className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-          >
-            Radar
-          </Link>
+          {user && (
+            <Link
+              href="/radar"
+              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+            >
+              Radar
+            </Link>
+          )}
 
           {user ? (
             <>

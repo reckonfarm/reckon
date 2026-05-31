@@ -16,23 +16,8 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     key: 'lfp_alerts',
-    title: 'Drought-check alerts',
-    body: "Get a text the moment your county crosses the LFP-qualifying drought threshold — so you don't miss the window to file.",
-  },
-  {
-    key: 'lfp_estimate',
-    title: 'Full payment estimate',
-    body: 'Estimate your actual LFP check from your herd size and county, and see other disaster programs you may be owed.',
-  },
-  {
-    key: 'forage_forecast',
-    title: 'Will you have enough grass?',
-    body: 'A season-ahead forage outlook for your ground, so you can make stocking calls early instead of scrambling.',
-  },
-  {
-    key: 'filing_toolkit',
-    title: 'Filing toolkit',
-    body: 'Track grazing days and records, keep your receipts in one place, and never miss an FSA deadline.',
+    title: 'Text alerts',
+    body: 'Drought-check alerts land in your email today — get a text the moment your county crosses the LFP threshold, coming soon.',
   },
   {
     key: 'cattle_dashboard',
