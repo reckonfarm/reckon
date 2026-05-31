@@ -77,9 +77,10 @@ async function getNearbyHayCount(stateCode: string): Promise<number> {
     const db = createServiceClient()
     const { count } = await db
       .from('hay_listings')
-      .select('id', { count: 'exact', head: true })
+      .select('id, counties!inner(state)', { count: 'exact', head: true })
       .eq('active', true)
       .gt('expires_at', new Date().toISOString())
+      .eq('counties.state', stateCode)
     return count ?? 0
   } catch {
     return 0

@@ -18,6 +18,10 @@ import { createServiceClient } from './supabase'
 const USDM_CONSEC_API =
   'https://usdmdataservices.unl.edu/api/ConsecutiveNonConsecutiveStatistics'
 
+// Bound each live USDM call so a hanging API degrades to an honest "unavailable"
+// state in the caller rather than stalling the whole dashboard render.
+const USDM_TIMEOUT_MS = 8000
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GrazingPeriod {
@@ -108,10 +112,18 @@ async function fetchConsecutiveRuns(
     `?aoi=${fips}&dx=${dx}&minimumweeks=${minimumWeeks}` +
     `&startdate=${gp.startDate}&enddate=${gp.endDate}`
 
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), USDM_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!res.ok) {
     throw new Error(
       `USDM consecutive-weeks API failed (HTTP ${res.status}) for ` +

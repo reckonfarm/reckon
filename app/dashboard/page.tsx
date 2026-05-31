@@ -184,6 +184,7 @@ export default async function DashboardPage({
   let seasonalOutlook: ForecastOutlook | null       = null
   let lfpResult: LfpEligibilityResult | null          = null
   let priorYearLfpResult: LfpEligibilityResult | null = null
+  let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
   let droughtDiscussion: DroughtDiscussion | null   = null
   let wpcUpdated: string | null                     = null
   let prcp814Updated: string | null                 = null
@@ -301,7 +302,11 @@ export default async function DashboardPage({
         // Generic Northern Plains fallback for counties not in FOIA dataset
         const yr = new Date().getFullYear()
         return { grazingPeriod: { startDate: `${yr}-05-01`, endDate: `${yr}-11-30` } }
-      })()),
+      })())
+        // Isolate: a USDM outage/timeout must NOT reject this Promise.all and 500
+        // the whole dashboard. Resolve to a tagged outcome instead.
+        .then(result => ({ ok: true as const, result }))
+        .catch(() => ({ ok: false as const })),
 
       // USDM drought discussion narrative (weekly, cached 24h)
       getDroughtDiscussion(state),
@@ -385,7 +390,9 @@ export default async function DashboardPage({
         }
         const prior = new Date().getFullYear() - 1
         return { grazingPeriod: { startDate: `${prior}-05-01`, endDate: `${prior}-11-30` } }
-      })()),
+      })())
+        // Prior-year comparison is non-critical context; absence is already handled.
+        .catch(() => null),
 
       // 3-year weekly drought history from USDM API (statisticsType=2 = actual per-category %)
       (() => {
@@ -426,7 +433,8 @@ export default async function DashboardPage({
     cpcSeasonalMap     = cpcSeasonalMapRes.data as OfficialMapRecord | null
     monthlyOutlook     = monthlyOutlookRes.data as ForecastOutlook | null
     seasonalOutlook    = seasonalOutlookRes.data as ForecastOutlook | null
-    lfpResult          = lfpRes
+    lfpResult          = lfpRes.ok ? lfpRes.result : null
+    lfpUnavailable     = !lfpRes.ok
     priorYearLfpResult = priorYearLfpRes
     droughtDiscussion  = discussionRes
     const lastMod      = wpcHead?.headers.get('last-modified')
@@ -799,19 +807,37 @@ export default async function DashboardPage({
 
                   <DashboardAccordion
                     title="Eligibility math"
-                    preview={lfpResult && lfpResult.maxTier >= 1 ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}` : 'Not currently triggered'}
-                    previewAmount={lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
+                    preview={
+                      lfpUnavailable
+                        ? 'Estimate temporarily unavailable'
+                        : lfpResult && lfpResult.maxTier >= 1
+                          ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
+                          : 'Not currently triggered'
+                    }
+                    previewAmount={!lfpUnavailable && lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
                     highlight={!!(lfpResult && lfpResult.maxTier >= 1)}
-                    defaultOpen={!!(lfpResult && lfpResult.maxTier >= 1)}
+                    defaultOpen={lfpUnavailable || !!(lfpResult && lfpResult.maxTier >= 1)}
                   >
-                    {lfpResult && (
+                    {lfpUnavailable ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="font-dm-sans text-sm font-semibold text-amber-800">
+                          LFP estimate temporarily unavailable
+                        </p>
+                        <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
+                          The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
+                          can&apos;t compute your LFP tier or payment estimate.
+                          {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
+                          Check back shortly — this usually clears on its own.
+                        </p>
+                      </div>
+                    ) : lfpResult ? (
                       <ProgramStatus
                         eligibility={lfpResult}
                         priorYearEligibility={priorYearLfpResult}
                         fips={selectedCounty.fips}
                         countyName={selectedCounty.name}
                       />
-                    )}
+                    ) : null}
                   </DashboardAccordion>
 
                   <DashboardAccordion

@@ -42,6 +42,53 @@ function parseValue(v: string): number | null {
   return isNaN(n) ? null : n
 }
 
+// A station whose most recent valid reading is older than this many days beyond
+// the window end is treated as stale ("offline"), triggering the radius search
+// for a fresher nearby station. ACIS already lags ~4 days, so a healthy station
+// shows a small trailing gap; a large one means the station has gone quiet.
+const STALE_TRAILING_DAYS = 5
+
+// A station's recency + completeness over the daily window. latestValidIdx is the
+// array index (≈ day offset from sdate) of the most recent non-missing reading;
+// higher = more recent. missing counts 'M'/absent days. We select on recency so
+// the station reporting NOW wins over one merely more complete across the year.
+function stationScore(stn: AcisStn): { latestValidIdx: number; missing: number } {
+  const rows = stn.data ?? []
+  let latestValidIdx = -1
+  let missing = 0
+  for (let i = 0; i < rows.length; i++) {
+    const v = rows[i]?.[0]
+    if (v === 'M' || v == null) missing++
+    else latestValidIdx = i
+  }
+  return { latestValidIdx, missing }
+}
+
+// Prefer the most recent valid reading; break ties by fewest missing days.
+function pickFreshestStation(stations: AcisStn[]): AcisStn | null {
+  let best: AcisStn | null = null
+  let bestIdx = -2
+  let bestMissing = Infinity
+  for (const stn of stations) {
+    const { latestValidIdx, missing } = stationScore(stn)
+    if (latestValidIdx > bestIdx || (latestValidIdx === bestIdx && missing < bestMissing)) {
+      best = stn
+      bestIdx = latestValidIdx
+      bestMissing = missing
+    }
+  }
+  return best
+}
+
+// Trailing missing days between a station's last valid reading and the window end.
+function trailingGapDays(stn: AcisStn | null): number {
+  if (!stn) return Infinity
+  const rows = stn.data ?? []
+  const { latestValidIdx } = stationScore(stn)
+  if (latestValidIdx < 0) return Infinity
+  return (rows.length - 1) - latestValidIdx
+}
+
 export async function getPrecipNormal(
   fips: string,
   lat: number | null,
@@ -62,6 +109,7 @@ export async function getPrecipNormal(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         county: fips,
+        meta: ['uid', 'name', 'll'],
         sdate,
         edate: edateStr,
         elems: 'pcpn',
@@ -73,12 +121,16 @@ export async function getPrecipNormal(
 
     const multiData = await multiRes.json() as { data?: AcisStn[] }
 
-    let stations: AcisStn[] = multiData.data ?? []
+    // Pick the freshest in-county station (most recent reading, then completeness).
+    let bestStation = pickFreshestStation(multiData.data ?? [])
     let fromRadius = false
 
-    // Expanding radius fallback: try 50 → 100 → 150 miles when county has no stations
-    if (stations.length === 0) {
-      if (lat == null || lon == null) return null
+    // Radius fallback (50 → 100 → 150 mi) when the county has NO station OR its
+    // best station has gone quiet. We adopt a nearby station only when it is
+    // strictly fresher than what we have, and stop expanding the moment we land a
+    // non-stale one. If nothing fresher exists in range, we keep the in-county
+    // station and let the pre-period clip + "station offline" note tell the truth.
+    if ((bestStation == null || trailingGapDays(bestStation) > STALE_TRAILING_DAYS) && lat != null && lon != null) {
       for (const distance of [50, 100, 150]) {
         const radiusRes = await fetch(`${ACIS_BASE}/MultiStnData`, {
           method: 'POST',
@@ -96,24 +148,19 @@ export async function getPrecipNormal(
         })
         if (!radiusRes.ok) continue
         const radiusData = await radiusRes.json() as { data?: AcisStn[] }
-        stations = radiusData.data ?? []
-        if (stations.length > 0) {
-          fromRadius = true
-          break
+        const radiusBest = pickFreshestStation(radiusData.data ?? [])
+        if (radiusBest) {
+          const curIdx = bestStation ? stationScore(bestStation).latestValidIdx : -2
+          if (stationScore(radiusBest).latestValidIdx > curIdx) {
+            bestStation = radiusBest
+            fromRadius = true
+          }
+          if (trailingGapDays(bestStation) <= STALE_TRAILING_DAYS) break
         }
       }
-      if (stations.length === 0) return null
     }
 
-    let bestStation = stations[0]
-    let bestMissing = Infinity
-    for (const stn of stations) {
-      const missing = (stn.data ?? []).filter(([v]) => v === 'M').length
-      if (missing < bestMissing) {
-        bestMissing = missing
-        bestStation = stn
-      }
-    }
+    if (bestStation == null) return null
 
     // ACIS returns ll as [longitude, latitude]
     const distanceMiles =
