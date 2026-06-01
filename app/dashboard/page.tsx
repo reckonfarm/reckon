@@ -6,6 +6,8 @@ import { getGrazingPeriod } from '@/lib/grazing-periods'
 import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
+import ShareButton from '@/app/components/ShareButton'
+import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import DroughtTrendChart from './components/DroughtTrendChart'
@@ -512,6 +514,8 @@ export default async function DashboardPage({
   }
 
   const latest = history[0] ?? null
+  // Public, neighborly drought descriptor for the Share affordance (no money/PII).
+  const shareDrought = droughtSeverity(latest)
 
   // Default estimate for the triggered banner (100 head beef_adult)
   const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
@@ -589,10 +593,18 @@ export default async function DashboardPage({
                   FIPS {selectedCounty.fips}
                 </p>
               </div>
-              <WatchlistButton
-                countyId={selectedCounty.id}
-                countyName={selectedCounty.name}
-              />
+              <div className="flex items-center gap-2">
+                <ShareButton
+                  fips={selectedCounty.fips}
+                  countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+                  droughtLabel={shareDrought.level != null ? shareDrought.label : null}
+                  surface="dashboard"
+                />
+                <WatchlistButton
+                  countyId={selectedCounty.id}
+                  countyName={selectedCounty.name}
+                />
+              </div>
             </div>
 
             {!history.length && (

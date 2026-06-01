@@ -7,6 +7,8 @@ import CattleMarketPanel from '@/app/dashboard/components/CattleMarketPanel'
 import CullCowPanel from '@/app/dashboard/components/CullCowPanel'
 import CalfValueCalculator from '@/app/dashboard/components/CalfValueCalculator'
 import CattleWeightCurve from '@/app/dashboard/components/CattleWeightCurve'
+import ShareButton from '@/app/components/ShareButton'
+import { droughtSeverity, type DroughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,31 +20,8 @@ export const metadata: Metadata = {
 
 const DEFAULT_FIPS = '30069' // Petroleum County, MT — the home operation
 
-// ─── County drought status (READ ONLY — for the market read) ─────────────────────
-
-interface DroughtStatus {
-  level: number | null // 0–4, or null if not in drought / no data
-  label: string        // human label for the market-read sentence
-}
-
-const DROUGHT_LABELS: Record<number, string> = {
-  4: 'D4 (exceptional drought)',
-  3: 'D3 (extreme drought)',
-  2: 'D2 (severe drought)',
-  1: 'D1 (moderate drought)',
-  0: 'D0 (abnormally dry)',
-}
-
-function deriveDrought(row: { d0: number | null; d1: number | null; d2: number | null; d3: number | null; d4: number | null } | null): DroughtStatus {
-  if (!row) return { level: null, label: 'not currently rated for drought' }
-  // USDM values are cumulative ("D2 or worse"); the worst category with ≥5% area is the headline.
-  const vals: Array<[number, number]> = [
-    [4, row.d4 ?? 0], [3, row.d3 ?? 0], [2, row.d2 ?? 0], [1, row.d1 ?? 0], [0, row.d0 ?? 0],
-  ]
-  const worst = vals.find(([, pct]) => pct >= 5)
-  if (!worst) return { level: null, label: 'not currently in drought' }
-  return { level: worst[0], label: DROUGHT_LABELS[worst[0]] }
-}
+// Drought status (READ ONLY — for the market read + share) comes from the shared
+// droughtSeverity helper, so the cattle read and the dashboard agree.
 
 // ─── Market read (LIVE data only — no hardcoded macro numbers) ────────────────────
 
@@ -54,7 +33,7 @@ function pickHeadlineFeeder(m: CattleMarket): { label: string; row: FeederClass 
   return null
 }
 
-function MarketRead({ countyName, drought, market }: { countyName: string; drought: DroughtStatus; market: CattleMarket }) {
+function MarketRead({ countyName, drought, market }: { countyName: string; drought: DroughtSeverity; market: CattleMarket }) {
   if (market.status !== 'ok') {
     return (
       <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
@@ -144,7 +123,7 @@ export default async function CattleMarketPage({
     getCattleMarket(),
   ])
 
-  let drought: DroughtStatus = { level: null, label: 'not currently rated for drought' }
+  let drought: DroughtSeverity = { level: null, label: 'not currently rated for drought', severityWord: '' }
   let countyName = 'Your county'
   if (county) {
     countyName = `${county.name}, ${county.state}`
@@ -155,9 +134,7 @@ export default async function CattleMarketPage({
       .order('week_date', { ascending: false })
       .limit(1)
       .maybeSingle()
-    drought = deriveDrought(
-      (latest as { d0: number | null; d1: number | null; d2: number | null; d3: number | null; d4: number | null } | null) ?? null,
-    )
+    drought = droughtSeverity((latest as UsdmReading | null) ?? null)
   }
 
   const ok = market.status === 'ok'
@@ -167,11 +144,19 @@ export default async function CattleMarketPage({
       <SiteHeader subtitle="Cattle Market" center={county ? `${county.name}, ${county.state}` : undefined} />
 
       <main className="mx-auto max-w-2xl px-4 py-6 pb-16 sm:px-6 lg:px-8">
-        <div className="mb-4">
-          <h1 className="font-fraunces text-2xl font-semibold text-forest-green">Cattle Market</h1>
-          <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">
-            Montana auction prices · USDA AMS Market News
-          </p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="font-fraunces text-2xl font-semibold text-forest-green">Cattle Market</h1>
+            <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">
+              Montana auction prices · USDA AMS Market News
+            </p>
+          </div>
+          <ShareButton
+            fips={fips}
+            countyLabel={countyName}
+            droughtLabel={drought.level != null ? drought.label : null}
+            surface="cattle"
+          />
         </div>
 
         <div className="space-y-4">
