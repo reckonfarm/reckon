@@ -13,6 +13,7 @@ import {
 import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 import LfpDisclaimer from '@/app/components/LfpDisclaimer'
+import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { trackEvent, bucketHeadCount } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -525,6 +526,10 @@ function LivestockPanel({
         )}
       </div>
 
+      {/* Prominent estimate disclaimer right under the eligibility result — shows
+          for both the qualifying and "not yet qualifying" states. */}
+      <LfpEstimateNote />
+
       {maxTier > 0 && (
         <ActionCards year={year} currentYear={new Date().getFullYear()} />
       )}
@@ -645,6 +650,10 @@ function LivestockPanel({
                   does not account for payment limitations, sequestration, or prior-year
                   mitigated livestock adjustments.
                 </p>
+
+                <div className="mt-2">
+                  <LfpEstimateNote />
+                </div>
               </div>
             ) : (
               <p className="text-xs text-forest-green/40 font-dm-sans">
@@ -947,6 +956,9 @@ export default function ProgramStatus({
           <p className="font-dm-sans text-xs text-cream/60 mt-1">
             Based on 100 head beef cattle · {eligibility.payments} payment{eligibility.payments !== 1 ? 's' : ''} · Tier {eligibility.maxTier}
           </p>
+          <div className="mt-3">
+            <LfpEstimateNote tone="onDark" />
+          </div>
         </div>
       )}
 

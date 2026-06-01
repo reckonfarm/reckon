@@ -7,6 +7,7 @@ import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
 import ShareButton from '@/app/components/ShareButton'
+import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
@@ -810,9 +811,11 @@ export default async function DashboardPage({
                       </Link>
 
                       <p className="mt-3 font-dm-sans text-xs text-forest-green/40 leading-snug">
-                        Estimate assumes ~100 head of adult beef cattle — your actual payment and tonnage depend on your
-                        herd. Not a guarantee of payment or price.
+                        Estimate assumes ~100 head of adult beef cattle; your actual payment and tonnage depend on your herd.
                       </p>
+                      <div className="mt-2">
+                        <LfpEstimateNote />
+                      </div>
                     </div>
                   )}
 

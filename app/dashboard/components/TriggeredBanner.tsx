@@ -1,6 +1,7 @@
 'use client'
 
 import LfpDisclaimer from '@/app/components/LfpDisclaimer'
+import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 
 interface TriggeredBannerProps {
   countyName:      string
@@ -52,6 +53,9 @@ export default function TriggeredBanner({
           <p className="mt-1 font-dm-sans text-xs text-white/55">
             Don&apos;t wait — FSA signup closes {formatDate(grazingEndDate)}.
           </p>
+          <div className="mt-2">
+            <LfpEstimateNote tone="onDark" />
+          </div>
         </div>
 
         <button
