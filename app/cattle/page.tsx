@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
+import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
 import { getCattleMarket, type CattleMarket, type FeederClass } from '@/lib/cattle-market-service'
 import CattleMarketPanel from '@/app/dashboard/components/CattleMarketPanel'
 import CullCowPanel from '@/app/dashboard/components/CullCowPanel'
@@ -167,22 +167,16 @@ export default async function CattleMarketPage({
       <SiteHeader subtitle="Cattle Market" center={county ? `${county.name}, ${county.state}` : undefined} />
 
       <main className="mx-auto max-w-2xl px-4 py-6 pb-16 sm:px-6 lg:px-8">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-fraunces text-2xl font-semibold text-forest-green">Cattle Market</h1>
-            <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">
-              Montana auction prices · USDA AMS Market News
-            </p>
-          </div>
-          <Link
-            href={`/dashboard?fips=${fips}`}
-            className="shrink-0 font-dm-sans text-sm text-forest-green/60 underline hover:text-forest-green"
-          >
-            Drought dashboard →
-          </Link>
+        <div className="mb-4">
+          <h1 className="font-fraunces text-2xl font-semibold text-forest-green">Cattle Market</h1>
+          <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">
+            Montana auction prices · USDA AMS Market News
+          </p>
         </div>
 
         <div className="space-y-4">
+          <DroughtCattleToggle fips={fips} active="cattle" />
+
           <MarketRead countyName={countyName} drought={drought} market={market} />
 
           {ok && market.stale && (

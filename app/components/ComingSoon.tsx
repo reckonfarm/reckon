@@ -1,16 +1,20 @@
 'use client'
 
+import Link from 'next/link'
 import { trackEvent } from '@/lib/analytics'
 import { useEffect, useState } from 'react'
 
 // FREE demand probe — NOT a paywall. Each tile is an upcoming feature; a "Notify
 // me" tap (plus an email when signed out) tells us what to build and price later.
-// Nothing here gates or locks any existing feature.
+// Nothing here gates or locks any existing feature. A tile with `liveHref` is no
+// longer a probe — it's a shipped feature, rendered as a live link.
 
 interface Feature {
   key: string
   title: string
   body: string
+  liveHref?: string // set once the feature ships → renders a live link, not a probe
+  liveCta?: string
 }
 
 const FEATURES: Feature[] = [
@@ -22,7 +26,9 @@ const FEATURES: Feature[] = [
   {
     key: 'cattle_dashboard',
     title: 'Cattle market dashboard',
-    body: 'Local feeder-cattle prices by weight class, updated from USDA auction reports — see what your calves are bringing.',
+    body: 'Local feeder-cattle and cull-cow prices by weight class from USDA auction reports — see what your calves are bringing.',
+    liveHref: '/cattle',
+    liveCta: 'View cattle prices →',
   },
   {
     key: 'hay_hauler',
@@ -108,6 +114,32 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(f => {
           const st = status[f.key] ?? 'idle'
+
+          // Shipped feature → a live link, not a demand probe (no badge, no analytics tap).
+          if (f.liveHref) {
+            return (
+              <div
+                key={f.key}
+                className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+              >
+                <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/10 px-2.5 py-0.5 font-dm-sans text-[11px] font-medium text-forest-green">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-forest-green" />
+                  Live now
+                </span>
+                <p className="font-fraunces text-base font-semibold text-forest-green">{f.title}</p>
+                <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">{f.body}</p>
+                <div className="mt-auto pt-4">
+                  <Link
+                    href={f.liveHref}
+                    className="block w-full rounded-lg bg-forest-green px-4 py-2 text-center font-dm-sans text-sm font-semibold text-white transition-colors hover:bg-forest-green/90"
+                  >
+                    {f.liveCta ?? 'Open →'}
+                  </Link>
+                </div>
+              </div>
+            )
+          }
+
           return (
             <div
               key={f.key}

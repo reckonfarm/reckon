@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
@@ -13,6 +14,16 @@ interface Props {
 export default function SiteHeader({ subtitle, center }: Props) {
   const [user, setUser] = useState<User | null>(null)
   const [unread, setUnread] = useState(0)
+  const pathname = usePathname()
+
+  // Carry the currently-selected county into the Cattle link when one is in the
+  // URL (e.g. on /dashboard?fips= or /cattle?fips=); otherwise link plainly and
+  // let /cattle resolve its default county — same plain-link pattern as Hay/Radar.
+  const [fips, setFips] = useState<string | null>(null)
+  useEffect(() => {
+    try { setFips(new URLSearchParams(window.location.search).get('fips')) } catch { /* noop */ }
+  }, [pathname])
+  const cattleHref = fips ? `/cattle?fips=${fips}` : '/cattle'
 
   useEffect(() => {
     const supabase = createClient()
@@ -67,6 +78,12 @@ export default function SiteHeader({ subtitle, center }: Props) {
             className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
           >
             Hay
+          </Link>
+          <Link
+            href={cattleHref}
+            className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+          >
+            Cattle
           </Link>
           {user && (
             <Link

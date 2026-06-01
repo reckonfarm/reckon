@@ -5,6 +5,7 @@ import { computeLfpEligibility } from '@/lib/lfp-eligibility'
 import { getGrazingPeriod } from '@/lib/grazing-periods'
 import Link from 'next/link'
 import CountySelector from './components/CountySelector'
+import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import DroughtTrendChart from './components/DroughtTrendChart'
@@ -563,6 +564,9 @@ export default async function DashboardPage({
         {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
+
+            {/* Peer-view toggle — same county, drought ↔ cattle market */}
+            <DroughtCattleToggle fips={selectedCounty.fips} active="drought" />
 
             {/* LAYER 1 — The answer */}
             {lfpResult && lfpResult.maxTier >= 1 && (

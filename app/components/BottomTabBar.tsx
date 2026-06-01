@@ -32,6 +32,12 @@ export default function BottomTabBar() {
     return () => { cancelled = true }
   }, [pathname])
 
+  // Carry the selected county into the Cattle tab when one is in the URL.
+  const [fips, setFips] = useState<string | null>(null)
+  useEffect(() => {
+    try { setFips(new URLSearchParams(window.location.search).get('fips')) } catch { /* noop */ }
+  }, [pathname])
+
   // Hide on auth pages
   if (pathname.startsWith('/signin') || pathname.startsWith('/auth')) {
     return null
@@ -56,6 +62,20 @@ export default function BottomTabBar() {
           <path d="M6 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>
           <line x1="12" y1="8" x2="12" y2="18"/>
           <line x1="7" y1="13" x2="17" y2="13"/>
+        </svg>
+      ),
+    },
+    {
+      href: fips ? `/cattle?fips=${fips}` : '/cattle',
+      base: '/cattle',
+      label: 'Cattle',
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 5c0 2 1 3 1 3M19 5c0 2-1 3-1 3"/>
+          <path d="M6 8c-2 0-3 2-3 4 0 4 4 7 9 7s9-3 9-7c0-2-1-4-3-4"/>
+          <circle cx="9.5" cy="12" r="1" fill="currentColor" stroke="none"/>
+          <circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/>
+          <path d="M9.5 16c.8.6 4.2.6 5 0"/>
         </svg>
       ),
     },
@@ -106,9 +126,10 @@ export default function BottomTabBar() {
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe">
       <div className="flex items-stretch">
         {tabs.filter(tab => tab.href !== '/radar' || user).map((tab) => {
+          const matchPath = (tab as { base?: string }).base ?? tab.href
           const active = tab.href === '/'
             ? pathname === '/' || pathname.startsWith('/dashboard')
-            : pathname.startsWith(tab.href)
+            : pathname.startsWith(matchPath)
           return (
             <Link
               key={tab.href}
