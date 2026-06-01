@@ -22,7 +22,6 @@ export interface DroughtDiscussion {
 }
 
 interface Props {
-  stateAbbr: string
   droughtDiscussion: DroughtDiscussion | null
   cpcSoilMoistureUpdated: string | null
   vhiUpdated: string | null
@@ -38,11 +37,9 @@ type Tab = typeof TABS[number]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// HPRCC publishes state-level precip maps at the same path with state abbr instead of "US"
-// e.g. 14dPNormMT.png — fall back to national if state map fails to load
-function hprccStateUrl(period: '14d' | '30d' | '60d', state: string): string {
-  return `https://hprcc.unl.edu/products/maps/acis/${period}PNorm${state}.png`
-}
+// HPRCC publishes the ACIS percent-of-normal precip maps ONLY as a national (US)
+// image — there is no per-state product (the per-state URLs all 404). So we
+// request the national map directly and label it honestly as national.
 function hprccNationalUrl(period: '14d' | '30d' | '60d'): string {
   return `https://hprcc.unl.edu/products/maps/acis/${period}PNormUS.png`
 }
@@ -141,14 +138,12 @@ function NowPanel({ discussion }: { discussion: DroughtDiscussion | null }) {
 
 function CpcMapPanel({
   imageUrl,
-  fallbackUrl,
   alt,
   label,
   sourceUrl,
   lastModified,
 }: {
   imageUrl: string
-  fallbackUrl?: string
   alt: string
   label: string
   sourceUrl: string
@@ -165,10 +160,6 @@ function CpcMapPanel({
         alt={alt}
         className="w-full rounded-lg"
         loading="lazy"
-        onError={fallbackUrl ? (e) => {
-          const img = e.currentTarget
-          if (img.src !== fallbackUrl) img.src = fallbackUrl
-        } : undefined}
       />
       <p className="text-xs text-forest-green/50 font-dm-sans">
         {label}
@@ -184,7 +175,6 @@ function CpcMapPanel({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ForecastSection({
-  stateAbbr,
   droughtDiscussion,
   cpcSoilMoistureUpdated,
   vhiUpdated,
@@ -255,12 +245,11 @@ export default function ForecastSection({
         })()}
         {active === '14-Day Precip' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 14 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 14 days across the contiguous U.S. as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
             <CpcMapPanel
-              imageUrl={hprccStateUrl('14d', stateAbbr)}
-              fallbackUrl={hprccNationalUrl('14d')}
-              alt={`14-Day Percent of Normal Precipitation — ${stateAbbr}`}
-              label={`HPRCC/ACIS · Percent of Normal Precipitation · Past 14 Days · ${stateAbbr} · 1991–2020 normals`}
+              imageUrl={hprccNationalUrl('14d')}
+              alt="14-Day Percent of Normal Precipitation — United States"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 14 Days · United States · 1991–2020 normals"
               sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
               lastModified={hprcc14dUpdated}
             />
@@ -268,12 +257,11 @@ export default function ForecastSection({
         )}
         {active === '30-Day Precip' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 30 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 30 days across the contiguous U.S. as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
             <CpcMapPanel
-              imageUrl={hprccStateUrl('30d', stateAbbr)}
-              fallbackUrl={hprccNationalUrl('30d')}
-              alt={`30-Day Percent of Normal Precipitation — ${stateAbbr}`}
-              label={`HPRCC/ACIS · Percent of Normal Precipitation · Past 30 Days · ${stateAbbr} · 1991–2020 normals`}
+              imageUrl={hprccNationalUrl('30d')}
+              alt="30-Day Percent of Normal Precipitation — United States"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 30 Days · United States · 1991–2020 normals"
               sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
               lastModified={hprcc30dUpdated}
             />
@@ -281,12 +269,11 @@ export default function ForecastSection({
         )}
         {active === '60-Day Precip' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 60 days as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
+            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Precipitation received over the past 60 days across the contiguous U.S. as a percent of the 1991–2020 average. Below 75% indicates notable deficit.</p>
             <CpcMapPanel
-              imageUrl={hprccStateUrl('60d', stateAbbr)}
-              fallbackUrl={hprccNationalUrl('60d')}
-              alt={`60-Day Percent of Normal Precipitation — ${stateAbbr}`}
-              label={`HPRCC/ACIS · Percent of Normal Precipitation · Past 60 Days · ${stateAbbr} · 1991–2020 normals`}
+              imageUrl={hprccNationalUrl('60d')}
+              alt="60-Day Percent of Normal Precipitation — United States"
+              label="HPRCC/ACIS · Percent of Normal Precipitation · Past 60 Days · United States · 1991–2020 normals"
               sourceUrl="https://hprcc.unl.edu/maps.php?map=ACISClimateMaps"
               lastModified={hprcc60dUpdated}
             />

@@ -907,7 +907,6 @@ export default async function DashboardPage({
                   >
                     <div className="space-y-6">
                       <ForecastSection
-                        stateAbbr={selectedCounty.state}
                         droughtDiscussion={droughtDiscussion}
                         cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
                         vhiUpdated={vhiUpdated}
