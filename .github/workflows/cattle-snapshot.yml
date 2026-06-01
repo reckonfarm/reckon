@@ -1,0 +1,34 @@
+name: Cattle market snapshot
+
+# Fetches + parses the weekly USDA AMS Montana Livestock Auction Summary (report
+# 1778) from GitHub's runners (www.ams.usda.gov 403-blocks Vercel's egress, not
+# GitHub's) and upserts the parsed snapshot into Supabase. The /cattle page reads
+# that snapshot. Idempotent — re-running a week overwrites, never duplicates.
+
+on:
+  schedule:
+    # Report drops Tuesday; run Wednesday 15:00 UTC (~9am MT) to be safely after it.
+    - cron: '0 15 * * 3'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: cattle-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + parse + upsert snapshot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/cattle-snapshot.ts

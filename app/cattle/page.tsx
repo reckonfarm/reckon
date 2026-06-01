@@ -185,6 +185,15 @@ export default async function CattleMarketPage({
         <div className="space-y-4">
           <MarketRead countyName={countyName} drought={drought} market={market} />
 
+          {ok && market.stale && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+              <p className="font-dm-sans text-sm text-amber-800">
+                Showing the most recent available report{market.asOfLabel ? ` (as of ${market.asOfLabel})` : ''} —
+                this week&apos;s summary hasn&apos;t posted yet. Prices below are not current.
+              </p>
+            </div>
+          )}
+
           {ok ? (
             <>
               <CattleMarketPanel data={market} />
