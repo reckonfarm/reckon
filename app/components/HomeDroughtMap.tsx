@@ -1,40 +1,29 @@
 import Link from 'next/link'
 import HomeMapInteractive from './HomeMapInteractive'
 
-// Homepage hero drought preview. SERVER component: it paints a fast, eagerly-
-// discoverable USDM map image FIRST (the LCP — same source the dashboard uses),
-// then HomeMapInteractive hydrates the real interactive Leaflet map ON TOP of it
-// after first paint. So LCP stays ~FCP (the preloaded image), and the live
-// zoomable map is back without the Leaflet-JS/tiles chain blocking render.
+// Homepage hero drought map. ONE map only: a flat, branded placeholder paints
+// instantly (in the SSR HTML, so first paint is fast), and the single interactive
+// Leaflet map fades in over it once its tiles + drought overlay have actually
+// loaded. The placeholder is deliberately NOT a map, so the handoff reads as
+// "map finished loading" — not a static-map-then-interactive-map swap (the prior
+// flicker). No static USDM image anymore.
 
-// Fixed reserved height keeps CLS at zero through the image → map handoff.
+// Fixed reserved height keeps CLS at zero through placeholder → map.
 const MAP_HEIGHT = 460
 
-export default function HomeDroughtMap({ mapImageUrl }: { mapImageUrl?: string | null }) {
+export default function HomeDroughtMap() {
   return (
     <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-forest-green/10 bg-cream shadow-sm">
-      <div className="relative bg-forest-green/5" style={{ height: MAP_HEIGHT }}>
-        {mapImageUrl ? (
-          /* LCP element: server-rendered, high fetch priority, NOT lazy, intrinsic
-             dimensions. Stays in the DOM beneath the live map (it's the largest
-             single painted element, so it remains the LCP even after Leaflet loads). */
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={mapImageUrl}
-            alt="U.S. Drought Monitor — current conditions"
-            width={720}
-            height={MAP_HEIGHT}
-            fetchPriority="high"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-contain"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="font-dm-sans text-sm text-forest-green/50">Drought map</p>
-          </div>
-        )}
+      <div className="relative" style={{ height: MAP_HEIGHT }}>
+        {/* Flat branded placeholder — instant first paint, intentionally not a map. */}
+        <div className="absolute inset-0 flex items-center justify-center bg-forest-green/5">
+          <span className="font-dm-sans text-sm font-medium text-forest-green/40 animate-pulse">
+            Loading drought map…
+          </span>
+        </div>
 
-        {/* Interactive Leaflet, layered on top, loaded after first paint. */}
+        {/* The single interactive Leaflet map, layered on top; fades in only once
+            its tiles + overlay are painted (no flash, no map-to-map swap). */}
         <HomeMapInteractive height={MAP_HEIGHT} />
       </div>
 
