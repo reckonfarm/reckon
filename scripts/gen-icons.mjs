@@ -14,7 +14,9 @@ import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const PUBLIC = join(ROOT, 'public')
+const APP = join(ROOT, 'app')
 
 const FIELD = '#1B4332'
 const CREAM = '#FDFBF7'
@@ -50,32 +52,46 @@ async function rasterSquareOpaque(size) {
     .toBuffer()
 }
 
-// Minimal ICO wrapping a single PNG entry (valid for modern browsers).
-function pngToIco(pngBuf, size) {
+// Multi-resolution ICO wrapping PNG entries (16/32/48 — valid for modern browsers).
+function pngToIco(entries) {
+  const count = entries.length
   const header = Buffer.alloc(6)
   header.writeUInt16LE(0, 0)
   header.writeUInt16LE(1, 2)
-  header.writeUInt16LE(1, 4)
-  const entry = Buffer.alloc(16)
-  entry.writeUInt8(size >= 256 ? 0 : size, 0)
-  entry.writeUInt8(size >= 256 ? 0 : size, 1)
-  entry.writeUInt8(0, 2)
-  entry.writeUInt8(0, 3)
-  entry.writeUInt16LE(1, 4)
-  entry.writeUInt16LE(32, 6)
-  entry.writeUInt32LE(pngBuf.length, 8)
-  entry.writeUInt32LE(6 + 16, 12)
-  return Buffer.concat([header, entry, pngBuf])
+  header.writeUInt16LE(count, 4)
+  const dir = Buffer.alloc(16 * count)
+  const blobs = []
+  let offset = 6 + 16 * count
+  entries.forEach((e, i) => {
+    const o = i * 16
+    dir.writeUInt8(e.size >= 256 ? 0 : e.size, o)
+    dir.writeUInt8(e.size >= 256 ? 0 : e.size, o + 1)
+    dir.writeUInt8(0, o + 2)
+    dir.writeUInt8(0, o + 3)
+    dir.writeUInt16LE(1, o + 4)
+    dir.writeUInt16LE(32, o + 6)
+    dir.writeUInt32LE(e.buf.length, o + 8)
+    dir.writeUInt32LE(offset, o + 12)
+    offset += e.buf.length
+    blobs.push(e.buf)
+  })
+  return Buffer.concat([header, dir, ...blobs])
 }
 
-const out = (name, buf) => { writeFileSync(join(PUBLIC, name), buf); console.log(`  ${name}  (${buf.length} bytes)`) }
+const out = (dir, name, buf) => { writeFileSync(join(dir, name), buf); console.log(`  ${name}  (${buf.length} bytes)`) }
 
-console.log('Generating Dryline icons into /public:')
-out('icon.svg', Buffer.from(roundedSvg))
-out('icon-512.png', await rasterRounded(512))
-out('icon-192.png', await rasterRounded(192))
-out('apple-touch-icon.png', await rasterSquareOpaque(180))
-const fav32 = await rasterRounded(32)
-out('favicon-32.png', fav32)
-out('favicon.ico', pngToIco(fav32, 32))
+console.log('Generating Dryline icons:')
+out(PUBLIC, 'icon.svg', Buffer.from(roundedSvg))
+out(PUBLIC, 'icon-512.png', await rasterRounded(512))
+out(PUBLIC, 'icon-192.png', await rasterRounded(192))
+out(PUBLIC, 'apple-touch-icon.png', await rasterSquareOpaque(180))
+out(PUBLIC, 'favicon-32.png', await rasterRounded(32))
+// favicon.ico goes in app/ (Next file convention — auto-served + auto-linked at
+// /favicon.ico, takes precedence over public/, replacing the starter default).
+const ico = pngToIco([
+  { size: 16, buf: await rasterRounded(16) },
+  { size: 32, buf: await rasterRounded(32) },
+  { size: 48, buf: await rasterRounded(48) },
+])
+out(APP, 'favicon.ico', ico)
 console.log('Done.')

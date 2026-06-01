@@ -33,14 +33,14 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
   },
+  // /favicon.ico is provided by the app/favicon.ico file convention (auto-linked).
+  // These add the PNG + SVG variants and the iOS home-screen icon.
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
       { url: '/favicon-32.png', type: 'image/png', sizes: '32x32' },
       { url: '/icon.svg', type: 'image/svg+xml' },
     ],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
-    shortcut: ['/favicon.ico'],
   },
   appleWebApp: {
     capable: true,
