@@ -8,6 +8,7 @@ import SiteHeader from '@/app/components/SiteHeader'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
+import { trackEvent } from '@/lib/analytics'
 
 type SortKey = 'delivered' | 'newest' | 'price'
 
@@ -325,6 +326,8 @@ export default function HayPage() {
         return
       }
 
+      trackEvent('hay_listing_posted', { hay_type: hayType.trim().toLowerCase() })
+
       const { id: newListingId } = await res.json().catch(() => ({})) as { id?: number }
 
       if (photoFiles.length > 0 && newListingId) {
@@ -403,6 +406,7 @@ export default function HayPage() {
         setSaveError((j as { error?: string }).error ?? 'Could not save search.')
         return
       }
+      trackEvent('alert_optin', { type: 'radar' })
       setShowSave(false)
       setSaveLabel(''); setSaveMaxPrice(''); setSaveMaxDist(''); setSaveType('')
       setSaveDone(true)

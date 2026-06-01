@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { trackEvent } from '@/lib/analytics'
 
 export interface County {
   id: number
@@ -25,6 +26,11 @@ export default function CountySelector({ selectedCounty }: Props) {
   const inputRef     = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A resolved county here means a dashboard county view — fire once per FIPS.
+  useEffect(() => {
+    if (selectedCounty?.fips) trackEvent('county_viewed', { fips: selectedCounty.fips })
+  }, [selectedCounty?.fips])
 
   // Debounced fetch — fires 300 ms after the user stops typing
   useEffect(() => {

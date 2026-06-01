@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { trackEvent } from '@/lib/analytics'
 
 const INPUT_CLS =
   'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm text-forest-green placeholder:text-forest-green/30 focus:border-forest-green/50 focus:outline-none'
@@ -51,6 +52,7 @@ export default function SignInForm() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
     if (error) { setError(error.message); return }
+    trackEvent('signin_completed')
     await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
     router.replace('/watchlist')
   }
@@ -73,6 +75,7 @@ export default function SignInForm() {
     if (error) { setError(error.message); return }
     // Confirm email OFF → a session is returned immediately.
     if (data.session) {
+      trackEvent('signup_completed')
       await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
       router.replace('/watchlist')
       return
@@ -122,6 +125,7 @@ export default function SignInForm() {
     })
     setLoading(false)
     if (error) { setError(error.message); return }
+    trackEvent('signin_completed')
     await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
     router.replace('/watchlist')
   }

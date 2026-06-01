@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
+import { trackEvent } from '@/lib/analytics'
 import type { TriggeredLevel } from '@/lib/alert-service'
 
 interface WatchlistEntry {
@@ -63,6 +64,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
     if (watching) {
       setAlerts([])
     } else {
+      trackEvent('alert_optin', { type: 'watchlist' })
       setShowAdded(true)
       setTimeout(() => setShowAdded(false), 4000)
     }

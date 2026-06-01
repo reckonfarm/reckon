@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
+import { trackEvent } from '@/lib/analytics'
 import SiteHeader from '@/app/components/SiteHeader'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
@@ -136,6 +137,7 @@ export default function HayDetailPage() {
   const [deliverPoint, setDeliverPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [deliverName, setDeliverName]   = useState<string | null>(null)
   const [authed, setAuthed]     = useState<boolean | null>(null)
+  const viewTracked = useRef(false)
 
   // Deal action state
   const [acting, setActing]       = useState(false)
@@ -161,7 +163,16 @@ export default function HayDetailPage() {
         if (r.status === 404) { setNotFound(true); return null }
         return r.ok ? r.json() : null
       })
-      .then(data => { if (data) { setListing(data); setNotFound(false) } })
+      .then(data => {
+        if (data) {
+          setListing(data); setNotFound(false)
+          // Once per listing view — loadListing also reruns after deal actions.
+          if (!viewTracked.current) {
+            viewTracked.current = true
+            trackEvent('hay_listing_viewed', { listing_id: Number(id) })
+          }
+        }
+      })
   }, [id])
 
   useEffect(() => {
@@ -242,6 +253,7 @@ export default function HayDetailPage() {
         setActionError((json as { error?: string }).error ?? 'Could not open a conversation.')
         return
       }
+      trackEvent('contact_seller_clicked', { listing_id: Number(id) })
       const { id: threadId } = await res.json()
       router.push(`/messages?thread=${threadId}`)
     } finally {

@@ -13,6 +13,7 @@ import {
 import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
 import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 import LfpDisclaimer from '@/app/components/LfpDisclaimer'
+import { trackEvent, bucketHeadCount } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,9 @@ function LivestockPanel({
 
   const [livestock, setLivestock]       = useState<LivestockKind>('beef_adult')
   const [headCount, setHeadCount]       = useState(100)
+  // True once the rancher edits the estimate inputs — keeps the analytics event
+  // tied to a real "I ran an estimate", not the default values shown on load.
+  const [estimateTouched, setEstimateTouched] = useState(false)
   const [eligibleAcres, setEligibleAcres] = useState<string>('')
   const [acresPerAU, setAcresPerAU]     = useState<string>('')
   const [showGrazingEdit, setShowGrazingEdit] = useState(false)
@@ -394,6 +398,20 @@ function LivestockPanel({
   }, [fips])
 
   const [dateError, setDateError] = useState<string | null>(null)
+
+  // Fire lfp_estimate_run once the rancher has engaged the inputs and the county
+  // actually yields a payment-eligible estimate. Debounced so typing a head
+  // count doesn't spray events; bucketed so we never log the raw number.
+  const headCountBucket = bucketHeadCount(headCount)
+  const estimateReady =
+    !!eligibility && eligibility.payments > 0 && Number.isFinite(headCount) && headCount > 0
+  useEffect(() => {
+    if (!estimateTouched || !estimateReady) return
+    const t = setTimeout(() => {
+      trackEvent('lfp_estimate_run', { fips, head_count_bucket: headCountBucket })
+    }, 800)
+    return () => clearTimeout(t)
+  }, [estimateTouched, estimateReady, fips, headCountBucket])
 
   function handleTypeChange(typeName: string) {
     setSelectedType(typeName)
@@ -540,7 +558,7 @@ function LivestockPanel({
                 </label>
                 <select
                   value={livestock}
-                  onChange={e => setLivestock(e.target.value as LivestockKind)}
+                  onChange={e => { setLivestock(e.target.value as LivestockKind); setEstimateTouched(true) }}
                   className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 >
                   {PAYMENT_RATES_2026.map(r => (
@@ -557,7 +575,7 @@ function LivestockPanel({
                   type="number"
                   min={1}
                   value={headCount}
-                  onChange={e => setHeadCount(parseInt(e.target.value, 10) || 0)}
+                  onChange={e => { setHeadCount(parseInt(e.target.value, 10) || 0); setEstimateTouched(true) }}
                   className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>

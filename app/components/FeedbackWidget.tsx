@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { trackEvent } from '@/lib/analytics'
 
 type Sentiment = 'positive' | 'neutral' | 'negative'
 type Status = 'idle' | 'sending' | 'done'
@@ -80,6 +81,8 @@ export default function FeedbackWidget() {
         }),
       })
       if (!res.ok) throw new Error('failed')
+      // Funnel event alongside the existing /api/feedback DB write — not a replacement.
+      trackEvent('feedback_submitted')
       setStatus('done')
       resetSoon()
     } catch {

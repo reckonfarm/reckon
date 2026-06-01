@@ -1,6 +1,6 @@
 'use client'
 
-import { track } from '@vercel/analytics'
+import { trackEvent } from '@/lib/analytics'
 import { useEffect, useState } from 'react'
 
 // FREE demand probe — NOT a paywall. Each tile is an upcoming feature; a "Notify
@@ -79,11 +79,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
 
   function onNotify(key: string) {
     // Fire analytics on the tap itself, regardless of what comes next.
-    try {
-      track('feature_interest_tap', { feature_key: key })
-    } catch {
-      /* analytics best-effort */
-    }
+    trackEvent('feature_interest_tap', { feature_key: key })
     if (signedIn) {
       post(key)
       return
