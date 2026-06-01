@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import Link from 'next/link'
@@ -104,6 +104,9 @@ interface HayMapClientProps {
   height?: string
   interactive?: boolean
   showLegend?: boolean
+  // Fires once the base tiles AND the drought overlay have actually loaded — lets
+  // the homepage cross-fade the live map in only when it's fully painted (no flash).
+  onReady?: () => void
 }
 
 export default function HayMapClient({
@@ -113,10 +116,24 @@ export default function HayMapClient({
   height = 'calc(100vh - 64px)',
   interactive = true,
   showLegend = true,
+  onReady,
 }: HayMapClientProps) {
   const [drought, setDrought] = useState<FeatureCollection | null>(null)
   const [releaseDate, setReleaseDate] = useState<number | null>(null)
   const [status, setStatus] = useState<DroughtStatus>('loading')
+  const [tilesLoaded, setTilesLoaded] = useState(false)
+  const readyFired = useRef(false)
+
+  // Signal "fully painted" once the basemap tiles have loaded AND the drought
+  // overlay has settled (rendered, or definitively failed). Fires at most once.
+  useEffect(() => {
+    if (readyFired.current || !onReady) return
+    const droughtSettled = status === 'ok' ? !!drought : status === 'error'
+    if (tilesLoaded && droughtSettled) {
+      readyFired.current = true
+      onReady()
+    }
+  }, [tilesLoaded, status, drought, onReady])
 
   useEffect(() => {
     // Fix leaflet default icon paths in Next.js
@@ -163,6 +180,7 @@ export default function HayMapClient({
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          eventHandlers={{ load: () => setTilesLoaded(true) }}
         />
 
         {/* Drought layer — rendered first so it sits beneath the pins/clusters */}

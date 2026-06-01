@@ -38,18 +38,26 @@ export default function HomeMapInteractive({ height }: { height: number }) {
     }
   }, [])
 
-  // Give Leaflet a beat to draw its tiles, then fade it in over the static image
-  // (the image stays underneath, so there's never a blank box or layout shift).
+  // Safety net: if the map never reports ready (tiles blocked, etc.), reveal it
+  // anyway after a few seconds rather than leaving it permanently hidden.
   useEffect(() => {
     if (!mount) return
-    const t = setTimeout(() => setReady(true), 450)
+    const t = setTimeout(() => setReady(true), 5000)
     return () => clearTimeout(t)
   }, [mount])
 
   if (!mount) return null
 
   return (
-    <div className={`absolute inset-0 transition-opacity duration-500 ${ready ? 'opacity-100' : 'opacity-0'}`}>
+    // Held at opacity 0 (fully transparent over the static image) until the live
+    // map's tiles + drought overlay have actually painted, THEN cross-fade in — so
+    // there's never a half-rendered/differently-framed flash. willChange hints the
+    // compositor so the fade is smooth on mobile too.
+    <div
+      className={`absolute inset-0 transition-opacity duration-700 ease-out ${ready ? 'opacity-100' : 'opacity-0'}`}
+      style={{ willChange: 'opacity' }}
+      aria-hidden={!ready}
+    >
       <HayMap
         listings={[]}
         center={[39.5, -98.5]}
@@ -57,6 +65,7 @@ export default function HomeMapInteractive({ height }: { height: number }) {
         height={`${height}px`}
         interactive
         showLegend={false}
+        onReady={() => setReady(true)}
       />
     </div>
   )
