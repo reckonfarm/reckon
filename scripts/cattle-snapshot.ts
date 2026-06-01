@@ -41,7 +41,21 @@ async function main() {
     receipts: market.receipts.current,
   })
 
-  const db = createClient(url, key, { auth: { persistSession: false } })
+  // This script only does REST reads/writes — it never opens a realtime channel.
+  // But supabase-js's createClient eagerly resolves a WebSocket constructor for its
+  // realtime client and throws on Node ≤20 ("Node.js 20 detected without native
+  // WebSocket support") in CI. Passing a transport short-circuits that eager
+  // resolution; the stub is never instantiated because we never connect a channel.
+  // (No 'ws' dependency needed.)
+  type RealtimeOpts = NonNullable<NonNullable<Parameters<typeof createClient>[2]>['realtime']>
+  class NoopWebSocket {
+    constructor() { throw new Error('realtime is disabled in cattle-snapshot') }
+  }
+
+  const db = createClient(url, key, {
+    auth: { persistSession: false },
+    realtime: { transport: NoopWebSocket as unknown as RealtimeOpts['transport'] },
+  })
   const { error } = await db
     .from('cattle_market_snapshots')
     .upsert(
