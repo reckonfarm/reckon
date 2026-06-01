@@ -72,6 +72,23 @@ async function getDriestChips(stateFilter?: string): Promise<DriestyChip[]> {
   }
 }
 
+async function getNationalMapUrl(): Promise<string | null> {
+  try {
+    const db = createServiceClient()
+    const { data } = await db
+      .from('official_maps')
+      .select('image_url')
+      .eq('map_type', 'usdm_national')
+      .is('scope', null)
+      .order('release_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return (data?.image_url as string | undefined) ?? null
+  } catch {
+    return null
+  }
+}
+
 async function getNearbyHayCount(stateCode: string): Promise<number> {
   try {
     const db = createServiceClient()
@@ -93,10 +110,11 @@ export default async function Home() {
   // x-vercel-ip-country-region returns state codes like "MT", "GA", "TX"
   const visitorState = visitorRegion.length === 2 ? visitorRegion : ''
 
-  const [driestChipsLocal, driestChipsNational, nearbyHayCount] = await Promise.all([
+  const [driestChipsLocal, driestChipsNational, nearbyHayCount, mapImageUrl] = await Promise.all([
     visitorState ? getDriestChips(visitorState) : Promise.resolve([]),
     getDriestChips(),
     visitorState ? getNearbyHayCount(visitorState) : Promise.resolve(0),
+    getNationalMapUrl(),
   ])
 
   // Optional: whether the visitor is signed in, so the Coming-soon tiles can skip
@@ -118,6 +136,10 @@ export default async function Home() {
 
   return (
     <>
+      {/* Warm up the USDM image host so the hero LCP image fetches without a
+          cold DNS/TLS handshake. */}
+      <link rel="preconnect" href="https://droughtmonitor.unl.edu" crossOrigin="anonymous" />
+      {mapImageUrl && <link rel="preload" as="image" href={mapImageUrl} fetchPriority="high" />}
       <SiteHeader />
       <main className="min-h-screen bg-cream">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:py-16">
@@ -189,7 +211,7 @@ export default async function Home() {
 
           {/* Right: map */}
           <div>
-            <HomeDroughtMap visitorState={visitorState} />
+            <HomeDroughtMap mapImageUrl={mapImageUrl} />
           </div>
         </div>
 
