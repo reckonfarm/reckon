@@ -65,16 +65,24 @@ export default function CattleMarketPanel({ data }: { data: CattleMarket }) {
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="font-fraunces text-base font-semibold text-forest-green">Feeder cattle — this week</h2>
+            <h2 className="font-fraunces text-base font-semibold text-forest-green">
+              {data.stale ? 'Feeder cattle' : 'Feeder cattle — this week'}
+            </h2>
             <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
-              Weighted-average cash auction prices · Montana
+              Weighted-average cash auction prices
             </p>
           </div>
-          {data.mode === 'mock' && (
+          {/* When stale (e.g. the frozen national report), pin the real date to the
+              prices themselves so a number is never mistaken for today's. */}
+          {data.stale && data.asOfLabel ? (
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 font-dm-sans text-[11px] font-semibold text-amber-900">
+              as of {data.asOfLabel}
+            </span>
+          ) : data.mode === 'mock' ? (
             <span className="rounded-full border border-rust/30 bg-rust/8 px-3 py-1 font-dm-sans text-[11px] font-semibold text-rust">
               Sample data
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 

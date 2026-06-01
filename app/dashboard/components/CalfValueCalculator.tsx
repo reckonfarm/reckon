@@ -25,10 +25,14 @@ export default function CalfValueCalculator({
   steers,
   heifers,
   asOfLabel,
+  stale = false,
+  scopeLabel = '',
 }: {
   steers: FeederClass[]
   heifers: FeederClass[]
   asOfLabel: string | null
+  stale?: boolean        // when true (e.g. frozen national report), emphasize the date
+  scopeLabel?: string    // e.g. 'national' — included in the dated qualifier
 }) {
   const [sex, setSex] = useState<'steers' | 'heifers'>('steers')
   const [weight, setWeight] = useState('550')
@@ -121,16 +125,24 @@ export default function CalfValueCalculator({
                 {!result.exact && <span className="block">nearest class to your weight</span>}
               </p>
             </div>
+
+            {/* Stale source (e.g. frozen national report): make the estimate's date
+                unmistakable so it's never read as a current quote. */}
+            {stale && asOfLabel && (
+              <p className="mt-2 font-dm-sans text-[11px] font-medium text-amber-800">
+                Based on {asOfLabel}{scopeLabel ? ` ${scopeLabel}` : ''} prices — the latest available, not a current quote.
+              </p>
+            )}
           </div>
         ) : (
           <p className="rounded-lg bg-forest-green/5 px-4 py-3 font-dm-sans text-sm text-forest-green/50">
-            Enter a weight to see an estimate — no {sex} prices reported this week for that weight.
+            Enter a weight to see an estimate — no {sex} prices reported for that weight.
           </p>
         )}
 
         <p className="font-dm-sans text-[11px] leading-snug text-forest-green/40">
           Estimate only — your actual sale depends on quality, frame, fill, and the day&apos;s market.
-          Based on {asOfLabel ? `the ${asOfLabel} report` : 'the latest report'}. Nothing entered here is stored.
+          {!stale && (asOfLabel ? ` Based on the ${asOfLabel} report.` : ' Based on the latest report.')} Nothing entered here is stored.
         </p>
       </div>
     </div>

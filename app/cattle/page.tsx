@@ -191,10 +191,11 @@ export default async function CattleMarketPage({
           )}
 
           {ok && market.stale && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
-              <p className="font-dm-sans text-sm text-amber-800">
-                Showing the most recent available report{market.asOfLabel ? ` (as of ${market.asOfLabel})` : ''} —
-                this week&apos;s summary hasn&apos;t posted yet. Prices below are not current.
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+              <p className="font-dm-sans text-sm font-semibold text-amber-900">
+                {scope === 'National'
+                  ? `National prices below are from ${market.asOfLabel ?? 'an earlier report'} — the latest available. Live national data is coming soon.`
+                  : `Prices below are from ${market.asOfLabel ?? 'an earlier report'} — the latest available, not current.`}
               </p>
             </div>
           )}
@@ -207,11 +208,20 @@ export default async function CattleMarketPage({
                 steers={market.feeder.steers}
                 heifers={market.feeder.heifers}
                 asOfLabel={market.asOfLabel}
+                stale={market.stale}
+                scopeLabel={scope === 'National' ? 'national' : ''}
               />
 
               <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
                 <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-                  <h2 className="font-fraunces text-base font-semibold text-forest-green">Price by weight</h2>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-fraunces text-base font-semibold text-forest-green">Price by weight</h2>
+                    {market.stale && market.asOfLabel && (
+                      <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 font-dm-sans text-[11px] font-semibold text-amber-900">
+                        as of {market.asOfLabel}
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
                     Avg $/cwt across weight classes — steers vs heifers
                   </p>
