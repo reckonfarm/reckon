@@ -11,9 +11,12 @@ import {
   type LfpPaymentEstimate,
 } from '@/lib/lfp-payment'
 import { getGrazingPeriods, getGrazingPeriod, type GrazingPeriodEntry } from '@/lib/grazing-periods'
-import { FARMER_TYPE_KEY } from '@/app/components/FarmerToggle'
 import LfpDisclaimer from '@/app/components/LfpDisclaimer'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
+import EmDesignationNote from '@/app/components/EmDesignationNote'
+
+// localStorage key for the Livestock/Row-Crop mode toggle.
+const FARMER_TYPE_KEY = 'farmer_type'
 import { trackEvent, bucketHeadCount } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -804,16 +807,28 @@ function LivestockPanel({
 
 function RowCropPanel({
   eligibility,
-  countyName,
 }: {
   eligibility: LfpEligibilityResult | null
-  countyName: string
 }) {
-  const longestRun = Math.max(eligibility?.longestD2Run ?? 0, eligibility?.currentD2Streak ?? 0)
+  // Missing data must NEVER read as "your county doesn't qualify" — the prior-year
+  // eligibility can resolve to null. Show an honest data-unavailable state instead.
+  if (!eligibility) {
+    return (
+      <div className="space-y-3 p-4 sm:p-6">
+        <p className="text-sm leading-relaxed text-forest-green/60 font-dm-sans">
+          Drought eligibility data isn&apos;t available for this period — this is{' '}
+          <span className="font-medium text-forest-green/80">not</span> a finding that your county
+          doesn&apos;t qualify. Check back shortly, or confirm with your county FSA office.
+        </p>
+      </div>
+    )
+  }
+
+  const longestRun = Math.max(eligibility.longestD2Run, eligibility.currentD2Streak)
   const qualifying =
     longestRun >= 8 ||
-    (eligibility?.tiers[2]?.triggered ?? false) ||
-    (eligibility?.tiers[4]?.triggered ?? false)
+    (eligibility.tiers[2]?.triggered ?? false) ||
+    (eligibility.tiers[4]?.triggered ?? false)
 
   return (
     <div className="space-y-5 p-4 sm:p-6">
@@ -845,6 +860,11 @@ function RowCropPanel({
           </div>
         )}
       </div>
+
+      {/* Prominent disclaimer — same visual weight as the claim above, shown for
+          BOTH the qualifying and non-qualifying states. Covers the contiguous-county
+          and crop-window nuances honestly without changing the trigger math. */}
+      <EmDesignationNote />
 
       {qualifying && (
         <div className="space-y-3">
@@ -881,8 +901,10 @@ function RowCropPanel({
               Emergency Conservation Program (ECP)
             </h3>
             <p className="mt-2 text-xs font-dm-sans text-forest-green/70">
-              ECP may also be available — cost-shares land rehabilitation and drought water
-              infrastructure. Contact your local FSA office.
+              A <span className="font-medium text-forest-green">separate</span> program — not triggered by
+              this drought designation. ECP cost-shares rehabilitation of disaster-damaged farmland and
+              drought water infrastructure, and requires its own FSA-approved signup. Contact your local FSA
+              office.
             </p>
             <a
               href="https://www.fsa.usda.gov/programs-and-services/conservation-programs/emergency-conservation/index"
@@ -907,12 +929,6 @@ function RowCropPanel({
           FSA office for those programs.
         </p>
       </div>
-
-      <p className="text-xs text-forest-green/50 font-dm-sans">
-        This is an estimate based on U.S. Drought Monitor data. A Secretarial Disaster
-        Designation for {countyName} must be formally issued by the Secretary of Agriculture
-        before Emergency Loans become available. Your local FSA office confirms eligibility.
-      </p>
     </div>
   )
 }
@@ -1020,7 +1036,7 @@ export default function ProgramStatus({
         <LivestockPanel eligibility={activeEligibility} fips={fips} countyName={countyName} year={year} />
       )}
       {mode === 'rowcrop' && (
-        <RowCropPanel eligibility={activeEligibility} countyName={countyName} />
+        <RowCropPanel eligibility={activeEligibility} />
       )}
 
       <div className="border-t border-forest-green/10 px-4 py-4 sm:px-6">
