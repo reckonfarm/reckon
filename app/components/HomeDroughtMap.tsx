@@ -1,23 +1,23 @@
 import Link from 'next/link'
+import HomeMapInteractive from './HomeMapInteractive'
 
-// Homepage hero drought preview. SERVER component rendering a fast, eagerly-
-// discoverable USDM map image — the SAME source the dashboard uses (which scores
-// great on LCP). Previously this was a client-only Leaflet map (react-leaflet +
-// cluster + OSM tiles + /api/usdm overlay) that became the homepage's Largest
-// Contentful Paint and painted ~3.7s after FCP. As an above-the-fold preview the
-// map was non-interactive anyway, so a high-priority <img> is the LCP fix; the
-// live interactive map is one click away via "Explore the full map →".
+// Homepage hero drought preview. SERVER component: it paints a fast, eagerly-
+// discoverable USDM map image FIRST (the LCP — same source the dashboard uses),
+// then HomeMapInteractive hydrates the real interactive Leaflet map ON TOP of it
+// after first paint. So LCP stays ~FCP (the preloaded image), and the live
+// zoomable map is back without the Leaflet-JS/tiles chain blocking render.
 
-// Fixed reserved height keeps CLS at zero before/after the image loads.
+// Fixed reserved height keeps CLS at zero through the image → map handoff.
 const MAP_HEIGHT = 460
 
 export default function HomeDroughtMap({ mapImageUrl }: { mapImageUrl?: string | null }) {
   return (
     <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-forest-green/10 bg-cream shadow-sm">
-      <div className="flex items-center justify-center bg-forest-green/5" style={{ height: MAP_HEIGHT }}>
+      <div className="relative bg-forest-green/5" style={{ height: MAP_HEIGHT }}>
         {mapImageUrl ? (
-          /* Above-the-fold LCP element: server-rendered, high fetch priority, NOT
-             lazy, with intrinsic dimensions so there's no layout shift. */
+          /* LCP element: server-rendered, high fetch priority, NOT lazy, intrinsic
+             dimensions. Stays in the DOM beneath the live map (it's the largest
+             single painted element, so it remains the LCP even after Leaflet loads). */
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={mapImageUrl}
@@ -26,12 +26,18 @@ export default function HomeDroughtMap({ mapImageUrl }: { mapImageUrl?: string |
             height={MAP_HEIGHT}
             fetchPriority="high"
             decoding="async"
-            className="h-full w-full object-contain"
+            className="absolute inset-0 h-full w-full object-contain"
           />
         ) : (
-          <p className="font-dm-sans text-sm text-forest-green/50">Drought map</p>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="font-dm-sans text-sm text-forest-green/50">Drought map</p>
+          </div>
         )}
+
+        {/* Interactive Leaflet, layered on top, loaded after first paint. */}
+        <HomeMapInteractive height={MAP_HEIGHT} />
       </div>
+
       <figcaption className="flex items-center justify-between gap-3 border-t border-forest-green/10 px-4 py-2.5">
         <span className="font-dm-sans text-xs text-forest-green/50">
           U.S. Drought Monitor — Current Conditions
