@@ -6,6 +6,17 @@ import {
   mockMarket,
   type CattleMarket,
 } from './cattle-report-1778'
+import { NATIONAL_SLUG } from './cattle-report-national'
+
+export const MONTANA_SLUG = REPORT_SLUG
+export { NATIONAL_SLUG } from './cattle-report-national'
+
+// Slug resolution: today the only state-level report we parse is Montana (1778).
+// Every other state (and the no-county cold start) falls back to the National
+// Feeder & Stocker Summary. A full per-state engine is future work.
+export function slugForState(state: string | null | undefined): string {
+  return state === 'MT' ? MONTANA_SLUG : NATIONAL_SLUG
+}
 
 // ─── Cattle market service (read path) ───────────────────────────────────────────
 //
@@ -61,7 +72,7 @@ function dataUnavailable(): CattleMarket {
   }
 }
 
-export async function getCattleMarket(): Promise<CattleMarket> {
+export async function getCattleMarket(slug: string = NATIONAL_SLUG): Promise<CattleMarket> {
   if (process.env.CATTLE_MARKET_MOCK === '1') return mockMarket()
 
   try {
@@ -69,7 +80,7 @@ export async function getCattleMarket(): Promise<CattleMarket> {
     const { data, error } = await db
       .from('cattle_market_snapshots')
       .select('report_week_start, as_of_date, snapshot')
-      .eq('report_slug', REPORT_SLUG)
+      .eq('report_slug', slug)
       .order('report_week_start', { ascending: false })
       .limit(1)
       .maybeSingle()

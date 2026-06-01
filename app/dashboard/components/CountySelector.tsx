@@ -14,9 +14,12 @@ export interface County {
 interface Props {
   // The currently-selected county, resolved server-side from ?fips=
   selectedCounty?: County | null
+  // Route to push fips into — '/dashboard' (default) or '/cattle'. Lets the same
+  // selector drive either peer view.
+  basePath?: string
 }
 
-export default function CountySelector({ selectedCounty }: Props) {
+export default function CountySelector({ selectedCounty, basePath = '/dashboard' }: Props) {
   const router = useRouter()
   const [query, setQuery]     = useState('')
   const [results, setResults] = useState<County[]>([])
@@ -64,13 +67,13 @@ export default function CountySelector({ selectedCounty }: Props) {
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
-    router.push(`/dashboard?fips=${county.fips}`)
+    router.push(`${basePath}?fips=${county.fips}`)
   }
 
   function clear() {
     setQuery('')
     setResults([])
-    router.push('/dashboard')
+    router.push(basePath)
   }
 
   // Close dropdown on outside click

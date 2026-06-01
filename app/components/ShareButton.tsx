@@ -18,17 +18,20 @@ export default function ShareButton({
   droughtLabel,
   surface,
 }: {
-  fips: string
-  countyLabel: string
-  droughtLabel: string | null // "D2 (severe drought)" when in drought, else null
+  fips?: string | null            // omit/null → neutral national payload (no county/drought)
+  countyLabel?: string | null
+  droughtLabel?: string | null    // "D2 (severe drought)" when in drought, else null
   surface: 'dashboard' | 'cattle'
 }) {
   const [copied, setCopied] = useState(false)
 
-  const url = `https://dryline.farm/dashboard?fips=${fips}`
-  const text = droughtLabel
-    ? `${countyLabel} is in ${droughtLabel}. Check your county's drought, LFP eligibility, and local hay & cattle prices on Dryline.`
-    : `Check your county's drought, LFP eligibility, and hay & cattle prices on Dryline.`
+  // No county selected → neutral, national payload. NEVER a county/drought we don't have.
+  const url = fips ? `https://dryline.farm/dashboard?fips=${fips}` : 'https://dryline.farm/cattle'
+  const text = !fips
+    ? `Check U.S. cattle & hay prices and your county's drought on Dryline.`
+    : droughtLabel && countyLabel
+      ? `${countyLabel} is in ${droughtLabel}. Check your county's drought, LFP eligibility, and local hay & cattle prices on Dryline.`
+      : `Check your county's drought, LFP eligibility, and hay & cattle prices on Dryline.`
 
   async function onShare() {
     const data: ShareData = { title: 'Dryline', text, url }

@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
 import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
-import { getCattleMarket, type CattleMarket, type FeederClass } from '@/lib/cattle-market-service'
+import { getCattleMarket, slugForState, MONTANA_SLUG, type CattleMarket, type FeederClass } from '@/lib/cattle-market-service'
 import CattleMarketPanel from '@/app/dashboard/components/CattleMarketPanel'
+import CountySelector from '@/app/dashboard/components/CountySelector'
 import CullCowPanel from '@/app/dashboard/components/CullCowPanel'
 import CalfValueCalculator from '@/app/dashboard/components/CalfValueCalculator'
 import CattleWeightCurve from '@/app/dashboard/components/CattleWeightCurve'
@@ -18,10 +19,9 @@ export const metadata: Metadata = {
     'This week’s Montana auction prices for feeder cattle and cull cows, from USDA AMS Market News — with a calf-value calculator and the drought-to-price market read.',
 }
 
-const DEFAULT_FIPS = '30069' // Petroleum County, MT — the home operation
-
-// Drought status (READ ONLY — for the market read + share) comes from the shared
-// droughtSeverity helper, so the cattle read and the dashboard agree.
+// No hardcoded default county — a cold/no-county visit shows NATIONAL data, never
+// a Montana/Petroleum default. Drought (per-county) comes from the shared
+// droughtSeverity helper so the cattle read and the dashboard agree.
 
 // ─── Market read (LIVE data only — no hardcoded macro numbers) ────────────────────
 
@@ -33,7 +33,12 @@ function pickHeadlineFeeder(m: CattleMarket): { label: string; row: FeederClass 
   return null
 }
 
-function MarketRead({ countyName, drought, market }: { countyName: string; drought: DroughtSeverity; market: CattleMarket }) {
+function MarketRead({ countyName, drought, market, scope }: {
+  countyName: string | null     // null → no county selected (neutral national prompt)
+  drought: DroughtSeverity
+  market: CattleMarket
+  scope: 'Montana' | 'National'
+}) {
   if (market.status !== 'ok') {
     return (
       <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
@@ -52,17 +57,16 @@ function MarketRead({ countyName, drought, market }: { countyName: string; droug
 
   const headline = pickHeadlineFeeder(market)
 
-  // Build the drought → supply → price sentence entirely from live data.
-  const droughtClause =
-    drought.level != null
-      ? `${countyName} is in ${drought.label}.`
-      : `${countyName} is ${drought.label}.`
+  // No county → neutral prompt (no drought we don't have); else the county's drought line.
+  const leadClause = countyName
+    ? (drought.level != null ? `${countyName} is in ${drought.label}.` : `${countyName} is ${drought.label}.`)
+    : `Pick your county to see local drought conditions.`
 
   const receiptsClause =
     recTrend && r.current != null && r.lastReported != null
-      ? ` Montana auction receipts ran ${recTrend}${recTrend !== 'about steady' ? '' : ''} this week (${r.current.toLocaleString()} head vs ${r.lastReported.toLocaleString()} last reported).`
+      ? ` ${scope} auction receipts ran ${recTrend} this week (${r.current.toLocaleString()} head vs ${r.lastReported.toLocaleString()} last reported).`
       : r.current != null
-        ? ` Montana auctions ran ${r.current.toLocaleString()} head this week.`
+        ? ` ${scope} auctions ran ${r.current.toLocaleString()} head this week.`
         : ''
 
   const priceClause = headline
@@ -76,16 +80,17 @@ function MarketRead({ countyName, drought, market }: { countyName: string; droug
 
   const windowClause = market.reportWindowLabel ? ` (week of ${market.reportWindowLabel}).` : '.'
 
+  const sourceLine = scope === 'Montana'
+    ? 'Drought from the U.S. Drought Monitor; prices from USDA AMS Market News (Montana, Report 1778). Cash auction data only — no futures.'
+    : 'Prices from the USDA AMS National Feeder & Stocker Cattle Summary; drought from the U.S. Drought Monitor. Cash auction data only — no futures.'
+
   return (
     <div className="rounded-xl border-l-4 border-l-forest-green border border-forest-green/10 bg-white px-5 py-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
       <p className="font-dm-sans text-[11px] font-medium uppercase tracking-wide text-forest-green/40">Market read</p>
       <p className="mt-1.5 font-fraunces text-base font-semibold leading-snug text-forest-green sm:text-lg">
-        {droughtClause}{receiptsClause}{priceClause}{cullClause}{windowClause}
+        {leadClause}{receiptsClause}{priceClause}{cullClause}{windowClause}
       </p>
-      <p className="mt-2 font-dm-sans text-xs text-forest-green/40">
-        Drought from the U.S. Drought Monitor; prices from USDA AMS Market News (Report 1778). Cash auction
-        data only — no futures.
-      </p>
+      <p className="mt-2 font-dm-sans text-xs text-forest-green/40">{sourceLine}</p>
     </div>
   )
 }
@@ -115,16 +120,23 @@ export default async function CattleMarketPage({
   searchParams: Promise<{ fips?: string }>
 }) {
   const { fips: fipsParam } = await searchParams
-  const fips = fipsParam || DEFAULT_FIPS
+  const fips = fipsParam || null // NO default — no county → national
   const db = createServiceClient()
 
-  const [{ data: county }, market] = await Promise.all([
-    db.from('counties').select('id, name, state').eq('fips', fips).single(),
-    getCattleMarket(),
-  ])
+  // Resolve the selected county (if any) → state → which report slug to read.
+  const county = fips
+    ? ((await db.from('counties').select('id, fips, name, state').eq('fips', fips).single()).data as
+        { id: number; fips: string; name: string; state: string } | null)
+    : null
+  const state = county?.state ?? null
+  const slug = slugForState(state)
+  const isMontana = slug === MONTANA_SLUG
+  const scope: 'Montana' | 'National' = isMontana ? 'Montana' : 'National'
+
+  const market = await getCattleMarket(slug)
 
   let drought: DroughtSeverity = { level: null, label: 'not currently rated for drought', severityWord: '' }
-  let countyName = 'Your county'
+  let countyName: string | null = null
   if (county) {
     countyName = `${county.name}, ${county.state}`
     const { data: latest } = await db
@@ -138,6 +150,10 @@ export default async function CattleMarketPage({
   }
 
   const ok = market.status === 'ok'
+  const heading = isMontana ? 'Cattle Market' : 'U.S. Cattle Market'
+  const subhead = isMontana
+    ? 'Montana auction prices · USDA AMS Market News'
+    : 'National Feeder & Stocker Summary · USDA AMS'
 
   return (
     <div className="min-h-screen bg-cream">
@@ -146,13 +162,12 @@ export default async function CattleMarketPage({
       <main className="mx-auto max-w-2xl px-4 py-6 pb-16 sm:px-6 lg:px-8">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h1 className="font-fraunces text-2xl font-semibold text-forest-green">Cattle Market</h1>
-            <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">
-              Montana auction prices · USDA AMS Market News
-            </p>
+            <h1 className="font-fraunces text-2xl font-semibold text-forest-green">{heading}</h1>
+            <p className="mt-0.5 font-dm-sans text-sm text-forest-green/50">{subhead}</p>
           </div>
+          {/* Share: county+drought when a real county is selected; neutral national payload otherwise. */}
           <ShareButton
-            fips={fips}
+            fips={county ? fips : null}
             countyLabel={countyName}
             droughtLabel={drought.level != null ? drought.label : null}
             surface="cattle"
@@ -160,9 +175,20 @@ export default async function CattleMarketPage({
         </div>
 
         <div className="space-y-4">
-          <DroughtCattleToggle fips={fips} active="cattle" />
+          {/* County picker works signed-out; routes fips into /cattle (MT swaps to MT prices). */}
+          <CountySelector selectedCounty={county} basePath="/cattle" />
 
-          <MarketRead countyName={countyName} drought={drought} market={market} />
+          {fips && county && <DroughtCattleToggle fips={fips} active="cattle" />}
+
+          <MarketRead countyName={countyName} drought={drought} market={market} scope={scope} />
+
+          {county && !isMontana && (
+            <div className="rounded-md bg-forest-green/4 px-4 py-2.5">
+              <p className="font-dm-sans text-sm text-forest-green/70">
+                Showing national cattle prices — state-level prices for {county.state} coming soon.
+              </p>
+            </div>
+          )}
 
           {ok && market.stale && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">

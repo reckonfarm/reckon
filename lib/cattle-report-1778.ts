@@ -132,7 +132,7 @@ export const cwtLabel = (h: number) => `${h}00–${h + 1}00 lb`
 
 // ─── PDF → lines (Y-grouped, column-ordered) ─────────────────────────────────────
 
-async function pdfToLines(buf: ArrayBuffer): Promise<string[]> {
+export async function pdfToLines(buf: ArrayBuffer): Promise<string[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const doc = await pdfjs.getDocument({
     data: new Uint8Array(buf),
