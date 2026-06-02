@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import MapLightbox from './MapLightbox'
 
 export interface OfficialMapRecord {
   id: number
@@ -42,13 +43,6 @@ export default function OfficialMap({ map, title, note, className = '', regional
   const displayTitle = regionalMapUrl ? `USDM — ${regionLabel(regionalMapUrl)}` : title
   const [isOpen, setIsOpen] = useState(false)
 
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false) }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [isOpen])
-
   if (!map) {
     return (
       <div
@@ -85,8 +79,8 @@ export default function OfficialMap({ map, title, note, className = '', regional
             className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
             loading="lazy"
           />
-          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
-            Click to enlarge
+          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+            Tap to enlarge
           </span>
         </div>
         <p className="mt-3 text-xs text-forest-green/50 font-dm-sans">
@@ -105,27 +99,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
         )}
       </div>
 
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setIsOpen(false)}
-        >
-          <button
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
-            onClick={() => setIsOpen(false)}
-            aria-label="Close"
-          >
-            ×
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imgSrc}
-            alt={displayTitle}
-            className="max-h-screen max-w-5xl object-contain p-4"
-            onClick={e => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <MapLightbox open={isOpen} onClose={() => setIsOpen(false)} src={imgSrc} alt={displayTitle} />
     </div>
   )
 }

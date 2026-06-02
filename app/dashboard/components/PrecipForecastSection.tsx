@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import TabBar from './TabBar'
+import MapLightbox from './MapLightbox'
 import {
   ComposedChart,
   Line,
@@ -294,11 +295,18 @@ function CpcMapPanel({
   sourceUrl: string
   lastModified: string | null
 }) {
+  const [open, setOpen] = useState(false)
   return (
     <div className="space-y-3">
       <ForecastBadge />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={imageUrl} alt={alt} className="w-full rounded-lg" loading="lazy" />
+      <div className="group relative cursor-pointer overflow-hidden rounded-lg" onClick={() => setOpen(true)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageUrl} alt={alt} className="w-full rounded-lg transition-opacity group-hover:opacity-90" loading="lazy" />
+        <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+          Tap to enlarge
+        </span>
+      </div>
+      <MapLightbox open={open} onClose={() => setOpen(false)} src={imageUrl} alt={alt} />
       <p className="text-xs text-forest-green/50 font-dm-sans">
         {label}
         {lastModified ? ` · Updated ${lastModified}` : ''}{' '}·{' '}

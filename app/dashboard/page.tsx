@@ -11,6 +11,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
+import SwipeCards from './components/SwipeCards'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
 import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
@@ -873,11 +874,7 @@ export default async function DashboardPage({
                         }
                         regionalMapUrl={regionalMapUrl}
                       />
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <OfficialMap
-                          map={nationalMap}
-                          title="USDM — National"
-                        />
+                      <SwipeCards smCols={2}>
                         <OfficialMap
                           map={cpcMonthlyMap}
                           title="Monthly Drought Outlook"
@@ -886,7 +883,7 @@ export default async function DashboardPage({
                           map={cpcSeasonalMap}
                           title="Seasonal Drought Outlook"
                         />
-                      </div>
+                      </SwipeCards>
                     </div>
                   </DashboardAccordion>
 
