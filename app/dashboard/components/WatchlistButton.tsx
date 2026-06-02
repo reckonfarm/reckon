@@ -81,7 +81,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
     return (
       <Link
         href="/signin"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-forest-green/20 bg-white px-3 py-2 text-sm font-medium font-dm-sans text-forest-green hover:bg-cream transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 text-sm font-medium font-dm-sans text-forest-green hover:bg-cream transition-colors"
         aria-label={`Sign in to watch ${countyName}`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -100,7 +100,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
         onMouseEnter={() => hasAlert && setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={[
-          'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium font-dm-sans transition-colors disabled:opacity-40',
+          'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium font-dm-sans transition-colors disabled:opacity-40',
           watching
             ? hasAlert
               ? 'bg-rust text-cream hover:bg-rust/90'

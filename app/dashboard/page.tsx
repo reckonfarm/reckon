@@ -595,7 +595,7 @@ export default async function DashboardPage({
             )}
 
             {/* County heading */}
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
               <div>
                 <h1 className="font-fraunces text-2xl font-semibold text-forest-green">
                   {selectedCounty.name}, {selectedCounty.state}

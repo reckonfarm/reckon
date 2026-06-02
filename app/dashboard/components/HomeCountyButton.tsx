@@ -68,7 +68,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
         onClick={toggle}
         disabled={busy}
         className={[
-          'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium font-dm-sans transition-colors disabled:opacity-40',
+          'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium font-dm-sans transition-colors disabled:opacity-40',
           isHome
             ? 'bg-forest-green text-cream hover:bg-forest-green/90'
             : 'border border-forest-green/20 bg-white text-forest-green hover:bg-cream',

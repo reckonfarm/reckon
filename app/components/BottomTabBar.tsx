@@ -3,27 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase-browser'
-import type { User } from '@supabase/supabase-js'
 
 export default function BottomTabBar() {
   const pathname = usePathname()
   const [unread, setUnread] = useState(0)
-  const [user, setUser] = useState<User | null>(null)
-
-  // Same auth signal SiteHeader uses, so signed-out visitors don't see the
-  // Radar tab (Radar requires a free account). Reads the local session (no
-  // network) so it stays correct on a flaky connection — see SiteHeader.
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getSession()
-      .then(({ data }) => setUser(data.session?.user ?? null))
-      .catch(() => { /* local read only */ })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
 
   // Refresh the messages unread badge on navigation (tolerates signed-out 401).
   useEffect(() => {
@@ -74,23 +57,9 @@ export default function BottomTabBar() {
     },
   ]
 
+  // Hay Radar lives in the top header (SiteHeader), not here — keeping the bottom
+  // bar an even 2-left / 2-right around the centered My Operation anchor.
   const rightTabs: Tab[] = [
-    // Radar requires a free account — hidden when signed out (matches SiteHeader).
-    ...(user
-      ? [{
-          href: '/radar',
-          label: 'Hay Radar',
-          match: (p: string) => p.startsWith('/radar'),
-          icon: (active: boolean) => (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a10 10 0 1 0 10 10"/>
-              <path d="M12 8a6 6 0 1 0 6 6"/>
-              <path d="M12 12l9-9"/>
-              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
-            </svg>
-          ),
-        }]
-      : []),
     {
       href: '/watchlist',
       label: 'Counties',
@@ -144,35 +113,18 @@ export default function BottomTabBar() {
     )
   }
 
-  // Each flank renders the same number of equal-width (flex-1) cells, so an item
-  // on the left is the same size and the same distance from the center anchor as
-  // its counterpart on the right — the button reads as a true center. When one
-  // flank has fewer items (e.g. signed-in: 2 left vs 3 right because of Hay
-  // Radar), the shorter flank is padded with an invisible cell in the MIDDLE, so
-  // its items keep the inner+outer positions that mirror the other side rather
-  // than collapsing to one end. Signed-out (2 vs 2) needs no padding.
-  const cellCount = Math.max(leftTabs.length, rightTabs.length)
-  const balance = (tabs: Tab[]): (Tab | null)[] => {
-    const cells: (Tab | null)[] = [...tabs]
-    while (cells.length < cellCount) cells.splice(Math.ceil(cells.length / 2), 0, null)
-    return cells
-  }
-  const renderCell = (cell: Tab | null, i: number) =>
-    cell ? renderTab(cell) : <div key={`spacer-${i}`} className="flex flex-1 basis-0" aria-hidden />
-  const leftCells  = balance(leftTabs)
-  const rightCells = balance(rightTabs)
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe">
       <div className="relative flex items-stretch">
-        {/* Left flank */}
-        <div className="flex flex-1">{leftCells.map(renderCell)}</div>
+        {/* Left flank (2 items) */}
+        <div className="flex flex-1">{leftTabs.map(renderTab)}</div>
 
         {/* Reserved notch under the raised center anchor */}
         <div className="w-[76px] shrink-0" aria-hidden />
 
-        {/* Right flank */}
-        <div className="flex flex-1">{rightCells.map(renderCell)}</div>
+        {/* Right flank (2 items) */}
+        <div className="flex flex-1">{rightTabs.map(renderTab)}</div>
 
         {/* Raised, prominent center anchor — "My Operation" (home base) */}
         <Link
