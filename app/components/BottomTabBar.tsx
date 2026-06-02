@@ -129,7 +129,7 @@ export default function BottomTabBar() {
       <Link
         key={tab.href}
         href={tab.href}
-        className={`relative flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-dm-sans font-medium transition-colors min-h-[56px] ${
+        className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[10px] font-dm-sans font-medium transition-colors min-h-[56px] ${
           active ? 'text-forest-green' : 'text-forest-green/35 hover:text-forest-green/60'
         }`}
       >
@@ -144,17 +144,35 @@ export default function BottomTabBar() {
     )
   }
 
+  // Each flank renders the same number of equal-width (flex-1) cells, so an item
+  // on the left is the same size and the same distance from the center anchor as
+  // its counterpart on the right — the button reads as a true center. When one
+  // flank has fewer items (e.g. signed-in: 2 left vs 3 right because of Hay
+  // Radar), the shorter flank is padded with an invisible cell in the MIDDLE, so
+  // its items keep the inner+outer positions that mirror the other side rather
+  // than collapsing to one end. Signed-out (2 vs 2) needs no padding.
+  const cellCount = Math.max(leftTabs.length, rightTabs.length)
+  const balance = (tabs: Tab[]): (Tab | null)[] => {
+    const cells: (Tab | null)[] = [...tabs]
+    while (cells.length < cellCount) cells.splice(Math.ceil(cells.length / 2), 0, null)
+    return cells
+  }
+  const renderCell = (cell: Tab | null, i: number) =>
+    cell ? renderTab(cell) : <div key={`spacer-${i}`} className="flex flex-1 basis-0" aria-hidden />
+  const leftCells  = balance(leftTabs)
+  const rightCells = balance(rightTabs)
+
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe">
       <div className="relative flex items-stretch">
         {/* Left flank */}
-        <div className="flex flex-1">{leftTabs.map(renderTab)}</div>
+        <div className="flex flex-1">{leftCells.map(renderCell)}</div>
 
         {/* Reserved notch under the raised center anchor */}
         <div className="w-[76px] shrink-0" aria-hidden />
 
         {/* Right flank */}
-        <div className="flex flex-1">{rightTabs.map(renderTab)}</div>
+        <div className="flex flex-1">{rightCells.map(renderCell)}</div>
 
         {/* Raised, prominent center anchor — "My Operation" (home base) */}
         <Link
