@@ -27,7 +27,14 @@ export default function SiteHeader({ subtitle, center }: Props) {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    // Read the locally-stored session (no network round-trip) so the header
+    // reflects auth state reliably even on a slow/flaky connection. getUser()
+    // hits the network to re-validate the token; on poor signal it can hang or
+    // reject, which (with no catch) left the header stuck on "Sign in" for a
+    // signed-in user. onAuthStateChange keeps it in sync afterwards.
+    supabase.auth.getSession()
+      .then(({ data }) => setUser(data.session?.user ?? null))
+      .catch(() => { /* local read only — never strand the header */ })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       setUser(session?.user ?? null)
     })

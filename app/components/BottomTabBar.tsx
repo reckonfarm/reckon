@@ -12,10 +12,13 @@ export default function BottomTabBar() {
   const [user, setUser] = useState<User | null>(null)
 
   // Same auth signal SiteHeader uses, so signed-out visitors don't see the
-  // Radar tab (Radar requires a free account).
+  // Radar tab (Radar requires a free account). Reads the local session (no
+  // network) so it stays correct on a flaky connection — see SiteHeader.
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getSession()
+      .then(({ data }) => setUser(data.session?.user ?? null))
+      .catch(() => { /* local read only */ })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       setUser(session?.user ?? null)
     })

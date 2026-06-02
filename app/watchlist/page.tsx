@@ -20,11 +20,19 @@ export default function WatchlistPage() {
     const supabase = createClient()
 
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setAuthed(false); setLoading(false); return }
-      setAuthed(true)
-
+      // Auth state comes from the locally-stored session (no network round-trip).
+      // getUser() re-validates over the network and, on a slow/flaky connection,
+      // can hang (leaving this page stuck on the loading skeleton — a blank
+      // screen) or reject (falsely showing the signed-out prompt). getSession()
+      // reads the cookie locally; the /api/* routes still validate the real user
+      // server-side, so this doesn't weaken access control.
+      let signedIn = false
       try {
+        const { data: { session } } = await supabase.auth.getSession()
+        signedIn = !!session
+        setAuthed(signedIn)
+        if (!signedIn) return
+
         const [watchlist, alertData, home] = await Promise.all([
           fetch('/api/watchlist').then(r => r.ok ? r.json() : []),
           fetch('/api/watchlist?alerts=1').then(r => r.ok ? r.json() : []),
@@ -34,6 +42,10 @@ export default function WatchlistPage() {
         setAlerts(Array.isArray(alertData) ? alertData : [])
         setHomeFips(home?.fips ?? null)
       } catch {
+        // A failed load must never blank the page: keep the resolved auth state
+        // (defaulting to the boolean we determined) and show the proper authed
+        // empty state or signed-out prompt instead of an endless skeleton.
+        setAuthed(signedIn)
         setEntries([])
         setAlerts([])
       } finally {
