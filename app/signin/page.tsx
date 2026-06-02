@@ -8,7 +8,7 @@ export default async function SignInPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (user) {
-    redirect('/watchlist')
+    redirect('/dashboard')
   }
 
   return (

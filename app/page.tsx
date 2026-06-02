@@ -15,6 +15,7 @@ import SiteHeader from '@/app/components/SiteHeader'
 import ComingSoon from '@/app/components/ComingSoon'
 import { createClient } from '@/lib/supabase-server'
 import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 interface DriestyChip {
   name:  string
@@ -88,6 +89,24 @@ async function getNearbyHayCount(stateCode: string): Promise<number> {
 }
 
 export default async function Home() {
+  // Signed-in users never see the marketing homepage — redirect them to the
+  // dashboard server-side, BEFORE any render, so there's no homepage flash. Uses
+  // the @supabase/ssr cookie session the middleware keeps fresh (no auth changes).
+  // redirect() works by throwing, so it MUST run outside the try/catch — a genuine
+  // auth-check failure falls through and shows the public homepage.
+  let user = null
+  try {
+    const supabase = await createClient()
+    user = (await supabase.auth.getUser()).data.user
+  } catch {
+    user = null
+  }
+  if (user) redirect('/dashboard')
+
+  // Only logged-out visitors reach here, so the Coming-soon tiles are always in the
+  // signed-out state.
+  const signedIn = false
+
   const headersList = await headers()
   const visitorRegion = headersList.get('x-vercel-ip-country-region') ?? ''
   // x-vercel-ip-country-region returns state codes like "MT", "GA", "TX"
@@ -98,17 +117,6 @@ export default async function Home() {
     getDriestChips(),
     visitorState ? getNearbyHayCount(visitorState) : Promise.resolve(0),
   ])
-
-  // Optional: whether the visitor is signed in, so the Coming-soon tiles can skip
-  // the email prompt for logged-in ranchers. Best-effort — never blocks the page.
-  let signedIn = false
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    signedIn = !!user
-  } catch {
-    signedIn = false
-  }
 
   // Use local chips if we got at least 2, otherwise fall back to national
   const driestChips = (driestChipsLocal.length >= 2) ? driestChipsLocal : driestChipsNational
