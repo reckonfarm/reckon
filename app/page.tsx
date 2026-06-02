@@ -132,7 +132,7 @@ export default async function Home() {
           its fade-in arrive sooner). */}
       <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossOrigin="anonymous" />
       <link rel="preconnect" href="https://b.tile.openstreetmap.org" crossOrigin="anonymous" />
-      <SiteHeader />
+      <SiteHeader subtitle="Ranch Intelligence for Cattle Country" />
       <main className="min-h-screen bg-cream">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:py-16">
 
