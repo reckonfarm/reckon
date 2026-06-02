@@ -216,6 +216,18 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
         </ComposedChart>
       </ResponsiveContainer>
 
+      {/* Visible freshness label — tells a rancher who just got rain whether it's
+          in the window yet. Station data lags a couple days; this is the honest
+          "current as of" so the chart never looks wrong, just current-as-of-a-date. */}
+      {throughDate && (
+        <p className="-mt-2 flex items-center justify-center gap-1.5 text-xs font-dm-sans font-medium text-forest-green/60">
+          <svg className="h-3.5 w-3.5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Data through {fmtDate(throughDate)}
+        </p>
+      )}
+
       <div className="grid grid-cols-3 gap-4 pt-1">
         <div>
           <p className="text-2xl font-fraunces font-semibold text-forest-green">

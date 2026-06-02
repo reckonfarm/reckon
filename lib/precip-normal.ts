@@ -355,7 +355,13 @@ export async function getPrecipNormal(
 ): Promise<PrecipNormalResult> {
   const today = new Date()
   const edate = new Date(today)
-  edate.setDate(today.getDate() - 4)   // ACIS reporting lag
+  // ACIS station reporting lag. today−2 surfaces recent rain ~2 days sooner than
+  // the old today−4. Verified against live Montana stations that coverage at −2 is
+  // solid: the nearest-station pick + trailing-trim in buildSeries only ever charts
+  // a station's TRUE last reading, so days a station hasn't reported yet are simply
+  // not shown — they never inflate a false deficit. Do not push past −2 (the last
+  // day or two has thin station coverage; the buffer protects accuracy).
+  edate.setDate(today.getDate() - 2)
 
   const sdate = `${today.getFullYear()}-01-01`
   const edateStr = edate.toISOString().slice(0, 10)
