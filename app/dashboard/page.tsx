@@ -897,28 +897,37 @@ export default async function DashboardPage({
                     </div>
                   </DashboardAccordion>
 
+                  {/* Drought Indicators — current-condition indicators (soil moisture,
+                      vegetation, recent precip). Its own top-level section now; it is
+                      NOT a forecast, so it no longer nests under the forecast section. */}
                   <DashboardAccordion
-                    title="Forecast"
-                    preview="NWS discussion, rainfall outlook, soil moisture"
+                    title="Drought Indicators"
+                    preview="Soil moisture, vegetation & recent precipitation"
                   >
-                    <div className="space-y-6">
-                      <ForecastSection
-                        droughtDiscussion={droughtDiscussion}
-                        cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
-                        vhiUpdated={vhiUpdated}
-                        hprcc14dUpdated={hprcc14dUpdated}
-                        hprcc30dUpdated={hprcc30dUpdated}
-                        hprcc60dUpdated={hprcc60dUpdated}
-                      />
-                      <PrecipForecastSection
-                        nwsDiscussion={nwsDiscussion}
-                        wpcUpdated={wpcUpdated}
-                        day814Updated={prcp814Updated}
-                        weeks34Updated={prcpWk34Updated}
-                        monthlyUpdated={prcpMonthlyUpdated}
-                        seasonalUpdated={prcpSeasonalUpdated}
-                      />
-                    </div>
+                    <ForecastSection
+                      hideHeader
+                      droughtDiscussion={droughtDiscussion}
+                      cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
+                      vhiUpdated={vhiUpdated}
+                      hprcc14dUpdated={hprcc14dUpdated}
+                      hprcc30dUpdated={hprcc30dUpdated}
+                      hprcc60dUpdated={hprcc60dUpdated}
+                    />
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Rainfall Outlook"
+                    preview="Local NWS discussion + 7-day to seasonal precip outlooks"
+                  >
+                    <PrecipForecastSection
+                      hideHeader
+                      nwsDiscussion={nwsDiscussion}
+                      wpcUpdated={wpcUpdated}
+                      day814Updated={prcp814Updated}
+                      weeks34Updated={prcpWk34Updated}
+                      monthlyUpdated={prcpMonthlyUpdated}
+                      seasonalUpdated={prcpSeasonalUpdated}
+                    />
                   </DashboardAccordion>
 
                 </div>

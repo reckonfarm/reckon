@@ -29,6 +29,9 @@ interface Props {
   hprcc14dUpdated: string | null
   hprcc30dUpdated: string | null
   hprcc60dUpdated: string | null
+  // When embedded in an accordion that already supplies the title, skip the
+  // component's own header to avoid a duplicate "Drought Indicators" heading.
+  hideHeader?: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -189,6 +192,7 @@ export default function ForecastSection({
   hprcc14dUpdated,
   hprcc30dUpdated,
   hprcc60dUpdated,
+  hideHeader = false,
 }: Props) {
   const [active, setActive] = useState<Tab>('Now')
   const droughtWeekEnding = droughtDiscussion?.releaseDate
@@ -197,12 +201,13 @@ export default function ForecastSection({
 
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
-      {/* Header */}
-      <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <h2 className="font-fraunces text-base font-semibold text-forest-green">
-          Drought Indicators
-        </h2>
-      </div>
+      {!hideHeader && (
+        <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
+          <h2 className="font-fraunces text-base font-semibold text-forest-green">
+            Drought Indicators
+          </h2>
+        </div>
+      )}
 
       <TabBar
         tabs={TABS.map(t => ({ id: t, label: t }))}

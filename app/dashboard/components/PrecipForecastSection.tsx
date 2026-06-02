@@ -22,6 +22,9 @@ interface Props {
   weeks34Updated: string | null
   monthlyUpdated: string | null
   seasonalUpdated: string | null
+  // When embedded in an accordion that already supplies the title, skip the
+  // component's own "Rainfall Outlook" header to avoid a duplicate heading.
+  hideHeader?: boolean
 }
 
 const TABS = [
@@ -300,12 +303,14 @@ function CpcMapPanel({
   label,
   sourceUrl,
   lastModified,
+  sourceName = 'NOAA/CPC',
 }: {
   imageUrl: string
   alt: string
   label: string
   sourceUrl: string
   lastModified: string | null
+  sourceName?: string
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -323,7 +328,7 @@ function CpcMapPanel({
         {label}
         {lastModified ? ` · Updated ${lastModified}` : ''}{' '}·{' '}
         <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
-          Source: NOAA/CPC
+          Source: {sourceName}
         </a>
       </p>
     </div>
@@ -337,16 +342,20 @@ export default function PrecipForecastSection({
   weeks34Updated,
   monthlyUpdated,
   seasonalUpdated,
+  hideHeader = false,
 }: Props) {
-  const [active, setActive] = useState<Tab>('8-14 Day')
+  // Default to the FIRST tab in the defined order (the local discussion), not a map.
+  const [active, setActive] = useState<Tab>(TABS[0])
 
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
-      <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <h2 className="font-fraunces text-base font-semibold text-forest-green">
-          Rainfall Outlook
-        </h2>
-      </div>
+      {!hideHeader && (
+        <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
+          <h2 className="font-fraunces text-base font-semibold text-forest-green">
+            Rainfall Outlook
+          </h2>
+        </div>
+      )}
 
       <TabBar
         tabs={TABS.map(t => ({ id: t, label: t }))}
@@ -354,7 +363,9 @@ export default function PrecipForecastSection({
         onChange={id => setActive(id as Tab)}
       />
 
-      <div className="p-4 sm:p-6">
+      {/* key={active} → each tab's panel mounts fresh, so a switched-to map never
+          inherits/repaints the previously shown map's <img> (no flicker-back). */}
+      <div className="p-4 sm:p-6" key={active}>
         {active === 'Local Discussion' && (
           <>
             <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Official forecast discussion from your local National Weather Service office.</p>
@@ -362,29 +373,17 @@ export default function PrecipForecastSection({
           </>
         )}
         {active === '7-Day QPF' && (
-          <div className="space-y-3">
+          <>
             <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Quantitative precipitation forecast showing expected rainfall totals over the next 7 days.</p>
-            <ForecastBadge />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
+            <CpcMapPanel
+              imageUrl="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
               alt="WPC 7-Day Accumulated Precipitation Forecast"
-              className="w-full rounded-lg"
-              loading="lazy"
+              label="WPC 7-Day Accumulated Precipitation Forecast"
+              sourceUrl="https://www.wpc.ncep.noaa.gov/qpf/"
+              sourceName="NOAA/WPC"
+              lastModified={wpcUpdated}
             />
-            <p className="text-xs text-forest-green/50 font-dm-sans">
-              WPC 7-Day Accumulated Precipitation Forecast
-              {wpcUpdated ? ` · Updated ${wpcUpdated}` : ''}{' '}·{' '}
-              <a
-                href="https://www.wpc.ncep.noaa.gov/qpf/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                Source: NOAA/WPC
-              </a>
-            </p>
-          </div>
+          </>
         )}
         {active === '8-14 Day' && (
           <>
