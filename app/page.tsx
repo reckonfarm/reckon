@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import CountySearch from '@/app/components/CountySearch'
 import SiteHeader from '@/app/components/SiteHeader'
+import SiteFooter from '@/app/components/SiteFooter'
 import ComingSoon from '@/app/components/ComingSoon'
 import { createClient } from '@/lib/supabase-server'
 import { headers } from 'next/headers'
@@ -259,6 +260,7 @@ export default async function Home() {
 
       </div>
     </main>
+    <SiteFooter />
     </>
   )
 }

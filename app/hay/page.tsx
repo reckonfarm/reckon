@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
+import SiteFooter from '@/app/components/SiteFooter'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
@@ -1514,6 +1515,7 @@ export default function HayPage() {
         </div>
 
       </main>
+    <SiteFooter />
     </>
   )
 }

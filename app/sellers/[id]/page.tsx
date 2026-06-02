@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
+import SiteFooter from '@/app/components/SiteFooter'
 
 const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -345,6 +346,7 @@ export default async function SellerPage(
         )}
 
       </main>
+    <SiteFooter />
     </>
   )
 }
