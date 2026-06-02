@@ -13,6 +13,8 @@ export default function WatchlistPage() {
   const [alerts, setAlerts]     = useState<DroughtAlert[]>([])
   const [loading, setLoading]   = useState(true)
   const [removing, setRemoving] = useState<Set<number>>(new Set())
+  const [homeFips, setHomeFips] = useState<string | null>(null)
+  const [homeBusy, setHomeBusy] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -23,12 +25,14 @@ export default function WatchlistPage() {
       setAuthed(true)
 
       try {
-        const [watchlist, alertData] = await Promise.all([
+        const [watchlist, alertData, home] = await Promise.all([
           fetch('/api/watchlist').then(r => r.ok ? r.json() : []),
           fetch('/api/watchlist?alerts=1').then(r => r.ok ? r.json() : []),
+          fetch('/api/home-county').then(r => r.ok ? r.json() : null),
         ])
         setEntries(Array.isArray(watchlist) ? watchlist : [])
         setAlerts(Array.isArray(alertData) ? alertData : [])
+        setHomeFips(home?.fips ?? null)
       } catch {
         setEntries([])
         setAlerts([])
@@ -39,6 +43,20 @@ export default function WatchlistPage() {
 
     load()
   }, [])
+
+  async function setHome(fips: string) {
+    if (homeBusy) return
+    setHomeBusy(true)
+    const makeHome = homeFips !== fips
+    const prev = homeFips
+    setHomeFips(makeHome ? fips : null) // optimistic
+    const res = await fetch('/api/home-county', makeHome
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fips }) }
+      : { method: 'DELETE' },
+    ).catch(() => null)
+    if (!res?.ok) setHomeFips(prev) // revert on failure
+    setHomeBusy(false)
+  }
 
   async function remove(countyId: number) {
     setRemoving(prev => new Set(prev).add(countyId))
@@ -106,6 +124,12 @@ export default function WatchlistPage() {
                           <h2 className="font-fraunces text-base font-semibold text-forest-green">
                             {entry.county.name}, {entry.county.state}
                           </h2>
+                          {homeFips === entry.county.fips && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-semibold text-forest-green ring-1 ring-forest-green/20 font-dm-sans">
+                              <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 11.5 12 4l9 7.5M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9" /></svg>
+                              Home
+                            </span>
+                          )}
                           {alert?.alerted && (
                             <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-200 font-dm-sans">
                               Alert
@@ -125,6 +149,21 @@ export default function WatchlistPage() {
                       </div>
 
                       <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => setHome(entry.county.fips)}
+                          disabled={homeBusy}
+                          className={[
+                            'inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium font-dm-sans transition-colors disabled:opacity-40',
+                            homeFips === entry.county.fips
+                              ? 'bg-forest-green text-cream hover:bg-forest-green/90'
+                              : 'border border-forest-green/20 text-forest-green hover:bg-cream',
+                          ].join(' ')}
+                          aria-label={homeFips === entry.county.fips ? `${entry.county.name} is your home county — tap to unset` : `Set ${entry.county.name} as your home county`}
+                          title={homeFips === entry.county.fips ? 'Your home county — opens by default' : 'Set as your home county'}
+                        >
+                          <svg className="h-3.5 w-3.5" fill={homeFips === entry.county.fips ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 11.5 12 4l9 7.5M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9" /></svg>
+                          {homeFips === entry.county.fips ? 'Home' : 'Set Home'}
+                        </button>
                         <Link
                           href={`/dashboard?fips=${entry.county.fips}`}
                           className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"

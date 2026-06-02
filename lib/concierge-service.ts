@@ -82,3 +82,41 @@ export async function removeFromWatchlist(userId: string, countyId: number): Pro
 
   if (error) throw new Error(`removeFromWatchlist failed: ${error.message}`)
 }
+
+// ─── Home county ────────────────────────────────────────────────────────────
+// A user has exactly one home county (a FIPS on their profile). The dashboard
+// opens to it by default. Independent of the watchlist — setting Home doesn't
+// add to the watchlist, and watching a county doesn't change Home.
+
+export async function getHomeCountyFips(userId: string): Promise<string | null> {
+  const db = createServiceClient()
+
+  const { data, error } = await db
+    .from('profiles')
+    .select('home_county_fips')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) return null
+  return data?.home_county_fips ?? null
+}
+
+// Setting a new home replaces the old (single column). Upsert because profiles
+// are created lazily (no DB trigger), so the row may not exist yet — email is
+// required NOT NULL on insert. Pass null to clear the home county.
+export async function setHomeCountyFips(
+  userId: string,
+  email: string,
+  fips: string | null,
+): Promise<void> {
+  const db = createServiceClient()
+
+  const { error } = await db
+    .from('profiles')
+    .upsert(
+      { id: userId, email, home_county_fips: fips },
+      { onConflict: 'id' },
+    )
+
+  if (error) throw new Error(`setHomeCountyFips failed: ${error.message}`)
+}

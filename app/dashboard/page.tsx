@@ -28,8 +28,16 @@ import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, type DeliveredCost } from '@/lib/freight'
 import DashboardAccordion from './components/DashboardAccordion'
 import ScrollToTop from './components/ScrollToTop'
+import HomeCountyButton from './components/HomeCountyButton'
 
 export const dynamic = 'force-dynamic'
+
+// Opening the dashboard to a logged-in user's Home (or most-recent saved) county
+// when the URL has no ?fips is handled in middleware.ts — the middleware holds the
+// authoritative, refreshed session, so it can redirect the document request
+// reliably (a Server Component can't refresh the rotating auth cookie, so a
+// redirect() here would miss the document render). Brand-new users with neither
+// fall through to the EmptyState below.
 
 // ─── USDM region lookup ───────────────────────────────────────────────────────
 
@@ -600,6 +608,10 @@ export default async function DashboardPage({
                   countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
                   droughtLabel={shareDrought.level != null ? shareDrought.label : null}
                   surface="dashboard"
+                />
+                <HomeCountyButton
+                  countyFips={selectedCounty.fips}
+                  countyName={selectedCounty.name}
                 />
                 <WatchlistButton
                   countyId={selectedCounty.id}
