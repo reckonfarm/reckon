@@ -21,11 +21,19 @@ const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {
 }
 
 const BALE_TYPE_LABELS: Record<string, string> = {
-  large_round:      'Large Round',
-  small_round:      'Small Round',
-  small_square:     'Small Square',
-  '3string_square': '3-String Square',
-  '4string_square': '4-String Square',
+  small_square_2string: 'Small Square (2-string)',
+  small_square_3string: 'Small Square (3-string)',
+  large_square_3x3:     'Large Square (3x3)',
+  large_square_3x4:     'Large Square (3x4)',
+  large_square_4x4:     'Large Square (4x4)',
+  round_4x4:            'Round (4x4)',
+  round_5x6:            'Round (5x6)',
+  // Legacy values (pre-017) — displayed cleanly until the migration remaps them.
+  large_round:      'Round (5x6)',
+  small_round:      'Round (4x4)',
+  small_square:     'Small Square (2-string)',
+  '3string_square': 'Small Square (3-string)',
+  '4string_square': 'Small Square (3-string)',
 }
 
 const ORDINALS: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' }
@@ -798,11 +806,13 @@ export default function HayPage() {
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Bale type</label>
                   <select value={baleType} onChange={e => setBaleType(e.target.value)} className={SELECT_CLS}>
                     <option value="">— Select —</option>
-                    <option value="large_round">Large Round</option>
-                    <option value="small_round">Small Round</option>
-                    <option value="small_square">Small Square</option>
-                    <option value="3string_square">3-String Square</option>
-                    <option value="4string_square">4-String Square</option>
+                    <option value="small_square_2string">Small Square (2-string)</option>
+                    <option value="small_square_3string">Small Square (3-string)</option>
+                    <option value="large_square_3x3">Large Square (3x3)</option>
+                    <option value="large_square_3x4">Large Square (3x4)</option>
+                    <option value="large_square_4x4">Large Square (4x4)</option>
+                    <option value="round_4x4">Round (4x4)</option>
+                    <option value="round_5x6">Round (5x6)</option>
                   </select>
                 </div>
 

@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
   // contact is optional + private (buyers reach sellers via in-app messaging).
   // Stored as '' when blank so the existing NOT NULL column stays satisfied.
 
-  const VALID_BALE_TYPES = ['large_round', 'small_round', 'small_square', '3string_square', '4string_square']
+  const VALID_BALE_TYPES = ['small_square_2string', 'small_square_3string', 'large_square_3x3', 'large_square_3x4', 'large_square_4x4', 'round_4x4', 'round_5x6']
   const VALID_STORAGE    = ['outside', 'covered', 'barn']
 
   if (bale_type != null && !VALID_BALE_TYPES.includes(bale_type)) {

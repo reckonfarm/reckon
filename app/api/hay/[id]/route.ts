@@ -204,7 +204,7 @@ export async function GET(
 // (sold_at set or claim_status confirmed) cannot be edited. photo_urls stays
 // editable for the resilient photo-upload flow. id / created_at / URL are never
 // touched, so the listing keeps its age and link.
-const VALID_BALE_TYPES = ['large_round', 'small_round', 'small_square', '3string_square', '4string_square']
+const VALID_BALE_TYPES = ['small_square_2string', 'small_square_3string', 'large_square_3x3', 'large_square_3x4', 'large_square_4x4', 'round_4x4', 'round_5x6']
 const VALID_STORAGE    = ['outside', 'covered', 'barn']
 const VALID_TYPES      = ['sell', 'want', 'donate']
 
