@@ -63,64 +63,71 @@ export default function SiteHeader({ subtitle, center }: Props) {
         )}
 
         <div className="flex items-center gap-4">
-          <Link
-            href="/watchlist"
-            className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-          >
-            My Counties
-          </Link>
-          <Link
-            href="/hay"
-            className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-          >
-            Hay
-          </Link>
-          {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
-              the dashboard (via '/', which redirects signed-in users to /dashboard);
-              the Drought/Cattle toggle inside reaches cattle. Subtle text emphasis
-              (full color + medium weight) marks it as the primary item. */}
-          <Link
-            href="/"
-            className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
-          >
-            My Operation
-          </Link>
-          {user && (
+          {/* Menu links — DESKTOP ONLY. On mobile the BottomTabBar (md:hidden)
+              carries navigation, so these hide at exactly the same `md` breakpoint
+              to avoid duplicate nav. Logo + Sign out below stay visible on mobile. */}
+          <div className="hidden items-center gap-4 md:flex">
             <Link
-              href="/messages"
+              href="/watchlist"
               className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
             >
-              Messages{unread > 0 && (
-                <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-white align-middle">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
+              My Counties
             </Link>
-          )}
-          {user && (
             <Link
-              href="/radar"
+              href="/hay"
               className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
             >
-              Hay Radar
+              Hay
             </Link>
-          )}
-
-          {user ? (
-            <>
+            {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
+                the dashboard (via '/', which redirects signed-in users to /dashboard);
+                the Drought/Cattle toggle inside reaches cattle. Subtle text emphasis
+                (full color + medium weight) marks it as the primary item. */}
+            <Link
+              href="/"
+              className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
+            >
+              My Operation
+            </Link>
+            {user && (
+              <Link
+                href="/messages"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Messages{unread > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-white align-middle">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
+              </Link>
+            )}
+            {user && (
+              <Link
+                href="/radar"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Hay Radar
+              </Link>
+            )}
+            {user && (
               <Link
                 href="/profile"
-                className="hidden max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans hover:text-forest-green transition-colors sm:block"
+                className="max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans hover:text-forest-green transition-colors"
               >
                 {user.email}
               </Link>
-              <button
-                onClick={signOut}
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-              >
-                Sign out
-              </button>
-            </>
+            )}
+          </div>
+
+          {/* Auth control — ALWAYS visible (incl. mobile). Sign out is the one nav
+              action the bottom tab bar doesn't carry. */}
+          {user ? (
+            <button
+              onClick={signOut}
+              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+            >
+              Sign out
+            </button>
           ) : (
             <Link
               href="/signin"
