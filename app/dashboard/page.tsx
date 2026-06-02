@@ -546,7 +546,8 @@ export default async function DashboardPage({
     <div className="min-h-screen bg-cream">
 
       <SiteHeader
-        subtitle="Drought Monitor"
+        subtitle="Ranch Intelligence for Cattle Country"
+        subtitleShort="Ranch Intelligence"
         center={selectedCounty ? `${selectedCounty.name}, ${selectedCounty.state}` : undefined}
       />
 

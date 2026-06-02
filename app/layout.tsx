@@ -21,18 +21,24 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dryline',
+    default: 'Dryline — Ranch Intelligence for Cattle Country',
     template: '%s — Dryline',
   },
   description:
-    'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',
+    "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
   openGraph: {
     type: 'website',
     siteName: 'Dryline',
+    title: 'Dryline — Ranch Intelligence for Cattle Country',
+    description:
+      "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
     images: [{ url: '/og-image.svg', width: 1200, height: 630, alt: 'Dryline' }],
   },
   twitter: {
     card: 'summary_large_image',
+    title: 'Dryline — Ranch Intelligence for Cattle Country',
+    description:
+      "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
   },
   // /favicon.ico is provided by the app/favicon.ico file convention (auto-linked).
   // These add the PNG + SVG variants and the iOS home-screen icon.

@@ -7,10 +7,13 @@ import type { User } from '@supabase/supabase-js'
 
 interface Props {
   subtitle?: string
+  // Optional shorter variant shown on small screens when `subtitle` is too long
+  // for the logo column (e.g. the brand tagline). Falls back to `subtitle`.
+  subtitleShort?: string
   center?: React.ReactNode
 }
 
-export default function SiteHeader({ subtitle, center }: Props) {
+export default function SiteHeader({ subtitle, subtitleShort, center }: Props) {
   const [user, setUser] = useState<User | null>(null)
   const [unread, setUnread] = useState(0)
 
@@ -52,7 +55,16 @@ export default function SiteHeader({ subtitle, center }: Props) {
             Dryline
           </span>
           {subtitle && (
-            <span className="text-xs text-forest-green/50 font-dm-sans">{subtitle}</span>
+            <span className="text-xs text-forest-green/50 font-dm-sans">
+              {subtitleShort ? (
+                <>
+                  <span className="sm:hidden">{subtitleShort}</span>
+                  <span className="hidden sm:inline">{subtitle}</span>
+                </>
+              ) : (
+                subtitle
+              )}
+            </span>
           )}
         </Link>
 

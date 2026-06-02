@@ -3,9 +3,9 @@ import type { MetadataRoute } from 'next'
 // Served at /manifest.webmanifest; Next auto-links it from the document head.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Dryline',
+    name: 'Dryline — Ranch Intelligence for Cattle Country',
     short_name: 'Dryline',
-    description: 'Drought conditions, FSA LFP eligibility, hay, and cattle prices for your county.',
+    description: "Ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace in one place.",
     start_url: '/',
     display: 'standalone',
     background_color: '#FDFBF7',

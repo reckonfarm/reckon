@@ -4,10 +4,10 @@ import { createServiceClient } from '@/lib/supabase'
 
 export const metadata: Metadata = {
   title: {
-    absolute: 'Dryline — Drought & LFP Eligibility for Every U.S. County',
+    absolute: 'Dryline — Ranch Intelligence for Cattle Country',
   },
   description:
-    'Track drought conditions and FSA LFP program eligibility for your county. Know when you qualify for payments before your neighbor does.',
+    "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
 }
 import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import CountySearch from '@/app/components/CountySearch'
