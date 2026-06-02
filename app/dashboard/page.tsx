@@ -684,39 +684,26 @@ export default async function DashboardPage({
                   {/* Forage outlook / Hay nearby card */}
                   <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
                     <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
-                      {lfpResult && lfpResult.maxTier >= 1 ? 'Forage outlook' : 'Hay nearby'}
+                      Hay nearby
                     </p>
 
                     {lfpResult && lfpResult.maxTier >= 1 ? (
                       /* Triggered: forage outlook hero */
                       <div className="space-y-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
-                          {/* Left: pasture estimate */}
-                          <div className="flex-1 rounded-lg bg-rust/8 border border-rust/15 px-4 py-3">
-                            <p className="font-dm-sans text-xs font-medium text-rust/70 uppercase tracking-wide mb-1">Pasture outlook</p>
+                        {/* Hay supply nearby */}
+                        <div className="rounded-lg bg-forest-green/5 border border-forest-green/10 px-4 py-3">
+                          <p className="font-dm-sans text-xs font-medium text-forest-green/40 uppercase tracking-wide mb-1">Hay supply nearby</p>
+                          {hayNearbyCount > 0 ? (
                             <p className="font-fraunces text-sm font-semibold text-forest-green leading-snug">
-                              {lfpResult.maxTier >= 4
-                                ? 'Pastures may stop carrying cows within ~1 week at this rate.'
-                                : lfpResult.maxTier >= 3
-                                ? 'Pastures will likely stop carrying cows in ~3 weeks at this rate.'
-                                : 'Pastures will likely stop carrying cows in ~6 weeks at this rate.'}
+                              {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 mi
+                              {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
+                              {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
                             </p>
-                          </div>
-                          {/* Right: hay supply */}
-                          <div className="flex-1 rounded-lg bg-forest-green/5 border border-forest-green/10 px-4 py-3">
-                            <p className="font-dm-sans text-xs font-medium text-forest-green/40 uppercase tracking-wide mb-1">Hay supply nearby</p>
-                            {hayNearbyCount > 0 ? (
-                              <p className="font-fraunces text-sm font-semibold text-forest-green leading-snug">
-                                {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 mi
-                                {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
-                                {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
-                              </p>
-                            ) : (
-                              <p className="font-fraunces text-sm font-semibold text-forest-green/50 leading-snug">
-                                No hay listed within 200 mi yet.
-                              </p>
-                            )}
-                          </div>
+                          ) : (
+                            <p className="font-fraunces text-sm font-semibold text-forest-green/50 leading-snug">
+                              No hay listed within 200 mi yet.
+                            </p>
+                          )}
                         </div>
                         <Link
                           href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
