@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
+import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
@@ -64,6 +65,7 @@ export default function RootLayout({
       className={`${fraunces.variable} ${dmSans.variable} antialiased`}
     >
       <body className="min-h-screen bg-cream text-forest-green">
+        <InAppBrowserBanner />
         {children}
         <BottomTabBar />
         <FeedbackWidget />
