@@ -199,12 +199,25 @@ export async function GET(
   })
 }
 
-// PATCH /api/hay/[id] — update own listing fields (currently: photo_urls)
+// PATCH /api/hay/[id] — edit own listing.
+// Ownership is enforced server-side (only the listing's user_id). A sold listing
+// (sold_at set or claim_status confirmed) cannot be edited. photo_urls stays
+// editable for the resilient photo-upload flow. id / created_at / URL are never
+// touched, so the listing keeps its age and link.
+const VALID_BALE_TYPES = ['large_round', 'small_round', 'small_square', '3string_square', '4string_square']
+const VALID_STORAGE    = ['outside', 'covered', 'barn']
+const VALID_TYPES      = ['sell', 'want', 'donate']
+
+const num = (v: unknown) => (v != null && v !== '' ? Number(v) : null)
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const numId = parseInt(id, 10)
+  if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -212,20 +225,85 @@ export async function PATCH(
   const body = await req.json().catch(() => null)
   if (!body) return Response.json({ error: 'Invalid body' }, { status: 400 })
 
-  const allowed = ['photo_urls']
-  const update: Record<string, unknown> = {}
-  for (const key of allowed) {
-    if (key in body) update[key] = body[key]
+  const db = createServiceClient()
+
+  // Ownership + sold-guard before any write.
+  const { data: existing, error: fetchErr } = await db
+    .from('hay_listings')
+    .select('id, user_id, sold_at, claim_status')
+    .eq('id', numId)
+    .single()
+  if (fetchErr || !existing) return Response.json({ error: 'Not found' }, { status: 404 })
+  if (existing.user_id !== user.id) {
+    return Response.json({ error: 'You can only edit your own listing' }, { status: 403 })
   }
+  if (existing.sold_at != null || existing.claim_status === 'confirmed') {
+    return Response.json({ error: 'A sold listing can no longer be edited' }, { status: 409 })
+  }
+
+  const update: Record<string, unknown> = {}
+
+  // photo_urls — used by the photo-upload flow; pass straight through.
+  if ('photo_urls' in body) update.photo_urls = body.photo_urls
+
+  // Editable listing fields (only those actually present in the body).
+  if ('listing_type' in body) {
+    if (!VALID_TYPES.includes(body.listing_type)) {
+      return Response.json({ error: 'listing_type must be sell, want, or donate' }, { status: 400 })
+    }
+    update.listing_type = body.listing_type
+  }
+  if ('hay_type' in body) {
+    if (typeof body.hay_type !== 'string' || !body.hay_type.trim()) {
+      return Response.json({ error: 'hay_type cannot be empty' }, { status: 400 })
+    }
+    update.hay_type = body.hay_type.trim()
+  }
+  if ('county_id' in body) {
+    if (typeof body.county_id !== 'number') {
+      return Response.json({ error: 'county_id must be a number' }, { status: 400 })
+    }
+    update.county_id = body.county_id
+  }
+  if ('bale_type' in body) {
+    if (body.bale_type != null && !VALID_BALE_TYPES.includes(body.bale_type)) {
+      return Response.json({ error: 'Invalid bale_type' }, { status: 400 })
+    }
+    update.bale_type = body.bale_type ?? null
+  }
+  if ('storage_method' in body) {
+    if (body.storage_method != null && !VALID_STORAGE.includes(body.storage_method)) {
+      return Response.json({ error: 'Invalid storage_method' }, { status: 400 })
+    }
+    update.storage_method = body.storage_method ?? null
+  }
+  if ('cutting_number' in body) {
+    if (body.cutting_number != null && ![1, 2, 3].includes(Number(body.cutting_number))) {
+      return Response.json({ error: 'cutting_number must be 1, 2, or 3' }, { status: 400 })
+    }
+    update.cutting_number = num(body.cutting_number)
+  }
+  // contact is optional + private; '' when blank keeps the NOT NULL column happy.
+  if ('contact' in body) update.contact = typeof body.contact === 'string' ? body.contact.trim() : ''
+  if ('description' in body) update.description = body.description?.trim() || null
+  if ('tonnage' in body) update.tonnage = num(body.tonnage)
+  if ('price_per_ton' in body) update.price_per_ton = num(body.price_per_ton)
+  if ('haul_radius_miles' in body) update.haul_radius_miles = num(body.haul_radius_miles)
+  if ('relief_flag' in body) update.relief_flag = body.relief_flag === true
+  if ('bale_weight_lbs' in body) update.bale_weight_lbs = num(body.bale_weight_lbs)
+  if ('hay_test_protein_pct' in body) update.hay_test_protein_pct = num(body.hay_test_protein_pct)
+  if ('hay_test_tdn_pct' in body) update.hay_test_tdn_pct = num(body.hay_test_tdn_pct)
+  if ('hay_test_rfv' in body) update.hay_test_rfv = num(body.hay_test_rfv)
+  if ('hay_test_moisture_pct' in body) update.hay_test_moisture_pct = num(body.hay_test_moisture_pct)
+
   if (Object.keys(update).length === 0) {
     return Response.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const db = createServiceClient()
   const { error } = await db
     .from('hay_listings')
     .update(update)
-    .eq('id', parseInt(id, 10))
+    .eq('id', numId)
     .eq('user_id', user.id)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })

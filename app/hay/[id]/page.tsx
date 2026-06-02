@@ -504,16 +504,31 @@ export default function HayDetailPage() {
                 </p>
                 <div className="mt-4 border-t border-forest-green/8 pt-4">
                   <p className="text-sm font-dm-sans text-forest-green/70">
-                    Sold this hay off-platform? Mark it sold to close the listing.
+                    Manage this listing — edit the details, confirm it&apos;s still available, or mark it sold.
                   </p>
                   {actionError && <p className="mt-2 text-sm font-dm-sans text-rust">{actionError}</p>}
-                  <button
-                    onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'external' })}
-                    disabled={acting}
-                    className="mt-2 rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
-                  >
-                    {acting ? '…' : 'Mark sold (off-platform)'}
-                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Link
+                      href={`/hay?edit=${id}`}
+                      className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
+                    >
+                      Edit listing
+                    </Link>
+                    <button
+                      onClick={() => runAction(`/api/hay/${id}/confirm`, 'POST')}
+                      disabled={acting}
+                      className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                    >
+                      {acting ? '…' : 'Still available'}
+                    </button>
+                    <button
+                      onClick={() => runAction(`/api/hay/${id}/sold`, 'POST', { buyer: 'external' })}
+                      disabled={acting}
+                      className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+                    >
+                      {acting ? '…' : 'Mark sold (off-platform)'}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : authed ? (

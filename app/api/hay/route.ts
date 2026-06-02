@@ -167,9 +167,8 @@ export async function POST(request: NextRequest) {
   if (!hay_type || typeof hay_type !== 'string' || !hay_type.trim()) {
     return Response.json({ error: 'hay_type is required' }, { status: 400 })
   }
-  if (!contact || typeof contact !== 'string' || !contact.trim()) {
-    return Response.json({ error: 'contact is required' }, { status: 400 })
-  }
+  // contact is optional + private (buyers reach sellers via in-app messaging).
+  // Stored as '' when blank so the existing NOT NULL column stays satisfied.
 
   const VALID_BALE_TYPES = ['large_round', 'small_round', 'small_square', '3string_square', '4string_square']
   const VALID_STORAGE    = ['outside', 'covered', 'barn']
@@ -192,7 +191,7 @@ export async function POST(request: NextRequest) {
       county_id,
       listing_type,
       hay_type:              hay_type.trim(),
-      contact:               contact.trim(),
+      contact:               typeof contact === 'string' ? contact.trim() : '',
       tonnage:               tonnage               != null ? Number(tonnage)               : null,
       price_per_ton:         price_per_ton         != null ? Number(price_per_ton)         : null,
       description:           description?.trim()   || null,

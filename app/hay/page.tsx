@@ -31,6 +31,18 @@ const ORDINALS: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' }
 
 const HAY_TYPES = ['Alfalfa', 'Grass', 'Mixed', 'Small Grain', 'Alfalfa-Grass Mix', 'Prairie']
 
+// Draft persistence — survives backgrounding / navigation so an interrupted
+// seller on poor signal doesn't lose their work. Text fields only (File objects
+// can't be serialized; photos are re-picked if a draft is resumed).
+const DRAFT_KEY = 'dryline_hay_draft_v1'
+
+// Freshness thresholds (days). Derived from expires_at: a listing starts with
+// 30 days left and "Confirm still available" pushes it back to 30. So
+// daysSinceActivity = 30 - daysLeft.
+const STALE_NUDGE_DAYS = 14 // seller sees a "still available?" nudge past this
+const STALE_BUYER_DAYS  = 21 // buyers see a muted "may be stale" past this
+const LISTING_TTL_DAYS  = 30
+
 const INPUT_CLS =
   'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
 
@@ -129,9 +141,22 @@ export default function HayPage() {
   const [photoFiles, setPhotoFiles]         = useState<File[]>([])
   const [photoUrls, setPhotoUrls]           = useState<string[]>([])
   const [photoUploading, setPhotoUploading] = useState(false)
+  // Resilient create→upload→PATCH: once the row exists, remember its id so a
+  // retry after a dropped connection resumes instead of creating a duplicate.
+  const [createdListingId, setCreatedListingId] = useState<number | null>(null)
+  const [uploadedUrls, setUploadedUrls]         = useState<string[]>([])
+  const [photoError, setPhotoError]             = useState('')
+
+  // Edit mode — when set, the form edits an existing listing (PATCH) instead of
+  // creating one. Preserves id / created_at / URL.
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError]   = useState('')
+
+  // Per-listing busy flags for the one-tap "still available / mark sold" actions.
+  const [freshBusy, setFreshBusy] = useState<Set<string>>(new Set())
+  const [draftRestored, setDraftRestored] = useState(false)
 
   const countyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -222,6 +247,75 @@ export default function HayPage() {
     return () => { if (deliverTimer.current) clearTimeout(deliverTimer.current) }
   }, [deliverQuery])
 
+  // ── Draft persistence ──────────────────────────────────────────────────────
+  // Restore an in-progress draft once on mount. Photos (File objects) can't be
+  // serialized, so a resumed draft re-opens the form with all text intact and
+  // asks the seller to re-pick photos if they had any.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const d = JSON.parse(raw)
+        setListingType(d.listingType ?? 'sell')
+        setHayType(d.hayType ?? '')
+        setBaleType(d.baleType ?? '')
+        setCuttingNumber(d.cuttingNumber ?? '')
+        setBaleWeightLbs(d.baleWeightLbs ?? '')
+        setStorageMethod(d.storageMethod ?? '')
+        setTonnage(d.tonnage ?? '')
+        setPricePerTon(d.pricePerTon ?? '')
+        setShowHayTest(!!d.showHayTest)
+        setHayTestProtein(d.hayTestProtein ?? '')
+        setHayTestTdn(d.hayTestTdn ?? '')
+        setHayTestMoisture(d.hayTestMoisture ?? '')
+        setHayTestRfv(d.hayTestRfv ?? '')
+        setHaulRadius(d.haulRadius ?? '')
+        setContact(d.contact ?? '')
+        setDescription(d.description ?? '')
+        setReliefFlag(!!d.reliefFlag)
+        if (d.selectedCounty) setSelectedCounty(d.selectedCounty)
+        if (typeof d.createdListingId === 'number') setCreatedListingId(d.createdListingId)
+        if (Array.isArray(d.uploadedUrls)) setUploadedUrls(d.uploadedUrls)
+        const hasContent = !!(d.hayType || d.selectedCounty || d.description || d.tonnage || d.pricePerTon || d.createdListingId)
+        if (hasContent) setShowForm(true)
+      }
+    } catch { /* corrupt draft — ignore */ }
+    setDraftRestored(true)
+  }, [])
+
+  // Persist the draft as it changes (create mode only — edits aren't drafts).
+  useEffect(() => {
+    if (!draftRestored || editingId != null) return
+    const draft = {
+      listingType, hayType, baleType, cuttingNumber, baleWeightLbs, storageMethod,
+      tonnage, pricePerTon, showHayTest, hayTestProtein, hayTestTdn, hayTestMoisture,
+      hayTestRfv, haulRadius, contact, description, reliefFlag, selectedCounty,
+      createdListingId, uploadedUrls,
+    }
+    const hasContent = !!(hayType || selectedCounty || description || tonnage || pricePerTon || createdListingId)
+    try {
+      if (hasContent) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      else localStorage.removeItem(DRAFT_KEY)
+    } catch { /* storage unavailable — best-effort */ }
+  }, [draftRestored, editingId, listingType, hayType, baleType, cuttingNumber, baleWeightLbs,
+      storageMethod, tonnage, pricePerTon, showHayTest, hayTestProtein, hayTestTdn,
+      hayTestMoisture, hayTestRfv, haulRadius, contact, description, reliefFlag,
+      selectedCounty, createdListingId, uploadedUrls])
+
+  function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+  }
+
+  // Deep link from the detail page ("Edit listing" → /hay?edit=<id>): once the
+  // owner's listing is loaded, open the form pre-filled. Runs once.
+  const editParam = searchParams.get('edit')
+  const editLoadedRef = useRef(false)
+  useEffect(() => {
+    if (!editParam || editLoadedRef.current) return
+    const target = listings.find(l => String(l.id) === editParam && l.mine)
+    if (target) { editLoadedRef.current = true; loadIntoForm(target) }
+  }, [editParam, listings]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function compressImage(file: File, maxMB = 4): Promise<File> {
     return new Promise((resolve) => {
       const maxBytes = maxMB * 1024 * 1024
@@ -254,26 +348,30 @@ export default function HayPage() {
     })
   }
 
-  async function uploadPhotos(listingId: string): Promise<string[]> {
+  // Upload each pending photo; report which succeeded and which failed so the
+  // caller can surface a clear error and let the seller retry only the failures.
+  async function uploadPhotos(listingId: string): Promise<{ urls: string[]; failed: File[] }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user || photoFiles.length === 0) return []
+    if (!user || photoFiles.length === 0) return { urls: [], failed: [] }
 
     const urls: string[] = []
+    const failed: File[] = []
     for (const file of photoFiles) {
-      const compressed = await compressImage(file)
-      const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-      const { error } = await supabase.storage
-        .from('hay-photos')
-        .upload(path, compressed, { contentType: 'image/jpeg', upsert: false })
-      if (!error) {
-        const { data: { publicUrl } } = supabase.storage
+      try {
+        const compressed = await compressImage(file)
+        const path = `${user.id}/${listingId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        const { error } = await supabase.storage
           .from('hay-photos')
-          .getPublicUrl(path)
+          .upload(path, compressed, { contentType: 'image/jpeg', upsert: false })
+        if (error) { failed.push(file); continue }
+        const { data: { publicUrl } } = supabase.storage.from('hay-photos').getPublicUrl(path)
         urls.push(publicUrl)
+      } catch {
+        failed.push(file)
       }
     }
-    return urls
+    return { urls, failed }
   }
 
   function resetForm() {
@@ -284,71 +382,199 @@ export default function HayPage() {
     setShowHayTest(false); setHayTestProtein(''); setHayTestTdn(''); setHayTestMoisture(''); setHayTestRfv('')
     setHaulRadius(''); setContact(''); setDescription(''); setReliefFlag(false)
     setPhotoFiles([]); setPhotoUrls([])
-    setFormError('')
+    setFormError(''); setPhotoError('')
+    setEditingId(null); setCreatedListingId(null); setUploadedUrls([])
+    clearDraft()
   }
 
-  async function submitListing() {
+  // Pull an existing listing into the form for editing (PATCH on submit).
+  function loadIntoForm(l: HayListing) {
+    setEditingId(Number(l.id))
+    setCreatedListingId(null); setUploadedUrls([]); setPhotoError('')
+    if (l.counties) setSelectedCounty(l.counties)
+    setListingType((l.listing_type as 'sell' | 'want' | 'donate') ?? 'sell')
+    setHayType(l.hay_type ?? '')
+    setBaleType(l.bale_type ?? '')
+    setCuttingNumber(l.cutting_number != null ? String(l.cutting_number) : '')
+    setBaleWeightLbs(l.bale_weight_lbs != null ? String(l.bale_weight_lbs) : '')
+    setStorageMethod(l.storage_method ?? '')
+    setTonnage(l.tonnage != null ? String(l.tonnage) : '')
+    setPricePerTon(l.price_per_ton != null ? String(l.price_per_ton) : '')
+    const hasTest = l.hay_test_protein_pct != null || l.hay_test_tdn_pct != null ||
+                    l.hay_test_rfv != null || l.hay_test_moisture_pct != null
+    setShowHayTest(hasTest)
+    setHayTestProtein(l.hay_test_protein_pct != null ? String(l.hay_test_protein_pct) : '')
+    setHayTestTdn(l.hay_test_tdn_pct != null ? String(l.hay_test_tdn_pct) : '')
+    setHayTestMoisture(l.hay_test_moisture_pct != null ? String(l.hay_test_moisture_pct) : '')
+    setHayTestRfv(l.hay_test_rfv != null ? String(l.hay_test_rfv) : '')
+    setHaulRadius(l.haul_radius_miles != null ? String(l.haul_radius_miles) : '')
+    setContact(l.contact ?? '')
+    setDescription(l.description ?? '')
+    setReliefFlag(!!l.relief_flag)
+    setPhotoFiles([]); setPhotoUrls([])
+    setFormError('')
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Shared field payload for create + edit.
+  function buildPayload() {
+    return {
+      county_id:             selectedCounty ? Number(selectedCounty.id) : undefined,
+      listing_type:          listingType,
+      hay_type:              hayType.trim(),
+      contact:               contact.trim(),
+      tonnage:               tonnage           ? parseFloat(tonnage)    : null,
+      price_per_ton:         pricePerTon       ? parseFloat(pricePerTon) : null,
+      description:           description.trim() || null,
+      haul_radius_miles:     haulRadius        ? parseInt(haulRadius)   : null,
+      relief_flag:           reliefFlag,
+      cutting_number:        cuttingNumber     ? parseInt(cuttingNumber) : null,
+      bale_type:             baleType          || null,
+      bale_weight_lbs:       baleWeightLbs     ? parseInt(baleWeightLbs) : null,
+      storage_method:        storageMethod     || null,
+      hay_test_protein_pct:  hayTestProtein    ? parseFloat(hayTestProtein)  : null,
+      hay_test_tdn_pct:      hayTestTdn        ? parseFloat(hayTestTdn)      : null,
+      hay_test_rfv:          hayTestRfv        ? parseInt(hayTestRfv)        : null,
+      hay_test_moisture_pct: hayTestMoisture   ? parseFloat(hayTestMoisture) : null,
+    }
+  }
+
+  // EDIT: PATCH the existing listing. Keeps id / created_at / URL; photos are
+  // uploaded the same resilient way when newly added.
+  async function submitEdit() {
     setFormError('')
     if (!selectedCounty) { setFormError('Select a county.'); return }
     if (!hayType.trim())  { setFormError('Hay type is required.'); return }
-    if (!contact.trim())  { setFormError('Contact info is required.'); return }
-
     setSubmitting(true)
     try {
-      const res = await fetch('/api/hay', {
-        method: 'POST',
+      const res = await fetch(`/api/hay/${editingId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          county_id:             Number(selectedCounty.id),
-          listing_type:          listingType,
-          hay_type:              hayType.trim(),
-          contact:               contact.trim(),
-          tonnage:               tonnage           ? parseFloat(tonnage)    : null,
-          price_per_ton:         pricePerTon       ? parseFloat(pricePerTon) : null,
-          description:           description.trim() || null,
-          haul_radius_miles:     haulRadius        ? parseInt(haulRadius)   : null,
-          relief_flag:           reliefFlag,
-          cutting_number:        cuttingNumber     ? parseInt(cuttingNumber) : null,
-          bale_type:             baleType          || null,
-          bale_weight_lbs:       baleWeightLbs     ? parseInt(baleWeightLbs) : null,
-          storage_method:        storageMethod     || null,
-          hay_test_protein_pct:  hayTestProtein    ? parseFloat(hayTestProtein)  : null,
-          hay_test_tdn_pct:      hayTestTdn        ? parseFloat(hayTestTdn)      : null,
-          hay_test_rfv:          hayTestRfv        ? parseInt(hayTestRfv)        : null,
-          hay_test_moisture_pct: hayTestMoisture   ? parseFloat(hayTestMoisture) : null,
-        }),
+        body: JSON.stringify(buildPayload()),
       })
-
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
-        const errMsg = (json as { error?: string }).error ?? 'Failed to post listing.'
-        setFormError(errMsg)
+        setFormError((json as { error?: string }).error ?? 'Failed to save changes.')
         return
       }
-
-      trackEvent('hay_listing_posted', { hay_type: hayType.trim().toLowerCase() })
-
-      const { id: newListingId } = await res.json().catch(() => ({})) as { id?: number }
-
-      if (photoFiles.length > 0 && newListingId) {
+      // Newly added photos on an edit → upload + merge.
+      if (photoFiles.length > 0) {
         setPhotoUploading(true)
-        const urls = await uploadPhotos(String(newListingId))
+        const { urls, failed } = await uploadPhotos(String(editingId))
         if (urls.length > 0) {
-          await fetch(`/api/hay/${newListingId}`, {
+          await fetch(`/api/hay/${editingId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ photo_urls: urls }),
-          })
+          }).catch(() => {})
         }
         setPhotoUploading(false)
+        if (failed.length > 0) {
+          setPhotoFiles(failed); setPhotoUrls(failed.map(f => URL.createObjectURL(f)))
+          setPhotoError(`Changes saved, but ${failed.length} photo${failed.length !== 1 ? 's' : ''} didn't upload. Tap "Retry photos".`)
+          return
+        }
+      }
+      resetForm()
+      setShowForm(false)
+      await fetchListings()
+    } catch {
+      setFormError('Network problem — your changes were not saved. Try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // CREATE: resilient create → upload → PATCH. Survives a dropped connection
+  // between steps — the created listing id is remembered so a retry resumes the
+  // photo upload instead of posting a duplicate, and failed photos are reported.
+  async function submitListing() {
+    if (editingId != null) return submitEdit()
+    setFormError(''); setPhotoError('')
+    if (!selectedCounty) { setFormError('Select a county.'); return }
+    if (!hayType.trim())  { setFormError('Hay type is required.'); return }
+
+    setSubmitting(true)
+    try {
+      // 1) Create the row (skip if a prior attempt already created it).
+      let listingId = createdListingId
+      if (listingId == null) {
+        const res = await fetch('/api/hay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPayload()),
+        }).catch(() => null)
+        if (!res) { setFormError('Network problem — listing not posted. Try again.'); return }
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          setFormError((json as { error?: string }).error ?? 'Failed to post listing.')
+          return
+        }
+        const { id } = await res.json().catch(() => ({})) as { id?: number }
+        if (!id) { setFormError('Listing posted but no id returned — please refresh.'); return }
+        listingId = id
+        setCreatedListingId(id)
+        trackEvent('hay_listing_posted', { hay_type: hayType.trim().toLowerCase() })
       }
 
+      // 2) Upload any pending photos, then 3) PATCH the merged urls.
+      if (photoFiles.length > 0) {
+        setPhotoUploading(true)
+        const { urls, failed } = await uploadPhotos(String(listingId))
+        const merged = [...uploadedUrls, ...urls]
+        let patchFailed = false
+        if (urls.length > 0) {
+          const pr = await fetch(`/api/hay/${listingId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photo_urls: merged }),
+          }).catch(() => null)
+          if (pr && pr.ok) setUploadedUrls(merged)
+          else patchFailed = true
+        }
+        setPhotoUploading(false)
+
+        if (failed.length > 0 || patchFailed) {
+          const stuck = patchFailed ? photoFiles : failed
+          setPhotoFiles(stuck)
+          setPhotoUrls(stuck.map(f => URL.createObjectURL(f)))
+          setPhotoError(
+            `Your listing is posted${uploadedUrls.length + urls.length > 0 ? ' with ' + (uploadedUrls.length + (patchFailed ? 0 : urls.length)) + ' photo(s)' : ''}, ` +
+            `but ${stuck.length} photo${stuck.length !== 1 ? 's' : ''} didn't upload. Tap "Retry photos".`,
+          )
+          return // keep the form open + createdListingId so retry resumes
+        }
+      }
+
+      // Full success.
       resetForm()
       setShowForm(false)
       await fetchListings()
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // ── One-tap freshness actions on the seller's own listing ──────────────────
+  function setFresh(id: string, on: boolean) {
+    setFreshBusy(prev => { const n = new Set(prev); if (on) n.add(id); else n.delete(id); return n })
+  }
+  async function confirmStillAvailable(id: string) {
+    setFresh(id, true)
+    await fetch(`/api/hay/${id}/confirm`, { method: 'POST' }).catch(() => {})
+    await fetchListings()
+    setFresh(id, false)
+  }
+  async function markSoldExternal(id: string) {
+    setFresh(id, true)
+    await fetch(`/api/hay/${id}/sold`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ buyer: 'external' }),
+    }).catch(() => {})
+    await fetchListings()
+    setFresh(id, false)
   }
 
   async function removeListing(id: string) {
@@ -474,7 +700,7 @@ export default function HayPage() {
 
           {authed ? (
             <button
-              onClick={() => { setShowForm(v => !v); if (showForm) resetForm() }}
+              onClick={() => { if (showForm) { resetForm(); setShowForm(false) } else { setShowForm(true) } }}
               className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
             >
               {showForm ? 'Cancel' : '+ Post a listing'}
@@ -492,7 +718,9 @@ export default function HayPage() {
         {/* ── Post form ──────────────────────────────────────────────────── */}
         {showForm && authed && (
           <div className="mt-6 rounded-xl border border-forest-green/10 bg-white px-5 py-6 shadow-sm">
-            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-5">New listing</h2>
+            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-5">
+              {editingId != null ? 'Edit listing' : 'New listing'}
+            </h2>
 
             {/* Group 1: Core */}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -681,9 +909,14 @@ export default function HayPage() {
                 )}
 
                 <div>
-                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Contact (phone or email) *</label>
+                  <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">
+                    Your contact info <span className="font-normal text-forest-green/35">(optional, private)</span>
+                  </label>
                   <input type="text" value={contact} onChange={e => setContact(e.target.value)}
-                    placeholder="e.g. (402) 555-0101" className={INPUT_CLS} />
+                    placeholder="Phone or email — for your records" className={INPUT_CLS} />
+                  <p className="mt-1 text-xs text-forest-green/40 font-dm-sans">
+                    Buyers reach you through Dryline messages, so this stays private — it&apos;s just for your own records.
+                  </p>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -754,14 +987,32 @@ export default function HayPage() {
               <p className="mt-3 text-sm text-red-600 font-dm-sans">{formError}</p>
             )}
 
+            {/* Photo upload partial failure — clear message + one-tap retry. */}
+            {photoError && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+                <p className="text-sm font-medium text-amber-800 font-dm-sans">{photoError}</p>
+                <p className="mt-0.5 text-xs text-amber-700/80 font-dm-sans">
+                  Your listing is saved either way — only the photos need another try.
+                </p>
+              </div>
+            )}
+
             <div className="mt-5 flex gap-3">
               <button onClick={submitListing} disabled={submitting || photoUploading}
                 className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors">
-                {photoUploading ? 'Uploading photos…' : submitting ? 'Posting…' : 'Post listing'}
+                {photoUploading
+                  ? 'Uploading photos…'
+                  : submitting
+                    ? (editingId != null ? 'Saving…' : 'Posting…')
+                    : photoError
+                      ? 'Retry photos'
+                      : editingId != null
+                        ? 'Save changes'
+                        : 'Post listing'}
               </button>
-              <button onClick={() => { setShowForm(false); resetForm() }}
+              <button onClick={() => { resetForm(); setShowForm(false) }}
                 className="rounded-lg border border-forest-green/20 px-5 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream transition-colors">
-                Cancel
+                {photoError ? 'Done (skip photos)' : 'Cancel'}
               </button>
             </div>
 
@@ -1021,6 +1272,15 @@ export default function HayPage() {
                 const daysLeft = Math.max(0, Math.ceil(
                   (new Date(l.expires_at ?? Date.now()).getTime() - Date.now()) / 86400000,
                 ))
+                // Freshness from existing fields: a listing starts (and each
+                // "still available" confirm resets it) to 30 days left, so
+                // days-since-activity = 30 − daysLeft. Posted-age is honest from created_at.
+                const daysSinceActivity = Math.max(0, LISTING_TTL_DAYS - daysLeft)
+                const postedDaysAgo = Math.max(0, Math.floor(
+                  (Date.now() - new Date(l.created_at).getTime()) / 86400000,
+                ))
+                const ownerShouldConfirm = l.mine && daysSinceActivity >= STALE_NUDGE_DAYS
+                const looksStale = daysSinceActivity >= STALE_BUYER_DAYS
                 const badge = l.droughtTier !== null ? DROUGHT_BADGE[l.droughtTier] : null
                 const dc = deliveredCost(buyerPoint, l)
                 const dist  =
@@ -1068,6 +1328,33 @@ export default function HayPage() {
                         <p className="font-dm-sans text-xs font-semibold text-rust">
                           A buyer claims they purchased this — tap to confirm or reject
                         </p>
+                      </div>
+                    )}
+                    {/* Staleness nudge — owner's own, aging listing. One-tap confirm or sold. */}
+                    {ownerShouldConfirm && l.claim_status !== 'pending' && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="mx-4 mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 sm:mx-5"
+                      >
+                        <p className="font-dm-sans text-xs font-medium text-amber-800">
+                          Still have this hay? You posted it {postedDaysAgo} days ago — confirm it&apos;s available so buyers know it&apos;s current.
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={() => confirmStillAvailable(l.id)}
+                            disabled={freshBusy.has(l.id)}
+                            className="rounded-lg bg-forest-green px-3 py-1.5 text-xs font-medium text-cream font-dm-sans hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+                          >
+                            {freshBusy.has(l.id) ? '…' : 'Yes, still available'}
+                          </button>
+                          <button
+                            onClick={() => markSoldExternal(l.id)}
+                            disabled={freshBusy.has(l.id)}
+                            className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream disabled:opacity-50 transition-colors"
+                          >
+                            Mark sold
+                          </button>
+                        </div>
                       </div>
                     )}
                     <div className="px-4 py-4 sm:px-5 flex flex-wrap items-start justify-between gap-3">
@@ -1162,7 +1449,11 @@ export default function HayPage() {
 
                       {/* Right column — action buttons (z-10 to sit above the stretched link) */}
                       <div className="flex shrink-0 flex-col items-end gap-2">
-                        <span className="text-xs text-forest-green/40 font-dm-sans">{daysLeft}d left</span>
+                        {/* Listing age — surfaced so buyers can judge freshness. */}
+                        <span className={`text-xs font-dm-sans ${looksStale ? 'text-amber-600' : 'text-forest-green/40'}`}>
+                          Posted {postedDaysAgo === 0 ? 'today' : `${postedDaysAgo}d ago`}
+                          {looksStale && ' · may be stale'}
+                        </span>
 
                         <button
                           onClick={e => { e.stopPropagation(); router.push(`/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`) }}
@@ -1172,13 +1463,21 @@ export default function HayPage() {
                         </button>
 
                         {l.mine && (
-                          <button
-                            onClick={e => { e.stopPropagation(); removeListing(l.id) }}
-                            disabled={removing.has(l.id)}
-                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
-                          >
-                            {removing.has(l.id) ? '…' : 'Remove'}
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={e => { e.stopPropagation(); loadIntoForm(l) }}
+                              className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); removeListing(l.id) }}
+                              disabled={removing.has(l.id)}
+                              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
+                            >
+                              {removing.has(l.id) ? '…' : 'Remove'}
+                            </button>
+                          </div>
                         )}
                       </div>
 
