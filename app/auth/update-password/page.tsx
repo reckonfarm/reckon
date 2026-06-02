@@ -25,10 +25,12 @@ export default function UpdatePasswordPage() {
   // session before redirecting here. Confirm we actually have one.
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setHasSession(!!user)
+    // Local session read (getSession) — the recovery session was established by
+    // /auth/callback. Avoids the network getUser() that can hang on the auth lock.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasSession(!!session)
       setReady(true)
-    })
+    }).catch(() => setReady(true))
   }, [])
 
   async function updatePassword(e: React.FormEvent) {

@@ -22,18 +22,28 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
   useEffect(() => {
     const supabase = createClient()
 
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setAuthed(false); return }
-      setAuthed(true)
-
+    // Fetch the home-county state for an already-known signed-in status. Never
+    // calls an auth method itself, so it's safe to invoke from inside the
+    // onAuthStateChange callback (calling getSession/getUser there would re-enter
+    // the GoTrueClient lock the callback runs under and DEADLOCK — the bug).
+    async function loadHome() {
       const res = await fetch('/api/home-county').then(r => r.ok ? r.json() : null).catch(() => null)
       setIsHome(res?.fips === countyFips)
     }
 
-    load()
+    // Initial read: one-shot getSession (local, no network getUser). (f7380dc pattern.)
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setAuthed(!!session)
+        if (session) loadHome()
+      })
+      .catch(() => setAuthed(false))
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load())
+    // Auth changes: use the session PASSED to the callback — never re-call getSession here.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setAuthed(!!session)
+      if (session) loadHome(); else setIsHome(false)
+    })
     return () => subscription.unsubscribe()
   }, [countyFips])
 

@@ -56,13 +56,19 @@ export default function RadarClient() {
   useEffect(() => {
     const supabase = createClient()
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setAuthed(false); setLoading(false); return }
-      setAuthed(true)
+      // Local session read (getSession), not the network getUser() — getUser blocks
+      // on the GoTrueClient auth lock and can hang this page. /api/* still validates
+      // the real user server-side. (Matches SiteHeader / watchlist.)
+      let signedIn = false
       try {
+        const { data: { session } } = await supabase.auth.getSession()
+        signedIn = !!session
+        if (!signedIn) { setAuthed(false); return }
+        setAuthed(true)
         const data = await fetch('/api/radar').then(r => r.ok ? r.json() : [])
         setSearches(Array.isArray(data) ? data : [])
       } catch {
+        setAuthed(signedIn)
         setSearches([])
       } finally {
         setLoading(false)

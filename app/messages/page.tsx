@@ -96,10 +96,13 @@ function MessagesInner() {
   // Auth + initial thread list
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user)
-      if (user) loadThreads()
-    })
+    // Local session read (getSession), not the network getUser() — getUser blocks
+    // on the GoTrueClient auth lock and can hang this page on its loading state.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const signedIn = !!session
+      setAuthed(signedIn)
+      if (signedIn) loadThreads()
+    }).catch(() => setAuthed(false))
   }, [loadThreads])
 
   // Open thread + 15s polling (cleared on unmount / thread change)

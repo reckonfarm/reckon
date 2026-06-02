@@ -171,31 +171,38 @@ export default function HayPage() {
 
     fetchListings().finally(() => setListingsLoading(false))
 
-    async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser()
-      setAuthed(!!user)
-      if (user) {
-        try {
-          const wl = await fetch('/api/watchlist').then(r => r.ok ? r.json() : [])
-          const first = Array.isArray(wl) ? wl[0] : null
-          if (first?.county?.lat != null && first?.county?.lon != null) {
-            setWatchlistCounty({
-              id:    first.countyId ?? 0,
-              fips:  first.county.fips,
-              name:  first.county.name,
-              state: first.county.state,
-              lat:   first.county.lat,
-              lon:   first.county.lon,
-            })
-          }
-        } catch { /* non-fatal */ }
-      }
+    // Fetch the buyer's watchlist county for an already-known signed-in status.
+    // Calls no auth method, so it's safe from inside onAuthStateChange (re-calling
+    // getSession/getUser there re-enters the GoTrueClient lock → DEADLOCK — the bug).
+    async function loadWatchlistCounty() {
+      try {
+        const wl = await fetch('/api/watchlist').then(r => r.ok ? r.json() : [])
+        const first = Array.isArray(wl) ? wl[0] : null
+        if (first?.county?.lat != null && first?.county?.lon != null) {
+          setWatchlistCounty({
+            id:    first.countyId ?? 0,
+            fips:  first.county.fips,
+            name:  first.county.name,
+            state: first.county.state,
+            lat:   first.county.lat,
+            lon:   first.county.lon,
+          })
+        }
+      } catch { /* non-fatal */ }
     }
 
-    checkAuth()
+    // Initial read: one-shot getSession (local, no network getUser). (f7380dc pattern.)
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setAuthed(!!session)
+        if (session) loadWatchlistCounty()
+      })
+      .catch(() => setAuthed(false))
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      checkAuth()
+    // Auth changes: use the PASSED session — never re-call getSession here.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setAuthed(!!session)
+      if (session) loadWatchlistCounty()
       fetchListings()
     })
     return () => subscription.unsubscribe()
@@ -353,7 +360,8 @@ export default function HayPage() {
   // caller can surface a clear error and let the seller retry only the failures.
   async function uploadPhotos(listingId: string): Promise<{ urls: string[]; failed: File[] }> {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user || photoFiles.length === 0) return { urls: [], failed: [] }
 
     const urls: string[] = []

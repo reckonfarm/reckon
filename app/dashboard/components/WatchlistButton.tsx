@@ -27,28 +27,37 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
   useEffect(() => {
     const supabase = createClient()
 
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setAuthed(false); return }
-      setAuthed(true)
-
-      const [watchlistRes, alertRes] = await Promise.all([
-        fetch('/api/watchlist').then(r => r.ok ? r.json() : []),
-        fetch('/api/watchlist?alerts=1').then(r => r.ok ? r.json() : []),
-      ])
-
-      const wl: WatchlistEntry[] = Array.isArray(watchlistRes) ? watchlistRes : []
-      setWatching(wl.some(e => e.countyId === countyId))
-
-      const match = Array.isArray(alertRes)
-        ? alertRes.find((a: { countyId: number; triggered: TriggeredLevel[] }) => a.countyId === countyId)
-        : null
-      setAlerts(match?.triggered ?? [])
+    // Fetch watchlist/alert state for an already-known signed-in status. Calls no
+    // auth method itself, so it's safe from inside onAuthStateChange (re-calling
+    // getSession/getUser there re-enters the GoTrueClient lock → DEADLOCK — the bug).
+    async function loadWatch() {
+      try {
+        const [watchlistRes, alertRes] = await Promise.all([
+          fetch('/api/watchlist').then(r => r.ok ? r.json() : []),
+          fetch('/api/watchlist?alerts=1').then(r => r.ok ? r.json() : []),
+        ])
+        const wl: WatchlistEntry[] = Array.isArray(watchlistRes) ? watchlistRes : []
+        setWatching(wl.some(e => e.countyId === countyId))
+        const match = Array.isArray(alertRes)
+          ? alertRes.find((a: { countyId: number; triggered: TriggeredLevel[] }) => a.countyId === countyId)
+          : null
+        setAlerts(match?.triggered ?? [])
+      } catch { /* keep current state; never strand the button */ }
     }
 
-    load()
+    // Initial read: one-shot getSession (local, no network getUser). (f7380dc pattern.)
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setAuthed(!!session)
+        if (session) loadWatch()
+      })
+      .catch(() => setAuthed(false))
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load())
+    // Auth changes: use the session PASSED to the callback — never re-call getSession here.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setAuthed(!!session)
+      if (session) loadWatch(); else { setWatching(false); setAlerts([]) }
+    })
     return () => subscription.unsubscribe()
   }, [countyId])
 
