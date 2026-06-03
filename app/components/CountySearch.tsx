@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { navigateTo } from '@/lib/standalone-nav'
 
 interface County {
   id: number
@@ -38,7 +39,10 @@ export default function CountySearch() {
   }, [query])
 
   function select(county: County) {
-    router.push(`/dashboard?fips=${county.fips}`)
+    // navigateTo (not router.push): hard-navigates in the iOS standalone PWA,
+    // where the WebView drops client-side router navigations. See
+    // lib/standalone-nav.ts.
+    navigateTo(router, `/dashboard?fips=${county.fips}`)
     setQuery('')
     setResults([])
     setOpen(false)

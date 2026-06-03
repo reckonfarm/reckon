@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { trackEvent } from '@/lib/analytics'
-import { dbg } from '@/lib/tapdebug' // TAPDEBUG — remove after iOS tap bug found
+import { navigateTo } from '@/lib/standalone-nav'
 
 export interface County {
   id: number
@@ -33,10 +33,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
   // A resolved county here means a dashboard county view — fire once per FIPS.
   useEffect(() => {
-    if (selectedCounty?.fips) {
-      dbg(`✅ NAV LANDED — selectedCounty fips=${selectedCounty.fips} (${selectedCounty.name})`) // TAPDEBUG
-      trackEvent('county_viewed', { fips: selectedCounty.fips })
-    }
+    if (selectedCounty?.fips) trackEvent('county_viewed', { fips: selectedCounty.fips })
   }, [selectedCounty?.fips])
 
   // Debounced fetch — fires 300 ms after the user stops typing
@@ -67,23 +64,21 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   }, [query])
 
   function select(county: County) {
-    dbg(`▶ select() ENTER ${county.name},${county.state} fips=${county.fips}`) // TAPDEBUG
     setQuery('')
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
-    dbg(`  → calling router.push(${basePath}?fips=${county.fips})`) // TAPDEBUG
-    router.push(`${basePath}?fips=${county.fips}`)
-    dbg('  router.push() returned') // TAPDEBUG
-    // TAPDEBUG — did the URL actually change, and did it stick?
-    setTimeout(() => dbg(`  href +250ms: ${window.location.pathname}${window.location.search}`), 250)
-    setTimeout(() => dbg(`  href +1500ms: ${window.location.pathname}${window.location.search}`), 1500)
+    // navigateTo (not router.push): the iOS standalone home-screen WebView
+    // silently drops the client-side router navigation here — same route,
+    // ?fips= change — so we hard-navigate in standalone, SPA-push everywhere
+    // else. See lib/standalone-nav.ts.
+    navigateTo(router, `${basePath}?fips=${county.fips}`)
   }
 
   function clear() {
     setQuery('')
     setResults([])
-    router.push(basePath)
+    navigateTo(router, basePath)
   }
 
   // Close dropdown on outside click
@@ -146,14 +141,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
             <li key={county.fips}>
               <button
                 className="flex w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
-                // TAPDEBUG — onMouseDown still drives selection (behavior
-                // unchanged). The sibling pointer/click handlers ONLY log, so we
-                // see exactly which events iOS delivers to this button on a tap.
-                onMouseDown={e => { dbg(`🟢 btn onMouseDown ${county.name}`); e.preventDefault(); select(county) }}
-                onPointerDown={() => dbg(`btn pointerdown ${county.name}`)}
-                onPointerUp={() => dbg(`btn pointerup ${county.name}`)}
-                onPointerCancel={() => dbg(`⚠️ btn POINTERCANCEL ${county.name}`)}
-                onClick={() => dbg(`btn click ${county.name}`)}
+                onMouseDown={e => { e.preventDefault(); select(county) }}
               >
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
                   {county.name}
