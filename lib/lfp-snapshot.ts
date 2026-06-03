@@ -1,8 +1,8 @@
 import 'server-only'
 import { createServiceClient } from './supabase'
-import { computeLfpEligibility, type GrazingPeriod } from './lfp-eligibility'
+import { computeLfpEligibility } from './lfp-eligibility'
 import { estimatePayment } from './lfp-payment'
-import { getGrazingPeriod } from './grazing-periods'
+import { resolveDefaultGrazingWindow } from './grazing-window'
 
 // ─── LFP weekly snapshot capture (increment 1 — live capture only) ─────────────
 //
@@ -34,26 +34,6 @@ interface ActiveCounty {
 }
 
 type CaptureOutcome = 'captured' | 'no_result' | 'decrease_blocked' | 'error'
-
-// ─── Canonical grazing window ──────────────────────────────────────────────────
-// Replicates the dashboard's DEFAULT-view resolution (app/dashboard/page.tsx) so a
-// stored number matches what a rancher sees on the default dashboard. We intentionally
-// omit the dashboard's gs/ge query-param branch — the cron has no per-request override.
-// getGrazingPeriod(fips) with no pasture type → Native Pasture, else the first forage type.
-
-function resolveCanonicalWindow(fips: string): GrazingPeriod {
-  const period = getGrazingPeriod(fips)
-  if (period) {
-    const current = new Date().getFullYear()
-    const startMM = parseInt(period.start.slice(0, 2), 10)
-    const endMM   = parseInt(period.end.slice(0, 2), 10)
-    const endYear = endMM < startMM ? current + 1 : current
-    return { startDate: `${current}-${period.start}`, endDate: `${endYear}-${period.end}` }
-  }
-  // Generic Northern Plains fallback for counties not in the FOIA dataset.
-  const yr = new Date().getFullYear()
-  return { startDate: `${yr}-05-01`, endDate: `${yr}-11-30` }
-}
 
 // ─── Active set: watchlist ∪ home counties ─────────────────────────────────────
 
@@ -100,7 +80,7 @@ async function captureOne(
   county:   ActiveCounty,
   weekDate: string,
 ): Promise<CaptureOutcome> {
-  const window      = resolveCanonicalWindow(county.fips)
+  const window      = resolveDefaultGrazingWindow(county.fips)
   const programYear = parseInt(window.startDate.slice(0, 4), 10)  // grazing-window start year
 
   // The audited engine — called, never reimplemented.

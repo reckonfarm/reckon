@@ -87,12 +87,15 @@ export default async function Image({
       else if (droughtRow.d0 > 0) dLevel = 0
     }
 
-    // Get LFP payment estimate
+    // LFP payment estimate — SAME audited estimator + default grazing window as the dashboard.
     if (dLevel !== null && dLevel >= 2) {
       const { computeLfpEligibility } = await import('@/lib/lfp-eligibility')
-      const lfp = await computeLfpEligibility(fips, {})
+      const { estimatePayment } = await import('@/lib/lfp-payment')
+      const { resolveDefaultGrazingWindow } = await import('@/lib/grazing-window')
+      const lfp = await computeLfpEligibility(fips, { grazingPeriod: resolveDefaultGrazingWindow(fips) })
       if (lfp?.payments && lfp.payments > 0) {
-        const est = lfp.payments * 197
+        // County-level / 100-head-beef reference figure — matches the dashboard banner. Never personalized.
+        const est = estimatePayment('beef_adult', 100, lfp.payments).cappedEstimate
         payLabel = `$${Math.round(est).toLocaleString()}`
       }
     }

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
-import { getGrazingPeriod } from '@/lib/grazing-periods'
+import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
@@ -305,17 +305,7 @@ export default async function DashboardPage({
       // LFP eligibility
       computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
-        const period = getGrazingPeriod(selectedCounty.fips, pt)
-        if (period) {
-          const current = new Date().getFullYear()
-          const startMM = parseInt(period.start.slice(0, 2), 10)
-          const endMM   = parseInt(period.end.slice(0, 2), 10)
-          const endYear = endMM < startMM ? current + 1 : current
-          return { grazingPeriod: { startDate: `${current}-${period.start}`, endDate: `${endYear}-${period.end}` } }
-        }
-        // Generic Northern Plains fallback for counties not in FOIA dataset
-        const yr = new Date().getFullYear()
-        return { grazingPeriod: { startDate: `${yr}-05-01`, endDate: `${yr}-11-30` } }
+        return { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt) }
       })())
         // Isolate: a USDM outage/timeout must NOT reject this Promise.all and 500
         // the whole dashboard. Resolve to a tagged outcome instead.
@@ -402,18 +392,10 @@ export default async function DashboardPage({
       }).catch(() => null),
 
       // Prior year LFP eligibility — same forage period but year - 1
-      computeLfpEligibility(selectedCounty.fips, (() => {
-        const period = getGrazingPeriod(selectedCounty.fips, pt)
-        if (period) {
-          const prior   = new Date().getFullYear() - 1
-          const startMM = parseInt(period.start.slice(0, 2), 10)
-          const endMM   = parseInt(period.end.slice(0, 2), 10)
-          const endYear = endMM < startMM ? prior + 1 : prior
-          return { grazingPeriod: { startDate: `${prior}-${period.start}`, endDate: `${endYear}-${period.end}` } }
-        }
-        const prior = new Date().getFullYear() - 1
-        return { grazingPeriod: { startDate: `${prior}-05-01`, endDate: `${prior}-11-30` } }
-      })())
+      computeLfpEligibility(
+        selectedCounty.fips,
+        { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
+      )
         // Prior-year comparison is non-critical context; absence is already handled.
         .catch(() => null),
 
