@@ -82,10 +82,7 @@ export default function CountySearch() {
           {results.map((county, i) => (
             <li key={county.fips} role="option" aria-selected={i === activeIdx}>
               <button
-                // Pointer (not mouse) event — reliable on real iOS Safari touch
-                // with the keyboard up, where onMouseDown is swallowed by the
-                // keyboard-dismiss. Fires before the input's onBlur closes the list.
-                onPointerDown={() => select(county)}
+                onMouseDown={() => select(county)}
                 className={[
                   'w-full px-4 py-2.5 text-left text-sm font-dm-sans',
                   i === activeIdx

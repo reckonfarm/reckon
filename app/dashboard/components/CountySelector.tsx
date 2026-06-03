@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect, useTransition } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { trackEvent } from '@/lib/analytics'
-import { dbg } from '@/lib/tapdebug' // TAPDEBUG — remove after iOS tap bug found
 
 export interface County {
   id: number
@@ -26,28 +25,15 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   const [results, setResults] = useState<County[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen]       = useState(false)
-  // Selecting a county navigates to a heavy server-rendered page; useTransition
-  // gives us an isPending flag so we can show instant feedback (spinner +
-  // "Loading …") instead of the page sitting frozen until the RSC arrives.
-  const [isPending, startTransition] = useTransition()
-  const [pendingName, setPendingName] = useState<string | null>(null)
 
   const inputRef     = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // A resolved county here means a dashboard county view — fire once per FIPS.
-  // Also clears the pending label once the navigation lands on the new county.
   useEffect(() => {
-    if (selectedCounty?.fips) {
-      dbg(`✅ NAV LANDED — selectedCounty fips=${selectedCounty.fips} (${selectedCounty.name})`) // TAPDEBUG
-      trackEvent('county_viewed', { fips: selectedCounty.fips })
-    }
-    setPendingName(null)
+    if (selectedCounty?.fips) trackEvent('county_viewed', { fips: selectedCounty.fips })
   }, [selectedCounty?.fips])
-
-  // TAPDEBUG — surface the loading-feedback state machine on-device
-  useEffect(() => { dbg(`isPending=${isPending}${pendingName ? ` pending="${pendingName}"` : ''}`) }, [isPending, pendingName])
 
   // Debounced fetch — fires 300 ms after the user stops typing
   useEffect(() => {
@@ -55,23 +41,18 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
     const trimmed = query.trim()
     if (trimmed.length < 2) {
-      if (trimmed.length > 0) dbg(`debounce: "${trimmed}" too short (need 2+)`) // TAPDEBUG
       setResults([])
       setLoading(false)
       return
     }
 
-    dbg(`debounce: scheduling fetch for "${trimmed}"`) // TAPDEBUG
     setLoading(true)
     timerRef.current = setTimeout(async () => {
-      dbg(`fetch START /api/counties?search=${encodeURIComponent(trimmed)}`) // TAPDEBUG
       try {
         const res  = await fetch(`/api/counties?search=${encodeURIComponent(trimmed)}`)
         const data = await res.json()
-        dbg(`results for "${trimmed}": ${Array.isArray(data) ? data.length : 'non-array'} (http ${res.status})`) // TAPDEBUG
         setResults(Array.isArray(data) ? data : [])
-      } catch (e) {
-        dbg(`❌ fetch ERROR "${trimmed}": ${e instanceof Error ? e.message : String(e)}`) // TAPDEBUG
+      } catch {
         setResults([])
       } finally {
         setLoading(false)
@@ -81,49 +62,18 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [query])
 
-  // TAPDEBUG — did the dropdown actually render, and is it reachable (above the
-  // keyboard line) or hidden under it? Measures the real <ul> rect on-device.
-  const ulRef = useRef<HTMLUListElement>(null)
-  useEffect(() => {
-    const show = open && results.length > 0
-    if (!show) { dbg(`dropdown hidden (open=${open}, results=${results.length})`); return }
-    requestAnimationFrame(() => {
-      const r = ulRef.current?.getBoundingClientRect()
-      const vvH = Math.round(window.visualViewport?.height ?? window.innerHeight)
-      if (!r) { dbg('📋 dropdown show=true but ulRef=null (not in DOM)'); return }
-      const where = r.top >= vvH ? 'ENTIRELY UNDER KEYBOARD'
-        : r.bottom > vvH ? 'bottom under keyboard'
-        : 'fully visible'
-      dbg(`📋 dropdown ${results.length} items top=${Math.round(r.top)} bot=${Math.round(r.bottom)} | kbdLine(vvH)=${vvH} → ${where}`)
-    })
-  }, [open, results.length])
-
   function select(county: County) {
-    // TAPDEBUG — trace the whole select→navigate chain on-device
-    dbg(`▶ select() ENTER ${county.name},${county.state} fips=${county.fips}`)
-    dbg(`  href before: ${window.location.pathname}${window.location.search}`)
     setQuery('')
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
-    setPendingName(`${county.name}, ${county.state}`)
-    startTransition(() => {
-      dbg(`  startTransition cb → router.push(${basePath}?fips=${county.fips})`) // TAPDEBUG
-      router.push(`${basePath}?fips=${county.fips}`)
-      dbg('  router.push() returned') // TAPDEBUG
-    })
-    // TAPDEBUG — did the URL actually change, and did it stick?
-    setTimeout(() => dbg(`  href +250ms: ${window.location.pathname}${window.location.search}`), 250)
-    setTimeout(() => dbg(`  href +1500ms: ${window.location.pathname}${window.location.search}`), 1500)
+    router.push(`${basePath}?fips=${county.fips}`)
   }
 
   function clear() {
     setQuery('')
     setResults([])
-    setPendingName(null)
-    startTransition(() => {
-      router.push(basePath)
-    })
+    router.push(basePath)
   }
 
   // Close dropdown on outside click
@@ -147,44 +97,26 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           ref={inputRef}
           type="text"
           value={query}
-          disabled={isPending}
-          onChange={e => { dbg(`⌨️ onChange "${e.target.value}"`); setQuery(e.target.value); setOpen(true) }} // TAPDEBUG
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          onKeyDown={e => {
-            if (e.key === 'Escape') { setOpen(false); setQuery('') }
-            else if (e.key === 'Enter' && results.length > 0) { e.preventDefault(); select(results[0]) }
-          }}
+          onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); setQuery('') } }}
           placeholder={
-            isPending && pendingName
-              ? `Loading ${pendingName}…`
-              : selectedCounty
-                ? `${selectedCounty.name}, ${selectedCounty.state}`
-                : 'Search by county name, state, or FIPS…'
+            selectedCounty
+              ? `${selectedCounty.name}, ${selectedCounty.state}`
+              : 'Search by county name, state, or FIPS…'
           }
-          className={`w-full rounded-lg border border-forest-green/20 bg-white py-3 pl-4 pr-10 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/50 focus:border-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/20 transition-colors ${
-            isPending ? 'cursor-wait opacity-70 placeholder:text-forest-green/70' : ''
-          }`}
+          className="w-full rounded-lg border border-forest-green/20 bg-white py-3 pl-4 pr-10 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/50 focus:border-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/20 transition-colors"
         />
 
-        {/* Navigation spinner — the selected county's page is loading */}
-        {isPending && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2" aria-label="Loading county" role="status">
-            <svg className="h-4 w-4 animate-spin text-forest-green/60" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          </span>
-        )}
-
-        {/* Loading dots — debounced search in flight */}
-        {loading && !isPending && (
+        {/* Loading dots */}
+        {loading && (
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-forest-green/30 font-dm-sans select-none">
             …
           </span>
         )}
 
         {/* Clear button */}
-        {selectedCounty && !query && !loading && !isPending && (
+        {selectedCounty && !query && !loading && (
           <button
             onClick={clear}
             aria-label="Clear selection"
@@ -199,24 +131,12 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
       {/* Results dropdown */}
       {showResults && (
-        <ul ref={ulRef} className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-forest-green/20 bg-white shadow-lg divide-y divide-forest-green/5">
+        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-forest-green/20 bg-white shadow-lg divide-y divide-forest-green/5">
           {results.map(county => (
             <li key={county.fips}>
               <button
                 className="flex w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
-                // Pointer (not mouse) event: fires reliably on real iOS Safari
-                // touch with the keyboard up, where onMouseDown is swallowed by
-                // the keyboard-dismiss. Fires before the input blurs, so the
-                // dropdown is still open; no preventDefault hack needed.
-                // TAPDEBUG — sibling handlers only LOG; select() still fires on
-                // pointerdown alone (behavior unchanged) so we can see which
-                // events iOS actually delivers to this exact button.
-                onPointerDown={() => { dbg(`🔵 btn pointerdown ${county.name}`); select(county) }}
-                onPointerUp={() => dbg(`btn pointerup ${county.name}`)}
-                onPointerCancel={() => dbg(`⚠️ btn POINTERCANCEL ${county.name}`)}
-                onTouchStart={() => dbg(`btn touchstart ${county.name}`)}
-                onTouchEnd={() => dbg(`btn touchend ${county.name}`)}
-                onClick={() => dbg(`btn click ${county.name}`)}
+                onMouseDown={e => { e.preventDefault(); select(county) }}
               >
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
                   {county.name}
