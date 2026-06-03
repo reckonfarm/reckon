@@ -206,6 +206,8 @@ const ELEMS = [{ name: 'pcpn' }, { name: 'pcpn', normal: '1' }]
 // datacenter IPs (Vercel's egress) are a common block trigger — cheap insurance.
 const ACIS_UA = 'Dryline/1.0 (+reckonfarm.com)'
 const ACIS_MAX_RETRIES = 2   // initial attempt + up to 2 retries on failure
+const ACIS_FETCH_TIMEOUT_MS = 8000   // per ACIS HTTP call — hung host rejects, not hangs
+const PRECIP_DEADLINE_MS    = 9000   // overall cap; past this → honest 'data_unavailable'
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -228,6 +230,10 @@ async function acisPost(
         headers: { 'Content-Type': 'application/json', 'User-Agent': ACIS_UA },
         body: JSON.stringify(body),
         next: { revalidate: REVALIDATE },
+        // Per-call hard timeout — a hung ACIS host rejects (caught below as a
+        // failure) instead of blocking forever. The overall path is additionally
+        // capped by PRECIP_DEADLINE_MS in getPrecipNormal.
+        signal: AbortSignal.timeout(ACIS_FETCH_TIMEOUT_MS),
       })
       lastStatus = res.status
       if (res.ok) {
@@ -348,7 +354,24 @@ function buildSeries(
 //      NEVER report this as "no qualifying station": it's an availability failure,
 //      not data absence.
 
+// Overall cap: if the ACIS path (multiple sequential calls + retries) exceeds
+// PRECIP_DEADLINE_MS — e.g. a hung host — resolve to 'data_unavailable' so the rain
+// chart shows an HONEST "temporarily unavailable" rather than blocking the dashboard
+// render. NEVER resolves to a data series or a zero/empty (which would read as a
+// false deficit); the timeout branch is the availability-failure state.
 export async function getPrecipNormal(
+  fips: string,
+  lat: number | null,
+  lon: number | null,
+): Promise<PrecipNormalResult> {
+  return Promise.race([
+    computePrecipNormal(fips, lat, lon),
+    new Promise<PrecipNormalResult>(resolve =>
+      setTimeout(() => resolve('data_unavailable'), PRECIP_DEADLINE_MS)),
+  ])
+}
+
+async function computePrecipNormal(
   fips: string,
   lat: number | null,
   lon: number | null,

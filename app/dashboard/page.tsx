@@ -24,6 +24,7 @@ import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getDroughtDiscussion } from '@/lib/drought-discussion'
 import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
+import { timeoutSignal } from '@/lib/external-fetch'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, type DeliveredCost } from '@/lib/freight'
@@ -328,27 +329,32 @@ export default async function DashboardPage({
       fetch('https://www.wpc.ncep.noaa.gov/qpf/p168i.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       // CPC precipitation outlook map provenances (cached 1h)
       fetch('https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       fetch('https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       fetch('https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       fetch('https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       // NWS Area Forecast Discussion — .DISCUSSION section for local precip narrative
@@ -363,6 +369,7 @@ export default async function DashboardPage({
       fetch('https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       (() => {
@@ -372,23 +379,26 @@ export default async function DashboardPage({
         const wk = String(Math.ceil(doy / 7) - 1).padStart(2, '0')
         return fetch(
           `https://www.star.nesdis.noaa.gov/smcd/emb/vci/WebDataVH/gvix_webImages/${yr}/USA_VHI_DIVISION_${yr}${wk}.png`,
-          { method: 'HEAD', next: { revalidate: 3600 } },
+          { method: 'HEAD', next: { revalidate: 3600 }, signal: timeoutSignal() },
         ).catch(() => null)
       })(),
 
       fetch('https://hprcc.unl.edu/products/maps/acis/14dPNormUS.png', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       fetch('https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       fetch('https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png', {
         method: 'HEAD',
         next: { revalidate: 3600 },
+        signal: timeoutSignal(),
       }).catch(() => null),
 
       // Prior year LFP eligibility — same forage period but year - 1
@@ -414,7 +424,7 @@ export default async function DashboardPage({
         return fetch(
           `https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent` +
           `?aoi=${selectedCounty.fips}&startdate=${threeYearsAgo}&enddate=${today}&statisticsType=2`,
-          { headers: { Accept: 'application/json' }, next: { revalidate: 86400 } },
+          { headers: { Accept: 'application/json' }, next: { revalidate: 86400 }, signal: timeoutSignal() },
         )
           .then(r => r.ok ? r.json() : [])
           .catch(() => [])

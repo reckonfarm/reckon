@@ -1,4 +1,5 @@
 import 'server-only'
+import { timeoutSignal } from './external-fetch'
 
 const USDM_STATS_BASE = 'https://usdmdataservices.unl.edu/api'
 const USDM_SUMMARY_BASE = 'https://droughtmonitor.unl.edu/services/data/summary/xml'
@@ -78,6 +79,7 @@ async function getLatestMapDate(): Promise<string> {
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
     next: { revalidate: 86400 },
+    signal: timeoutSignal(),
   })
   if (!res.ok) throw new Error(`USDM stats API ${res.status}`)
 
@@ -106,7 +108,7 @@ export async function getDroughtDiscussion(stateAbbr: string): Promise<DroughtDi
   const xmlUrl = `${USDM_SUMMARY_BASE}/usdm_summary_${dateStr}.xml`
   let xml: string
   try {
-    const res = await fetch(xmlUrl, { next: { revalidate: 86400 } })
+    const res = await fetch(xmlUrl, { next: { revalidate: 86400 }, signal: timeoutSignal() })
     if (!res.ok) {
       console.error(`[drought-discussion] XML fetch returned ${res.status} for ${xmlUrl}`)
       return null
