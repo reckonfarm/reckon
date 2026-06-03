@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { trackEvent } from '@/lib/analytics'
+import { dbg } from '@/lib/tapdebug' // TAPDEBUG — remove after iOS tap bug found
 
 export interface County {
   id: number
@@ -38,9 +39,15 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   // A resolved county here means a dashboard county view — fire once per FIPS.
   // Also clears the pending label once the navigation lands on the new county.
   useEffect(() => {
-    if (selectedCounty?.fips) trackEvent('county_viewed', { fips: selectedCounty.fips })
+    if (selectedCounty?.fips) {
+      dbg(`✅ NAV LANDED — selectedCounty fips=${selectedCounty.fips} (${selectedCounty.name})`) // TAPDEBUG
+      trackEvent('county_viewed', { fips: selectedCounty.fips })
+    }
     setPendingName(null)
   }, [selectedCounty?.fips])
+
+  // TAPDEBUG — surface the loading-feedback state machine on-device
+  useEffect(() => { dbg(`isPending=${isPending}${pendingName ? ` pending="${pendingName}"` : ''}`) }, [isPending, pendingName])
 
   // Debounced fetch — fires 300 ms after the user stops typing
   useEffect(() => {
@@ -58,6 +65,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
       try {
         const res  = await fetch(`/api/counties?search=${encodeURIComponent(trimmed)}`)
         const data = await res.json()
+        dbg(`results for "${trimmed}": ${Array.isArray(data) ? data.length : 'non-array'}`) // TAPDEBUG
         setResults(Array.isArray(data) ? data : [])
       } catch {
         setResults([])
@@ -70,14 +78,22 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   }, [query])
 
   function select(county: County) {
+    // TAPDEBUG — trace the whole select→navigate chain on-device
+    dbg(`▶ select() ENTER ${county.name},${county.state} fips=${county.fips}`)
+    dbg(`  href before: ${window.location.pathname}${window.location.search}`)
     setQuery('')
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
     setPendingName(`${county.name}, ${county.state}`)
     startTransition(() => {
+      dbg(`  startTransition cb → router.push(${basePath}?fips=${county.fips})`) // TAPDEBUG
       router.push(`${basePath}?fips=${county.fips}`)
+      dbg('  router.push() returned') // TAPDEBUG
     })
+    // TAPDEBUG — did the URL actually change, and did it stick?
+    setTimeout(() => dbg(`  href +250ms: ${window.location.pathname}${window.location.search}`), 250)
+    setTimeout(() => dbg(`  href +1500ms: ${window.location.pathname}${window.location.search}`), 1500)
   }
 
   function clear() {
@@ -171,7 +187,15 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
                 // touch with the keyboard up, where onMouseDown is swallowed by
                 // the keyboard-dismiss. Fires before the input blurs, so the
                 // dropdown is still open; no preventDefault hack needed.
-                onPointerDown={() => select(county)}
+                // TAPDEBUG — sibling handlers only LOG; select() still fires on
+                // pointerdown alone (behavior unchanged) so we can see which
+                // events iOS actually delivers to this exact button.
+                onPointerDown={() => { dbg(`🔵 btn pointerdown ${county.name}`); select(county) }}
+                onPointerUp={() => dbg(`btn pointerup ${county.name}`)}
+                onPointerCancel={() => dbg(`⚠️ btn POINTERCANCEL ${county.name}`)}
+                onTouchStart={() => dbg(`btn touchstart ${county.name}`)}
+                onTouchEnd={() => dbg(`btn touchend ${county.name}`)}
+                onClick={() => dbg(`btn click ${county.name}`)}
               >
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
                   {county.name}
