@@ -55,19 +55,23 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
     const trimmed = query.trim()
     if (trimmed.length < 2) {
+      if (trimmed.length > 0) dbg(`debounce: "${trimmed}" too short (need 2+)`) // TAPDEBUG
       setResults([])
       setLoading(false)
       return
     }
 
+    dbg(`debounce: scheduling fetch for "${trimmed}"`) // TAPDEBUG
     setLoading(true)
     timerRef.current = setTimeout(async () => {
+      dbg(`fetch START /api/counties?search=${encodeURIComponent(trimmed)}`) // TAPDEBUG
       try {
         const res  = await fetch(`/api/counties?search=${encodeURIComponent(trimmed)}`)
         const data = await res.json()
-        dbg(`results for "${trimmed}": ${Array.isArray(data) ? data.length : 'non-array'}`) // TAPDEBUG
+        dbg(`results for "${trimmed}": ${Array.isArray(data) ? data.length : 'non-array'} (http ${res.status})`) // TAPDEBUG
         setResults(Array.isArray(data) ? data : [])
-      } catch {
+      } catch (e) {
+        dbg(`❌ fetch ERROR "${trimmed}": ${e instanceof Error ? e.message : String(e)}`) // TAPDEBUG
         setResults([])
       } finally {
         setLoading(false)
@@ -76,6 +80,23 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [query])
+
+  // TAPDEBUG — did the dropdown actually render, and is it reachable (above the
+  // keyboard line) or hidden under it? Measures the real <ul> rect on-device.
+  const ulRef = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    const show = open && results.length > 0
+    if (!show) { dbg(`dropdown hidden (open=${open}, results=${results.length})`); return }
+    requestAnimationFrame(() => {
+      const r = ulRef.current?.getBoundingClientRect()
+      const vvH = Math.round(window.visualViewport?.height ?? window.innerHeight)
+      if (!r) { dbg('📋 dropdown show=true but ulRef=null (not in DOM)'); return }
+      const where = r.top >= vvH ? 'ENTIRELY UNDER KEYBOARD'
+        : r.bottom > vvH ? 'bottom under keyboard'
+        : 'fully visible'
+      dbg(`📋 dropdown ${results.length} items top=${Math.round(r.top)} bot=${Math.round(r.bottom)} | kbdLine(vvH)=${vvH} → ${where}`)
+    })
+  }, [open, results.length])
 
   function select(county: County) {
     // TAPDEBUG — trace the whole select→navigate chain on-device
@@ -127,7 +148,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           type="text"
           value={query}
           disabled={isPending}
-          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onChange={e => { dbg(`⌨️ onChange "${e.target.value}"`); setQuery(e.target.value); setOpen(true) }} // TAPDEBUG
           onFocus={() => setOpen(true)}
           onKeyDown={e => {
             if (e.key === 'Escape') { setOpen(false); setQuery('') }
@@ -178,7 +199,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
       {/* Results dropdown */}
       {showResults && (
-        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-forest-green/20 bg-white shadow-lg divide-y divide-forest-green/5">
+        <ul ref={ulRef} className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-forest-green/20 bg-white shadow-lg divide-y divide-forest-green/5">
           {results.map(county => (
             <li key={county.fips}>
               <button
