@@ -167,7 +167,11 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
             <li key={county.fips}>
               <button
                 className="flex w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
-                onMouseDown={e => { e.preventDefault(); select(county) }}
+                // Pointer (not mouse) event: fires reliably on real iOS Safari
+                // touch with the keyboard up, where onMouseDown is swallowed by
+                // the keyboard-dismiss. Fires before the input blurs, so the
+                // dropdown is still open; no preventDefault hack needed.
+                onPointerDown={() => select(county)}
               >
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
                   {county.name}
