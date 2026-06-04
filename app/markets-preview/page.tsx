@@ -1,14 +1,10 @@
 import type { Metadata } from 'next'
-import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
-import MarketsNews from '@/app/components/MarketsNews'
-import MarketsComingSoon from '@/app/components/MarketsComingSoon'
-import { createClient } from '@/lib/supabase-server'
+import MarketsHome from '@/app/components/MarketsHome'
 
-// PREVIEW-ONLY, unlinked orphan route (no nav links to it). The intended Markets
-// surface — news feed on top, demand-probe tiles below. Works signed-out and
-// signed-in; it does NOT redirect either way (unlike the homepage), so it's safe to
-// test both states. Additive: nothing else links here and no live surface changed.
+// PREVIEW-ONLY, unlinked orphan route (no nav links to it). Renders the shared
+// MarketsHome surface — identical to what / will render in Phase 2 — so the full
+// real homepage can be reviewed on the preview URL before / flips. Deletable once
+// / is the canonical Markets home.
 
 export const dynamic = 'force-dynamic'
 
@@ -25,27 +21,5 @@ export default async function MarketsPreviewPage({
 }) {
   const { fips: fipsParam } = await searchParams
   const fips = fipsParam || null
-
-  // Resolve sign-in for the demand-probe tiles. Failure → treat as signed-out (the
-  // surface must render for everyone); never throws, never redirects.
-  let signedIn = false
-  try {
-    const supabase = await createClient()
-    signedIn = Boolean((await supabase.auth.getUser()).data.user)
-  } catch {
-    signedIn = false
-  }
-
-  return (
-    <>
-      <SiteHeader subtitle="Markets" />
-      <main className="min-h-screen bg-cream">
-        <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
-          <MarketsNews fips={fips} />
-          <MarketsComingSoon signedIn={signedIn} />
-        </div>
-      </main>
-      <SiteFooter />
-    </>
-  )
+  return <MarketsHome fips={fips} />
 }
