@@ -100,6 +100,7 @@ function rankItems(items: NewsItem[]): RankedItem[] {
 }
 
 const NO_ITEMS: NewsItem[] = []
+const PAGE_SIZE = 6
 
 function relativeTime(iso: string | null): string {
   if (!iso) return ''
@@ -299,6 +300,13 @@ function FilterBar({
 export default function MarketsNews({ fips }: { fips?: string | null }) {
   const [state, setState] = useState<State>({ phase: 'loading' })
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [visible, setVisible] = useState(PAGE_SIZE)
+
+  // Changing the filter resets the visible slice so a new filter starts at the top.
+  const changeFilter = useCallback((key: FilterKey) => {
+    setFilter(key)
+    setVisible(PAGE_SIZE)
+  }, [])
 
   const load = useCallback(
     async (bustCache = false) => {
@@ -354,15 +362,28 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
           <EmptyPanel />
         ) : (
           <>
-            <FilterBar active={filter} onChange={setFilter} />
+            <FilterBar active={filter} onChange={changeFilter} />
             {filtered.length === 0 ? (
-              <FilterEmptyPanel label={activeLabel} onClear={() => setFilter('all')} />
+              <FilterEmptyPanel label={activeLabel} onClear={() => changeFilter('all')} />
             ) : (
-              <div className="space-y-4">
-                {filtered.map(item => (
-                  <NewsCard key={item.link} item={item} />
-                ))}
-              </div>
+              <>
+                <div className="space-y-4">
+                  {filtered.slice(0, visible).map(item => (
+                    <NewsCard key={item.link} item={item} />
+                  ))}
+                </div>
+                {visible < filtered.length && (
+                  <div className="mt-6 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisible(v => v + PAGE_SIZE)}
+                      className="inline-flex items-center rounded-lg border border-forest-green/20 px-5 py-2.5 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+                    >
+                      Load more
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         ))}
