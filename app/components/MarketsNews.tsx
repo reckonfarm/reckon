@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 // Markets news feed UI. Reads /api/news (region-aware: passes through ?fips when the
 // surface knows a county, else the route falls back to the geo header). Headline +
@@ -30,6 +30,76 @@ type State =
   | { phase: 'loading' }
   | { phase: 'error' }
   | { phase: 'ready'; items: NewsItem[]; region: string | null }
+
+// ─── categorization + ranking (pure, client-side over the already-fetched items) ──
+// Each item is multi-tagged from its title+snippet alone (no new data source). Word-
+// boundary on both sides keeps short words precise — "cowboy"/"important"/"bulletin"
+// don't false-match cow/import/bull. Zero-match falls back to 'ranching' (the catch-
+// all) so nothing is ever unreachable behind a toggle.
+
+type Category = 'markets' | 'drought' | 'ranching'
+
+const CATEGORY_WORDS: Record<Category, string[]> = {
+  markets: [
+    'price', 'prices', 'sale', 'sales', 'market', 'markets', 'trade', 'trades',
+    'packer', 'packers', 'feedlot', 'feedlots', 'cattle on feed', 'futures', 'basis',
+    'export', 'exports', 'import', 'imports', 'tariff', 'tariffs', 'policy', 'usda',
+    'demand', 'supply', 'cutout', 'boxed beef',
+  ],
+  drought: [
+    'drought', 'forage', 'moisture', 'rain', 'rains', 'rainfall', 'precip',
+    'precipitation', 'conditions', 'grazing', 'pasture', 'pastures', 'range',
+    'rangeland', 'water', 'monsoon', 'hay',
+  ],
+  ranching: [
+    'herd', 'herds', 'cow', 'cows', 'calf', 'calves', 'heifer', 'heifers', 'bull',
+    'bulls', 'management', 'production', 'health', 'vaccine', 'vaccines', 'genetics',
+    'breeding', 'branding', 'weaning',
+  ],
+}
+
+const CATEGORY_RE: Record<Category, RegExp> = {
+  markets: new RegExp(`\\b(?:${CATEGORY_WORDS.markets.join('|')})\\b`, 'i'),
+  drought: new RegExp(`\\b(?:${CATEGORY_WORDS.drought.join('|')})\\b`, 'i'),
+  ranching: new RegExp(`\\b(?:${CATEGORY_WORDS.ranching.join('|')})\\b`, 'i'),
+}
+
+function categorize(item: NewsItem): Set<Category> {
+  const text = `${item.title} ${item.snippet}`
+  const cats = new Set<Category>()
+  if (CATEGORY_RE.markets.test(text)) cats.add('markets')
+  if (CATEGORY_RE.drought.test(text)) cats.add('drought')
+  if (CATEGORY_RE.ranching.test(text)) cats.add('ranching')
+  if (cats.size === 0) cats.add('ranching') // fallback catch-all
+  return cats
+}
+
+// Market/conditions news is "substantive"; human-interest profiles (which miss those
+// keywords) are not — this is the outer ranking key so profiles sink below them.
+function isSubstantive(cats: Set<Category>): boolean {
+  return cats.has('markets') || cats.has('drought')
+}
+
+interface RankedItem extends NewsItem {
+  categories: Set<Category>
+  substantive: boolean
+}
+
+// substantive → regional (boosts within substance) → recency.
+function rankItems(items: NewsItem[]): RankedItem[] {
+  return items
+    .map(it => {
+      const categories = categorize(it)
+      return { ...it, categories, substantive: isSubstantive(categories) }
+    })
+    .sort((a, b) => {
+      if (a.substantive !== b.substantive) return a.substantive ? -1 : 1
+      if (a.regional !== b.regional) return a.regional ? -1 : 1
+      return b.ts - a.ts
+    })
+}
+
+const NO_ITEMS: NewsItem[] = []
 
 function relativeTime(iso: string | null): string {
   if (!iso) return ''
@@ -191,6 +261,11 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
     load()
   }, [load])
 
+  // Rank the already-fetched items client-side (no refetch). NO_ITEMS is a stable
+  // reference so the memo doesn't recompute while loading/erroring.
+  const items = state.phase === 'ready' ? state.items : NO_ITEMS
+  const ranked = useMemo(() => rankItems(items), [items])
+
   return (
     <section>
       <div className="mb-4 flex items-baseline justify-between gap-3">
@@ -207,11 +282,11 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
       {state.phase === 'loading' && <NewsSkeleton />}
       {state.phase === 'error' && <UnavailablePanel onRetry={() => load(true)} />}
       {state.phase === 'ready' &&
-        (state.items.length === 0 ? (
+        (ranked.length === 0 ? (
           <EmptyPanel />
         ) : (
           <div className="space-y-4">
-            {state.items.map(item => (
+            {ranked.map(item => (
               <NewsCard key={item.link} item={item} />
             ))}
           </div>
