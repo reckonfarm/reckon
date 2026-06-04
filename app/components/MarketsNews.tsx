@@ -349,10 +349,10 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
           <h2 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-            Cattle country news
+            Cattle Country News
           </h2>
           <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-            The latest from across the beef, hay, and ranch markets.
+            The latest from across the beef, hay and ranch headlines
           </p>
         </div>
       </div>
