@@ -84,13 +84,13 @@ export default function BottomTabBar() {
     },
   ]
 
-  // "My Operation" is the home-base anchor: the drought dashboard, with the
-  // Drought/Cattle toggle living inside it. Routes to '/' (server-redirects a
-  // signed-in user to /dashboard with no flash; marketing home for signed-out) —
-  // same destination Drought had. Stays lit across both peer views (/dashboard,
-  // /cattle) since cattle is reached from here via the toggle.
-  const opActive =
-    pathname === '/' || pathname.startsWith('/dashboard') || pathname.startsWith('/cattle')
+  // "My Operation" is the home-base anchor: the rancher's personal drought picture,
+  // with the Drought/Cattle toggle living inside it. Routes straight to /dashboard
+  // (bare /dashboard middleware-redirects a signed-in user to their home county).
+  // The default landing at '/' is now the Markets surface, a separate destination —
+  // so this anchor stays lit across the dashboard peer views (/dashboard, /cattle,
+  // cattle reached from there via the toggle) but NOT on '/'.
+  const opActive = pathname.startsWith('/dashboard') || pathname.startsWith('/cattle')
 
   const renderTab = (tab: Tab) => {
     const active = tab.match(pathname)
@@ -128,7 +128,7 @@ export default function BottomTabBar() {
 
         {/* Raised, prominent center anchor — "My Operation" (home base) */}
         <Link
-          href="/"
+          href="/dashboard"
           aria-label="My Operation"
           aria-current={opActive ? 'page' : undefined}
           className="absolute left-1/2 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"
