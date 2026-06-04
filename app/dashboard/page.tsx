@@ -16,6 +16,7 @@ import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
 import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
+import LfpHero from './components/LfpHero'
 import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
@@ -612,6 +613,12 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* ── LFP hero — permanent top, always open (slice 1, additive). The detailed
+                   "Eligibility math" accordion (calculator, tier ladder, CCC-853) is untouched below. ── */}
+            {lfpResult && !lfpUnavailable && (
+              <LfpHero eligibility={lfpResult} countyName={selectedCounty.name} />
+            )}
 
             {!history.length && (
               <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
