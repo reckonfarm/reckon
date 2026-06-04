@@ -13,17 +13,13 @@ import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
 import RegionalMapLoader from './components/RegionalMapLoader'
 import DroughtTrendChart from './components/DroughtTrendChart'
-import ForecastSection from './components/ForecastSection'
-import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
+import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
 import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
 import type { OfficialMapRecord } from './components/OfficialMap'
-import type { ForecastOutlook, DroughtDiscussion } from './components/ForecastSection'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
-import { getDroughtDiscussion } from '@/lib/drought-discussion'
-import { getNwsDiscussion, type NwsDiscussion } from '@/lib/nws-discussion'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { timeoutSignal } from '@/lib/external-fetch'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
@@ -195,24 +191,10 @@ export default async function DashboardPage({
   let stateMap: OfficialMapRecord | null            = null
   let cpcMonthlyMap: OfficialMapRecord | null       = null
   let cpcSeasonalMap: OfficialMapRecord | null      = null
-  let monthlyOutlook: ForecastOutlook | null        = null
-  let seasonalOutlook: ForecastOutlook | null       = null
   let lfpResult: LfpEligibilityResult | null          = null
   let priorYearLfpResult: LfpEligibilityResult | null = null
   let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
-  let droughtDiscussion: DroughtDiscussion | null   = null
-  let wpcUpdated: string | null                     = null
-  let prcp814Updated: string | null                 = null
-  let prcpWk34Updated: string | null                = null
-  let prcpMonthlyUpdated: string | null             = null
-  let prcpSeasonalUpdated: string | null            = null
-  let nwsDiscussion: NwsDiscussion | null           = null
   let precipNormal: PrecipNormalResult              = null
-  let cpcSoilMoistureUpdated: string | null         = null
-  let vhiUpdated: string | null                     = null
-  let hprcc14dUpdated: string | null                = null
-  let hprcc30dUpdated: string | null                = null
-  let hprcc60dUpdated: string | null                = null
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
   let hayPrimaryVariety: string | null              = null
@@ -227,22 +209,8 @@ export default async function DashboardPage({
       stateMapRes,
       cpcMonthlyMapRes,
       cpcSeasonalMapRes,
-      monthlyOutlookRes,
-      seasonalOutlookRes,
       lfpRes,
-      discussionRes,
-      wpcHead,
-      prcp814Head,
-      prcpWk34Head,
-      prcpMonthlyHead,
-      prcpSeasonalHead,
-      nwsDiscussionRes,
       precipNormalRes,
-      cpcSoilMoistureHead,
-      vhiHead,
-      hprcc14dHead,
-      hprcc30dHead,
-      hprcc60dHead,
       priorYearLfpRes,
       threeYearRaw,
       hayListingsRes,
@@ -283,26 +251,6 @@ export default async function DashboardPage({
         .limit(1)
         .maybeSingle(),
 
-      // CPC monthly text outlook for this county
-      db
-        .from('forecast_outlooks')
-        .select('outlook_type, outlook_text, release_date, valid_through')
-        .eq('county_id', selectedCounty.id)
-        .eq('outlook_type', 'monthly')
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-
-      // CPC seasonal text outlook for this county
-      db
-        .from('forecast_outlooks')
-        .select('outlook_type, outlook_text, release_date, valid_through')
-        .eq('county_id', selectedCounty.id)
-        .eq('outlook_type', 'seasonal')
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-
       // LFP eligibility
       computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
@@ -313,84 +261,8 @@ export default async function DashboardPage({
         .then(result => ({ ok: true as const, result }))
         .catch(() => ({ ok: false as const })),
 
-      // USDM drought discussion narrative (weekly, cached 24h)
-      getDroughtDiscussion(state),
-
-      // WPC 7-day QPF map provenance — HEAD request for Last-Modified (cached 1h)
-      fetch('https://www.wpc.ncep.noaa.gov/qpf/p168i.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      // CPC precipitation outlook map provenances (cached 1h)
-      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      fetch('https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      // NWS Area Forecast Discussion — .DISCUSSION section for local precip narrative
-      selectedCounty.lat != null && selectedCounty.lon != null
-        ? getNwsDiscussion(selectedCounty.lat, selectedCounty.lon)
-        : Promise.resolve(null),
-
       // ACIS YTD precipitation vs 30-year normals
       getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
-
-      // Drought condition map provenances (cached 1h)
-      fetch('https://www.cpc.ncep.noaa.gov/products/Soilmst_Monitoring/Figures/daily/curr.w.anom.daily.gif', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      (() => {
-        const now = new Date()
-        const yr = now.getUTCFullYear()
-        const doy = Math.floor((now.getTime() - Date.UTC(yr, 0, 1)) / 86400000) + 1
-        const wk = String(Math.ceil(doy / 7) - 1).padStart(2, '0')
-        return fetch(
-          `https://www.star.nesdis.noaa.gov/smcd/emb/vci/WebDataVH/gvix_webImages/${yr}/USA_VHI_DIVISION_${yr}${wk}.png`,
-          { method: 'HEAD', next: { revalidate: 3600 }, signal: timeoutSignal() },
-        ).catch(() => null)
-      })(),
-
-      fetch('https://hprcc.unl.edu/products/maps/acis/14dPNormUS.png', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      fetch('https://hprcc.unl.edu/products/maps/acis/30dPNormUS.png', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
-
-      fetch('https://hprcc.unl.edu/products/maps/acis/60dPNormUS.png', {
-        method: 'HEAD',
-        next: { revalidate: 3600 },
-        signal: timeoutSignal(),
-      }).catch(() => null),
 
       // Prior year LFP eligibility — same forage period but year - 1
       computeLfpEligibility(
@@ -437,37 +309,10 @@ export default async function DashboardPage({
     stateMap           = stateMapRes.data as OfficialMapRecord | null
     cpcMonthlyMap      = cpcMonthlyMapRes.data as OfficialMapRecord | null
     cpcSeasonalMap     = cpcSeasonalMapRes.data as OfficialMapRecord | null
-    monthlyOutlook     = monthlyOutlookRes.data as ForecastOutlook | null
-    seasonalOutlook    = seasonalOutlookRes.data as ForecastOutlook | null
     lfpResult          = lfpRes.ok ? lfpRes.result : null
     lfpUnavailable     = !lfpRes.ok
     priorYearLfpResult = priorYearLfpRes
-    droughtDiscussion  = discussionRes
-    const lastMod      = wpcHead?.headers.get('last-modified')
-    if (lastMod) {
-      wpcUpdated = new Date(lastMod).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
-      })
-    }
-    const fmtLM = (res: Response | null) => {
-      const lm = res?.headers.get('last-modified')
-      return lm ? new Date(lm).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
-      }) : null
-    }
-    prcp814Updated      = fmtLM(prcp814Head)
-    prcpWk34Updated     = fmtLM(prcpWk34Head)
-    prcpMonthlyUpdated  = fmtLM(prcpMonthlyHead)
-    prcpSeasonalUpdated = fmtLM(prcpSeasonalHead)
-    nwsDiscussion       = nwsDiscussionRes
-    precipNormal        = precipNormalRes
-    cpcSoilMoistureUpdated = fmtLM(cpcSoilMoistureHead)
-    vhiUpdated             = fmtLM(vhiHead)
-    hprcc14dUpdated        = fmtLM(hprcc14dHead)
-    hprcc30dUpdated        = fmtLM(hprcc30dHead)
-    hprcc60dUpdated        = fmtLM(hprcc60dHead)
+    precipNormal       = precipNormalRes
 
     if (selectedCounty.lat != null && selectedCounty.lon != null) {
       const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
@@ -806,39 +651,6 @@ export default async function DashboardPage({
                           },
                         },
                       }}
-                    />
-                  </DashboardAccordion>
-
-                  {/* Drought Indicators — current-condition indicators (soil moisture,
-                      vegetation, recent precip). Its own top-level section now; it is
-                      NOT a forecast, so it no longer nests under the forecast section. */}
-                  <DashboardAccordion
-                    title="Drought Indicators"
-                    preview="Soil moisture, vegetation & recent precipitation"
-                  >
-                    <ForecastSection
-                      hideHeader
-                      droughtDiscussion={droughtDiscussion}
-                      cpcSoilMoistureUpdated={cpcSoilMoistureUpdated}
-                      vhiUpdated={vhiUpdated}
-                      hprcc14dUpdated={hprcc14dUpdated}
-                      hprcc30dUpdated={hprcc30dUpdated}
-                      hprcc60dUpdated={hprcc60dUpdated}
-                    />
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Rainfall Outlook"
-                    preview="Local NWS discussion + 7-day to seasonal precip outlooks"
-                  >
-                    <PrecipForecastSection
-                      hideHeader
-                      nwsDiscussion={nwsDiscussion}
-                      wpcUpdated={wpcUpdated}
-                      day814Updated={prcp814Updated}
-                      weeks34Updated={prcpWk34Updated}
-                      monthlyUpdated={prcpMonthlyUpdated}
-                      seasonalUpdated={prcpSeasonalUpdated}
                     />
                   </DashboardAccordion>
 
