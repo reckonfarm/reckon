@@ -47,6 +47,94 @@ function fmtAsOf(iso: string): string {
   })
 }
 
+// Faithful short form of the engine's own tier label for the schedule rows (display only).
+function shortLabel(label: string): string {
+  return label.replace(' during the grazing period', '').replace(' (OBBBA 2025)', '')
+}
+
+// ─── Progress tracker — the core mechanic ──────────────────────────────────────
+// Shows where the county OBJECTIVELY STANDS in the real LFP tier ladder the engine
+// reports. A sober status tracker, never a game — the ladder climbs only because
+// drought worsened (hardship, reported factually), never a thing to want or chase.
+//
+// HONEST PROGRESS: the engine's result exposes a granular "how close" only for Tier 1
+// (currentD2Streak vs 4 CONSECUTIVE D2 weeks) — shown as a segmented bar. For the other
+// tiers (7-of-8-week, any-time, N-non-consecutive-week rules) it reports only the
+// triggered flag, so we render the discrete payout SCHEDULE and the next threshold's real
+// rule as text — we do NOT fake a clean consecutive-week bar where the logic isn't.
+function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult }) {
+  const { maxTier, payments, tiers, currentD2Streak, weeksUntilTier1 } = eligibility
+
+  // PRE-TRIGGER (primary state): the consecutive-week build toward the first payment.
+  if (maxTier === 0) {
+    const filled = Math.min(Math.max(currentD2Streak, 0), 4)
+    const left   = weeksUntilTier1 ?? 4
+    return (
+      <div className="space-y-3">
+        <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/45">
+          Path to your first LFP payment
+        </p>
+        <div className="flex gap-1.5" aria-hidden="true">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className={`h-2 flex-1 rounded-full ${i < filled ? 'bg-forest-green' : 'bg-forest-green/10'}`} />
+          ))}
+        </div>
+        <p className="font-dm-sans text-sm text-forest-green/70">
+          <span className="font-medium tabular-nums text-forest-green">{filled}</span> of 4 consecutive D2 (Severe) weeks
+        </p>
+        <p className="font-dm-sans text-sm leading-relaxed text-forest-green/55">
+          {currentD2Streak > 0
+            ? `${left} more consecutive week${left !== 1 ? 's' : ''} of D2 would trigger Tier 1 — 1 monthly payment.`
+            : 'Four consecutive weeks of D2 (Severe) drought would trigger Tier 1 — 1 monthly payment.'}
+        </p>
+      </div>
+    )
+  }
+
+  // TRIGGERED / CLIMBING: the real payout schedule. Tiers in effect are forest green; the
+  // current tier is marked; tiers not yet in effect are muted. No granular bar (see above).
+  const nextTier = maxTier < 6 ? tiers[maxTier] : null  // tiers[] 0-indexed; tiers[maxTier] = tier maxTier+1
+  return (
+    <div className="space-y-3">
+      <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/45">
+        LFP payout schedule
+      </p>
+      <ol>
+        {tiers.map(t => {
+          const reached = t.triggered
+          const current = t.tier === maxTier
+          return (
+            <li
+              key={t.tier}
+              className={`flex items-center justify-between gap-3 border-l-2 py-2 pl-3 ${reached ? 'border-forest-green' : 'border-forest-green/10'}`}
+            >
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-dm-sans text-sm">
+                <span className={reached ? 'font-medium text-forest-green' : 'text-forest-green/40'}>
+                  {shortLabel(t.label)}
+                </span>
+                {current && (
+                  <span className="font-dm-sans text-[11px] font-medium uppercase tracking-wide text-forest-green/50">
+                    Current
+                  </span>
+                )}
+              </span>
+              <span className={`shrink-0 font-dm-sans text-sm tabular-nums ${reached ? 'text-forest-green' : 'text-forest-green/40'}`}>
+                {t.payments} pmt{t.payments !== 1 ? 's' : ''}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      <p className="font-dm-sans text-sm leading-relaxed text-forest-green/55">
+        Your county has reached Tier {maxTier} — {payments} monthly payment{payments !== 1 ? 's' : ''}. You&apos;re paid at your highest qualifying tier.
+        {nextTier
+          ? ` Tier ${nextTier.tier} requires ${shortLabel(nextTier.label)} (${nextTier.payments} payment${nextTier.payments !== 1 ? 's' : ''}).`
+          : ' This is the highest tier.'}
+      </p>
+    </div>
+  )
+}
+
 export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
   const { maxTier, payments, weeksUntilTier1, currentD2Streak, tiers, dataAsOf } = eligibility
   const triggered = maxTier >= 1 && payments > 0
@@ -106,11 +194,10 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
             : `Your county isn't in a qualifying drought yet. Four consecutive weeks of D2 (Severe) drought triggers the first LFP payment.`}
       </p>
 
-      {/* d + e. Progress tracker & delta — placeholders unchanged (filled in slices 3 & 4) */}
-      <div className="mt-8 space-y-3">
-        <div className="rounded border border-dashed border-forest-green/25 px-4 py-6 text-center font-dm-sans text-xs uppercase tracking-wider text-forest-green/35">
-          PROGRESS TRACKER HERE
-        </div>
+      {/* d. Progress tracker — the core mechanic (slice 3). Reads engine output only. */}
+      {/* e. Delta — placeholder unchanged (filled in slice 4). */}
+      <div className="mt-8 space-y-6">
+        <ProgressTracker eligibility={eligibility} />
         <div className="rounded border border-dashed border-forest-green/25 px-4 py-3 text-center font-dm-sans text-xs uppercase tracking-wider text-forest-green/35">
           DELTA HERE
         </div>
