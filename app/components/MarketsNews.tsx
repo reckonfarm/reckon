@@ -151,33 +151,35 @@ function NewsCard({ item }: { item: NewsItem }) {
       rel="noopener noreferrer"
       className="group block rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm transition-colors hover:border-forest-green/25 sm:p-5"
     >
-      <div className="mb-2 flex items-center gap-2">
+      {/* Title leads — the thing the user scans and taps. */}
+      <h3 className="font-fraunces text-lg font-semibold leading-snug text-forest-green group-hover:text-forest-green/80 sm:text-xl">
+        {item.title}
+      </h3>
+      {item.snippet && (
+        <p className="mt-2 line-clamp-2 font-dm-sans text-sm leading-relaxed text-forest-green/55">
+          {item.snippet}
+        </p>
+      )}
+      {/* Quiet meta footer — source · time, with the badge and link affordance. */}
+      <div className="mt-3 flex items-center gap-2">
         {item.regional && <NearYouBadge />}
-        <span className="font-dm-sans text-xs font-medium text-forest-green/50">{item.source}</span>
+        <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
+          {item.source}
+        </span>
         {item.pubDate && (
           <>
             <span className="text-forest-green/20" aria-hidden="true">
               ·
             </span>
-            <span className="font-dm-sans text-xs text-forest-green/40">
+            <span className="font-dm-sans text-[11px] text-forest-green/40">
               {relativeTime(item.pubDate)}
             </span>
           </>
         )}
-      </div>
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-fraunces text-base font-semibold leading-snug text-forest-green group-hover:text-forest-green/80 sm:text-lg">
-          {item.title}
-        </h3>
-        <span className="pt-1">
+        <span className="ml-auto">
           <ExternalArrow />
         </span>
       </div>
-      {item.snippet && (
-        <p className="mt-1.5 line-clamp-2 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-          {item.snippet}
-        </p>
-      )}
     </a>
   )
 }
