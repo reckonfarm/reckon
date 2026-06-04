@@ -1,5 +1,7 @@
+import { Suspense } from 'react'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { estimatePayment } from '@/lib/lfp-payment'
+import { getLfpDelta } from '@/lib/lfp-delta'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 
 // ─── LFP hero (SLICE 2 — sharp visual pass) ────────────────────────────────────
@@ -135,6 +137,38 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
   )
 }
 
+// ─── Delta line — honest week-over-week change from the snapshot store ──────────
+// Empty/quiet by design: until snapshots accumulate for a county, this renders NOTHING
+// (a complete non-event). Any missing data / read failure → nothing, never a fabricated
+// number. The basis is the stored monotonic figures (see lib/lfp-delta.ts).
+
+function sincePhrase(priorWeek: string, currentWeek: string): string {
+  const days = (new Date(`${currentWeek}T00:00:00`).getTime() - new Date(`${priorWeek}T00:00:00`).getTime()) / 86_400_000
+  return days <= 8 ? 'since last Thursday' : `since the week of ${fmtAsOf(priorWeek)}`
+}
+
+async function DeltaLine({ fips }: { fips: string }) {
+  const delta = await getLfpDelta(fips)
+  if (!delta) return null   // graceful empty state — render nothing at all
+
+  let text: string
+  switch (delta.kind) {
+    case 'tracking_begins':
+      text = 'Tracking begins this week.'
+      break
+    case 'money':
+      text = `↑ $${Math.round(delta.dollars).toLocaleString()} ${sincePhrase(delta.priorWeek, delta.currentWeek)}.`
+      break
+    case 'streak':
+      text = `+${delta.weeks} week${delta.weeks !== 1 ? 's' : ''} of D2 ${sincePhrase(delta.priorWeek, delta.currentWeek)}.`
+      break
+    case 'unchanged':
+      text = `Unchanged ${sincePhrase(delta.priorWeek, delta.currentWeek)}.`
+      break
+  }
+  return <p className="font-dm-sans text-sm text-forest-green/55">{text}</p>
+}
+
 export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
   const { maxTier, payments, weeksUntilTier1, currentD2Streak, tiers, dataAsOf } = eligibility
   const triggered = maxTier >= 1 && payments > 0
@@ -198,9 +232,10 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       {/* e. Delta — placeholder unchanged (filled in slice 4). */}
       <div className="mt-8 space-y-6">
         <ProgressTracker eligibility={eligibility} />
-        <div className="rounded border border-dashed border-forest-green/25 px-4 py-3 text-center font-dm-sans text-xs uppercase tracking-wider text-forest-green/35">
-          DELTA HERE
-        </div>
+        {/* e. Delta — renders nothing until snapshots accumulate (empty state = non-event). */}
+        <Suspense fallback={null}>
+          <DeltaLine fips={eligibility.fips} />
+        </Suspense>
       </div>
 
       {/* f. FSA "estimate only" caveat + as-of — small, gray, recessive (every state) */}
