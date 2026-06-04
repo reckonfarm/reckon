@@ -234,8 +234,71 @@ function EmptyPanel() {
   )
 }
 
+// Distinct from the all-empty panel: feeds DID return news, just none in this filter.
+function FilterEmptyPanel({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center shadow-sm">
+      <p className="font-fraunces text-base font-semibold text-forest-green">
+        Nothing in {label} right now
+      </p>
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-forest-green/60">
+        No headlines match this filter at the moment.
+      </p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="mt-4 inline-flex items-center rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+      >
+        Show all news
+      </button>
+    </div>
+  )
+}
+
+type FilterKey = 'all' | Category
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'markets', label: 'Markets' },
+  { key: 'drought', label: 'Drought' },
+  { key: 'ranching', label: 'Ranching' },
+]
+
+function FilterBar({
+  active,
+  onChange,
+}: {
+  active: FilterKey
+  onChange: (key: FilterKey) => void
+}) {
+  return (
+    <div className="mb-5 flex flex-wrap gap-2" role="group" aria-label="Filter news">
+      {FILTERS.map(f => {
+        const isActive = f.key === active
+        return (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => onChange(f.key)}
+            aria-pressed={isActive}
+            className={
+              'rounded-full px-4 py-2 font-dm-sans text-sm font-semibold transition-colors ' +
+              (isActive
+                ? 'bg-forest-green text-white'
+                : 'border border-forest-green/20 text-forest-green/70 hover:border-forest-green/40 hover:text-forest-green')
+            }
+          >
+            {f.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function MarketsNews({ fips }: { fips?: string | null }) {
   const [state, setState] = useState<State>({ phase: 'loading' })
+  const [filter, setFilter] = useState<FilterKey>('all')
 
   const load = useCallback(
     async (bustCache = false) => {
@@ -265,6 +328,11 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
   // reference so the memo doesn't recompute while loading/erroring.
   const items = state.phase === 'ready' ? state.items : NO_ITEMS
   const ranked = useMemo(() => rankItems(items), [items])
+  const filtered = useMemo(
+    () => (filter === 'all' ? ranked : ranked.filter(it => it.categories.has(filter))),
+    [ranked, filter],
+  )
+  const activeLabel = FILTERS.find(f => f.key === filter)?.label ?? 'this filter'
 
   return (
     <section>
@@ -285,11 +353,18 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
         (ranked.length === 0 ? (
           <EmptyPanel />
         ) : (
-          <div className="space-y-4">
-            {ranked.map(item => (
-              <NewsCard key={item.link} item={item} />
-            ))}
-          </div>
+          <>
+            <FilterBar active={filter} onChange={setFilter} />
+            {filtered.length === 0 ? (
+              <FilterEmptyPanel label={activeLabel} onClear={() => setFilter('all')} />
+            ) : (
+              <div className="space-y-4">
+                {filtered.map(item => (
+                  <NewsCard key={item.link} item={item} />
+                ))}
+              </div>
+            )}
+          </>
         ))}
     </section>
   )
