@@ -11,7 +11,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import OfficialMap from './components/OfficialMap'
-import SwipeCards from './components/SwipeCards'
+import RegionalMapLoader from './components/RegionalMapLoader'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import ForecastSection from './components/ForecastSection'
 import PrecipForecastSection, { PrecipVsNormalPanel } from './components/PrecipForecastSection'
@@ -633,9 +633,96 @@ export default async function DashboardPage({
                 {/* LAYER 2 — The why (compact cards, always visible) */}
                 <div className="space-y-3">
 
-                  {/* Current conditions card */}
+                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA */}
                   <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
-                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Current conditions</p>
+                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
+                      Hay nearby
+                    </p>
+
+                    {hayNearbyCount > 0 ? (
+                      <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
+                        {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
+                        {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
+                        {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
+                      </p>
+                    ) : (
+                      <p className="font-fraunces text-base font-semibold text-forest-green/50 leading-snug sm:text-lg">
+                        No hay listed within 200 miles yet.
+                      </p>
+                    )}
+
+                    {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
+                      <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+                        {cashToHayTons != null && hayAvgPrice != null
+                          ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
+                          : `Your estimated LFP payment is ~$${Math.round(bannerDefaultEstimate).toLocaleString()}.`}
+                      </p>
+                    )}
+
+                    <Link
+                      href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
+                      className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
+                    >
+                      Browse hay delivered to {selectedCounty.name} →
+                    </Link>
+
+                    {hayNearbyCount === 0 && (
+                      <p className="mt-3 text-center font-dm-sans text-xs text-forest-green/40">
+                        <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                      </p>
+                    )}
+
+                    {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
+                      <div className="mt-3">
+                        <LfpEstimateNote />
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                {/* LAYER 3 — Deep dive accordions */}
+                <div className="space-y-2 pt-2">
+
+                  <DashboardAccordion
+                    title="Eligibility math"
+                    preview={
+                      lfpUnavailable
+                        ? 'Estimate temporarily unavailable'
+                        : lfpResult && lfpResult.maxTier >= 1
+                          ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
+                          : 'Not currently triggered'
+                    }
+                    previewAmount={!lfpUnavailable && lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
+                    highlight={!!(lfpResult && lfpResult.maxTier >= 1)}
+                    defaultOpen={lfpUnavailable}
+                  >
+                    {lfpUnavailable ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="font-dm-sans text-sm font-semibold text-amber-800">
+                          LFP estimate temporarily unavailable
+                        </p>
+                        <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
+                          The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
+                          can&apos;t compute your LFP tier or payment estimate.
+                          {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
+                          Check back shortly — this usually clears on its own.
+                        </p>
+                      </div>
+                    ) : lfpResult ? (
+                      <ProgramStatus
+                        eligibility={lfpResult}
+                        priorYearEligibility={priorYearLfpResult}
+                        fips={selectedCounty.fips}
+                        countyName={selectedCounty.name}
+                      />
+                    ) : null}
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Conditions & rainfall"
+                    preview="Latest USDM reading + rainfall vs normal"
+                  >
                     {latest && (
                       <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -685,204 +772,10 @@ export default async function DashboardPage({
                         </p>
                       </div>
                     )}
-                  </div>
 
-                  {/* Rainfall vs normal card */}
-                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
-                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
-                    <PrecipVsNormalPanel data={precipNormal} countyName={selectedCounty.name} />
-                  </div>
-
-                  {/* Forage outlook / Hay nearby card */}
-                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
-                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
-                      Hay nearby
-                    </p>
-
-                    {lfpResult && lfpResult.maxTier >= 1 ? (
-                      /* Triggered: forage outlook hero */
-                      <div className="space-y-3">
-                        {/* Hay supply nearby */}
-                        <div className="rounded-lg bg-forest-green/5 border border-forest-green/10 px-4 py-3">
-                          <p className="font-dm-sans text-xs font-medium text-forest-green/40 uppercase tracking-wide mb-1">Hay supply nearby</p>
-                          {hayNearbyCount > 0 ? (
-                            <p className="font-fraunces text-sm font-semibold text-forest-green leading-snug">
-                              {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 mi
-                              {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
-                              {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
-                            </p>
-                          ) : (
-                            <p className="font-fraunces text-sm font-semibold text-forest-green/50 leading-snug">
-                              No hay listed within 200 mi yet.
-                            </p>
-                          )}
-                        </div>
-                        <Link
-                          href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
-                          className="block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
-                        >
-                          View hay nearby →
-                        </Link>
-                        {hayNearbyCount === 0 && (
-                          <p className="text-center font-dm-sans text-xs text-forest-green/40">
-                            <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      /* Not triggered: simple hay nearby card */
-                      <div className={[
-                        'overflow-hidden rounded-xl border bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
-                        hayNearbyCount > 0 ? 'border-l-4 border-l-forest-green border-forest-green/10' : 'border-forest-green/10',
-                      ].join(' ')}>
-                        <div className="p-4 sm:p-5">
-                          {hayNearbyCount > 0 ? (
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <p className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                                  🌾 {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
-                                </p>
-                                <p className="mt-0.5 text-sm text-forest-green/60 font-dm-sans">
-                                  Sellers nearby — sorted by distance on the hay board
-                                </p>
-                              </div>
-                              <Link
-                                href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
-                                className="shrink-0 rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
-                              >
-                                Find hay near you →
-                              </Link>
-                            </div>
-                          ) : (
-                            <div className="rounded-lg border-2 border-dashed border-forest-green/20 px-4 py-6 text-center">
-                              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-forest-green/8">
-                                <svg className="h-5 w-5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                                </svg>
-                              </div>
-                              <p className="font-fraunces text-sm font-semibold text-forest-green">No hay listings nearby</p>
-                              <p className="mt-1 font-dm-sans text-xs text-forest-green/50">
-                                <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Cash-to-hay loop — only when triggered with a real estimate */}
-                  {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
-                    <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
-                      <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
-                        Put your LFP toward hay
-                      </p>
-
-                      {cashToHayTons != null && hayAvgPrice != null ? (
-                        <>
-                          <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
-                            Your estimated LFP payment of ~${Math.round(bannerDefaultEstimate).toLocaleString()} could buy
-                            roughly ~{cashToHayTons.toLocaleString()} ton{cashToHayTons !== 1 ? 's' : ''} of hay delivered
-                            to {selectedCounty.name} County.
-                          </p>
-                          <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
-                            Based on ~${hayAvgPrice.toLocaleString()}/ton average delivered price from {hayNearbyCount} seller{hayNearbyCount !== 1 ? 's' : ''} within 200 miles.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
-                            Your estimated LFP payment is ~${Math.round(bannerDefaultEstimate).toLocaleString()}.
-                          </p>
-                          <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
-                            No priced hay listed within 200 miles yet — browse what&apos;s posted, priced to your county.
-                          </p>
-                        </>
-                      )}
-
-                      <Link
-                        href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
-                        className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
-                      >
-                        {cashToHayTons != null
-                          ? `Shop hay delivered to ${selectedCounty.name} →`
-                          : `Browse hay delivered to ${selectedCounty.name} →`}
-                      </Link>
-
-                      <p className="mt-3 font-dm-sans text-xs text-forest-green/40 leading-snug">
-                        Estimate assumes ~100 head of adult beef cattle; your actual payment and tonnage depend on your herd.
-                      </p>
-                      <div className="mt-2">
-                        <LfpEstimateNote />
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-
-                {/* LAYER 3 — Deep dive accordions */}
-                <div className="space-y-2 pt-2">
-
-                  <DashboardAccordion
-                    title="Eligibility math"
-                    preview={
-                      lfpUnavailable
-                        ? 'Estimate temporarily unavailable'
-                        : lfpResult && lfpResult.maxTier >= 1
-                          ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
-                          : 'Not currently triggered'
-                    }
-                    previewAmount={!lfpUnavailable && lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
-                    highlight={!!(lfpResult && lfpResult.maxTier >= 1)}
-                    defaultOpen={lfpUnavailable || !!(lfpResult && lfpResult.maxTier >= 1)}
-                  >
-                    {lfpUnavailable ? (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                        <p className="font-dm-sans text-sm font-semibold text-amber-800">
-                          LFP estimate temporarily unavailable
-                        </p>
-                        <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
-                          The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
-                          can&apos;t compute your LFP tier or payment estimate.
-                          {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
-                          Check back shortly — this usually clears on its own.
-                        </p>
-                      </div>
-                    ) : lfpResult ? (
-                      <ProgramStatus
-                        eligibility={lfpResult}
-                        priorYearEligibility={priorYearLfpResult}
-                        fips={selectedCounty.fips}
-                        countyName={selectedCounty.name}
-                      />
-                    ) : null}
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Regional context"
-                    preview="USDM maps and drought outlook"
-                  >
-                    <div className="space-y-6">
-                      <OfficialMap
-                        map={stateMap ?? nationalMap}
-                        title={`USDM — ${selectedCounty.state}`}
-                        note={
-                          stateMap == null && nationalMap != null && regionalMapUrl == null
-                            ? `USDM does not publish per-state map images. Locate ${selectedCounty.state} on this national view.`
-                            : undefined
-                        }
-                        regionalMapUrl={regionalMapUrl}
-                      />
-                      <SwipeCards smCols={2}>
-                        <OfficialMap
-                          map={cpcMonthlyMap}
-                          title="Monthly Drought Outlook"
-                        />
-                        <OfficialMap
-                          map={cpcSeasonalMap}
-                          title="Seasonal Drought Outlook"
-                        />
-                      </SwipeCards>
+                    <div className="mt-6">
+                      <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
+                      <PrecipVsNormalPanel data={precipNormal} countyName={selectedCounty.name} />
                     </div>
                   </DashboardAccordion>
 
@@ -894,6 +787,20 @@ export default async function DashboardPage({
                       <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
                       <DroughtTrendChart history={history} countyName={selectedCounty.name} />
                     </div>
+                  </DashboardAccordion>
+
+                  <DashboardAccordion
+                    title="Regional context"
+                    preview="Interactive drought map + CPC outlooks"
+                  >
+                    <RegionalMapLoader
+                      center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
+                      countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+                      monthlyMap={cpcMonthlyMap}
+                      seasonalMap={cpcSeasonalMap}
+                      usdmFallbackUrl={regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null}
+                      usdmFallbackSourceUrl="https://droughtmonitor.unl.edu/CurrentMap.aspx"
+                    />
                   </DashboardAccordion>
 
                   {/* Drought Indicators — current-condition indicators (soil moisture,
