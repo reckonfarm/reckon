@@ -798,8 +798,14 @@ export default async function DashboardPage({
                       countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
                       monthlyMap={cpcMonthlyMap}
                       seasonalMap={cpcSeasonalMap}
-                      usdmFallbackUrl={regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null}
-                      usdmFallbackSourceUrl="https://droughtmonitor.unl.edu/CurrentMap.aspx"
+                      runtime={{
+                        usdm: {
+                          fallbackImage: {
+                            url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
+                            sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+                          },
+                        },
+                      }}
                     />
                   </DashboardAccordion>
 
