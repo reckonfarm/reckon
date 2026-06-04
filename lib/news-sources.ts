@@ -7,6 +7,8 @@
 // Deliberately EXCLUDED (bot-walled or no usable RSS, proven during recon):
 // Drovers, AgWeb (PerimeterX 403), Pro Farmer, DTN. Do not add them back without
 // re-probing from Vercel — they block datacenter egress like ams.usda.gov does.
+// AgDaily was also dropped: it timed out from Vercel's datacenter egress (the other
+// three came through clean on the preview).
 
 export type NewsScope = 'national' | 'regional'
 
@@ -25,12 +27,6 @@ export const NEWS_SOURCES: NewsSource[] = [
     id: 'beef-magazine',
     name: 'Beef Magazine',
     url: 'https://www.beefmagazine.com/rss.xml',
-    scope: 'national',
-  },
-  {
-    id: 'agdaily',
-    name: 'AgDaily',
-    url: 'https://www.agdaily.com/feed/',
     scope: 'national',
   },
   {
