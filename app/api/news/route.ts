@@ -251,6 +251,9 @@ async function fetchFeed(
 // the table is empty or the read errors — the caller then falls back to live-fetch.
 
 const TABLE_READ_LIMIT = 150
+// Older than this and the cron has likely stalled → fall back to live-fetch so the
+// feed is never stale-but-pretending-fresh.
+const TABLE_STALE_MS = 6 * 60 * 60 * 1000 // 6h
 
 interface NewsRow {
   title: string
@@ -348,10 +351,50 @@ async function readNewsFromTable(
   return { items, sources }
 }
 
+// Epoch ms of the most recently ingested row, or 0 if the table is empty/errors.
+// Drives the staleness gate: a stalled cron must not serve old news as if current.
+async function newestIngestedMs(): Promise<number> {
+  try {
+    const db = createServiceClient()
+    const { data, error } = await db
+      .from('news_items')
+      .select('ingested_at')
+      .order('ingested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error || !data) return 0
+    const t = new Date((data as { ingested_at: string }).ingested_at).getTime()
+    return Number.isNaN(t) ? 0 : t
+  } catch {
+    return 0
+  }
+}
+
 export async function GET(request: NextRequest) {
   const state = await resolveState(request)
   const boostTerms = boostTermsForState(state)
 
+  // Prefer the pre-tagged snapshot (the full, richer tagged feed set, sourced off
+  // the render path). Serve it only when it is present AND fresh; otherwise fall
+  // THROUGH to the original live-fetch path below — empty table, stale cron, or any
+  // read error all degrade to live-fetch, so the feed is never dead.
+  const freshMs = await newestIngestedMs()
+  if (freshMs > 0 && Date.now() - freshMs < TABLE_STALE_MS) {
+    const table = await readNewsFromTable(state, boostTerms)
+    if (table && table.items.length > 0) {
+      return NextResponse.json(
+        { items: table.items, region: state, sources: table.sources },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=600',
+            Vary: 'x-vercel-ip-country-region',
+          },
+        },
+      )
+    }
+  }
+
+  // ── fallback: original live-fetch path (unchanged) ──────────────────────────
   const results = await Promise.all(NEWS_SOURCES.map(s => fetchFeed(s, state, boostTerms)))
   const sources = results.map(r => r.status)
 
