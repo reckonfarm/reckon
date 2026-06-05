@@ -343,6 +343,11 @@ async function loadCounties(db: SupabaseClient): Promise<County[]> {
     .map(c => ({ fips: String(c.fips), name: c.name, state: c.state.toUpperCase() }))
 }
 
+// Dry run (--dry-run or NEWS_SNAPSHOT_DRY_RUN=1): fetch + tag + dedup and PRINT a
+// sample, but write NOTHING. Lets the pipeline be verified before the news_items
+// table exists (still needs creds — it reads the counties dictionary).
+const DRY_RUN = process.argv.includes('--dry-run') || process.env.NEWS_SNAPSHOT_DRY_RUN === '1'
+
 async function main() {
   const db = makeClient()
 
@@ -391,6 +396,27 @@ async function main() {
     process.exit(1)
   }
 
+  const tagged = rows.filter(r => r.fips_hint).length
+  const high = rows.filter(r => r.confidence === 'high').length
+
+  if (DRY_RUN) {
+    // Prove dedup landed no duplicate links (the natural key the upsert relies on).
+    const links = rows.map(r => r.link)
+    const dupCount = links.length - new Set(links).size
+    console.log(`\n[news-snapshot] DRY RUN — nothing written. duplicate links after dedup: ${dupCount}`)
+    console.log(`[news-snapshot] locality-hinted: ${tagged}, high-confidence: ${high}\n`)
+    // Sample: a spread across tiers, hinted rows first so the brain is visible.
+    const sample = [...rows].sort((a, b) => Number(!!b.fips_hint) - Number(!!a.fips_hint)).slice(0, 14)
+    for (const r of sample) {
+      console.log(
+        `  [${r.scope.padEnd(8)} ${(r.state ?? '··').padEnd(2)}] ` +
+        `fips=${(r.fips_hint ?? '-----').padEnd(5)} conf=${(r.confidence ?? '-').padEnd(4)} ` +
+        `${r.source_id.padEnd(16)} ${r.title.slice(0, 70)}`,
+      )
+    }
+    return
+  }
+
   // Idempotent upsert on the link natural key.
   const { error } = await db.from('news_items').upsert(rows, { onConflict: 'link' })
   if (error) {
@@ -398,8 +424,6 @@ async function main() {
     process.exit(1)
   }
 
-  const tagged = rows.filter(r => r.fips_hint).length
-  const high = rows.filter(r => r.confidence === 'high').length
   console.log(`[news-snapshot] upserted ${rows.length} rows ✓  (locality-hinted: ${tagged}, high-confidence: ${high})`)
 }
 
