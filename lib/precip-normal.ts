@@ -1,4 +1,5 @@
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 
 const ACIS_BASE = 'https://data.rcc-acis.org'
 const PRISM_GRID = '21'          // ACIS grid 21 = PRISM daily precip — whole-county, no station outages
@@ -359,7 +360,8 @@ function buildSeries(
 // chart shows an HONEST "temporarily unavailable" rather than blocking the dashboard
 // render. NEVER resolves to a data series or a zero/empty (which would read as a
 // false deficit); the timeout branch is the availability-failure state.
-export async function getPrecipNormal(
+// Live (uncached) precip lookup — the ACIS orchestration + overall deadline.
+async function getPrecipNormalLive(
   fips: string,
   lat: number | null,
   lon: number | null,
@@ -369,6 +371,42 @@ export async function getPrecipNormal(
     new Promise<PrecipNormalResult>(resolve =>
       setTimeout(() => resolve('data_unavailable'), PRECIP_DEADLINE_MS)),
   ])
+}
+
+// 24h server cache. ACIS POSTs are NOT cacheable by Next's fetch Data Cache, so we
+// memoize the FINAL result via unstable_cache, keyed by fips/lat/lon + the calendar
+// day (a new day re-fetches). CRITICAL honest-failure rule: 'data_unavailable' is an
+// AVAILABILITY failure — we THROW so unstable_cache never caches it (a transient ACIS
+// outage must not stick for 24h); the public wrapper turns it back into an honest
+// 'data_unavailable'. Genuine outcomes (a real series, or 'no_qualifying_station') ARE
+// cached — never a fabricated or zeroed value.
+const getPrecipNormalCached = unstable_cache(
+  async (
+    fips: string,
+    lat: number | null,
+    lon: number | null,
+    _dayKey: string,
+  ): Promise<PrecipNormalResult> => {
+    const result = await getPrecipNormalLive(fips, lat, lon)
+    if (result === 'data_unavailable') throw new Error('precip-unavailable: not cacheable')
+    return result
+  },
+  ['precip-normal'],
+  { revalidate: REVALIDATE },
+)
+
+export async function getPrecipNormal(
+  fips: string,
+  lat: number | null,
+  lon: number | null,
+): Promise<PrecipNormalResult> {
+  const dayKey = new Date().toISOString().slice(0, 10)
+  try {
+    return await getPrecipNormalCached(fips, lat, lon, dayKey)
+  } catch {
+    // Availability failure (thrown above) → honest 'data_unavailable', never cached.
+    return 'data_unavailable'
+  }
 }
 
 async function computePrecipNormal(
