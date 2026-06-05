@@ -10,7 +10,6 @@ import ShareButton from '@/app/components/ShareButton'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
-import OfficialMap from './components/OfficialMap'
 import RegionalMapLoader from './components/RegionalMapLoader'
 import DroughtTrendChart from './components/DroughtTrendChart'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
@@ -429,12 +428,7 @@ export default async function DashboardPage({
         </section>
 
         {/* ── National view (no county selected) ───────────────────────────── */}
-        {!fips && (
-          <div className="space-y-6">
-            <EmptyState />
-            <OfficialMap map={nationalMap} title="U.S. Drought Monitor — National" />
-          </div>
-        )}
+        {!fips && <EmptyState />}
 
         {fips && !selectedCounty && (
           <p className="text-sm text-forest-green/60 font-dm-sans">
