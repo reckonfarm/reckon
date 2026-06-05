@@ -146,7 +146,7 @@ export default async function MarketsHome({ fips }: { fips?: string | null }) {
                 {driestChips.map(c => (
                   <Link
                     key={c.fips}
-                    href={`/dashboard?fips=${c.fips}`}
+                    href={`/dashboard?fips=${c.fips}&view=drought`}
                     className="inline-flex items-center gap-1.5 rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 transition-colors hover:border-forest-green/30 hover:text-forest-green"
                   >
                     <span
