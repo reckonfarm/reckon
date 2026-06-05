@@ -25,8 +25,10 @@ export default function ShareButton({
 }) {
   const [copied, setCopied] = useState(false)
 
-  // No county selected → neutral, national payload. NEVER a county/drought we don't have.
-  const url = fips ? `https://dryline.farm/dashboard?fips=${fips}` : 'https://dryline.farm/cattle'
+  // Drought-intent share → open the Drought view explicitly (the dashboard now
+  // defaults to Market News). No-fips fallback → the Markets home (the old /cattle
+  // page is gone). NEVER a county/drought we don't have.
+  const url = fips ? `https://dryline.farm/dashboard?fips=${fips}&view=drought` : 'https://dryline.farm/'
   const text = !fips
     ? `Check U.S. cattle & hay prices and your county's drought on Dryline.`
     : droughtLabel && countyLabel
