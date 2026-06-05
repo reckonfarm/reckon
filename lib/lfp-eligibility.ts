@@ -1,4 +1,5 @@
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import { createServiceClient } from './supabase'
 
 // ─── Source provenance ────────────────────────────────────────────────────────
@@ -101,7 +102,7 @@ export function defaultGrazingPeriod(): GrazingPeriod {
 
 // ─── USDM consecutive-weeks API ───────────────────────────────────────────────
 
-async function fetchConsecutiveRuns(
+async function fetchConsecutiveRunsLive(
   fips:         string,
   dx:           number,
   minimumWeeks: number,
@@ -158,6 +159,27 @@ async function fetchConsecutiveRuns(
     })
     .filter(r => r.consecutiveWeeks > 0)
 }
+
+// USDM consecutive-weeks is cached per (county, dx, minweeks, grazing window) and —
+// critically — per USDM RELEASE DATE. The release-date key is the real guarantee: the
+// moment a new weekly USDM reading lands in our drought_data, the key changes and the
+// cache busts, so an eligibility number is NEVER computed against a prior week's
+// reading. The 6h revalidate is only a floor. On fetch failure the inner function
+// THROWS (non-2xx / timeout) → unstable_cache caches nothing → the caller degrades to
+// "temporarily unavailable"; a failure is never cached as success.
+const fetchConsecutiveRunsCached = unstable_cache(
+  async (
+    fips:         string,
+    dx:           number,
+    minimumWeeks: number,
+    startDate:    string,
+    endDate:      string,
+    _releaseKey:  string,
+  ): Promise<ConsecutiveRun[]> =>
+    fetchConsecutiveRunsLive(fips, dx, minimumWeeks, { startDate, endDate }),
+  ['lfp-consecutive-weeks'],
+  { revalidate: 21600 }, // 6h floor; the release-date key is the real cache-bust
+)
 
 // ─── 7-of-8 sliding window ────────────────────────────────────────────────────
 // Checks whether any 8-week window within the grazing period contained ≥7 weeks
@@ -248,7 +270,12 @@ export async function computeLfpEligibility(
 
   if (!county) return null
 
-  // Parallel: 4 USDM API calls + 7-of-8 DB check + latest week lookup
+  // Resolve the latest USDM release date FIRST — it is the cache-bust key for the USDM
+  // consecutive-weeks calls (a new weekly reading → new key → fresh fetch) and is also
+  // the eligibility's dataAsOf. One cheap query, before the parallel block.
+  const releaseKey = await latestWeekDate(db, county.id as number, gp)
+
+  // Parallel: 4 USDM API calls (cached, keyed by releaseKey) + 7-of-8 DB check.
   // D3 ≥4 weeks and D4 ≥4 weeks are NON-CONSECUTIVE totals (NDMC/FSA definition):
   // sum all run weeks from minimumweeks=1 calls rather than requiring a single ≥4-week run.
   const [
@@ -257,15 +284,14 @@ export async function computeLfpEligibility(
     runsD4_1,   // tier 5 + tier 6: D4 any time; sum gives total non-consecutive D4 weeks
     runsD2_1,   // all D2 runs — used for streak detection only
     tier2,
-    asOf,
   ] = await Promise.all([
-    fetchConsecutiveRuns(paddedFips, 2, 4, gp),
-    fetchConsecutiveRuns(paddedFips, 3, 1, gp),
-    fetchConsecutiveRuns(paddedFips, 4, 1, gp),
-    fetchConsecutiveRuns(paddedFips, 2, 1, gp),
+    fetchConsecutiveRunsCached(paddedFips, 2, 4, gp.startDate, gp.endDate, releaseKey),
+    fetchConsecutiveRunsCached(paddedFips, 3, 1, gp.startDate, gp.endDate, releaseKey),
+    fetchConsecutiveRunsCached(paddedFips, 4, 1, gp.startDate, gp.endDate, releaseKey),
+    fetchConsecutiveRunsCached(paddedFips, 2, 1, gp.startDate, gp.endDate, releaseKey),
     sevenOfEightWindowCheck(db, county.id as number, gp),
-    latestWeekDate(db, county.id as number, gp),
   ])
+  const asOf = releaseKey
 
   const totalD3Weeks = runsD3_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
   const totalD4Weeks = runsD4_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
