@@ -1,0 +1,37 @@
+name: News snapshot
+
+# Fetches the curated ag-news feeds from GitHub's runners (some feeds — e.g.
+# AgDaily — 403/time out on Vercel's datacenter egress but come through clean here),
+# runs the relevance + scope + locality "brain", dedups, and upserts the tagged
+# headlines into Supabase (public.news_items). NOTHING reads that table yet and the
+# live news route is untouched — this is the data layer only (Slice 0).
+#
+# Idempotent — re-running upserts on the link natural key, never duplicates.
+
+on:
+  schedule:
+    # Every 30 minutes — headlines move through the day; snapshots stay fresh.
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: news-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + tag + dedup + upsert news
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/news-snapshot.ts
