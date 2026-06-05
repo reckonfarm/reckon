@@ -1,17 +1,16 @@
 import Link from 'next/link'
 
-// Two-way segmented control marking the drought dashboard and the cattle market
-// as PEER views of one county. Preserves fips across both directions. Server
-// component — just two styled links, no interactivity needed.
+// Two-way segmented control marking Market News and the Drought dashboard as PEER
+// views of one county. Preserves fips. News is the DEFAULT (bare /dashboard, no view
+// param); Drought is opt-in via &view=drought. Server component — two styled links.
 
 export default function DroughtCattleToggle({
   fips,
   active,
 }: {
   fips: string
-  active: 'drought' | 'cattle'
+  active: 'news' | 'drought'
 }) {
-  const q = `?fips=${fips}`
   const seg = (href: string, label: string, isActive: boolean) => (
     <Link
       href={href}
@@ -28,8 +27,8 @@ export default function DroughtCattleToggle({
   )
   return (
     <div className="flex w-full rounded-lg border border-forest-green/15 bg-white p-0.5">
-      {seg(`/dashboard${q}`, 'Drought', active === 'drought')}
-      {seg(`/cattle${q}`, 'Cattle market', active === 'cattle')}
+      {seg(`/dashboard?fips=${fips}`, 'Market News', active === 'news')}
+      {seg(`/dashboard?fips=${fips}&view=drought`, 'Drought', active === 'drought')}
     </div>
   )
 }

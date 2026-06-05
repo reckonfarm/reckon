@@ -28,6 +28,9 @@ import { deliveredCost, type DeliveredCost } from '@/lib/freight'
 import DashboardAccordion from './components/DashboardAccordion'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
+import MarketsNews from '@/app/components/MarketsNews'
+import MarketsComingSoon from '@/app/components/MarketsComingSoon'
+import { createClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -155,10 +158,21 @@ export async function generateMetadata({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string }>
+  searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string; view?: string }>
 }) {
-  const { fips, gs, ge, pt } = await searchParams
+  const { fips, gs, ge, pt, view: viewParam } = await searchParams
+  // My Operation defaults to the Market News view; Drought is opt-in via &view=drought.
+  const view: 'news' | 'drought' = viewParam === 'drought' ? 'drought' : 'news'
   const db = createServiceClient()
+
+  // Sign-in only powers the News view's demand tiles — never throws, never redirects.
+  let signedIn = false
+  try {
+    const supabase = await createClient()
+    signedIn = Boolean((await supabase.auth.getUser()).data.user)
+  } catch {
+    signedIn = false
+  }
 
   // ── National view data (always fetched) ─────────────────────────────────────
   const { data: nationalMapRow } = await db
@@ -186,6 +200,7 @@ export default async function DashboardPage({
   }
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
+  let latest: DroughtReading | null                 = null
   let history: DroughtReading[]                     = []
   let threeYearHistory: DroughtHistoryWeek[]        = []
   let stateMap: OfficialMapRecord | null            = null
@@ -200,7 +215,22 @@ export default async function DashboardPage({
   let hayPrimaryVariety: string | null              = null
   let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
+  // Cheap latest reading — always fetched (drives the shared Share label + heading),
+  // independent of which view is open.
   if (selectedCounty) {
+    const { data: latestRow } = await db
+      .from('drought_data')
+      .select('week_date, d0, d1, d2, d3, d4')
+      .eq('county_id', selectedCounty.id)
+      .order('week_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    latest = latestRow as DroughtReading | null
+  }
+
+  // Heavy ranch-view data only when the Drought view is open — keeps News fast and
+  // off the external USDM/ACIS calls.
+  if (selectedCounty && view === 'drought') {
     const state = selectedCounty.state
 
     // Run all ranch-view queries in parallel
@@ -361,7 +391,6 @@ export default async function DashboardPage({
     }
   }
 
-  const latest = history[0] ?? null
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
 
@@ -417,21 +446,7 @@ export default async function DashboardPage({
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
 
-            {/* Peer-view toggle — same county, drought ↔ cattle market */}
-            <DroughtCattleToggle fips={selectedCounty.fips} active="drought" />
-
-            {/* LAYER 1 — The answer */}
-            {lfpResult && lfpResult.maxTier >= 1 && (
-              <TriggeredBanner
-                countyName={selectedCounty.name}
-                maxTier={lfpResult.maxTier}
-                payments={lfpResult.payments}
-                defaultEstimate={bannerDefaultEstimate}
-                grazingEndDate={lfpResult.grazingPeriod.endDate}
-              />
-            )}
-
-            {/* County heading */}
+            {/* County heading + actions — shared across both views, above the toggle */}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
               <div>
                 <h1 className="font-fraunces text-2xl font-semibold text-forest-green">
@@ -458,6 +473,30 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* Peer-view toggle — Market News ↔ Drought (same county) */}
+            <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
+
+            {view === 'news' && (
+              <>
+                <MarketsNews fips={selectedCounty.fips} />
+                <MarketsComingSoon signedIn={signedIn} />
+              </>
+            )}
+
+            {view === 'drought' && (
+              <>
+
+            {/* LAYER 1 — The answer */}
+            {lfpResult && lfpResult.maxTier >= 1 && (
+              <TriggeredBanner
+                countyName={selectedCounty.name}
+                maxTier={lfpResult.maxTier}
+                payments={lfpResult.payments}
+                defaultEstimate={bannerDefaultEstimate}
+                grazingEndDate={lfpResult.grazingPeriod.endDate}
+              />
+            )}
 
             {/* ── LFP hero — permanent top, always open (slice 1, additive). The detailed
                    "Eligibility math" accordion (calculator, tier ladder, CCC-853) is untouched below. ── */}
@@ -662,6 +701,9 @@ export default async function DashboardPage({
                   {' · '}
                   <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
                 </p>
+              </>
+            )}
+
               </>
             )}
 
