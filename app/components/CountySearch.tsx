@@ -42,7 +42,7 @@ export default function CountySearch() {
     // navigateTo (not router.push): hard-navigates in the iOS standalone PWA,
     // where the WebView drops client-side router navigations. See
     // lib/standalone-nav.ts.
-    navigateTo(router, `/dashboard?fips=${county.fips}`)
+    navigateTo(router, `/dashboard?fips=${county.fips}&view=drought`)
     setQuery('')
     setResults([])
     setOpen(false)
