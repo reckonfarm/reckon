@@ -99,6 +99,41 @@ function rankItems(items: NewsItem[]): RankedItem[] {
     })
 }
 
+// Lead diversification: within the first LEAD_WINDOW local items, allow at most
+// LEAD_MAX_PER_SOURCE from any one source, so the lead isn't a wall of one outlet
+// (TSLN/Agweek batch-publish and dominate the freshest). Only the lead window is
+// reordered; everything past it stays in recency order. Items bumped from the lead
+// fall in right after it (still recency-ordered), so nothing is lost.
+const LEAD_WINDOW = 6
+const LEAD_MAX_PER_SOURCE = 2
+
+function diversifyLead(items: RankedItem[]): RankedItem[] {
+  if (items.length <= 1) return items
+  const lead: RankedItem[] = []
+  const deferred: RankedItem[] = []
+  const rest: RankedItem[] = []
+  const counts = new Map<string, number>()
+  for (const it of items) {
+    if (lead.length >= LEAD_WINDOW) {
+      rest.push(it)
+      continue
+    }
+    const c = counts.get(it.sourceId) ?? 0
+    if (c < LEAD_MAX_PER_SOURCE) {
+      lead.push(it)
+      counts.set(it.sourceId, c + 1)
+    } else {
+      deferred.push(it)
+    }
+  }
+  // If too many were deferred to fill the lead (e.g. one dominant source), backfill
+  // from the deferred head so the lead window is never left short.
+  while (lead.length < LEAD_WINDOW && deferred.length > 0) {
+    lead.push(deferred.shift() as RankedItem)
+  }
+  return [...lead, ...deferred, ...rest]
+}
+
 const NO_ITEMS: NewsItem[] = []
 const LOCAL_PAGE = 8
 const NATIONAL_PAGE = 5
@@ -411,7 +446,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
   // The tier partition: `regional` splits the filtered set into the primary local
   // river and the secondary national tail. Each preserves the substantive→recency
   // order from rankItems.
-  const local = useMemo(() => filtered.filter(it => it.regional), [filtered])
+  const local = useMemo(() => diversifyLead(filtered.filter(it => it.regional)), [filtered])
   const national = useMemo(() => filtered.filter(it => !it.regional), [filtered])
   const activeLabel = FILTERS.find(f => f.key === filter)?.label ?? 'this filter'
 
