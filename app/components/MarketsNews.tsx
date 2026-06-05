@@ -287,6 +287,30 @@ function TierHeader({ title, count }: { title: string; count: number }) {
   )
 }
 
+function LoadMore({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <div className="mt-6 text-center">
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center rounded-lg border border-forest-green/20 px-5 py-2.5 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+      >
+        {label}
+      </button>
+    </div>
+  )
+}
+
+// Quiet per-tier empty line — honest when a filter empties one tier; the other tier
+// still renders. Never a fabricated item.
+function TierEmpty({ text }: { text: string }) {
+  return (
+    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-forest-green/55 shadow-sm">
+      {text}
+    </p>
+  )
+}
+
 // Skeleton uses a scoped keyframe (the Tailwind `animate-pulse` utility is disabled
 // in this project's @theme), so it shimmers without touching any shared style file.
 function NewsSkeleton() {
@@ -405,14 +429,21 @@ function FilterBar({
 export default function MarketsNews({ fips }: { fips?: string | null }) {
   const [state, setState] = useState<State>({ phase: 'loading' })
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [localVisible, setLocalVisible] = useState(LOCAL_PAGE)
+  const [nationalVisible, setNationalVisible] = useState(NATIONAL_PAGE)
 
+  // Changing the filter resets BOTH tier slices so a new filter starts at the top.
   const changeFilter = useCallback((key: FilterKey) => {
     setFilter(key)
+    setLocalVisible(LOCAL_PAGE)
+    setNationalVisible(NATIONAL_PAGE)
   }, [])
 
   const load = useCallback(
     async (bustCache = false) => {
       setState({ phase: 'loading' })
+      setLocalVisible(LOCAL_PAGE)
+      setNationalVisible(NATIONAL_PAGE)
       try {
         const qs = fips ? `?fips=${encodeURIComponent(fips)}` : ''
         const res = await fetch(`/api/news${qs}`, bustCache ? { cache: 'reload' } : undefined)
@@ -448,7 +479,11 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
   // order from rankItems.
   const local = useMemo(() => diversifyLead(filtered.filter(it => it.regional)), [filtered])
   const national = useMemo(() => filtered.filter(it => !it.regional), [filtered])
+  // Does this visitor get ANY local content (across all categories)? Distinguishes
+  // "unknown location → no local tier" from "this filter emptied the local tier".
+  const hasAnyLocal = useMemo(() => ranked.some(it => it.regional), [ranked])
   const activeLabel = FILTERS.find(f => f.key === filter)?.label ?? 'this filter'
+  const filterPhrase = filter === 'all' ? '' : `${activeLabel.toLowerCase()} `
 
   return (
     <section>
@@ -475,28 +510,60 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
               <FilterEmptyPanel label={activeLabel} onClear={() => changeFilter('all')} />
             ) : (
               <div className="space-y-10">
-                {/* TIER 1 — LOCAL: the primary river (full cards, no per-item badge). */}
-                {local.length > 0 && (
+                {/* TIER 1 — LOCAL: primary river. Shown only when this visitor gets
+                    local content at all; a filter that empties it shows a quiet line. */}
+                {hasAnyLocal && (
                   <div>
                     <TierHeader title={localTierHeader(region)} count={local.length} />
-                    <div className="space-y-4">
-                      {local.slice(0, LOCAL_PAGE).map(item => (
-                        <NewsCard key={item.link} item={item} hideRegionalBadge />
-                      ))}
-                    </div>
+                    {local.length > 0 ? (
+                      <>
+                        <div className="space-y-4">
+                          {local.slice(0, localVisible).map(item => (
+                            <NewsCard key={item.link} item={item} hideRegionalBadge />
+                          ))}
+                        </div>
+                        {localVisible < local.length && (
+                          <LoadMore
+                            label="More from your region"
+                            onClick={() => setLocalVisible(v => v + LOCAL_PAGE)}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <TierEmpty text={`No ${filterPhrase}headlines in your region right now.`} />
+                    )}
                   </div>
                 )}
 
-                {/* TIER 2 — NATIONAL: the compact, capped tail. */}
-                {national.length > 0 && (
+                {/* TIER 2 — NATIONAL: the compact tail. Becomes the primary "Top
+                    stories" feed when there's no local tier (unknown location). */}
+                {national.length > 0 ? (
                   <div>
-                    <TierHeader title="National" count={national.length} />
+                    <TierHeader title={hasAnyLocal ? 'National' : 'Top stories'} count={national.length} />
+                    {!hasAnyLocal && region === null && (
+                      <p className="mb-4 -mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/55">
+                        Set your county to see Northern Plains news.
+                      </p>
+                    )}
                     <div className="divide-y divide-forest-green/10 border-t border-forest-green/10">
-                      {national.slice(0, NATIONAL_PAGE).map(item => (
+                      {national.slice(0, nationalVisible).map(item => (
                         <NewsCardCompact key={item.link} item={item} />
                       ))}
                     </div>
+                    {nationalVisible < national.length && (
+                      <LoadMore
+                        label="More national"
+                        onClick={() => setNationalVisible(v => v + NATIONAL_PAGE)}
+                      />
+                    )}
                   </div>
+                ) : (
+                  hasAnyLocal && (
+                    <div>
+                      <TierHeader title="National" count={0} />
+                      <TierEmpty text={`No ${filterPhrase}headlines from national sources right now.`} />
+                    </div>
+                  )
                 )}
               </div>
             )}
