@@ -85,7 +85,8 @@ interface RankedItem extends NewsItem {
   substantive: boolean
 }
 
-// substantive → regional (boosts within substance) → recency.
+// Within a tier: substantive (markets/drought) → recency. `regional` is NO LONGER a
+// sort key — it's the TIER PARTITION (local vs national) done in the render body.
 function rankItems(items: NewsItem[]): RankedItem[] {
   return items
     .map(it => {
@@ -94,13 +95,24 @@ function rankItems(items: NewsItem[]): RankedItem[] {
     })
     .sort((a, b) => {
       if (a.substantive !== b.substantive) return a.substantive ? -1 : 1
-      if (a.regional !== b.regional) return a.regional ? -1 : 1
       return b.ts - a.ts
     })
 }
 
 const NO_ITEMS: NewsItem[] = []
-const PAGE_SIZE = 6
+const LOCAL_PAGE = 8
+const NATIONAL_PAGE = 5
+
+// Northern Plains state code → name for the local-tier header. County hints are ~0
+// in the data, so this tier is honestly region-level ("your region"), never county.
+const NP_STATE_NAMES: Record<string, string> = {
+  MT: 'Montana', ND: 'North Dakota', SD: 'South Dakota', WY: 'Wyoming', NE: 'Nebraska',
+}
+
+function localTierHeader(region: string | null): string {
+  const name = region ? NP_STATE_NAMES[region.toUpperCase()] : undefined
+  return name ? `${name} & the Northern Plains` : 'Near you'
+}
 
 function relativeTime(iso: string | null): string {
   if (!iso) return ''
@@ -143,7 +155,13 @@ function ExternalArrow() {
   )
 }
 
-function NewsCard({ item }: { item: NewsItem }) {
+function NewsCard({
+  item,
+  hideRegionalBadge = false,
+}: {
+  item: NewsItem
+  hideRegionalBadge?: boolean
+}) {
   return (
     <a
       href={item.link}
@@ -162,7 +180,7 @@ function NewsCard({ item }: { item: NewsItem }) {
       )}
       {/* Quiet meta footer — source · time, with the badge and link affordance. */}
       <div className="mt-3 flex items-center gap-2">
-        {item.regional && <NearYouBadge />}
+        {item.regional && !hideRegionalBadge && <NearYouBadge />}
         <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
           {item.source}
         </span>
@@ -181,6 +199,56 @@ function NewsCard({ item }: { item: NewsItem }) {
         </span>
       </div>
     </a>
+  )
+}
+
+// Compact row for the secondary National tier — lighter than NewsCard (no snippet,
+// smaller title, border-separated) so national visibly recedes beneath the local
+// river. Same headline-only + link-out contract.
+function NewsCardCompact({ item }: { item: NewsItem }) {
+  return (
+    <a
+      href={item.link}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-baseline justify-between gap-3 py-3"
+    >
+      <div className="min-w-0">
+        <h3 className="font-fraunces text-base font-semibold leading-snug text-forest-green group-hover:text-forest-green/80">
+          {item.title}
+        </h3>
+        <div className="mt-1 flex items-center gap-2">
+          <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
+            {item.source}
+          </span>
+          {item.pubDate && (
+            <>
+              <span className="text-forest-green/20" aria-hidden="true">
+                ·
+              </span>
+              <span className="font-dm-sans text-[11px] text-forest-green/40">
+                {relativeTime(item.pubDate)}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="mt-0.5 flex-shrink-0">
+        <ExternalArrow />
+      </span>
+    </a>
+  )
+}
+
+// Section header for a tier — title + a quiet item count.
+function TierHeader({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="mb-4 flex items-baseline gap-2">
+      <h3 className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
+        {title}
+      </h3>
+      <span className="font-dm-sans text-sm font-medium text-forest-green/40">{count}</span>
+    </div>
   )
 }
 
@@ -302,12 +370,9 @@ function FilterBar({
 export default function MarketsNews({ fips }: { fips?: string | null }) {
   const [state, setState] = useState<State>({ phase: 'loading' })
   const [filter, setFilter] = useState<FilterKey>('all')
-  const [visible, setVisible] = useState(PAGE_SIZE)
 
-  // Changing the filter resets the visible slice so a new filter starts at the top.
   const changeFilter = useCallback((key: FilterKey) => {
     setFilter(key)
-    setVisible(PAGE_SIZE)
   }, [])
 
   const load = useCallback(
@@ -337,11 +402,17 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
   // Rank the already-fetched items client-side (no refetch). NO_ITEMS is a stable
   // reference so the memo doesn't recompute while loading/erroring.
   const items = state.phase === 'ready' ? state.items : NO_ITEMS
+  const region = state.phase === 'ready' ? state.region : null
   const ranked = useMemo(() => rankItems(items), [items])
   const filtered = useMemo(
     () => (filter === 'all' ? ranked : ranked.filter(it => it.categories.has(filter))),
     [ranked, filter],
   )
+  // The tier partition: `regional` splits the filtered set into the primary local
+  // river and the secondary national tail. Each preserves the substantive→recency
+  // order from rankItems.
+  const local = useMemo(() => filtered.filter(it => it.regional), [filtered])
+  const national = useMemo(() => filtered.filter(it => !it.regional), [filtered])
   const activeLabel = FILTERS.find(f => f.key === filter)?.label ?? 'this filter'
 
   return (
@@ -368,24 +439,31 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
             {filtered.length === 0 ? (
               <FilterEmptyPanel label={activeLabel} onClear={() => changeFilter('all')} />
             ) : (
-              <>
-                <div className="space-y-4">
-                  {filtered.slice(0, visible).map(item => (
-                    <NewsCard key={item.link} item={item} />
-                  ))}
-                </div>
-                {visible < filtered.length && (
-                  <div className="mt-6 text-center">
-                    <button
-                      type="button"
-                      onClick={() => setVisible(v => v + PAGE_SIZE)}
-                      className="inline-flex items-center rounded-lg border border-forest-green/20 px-5 py-2.5 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
-                    >
-                      Load more
-                    </button>
+              <div className="space-y-10">
+                {/* TIER 1 — LOCAL: the primary river (full cards, no per-item badge). */}
+                {local.length > 0 && (
+                  <div>
+                    <TierHeader title={localTierHeader(region)} count={local.length} />
+                    <div className="space-y-4">
+                      {local.slice(0, LOCAL_PAGE).map(item => (
+                        <NewsCard key={item.link} item={item} hideRegionalBadge />
+                      ))}
+                    </div>
                   </div>
                 )}
-              </>
+
+                {/* TIER 2 — NATIONAL: the compact, capped tail. */}
+                {national.length > 0 && (
+                  <div>
+                    <TierHeader title="National" count={national.length} />
+                    <div className="divide-y divide-forest-green/10 border-t border-forest-green/10">
+                      {national.slice(0, NATIONAL_PAGE).map(item => (
+                        <NewsCardCompact key={item.link} item={item} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </>
         ))}
