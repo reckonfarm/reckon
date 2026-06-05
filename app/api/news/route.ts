@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase'
 import {
   NEWS_SOURCES,
   KEYWORDS,
+  NORTHERN_PLAINS,
   boostTermsForState,
   isRegionalSourceForState,
   type NewsSource,
@@ -239,6 +240,112 @@ async function fetchFeed(
   } finally {
     clearTimeout(timeout)
   }
+}
+
+// ─── table read path (Slice 1) ────────────────────────────────────────────────
+// Reads the pre-tagged snapshot rows (written off-Vercel by the news-snapshot cron,
+// covering the full tagged feed set — richer than the 3 live-fetch sources) and
+// shapes them into the EXACT same response the live-fetch path produces, so the UI
+// renders unchanged. The `regional` "Near you" flag is recomputed per request from
+// the visitor's state (it is visitor-specific and never stored). Returns null when
+// the table is empty or the read errors — the caller then falls back to live-fetch.
+
+const TABLE_READ_LIMIT = 150
+
+interface NewsRow {
+  title: string
+  link: string
+  pub_date: string | null
+  source: string
+  source_id: string
+  scope: string
+  state: string | null
+  snippet: string | null
+  ts: number | string | null
+}
+
+// Recompute the per-visitor "Near you" flag from a stored row, mirroring the live
+// path's source-level + text-level logic (with NORTHERN_PLAINS sister-state
+// expansion). Stored scope/state stand in for the live path's regionStates.
+function rowRegional(row: NewsRow, state: string | null, boostTerms: string[]): boolean {
+  const text = `${row.title} ${row.snippet ?? ''}`.toLowerCase()
+  if (boostTerms.length > 0 && boostTerms.some(t => text.includes(t))) return true
+  if (!state) return false
+  const code = state.toUpperCase()
+  if (row.scope === 'national') return false
+  if (row.scope === 'regional') return NORTHERN_PLAINS.has(code) // NP regional papers
+  if (row.scope === 'state' && row.state) {
+    const rs = row.state.toUpperCase()
+    return rs === code || (NORTHERN_PLAINS.has(rs) && NORTHERN_PLAINS.has(code))
+  }
+  return false
+}
+
+async function readNewsFromTable(
+  state: string | null,
+  boostTerms: string[],
+): Promise<{ items: NewsItem[]; sources: SourceStatus[] } | null> {
+  let rows: NewsRow[]
+  try {
+    const db = createServiceClient()
+    const { data, error } = await db
+      .from('news_items')
+      .select('title, link, pub_date, source, source_id, scope, state, snippet, ts')
+      .order('ts', { ascending: false })
+      .limit(TABLE_READ_LIMIT)
+    if (error) return null
+    rows = (data ?? []) as NewsRow[]
+  } catch {
+    return null
+  }
+  if (rows.length === 0) return null
+
+  const mapped: NewsItem[] = rows.map(r => ({
+    title: r.title,
+    link: r.link,
+    // Normalize to the same ISO ("…Z") form the live path emits → byte-identical field.
+    pubDate: r.pub_date ? new Date(r.pub_date).toISOString() : null,
+    source: r.source,
+    sourceId: r.source_id,
+    // Contract's scope union is national|regional; state-tier rows collapse to
+    // 'regional' (the UI ignores `scope`; the `regional` boolean drives "Near you").
+    scope: r.scope === 'national' ? 'national' : 'regional',
+    snippet: r.snippet ?? '',
+    regional: rowRegional(r, state, boostTerms),
+    ts: Number(r.ts ?? 0),
+  }))
+
+  // Same ordering + dedup as the live path: regional-first, then recency.
+  mapped.sort((a, b) => {
+    if (a.regional !== b.regional) return a.regional ? -1 : 1
+    return b.ts - a.ts
+  })
+  const seen = new Set<string>()
+  const items: NewsItem[] = []
+  for (const it of mapped) {
+    const key = normalizeTitle(it.title)
+    const lk = linkKey(it.link)
+    if (seen.has(key) || seen.has(lk)) continue
+    seen.add(key)
+    seen.add(lk)
+    items.push(it)
+  }
+
+  // Synthesize the diagnostic `sources` array (kept for shape parity; UI ignores it).
+  const counts = new Map<string, { name: string; count: number }>()
+  for (const it of items) {
+    const c = counts.get(it.sourceId)
+    if (c) c.count++
+    else counts.set(it.sourceId, { name: it.source, count: 1 })
+  }
+  const sources: SourceStatus[] = [...counts.entries()].map(([id, v]) => ({
+    id,
+    name: v.name,
+    ok: true,
+    count: v.count,
+  }))
+
+  return { items, sources }
 }
 
 export async function GET(request: NextRequest) {
