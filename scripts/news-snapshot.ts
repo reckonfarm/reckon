@@ -45,12 +45,17 @@ const FEEDS: Feed[] = [
   { id: 'western-ag', name: 'Western Ag Reporter', url: 'https://www.westernagreporter.com/feed/', scope: 'regional', states: ['MT', 'WY', 'ND', 'SD'] },
   { id: 'northern-ag', name: 'Northern Ag Network', url: 'https://www.northernag.net/feed/', scope: 'regional', states: ['MT', 'WY', 'ND', 'SD'] },
   { id: 'agweek', name: 'Agweek', url: 'https://www.agweek.com/index.rss', scope: 'regional', states: ['ND', 'SD', 'MT', 'MN'] },
-  // ── state (single-state; trusted) ──
+  // ── state (single-state; trusted, so they MUST be genuinely editorial) ──
   { id: 'mt-stockgrowers', name: 'Montana Stockgrowers', url: 'https://mtbeef.org/feed/', scope: 'state', states: ['MT'] },
-  { id: 'nd-ag', name: 'North Dakota Dept of Agriculture', url: 'https://www.nd.gov/ndda/rss.xml', scope: 'state', states: ['ND'] },
-  { id: 'ne-ag', name: 'Nebraska Dept of Agriculture', url: 'https://nda.nebraska.gov/rss.xml', scope: 'state', states: ['NE'] },
   { id: 'unl-cropwatch', name: 'UNL CropWatch', url: 'https://cropwatch.unl.edu/rss.xml', scope: 'state', states: ['NE'] },
   { id: 'unl-ianr', name: 'UNL IANR News', url: 'https://ianrnews.unl.edu/rss.xml', scope: 'state', states: ['NE'] },
+  // DROPPED (recon false positives — HTTP 200 + fresh dates, but the CONTENT is not
+  // ag news, and state feeds are trusted/ungated so the junk would flow straight in):
+  //   • North Dakota Dept of Ag (nd.gov/ndda/rss.xml) — a statewide JOBS board
+  //     (Director of Nursing, Parole Officer, Custodian), not news.
+  //   • Nebraska Dept of Ag (nda.nebraska.gov/rss.xml) — animal-IMPORT permit
+  //     notices ("Show Cattle for New Mexico"), reference data, not news.
+  // Both verified via --dry-run. No usable news RSS found for either dept.
 ]
 
 const FEED_TIMEOUT_MS = 10000
