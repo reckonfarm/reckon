@@ -262,9 +262,9 @@ type FilterKey = 'all' | Category
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'markets', label: 'Markets' },
-  { key: 'drought', label: 'Drought' },
-  { key: 'ranching', label: 'Ranching' },
+  { key: 'markets', label: 'Prices' },
+  { key: 'drought', label: 'Conditions' },
+  { key: 'ranching', label: 'Herd' },
 ]
 
 function FilterBar({
@@ -349,10 +349,10 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
           <h2 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-            Cattle Country News
+            Cattle Country
           </h2>
           <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
-            The latest from across the beef, hay and ranch headlines
+            The headlines moving cattle, hay, and ranch markets.
           </p>
         </div>
       </div>
