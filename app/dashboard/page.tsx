@@ -28,8 +28,6 @@ import DashboardAccordion from './components/DashboardAccordion'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import MarketsNews from '@/app/components/MarketsNews'
-import MarketsComingSoon from '@/app/components/MarketsComingSoon'
-import { createClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -163,15 +161,6 @@ export default async function DashboardPage({
   // My Operation defaults to the Market News view; Drought is opt-in via &view=drought.
   const view: 'news' | 'drought' = viewParam === 'drought' ? 'drought' : 'news'
   const db = createServiceClient()
-
-  // Sign-in only powers the News view's demand tiles — never throws, never redirects.
-  let signedIn = false
-  try {
-    const supabase = await createClient()
-    signedIn = Boolean((await supabase.auth.getUser()).data.user)
-  } catch {
-    signedIn = false
-  }
 
   // ── National view data (always fetched) ─────────────────────────────────────
   const { data: nationalMapRow } = await db
@@ -471,10 +460,7 @@ export default async function DashboardPage({
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
             {view === 'news' && (
-              <>
-                <MarketsNews fips={selectedCounty.fips} />
-                <MarketsComingSoon signedIn={signedIn} />
-              </>
+              <MarketsNews fips={selectedCounty.fips} />
             )}
 
             {view === 'drought' && (
