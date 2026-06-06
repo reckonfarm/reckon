@@ -104,7 +104,7 @@ function rankItems(items: NewsItem[]): RankedItem[] {
 // (TSLN/Agweek batch-publish and dominate the freshest). Only the lead window is
 // reordered; everything past it stays in recency order. Items bumped from the lead
 // fall in right after it (still recency-ordered), so nothing is lost.
-const LEAD_WINDOW = 6
+const LEAD_WINDOW = 4
 const LEAD_MAX_PER_SOURCE = 2
 
 function diversifyLead(items: RankedItem[]): RankedItem[] {
@@ -135,7 +135,7 @@ function diversifyLead(items: RankedItem[]): RankedItem[] {
 }
 
 const NO_ITEMS: NewsItem[] = []
-const LOCAL_PAGE = 8
+const LOCAL_PAGE = 4
 const NATIONAL_PAGE = 5
 
 // Northern Plains state code → name for the local-tier header. County hints are ~0
