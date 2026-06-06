@@ -12,8 +12,13 @@ export default function Error({
     <div className="min-h-screen bg-cream flex flex-col">
       <header className="border-b border-forest-green/10">
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
-          <Link href="/" className="font-fraunces text-2xl font-bold text-forest-green hover:opacity-80 transition-opacity">
-            Dryline
+          <Link href="/" className="flex flex-col leading-tight hover:opacity-80 transition-opacity">
+            <span className="font-fraunces text-2xl font-bold text-forest-green">
+              Dryline
+            </span>
+            <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
+              Ranch Intelligence for Cattle Country
+            </span>
           </Link>
         </div>
       </header>
