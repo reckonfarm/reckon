@@ -97,8 +97,10 @@ export const usdm: VectorLayer = {
 
 const ALERT_RED = '#DC2626'
 
+// interactive:true so the polygons receive taps → the clickInfo popup (below). USDM's
+// usdmStyle stays interactive:false (no popup), so they don't share this behaviour.
 function alertsStyle(): PathOptions {
-  return { color: ALERT_RED, weight: 2, fillColor: ALERT_RED, fillOpacity: 0.08, opacity: 0.9, interactive: false }
+  return { color: ALERT_RED, weight: 2, fillColor: ALERT_RED, fillOpacity: 0.08, opacity: 0.9, interactive: true }
 }
 
 export const alerts: VectorLayer = {
@@ -114,6 +116,15 @@ export const alerts: VectorLayer = {
   emptyNote:     'No active alerts',
   legend: [{ color: ALERT_RED, label: 'Active warning / advisory' }],
   style: alertsStyle,
+  // Tap-to-identify: event name + NWS headline (+ area). The renderer binds a popup
+  // ONLY when a layer has clickInfo — USDM has none, so it stays popup-free.
+  clickInfo: feature => {
+    const p = (feature.properties ?? {}) as { event?: string; headline?: string; areaDesc?: string }
+    return {
+      title: p.event ?? 'Active alert',
+      body:  [p.headline, p.areaDesc].filter(Boolean).join(' · ') || undefined,
+    }
+  },
 }
 
 export const LAYERS: LayerDefinition[] = [usdm, alerts]

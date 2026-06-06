@@ -21,6 +21,12 @@ function fmtEpoch(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Defensive HTML-escape for popup text (NWS event/headline is plain text, but escape so
+// no upstream content can inject markup into the Leaflet popup).
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
+}
+
 // Per-endpoint cache so toggling away to an outlook image and back doesn't re-fetch /
 // re-flash the (national, county-independent) vector data. Keyed by endpoint.
 const layerCache = new Map<string, { geo: FeatureCollection; asOfMs: number | null }>()
@@ -139,7 +145,22 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {status === 'ok' && geo && <GeoJSON key={asOfMs ?? layer.id} data={geo} style={layer.style} />}
+        {status === 'ok' && geo && (
+          <GeoJSON
+            key={asOfMs ?? layer.id}
+            data={geo}
+            style={layer.style}
+            onEachFeature={(feature, lyr) => {
+              // Tap-to-identify, ALERTS-SCOPED: bind a popup only for layers that define
+              // clickInfo (alerts). USDM has no clickInfo → this no-ops, no behaviour change.
+              if (!layer.clickInfo) return
+              const { title, body } = layer.clickInfo(feature)
+              lyr.bindPopup(
+                `<strong>${escapeHtml(title)}</strong>${body ? `<br><span>${escapeHtml(body)}</span>` : ''}`,
+              )
+            }}
+          />
+        )}
       </MapContainer>
       <LegendCard layer={layer} status={status} asOf={asOf} count={geo?.features.length ?? 0} />
     </div>
