@@ -46,7 +46,24 @@ export interface ImageLayer extends BaseLayer {
   opacity?: number
 }
 
-export type LayerDefinition = VectorLayer | TileLayer | ImageLayer
+// Animated raster RADAR layer (RainViewer). Structurally different from the vector
+// layers: it's a Leaflet TileLayer cycling timestamped frames, not GeoJSON. ALL the
+// provider knobs live here as explicit config — the swap point for a future custom
+// renderer (change this def, not the map component).
+export interface RadarLayer extends BaseLayer {
+  type:            'radar'                 // proxy returns { host, frames:[{time,path}] }
+  tileUrlTemplate: string                  // {host}{path}/{size}/{z}/{x}/{y}/{palette}/{smooth}_{snow}.png
+  palette:         number                  // RainViewer color scheme (6 = NEXRAD, NWS-style)
+  size:            256 | 512
+  smooth:          0 | 1
+  snow:            0 | 1
+  opacity:         number                  // drawn ABOVE the base map
+  frameCount:      number                  // how many recent frames the loop uses (cab-tunable)
+  loopSpeedMs:     number                  // ms per frame while playing
+  defaultMode:     'latest' | 'loop'       // 'latest' = open on newest frame only (light for 3G)
+}
+
+export type LayerDefinition = VectorLayer | TileLayer | ImageLayer | RadarLayer
 
 // Per-render, county-dynamic extras keyed by layer id, injected by the page (e.g. the
 // USDM static-image fallback URL, which is computed server-side per county).
@@ -127,4 +144,36 @@ export const alerts: VectorLayer = {
   },
 }
 
-export const LAYERS: LayerDefinition[] = [usdm, alerts]
+// ─── RainViewer radar — the default map layer ──────────────────────────────────
+// NEXRAD palette (NWS-style), 65% opacity over the base. Opens on the latest frame
+// (one tile-set, light for 3G); a play control loops the recent frames on demand.
+
+export const radar: RadarLayer = {
+  id:              'radar',
+  label:           'Radar',
+  category:        'water',
+  type:            'radar',
+  endpoint:        '/api/layers/radar',     // frame-list proxy (host + timestamped frames)
+  attribution:     'RainViewer Radar',
+  loadingNote:     'Loading radar…',
+  failure:         { note: 'Radar temporarily unavailable' },
+  legend: [
+    { color: '#fd0000', label: 'Intense' },
+    { color: '#fdf802', label: 'Heavy' },
+    { color: '#02fd02', label: 'Moderate' },
+    { color: '#04e9e7', label: 'Light' },
+  ],
+  tileUrlTemplate: '{host}{path}/{size}/{z}/{x}/{y}/{palette}/{smooth}_{snow}.png',
+  palette:         6,      // NEXRAD Level III
+  size:            256,
+  smooth:          1,
+  snow:            1,
+  opacity:         0.65,
+  frameCount:      10,
+  loopSpeedMs:     500,
+  defaultMode:     'latest',
+}
+
+// Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector
+// layers (USDM, alerts) and the outlook images stay as switchable tabs after it.
+export const LAYERS: LayerDefinition[] = [radar, usdm, alerts]

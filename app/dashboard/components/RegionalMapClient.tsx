@@ -5,7 +5,7 @@ import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import OfficialMap, { type OfficialMapRecord } from './OfficialMap'
-import { LAYERS, type VectorLayer, type LayerRuntime } from './layers'
+import { LAYERS, type VectorLayer, type RadarLayer, type LayerRuntime } from './layers'
 
 // ─── Regional map — registry-driven (layer-platform STEP 1) ────────────────────
 // Renders the active layer GENERICALLY from the registry (./layers.ts). Map layers
@@ -167,6 +167,99 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
   )
 }
 
+// ─── Animated RADAR layer renderer (RainViewer) ────────────────────────────────
+// Structurally separate from VectorLayerView: a Leaflet TileLayer cycling timestamped
+// frames over the base map (no GeoJSON). Opens on the LATEST frame only (one tile-set,
+// light for 3G); a play control loops the recent frames on demand. All provider knobs
+// come from the RadarLayer def (the swap point). Honest-degraded: a failed frame-list
+// fetch shows "temporarily unavailable" with the base map still live — never a stale
+// frame labelled current.
+interface RadarFrame { time: number; path: string }
+
+function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [number, number]; zoom: number }) {
+  const [host, setHost]     = useState<string | null>(null)
+  const [frames, setFrames] = useState<RadarFrame[]>([])
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
+  const [idx, setIdx]       = useState(0)         // active frame
+  const [playing, setPlaying] = useState(layer.defaultMode === 'loop')
+
+  // Fetch the frame list; open on the LATEST frame (no auto-loop unless defaultMode says).
+  useEffect(() => {
+    let cancelled = false
+    fetch(layer.endpoint)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
+      .then((d: { host?: string; frames?: RadarFrame[]; error?: boolean }) => {
+        if (cancelled) return
+        if (d.error || !d.host || !Array.isArray(d.frames) || d.frames.length === 0) { setStatus('error'); return }
+        const recent = d.frames.slice(-layer.frameCount)           // most-recent N
+        setHost(d.host); setFrames(recent); setIdx(recent.length - 1); setStatus('ok')   // latest
+      })
+      .catch(() => { if (!cancelled) setStatus('error') })
+    return () => { cancelled = true }
+  }, [layer.endpoint, layer.frameCount])
+
+  // Loop only while playing — advances the frame; tiles fetch on demand.
+  useEffect(() => {
+    if (!playing || frames.length < 2) return
+    const t = setInterval(() => setIdx(i => (i + 1) % frames.length), layer.loopSpeedMs)
+    return () => clearInterval(t)
+  }, [playing, frames.length, layer.loopSpeedMs])
+
+  const frame = frames[idx]
+  const tileUrl = host && frame
+    ? layer.tileUrlTemplate
+        .replace('{host}', host).replace('{path}', frame.path)
+        .replace('{size}', String(layer.size))
+        .replace('{palette}', String(layer.palette))
+        .replace('{smooth}', String(layer.smooth)).replace('{snow}', String(layer.snow))
+    : null   // {z}/{x}/{y} are left for Leaflet to fill
+  const asOf = frame ? new Date(frame.time * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
+
+  return (
+    <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
+      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {status === 'ok' && tileUrl && <TileLayer url={tileUrl} opacity={layer.opacity} zIndex={500} />}
+      </MapContainer>
+
+      {/* Play/pause (only when there's a loop to run). */}
+      {status === 'ok' && frames.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setPlaying(p => !p)}
+          aria-pressed={playing}
+          className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs font-semibold text-forest-green shadow-sm hover:bg-white"
+        >
+          {playing ? '❚❚ Pause' : '▶ Play'}
+        </button>
+      )}
+
+      {/* Legend + staleness ("Radar as of HH:MM") / honest-degraded note. */}
+      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
+        <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
+        <div className="mb-1.5 text-[10px] text-forest-green/50">
+          {status === 'loading'
+            ? (layer.loadingNote ?? 'Loading…')
+            : status === 'error'
+              ? <span style={{ color: RUST }}>{layer.failure.note}</span>
+              : asOf
+                ? `Radar as of ${asOf}`
+                : ''}
+        </div>
+        {layer.legend.map(({ color, label }) => (
+          <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
+            {label}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function RegionalMapClient({ center, countyLabel, monthlyMap, seasonalMap, runtime = {} }: RegionalMapClientProps) {
   const [tab, setTab] = useState<string>(LAYERS[0]?.id ?? 'usdm')
   const mapCenter = center ?? CONUS
@@ -199,11 +292,15 @@ export default function RegionalMapClient({ center, countyLabel, monthlyMap, sea
         ))}
       </div>
 
-      {activeLayer && activeLayer.type === 'vector' ? (
+      {activeLayer?.type === 'vector' ? (
         // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
         // fresh on a layer OR county change — geo/status re-init per layer from the
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
         <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} />
+      ) : activeLayer?.type === 'radar' ? (
+        // NEW additive branch — animated radar tiles. The vector + OfficialMap branches
+        // are unchanged.
+        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} />
       ) : (
         <OfficialMap
           map={tab === 'monthly' ? monthlyMap : seasonalMap}
