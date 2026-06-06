@@ -38,6 +38,7 @@ export default function DroughtCattleToggle({
   const seg = (href: string, label: string, isActive: boolean) => (
     <Link
       href={href}
+      scroll={false}
       aria-current={isActive ? 'page' : undefined}
       className={[
         'flex-1 rounded-md px-4 py-1.5 text-center font-dm-sans text-sm font-medium transition-colors',
