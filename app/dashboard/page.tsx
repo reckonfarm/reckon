@@ -566,6 +566,26 @@ export default async function DashboardPage({
             {view === 'drought' && (
               <>
 
+            {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
+
+            {/* Regional conditions map — the lead canvas of the Weather view. Client-only
+                (ssr:false) with its own "Loading map…" skeleton, so it never blocks the
+                view's server paint; same drought-view props, already computed above. */}
+            <RegionalMapLoader
+              center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
+              countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+              monthlyMap={cpcMonthlyMap}
+              seasonalMap={cpcSeasonalMap}
+              runtime={{
+                usdm: {
+                  fallbackImage: {
+                    url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
+                    sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+                  },
+                },
+              }}
+            />
+
             {/* LAYER 1 — The answer */}
             {lfpResult && lfpResult.maxTier >= 1 && (
               <TriggeredBanner
@@ -690,26 +710,6 @@ export default async function DashboardPage({
                       <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
                       <DroughtTrendChart history={history} countyName={selectedCounty.name} />
                     </div>
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Regional context"
-                    preview="Interactive drought map + CPC outlooks"
-                  >
-                    <RegionalMapLoader
-                      center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
-                      countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-                      monthlyMap={cpcMonthlyMap}
-                      seasonalMap={cpcSeasonalMap}
-                      runtime={{
-                        usdm: {
-                          fallbackImage: {
-                            url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
-                            sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
-                          },
-                        },
-                      }}
-                    />
                   </DashboardAccordion>
 
                 </div>

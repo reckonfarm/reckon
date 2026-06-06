@@ -54,7 +54,10 @@ export default function DroughtCattleToggle({
     <div className="flex w-full rounded-lg border border-forest-green/15 bg-white p-0.5">
       <style>{`@keyframes dlToggleSpin{to{transform:rotate(360deg)}}.dl-toggle-spin{animation:dlToggleSpin .6s linear infinite}`}</style>
       {seg(`/dashboard?fips=${fips}`, 'News', active === 'news')}
-      {seg(`/dashboard?fips=${fips}&view=drought`, 'Drought', active === 'drought')}
+      {/* Label is "Weather" but the URL value / branch key stays 'drought' — the
+          label↔key mismatch is deliberate (renaming the value would break deep links,
+          the heavy-fetch gate, and the auth redirect). */}
+      {seg(`/dashboard?fips=${fips}&view=drought`, 'Weather', active === 'drought')}
     </div>
   )
 }
