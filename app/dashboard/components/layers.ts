@@ -171,8 +171,8 @@ export const radar: RadarLayer = {
   snow:            1,
   opacity:         0.65,
   frameCount:      13,     // RainViewer's full past set (~2h of 10-min frames)
-  loopSpeedMs:     650,    // cadence that feels smooth once the cross-fades overlap
-  fadeMs:          280,    // cross-fade between outgoing/incoming frame (< loopSpeedMs)
+  loopSpeedMs:     450,    // cadence that feels smooth once the cross-fades overlap
+  fadeMs:          200,    // cross-fade between outgoing/incoming frame (< loopSpeedMs)
   defaultMode:     'latest',
 }
 
