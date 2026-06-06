@@ -572,6 +572,7 @@ export default async function DashboardPage({
                 (ssr:false) with its own "Loading map…" skeleton, so it never blocks the
                 view's server paint; same drought-view props, already computed above. */}
             <RegionalMapLoader
+              fips={selectedCounty.fips}
               center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
               countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
               monthlyMap={cpcMonthlyMap}

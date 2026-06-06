@@ -35,6 +35,9 @@ const layerCache = new Map<string, { geo: FeatureCollection; asOfMs: number | nu
 export interface RegionalMapClientProps {
   center:      [number, number] | null
   countyLabel: string
+  // Selected county FIPS (5-char zero-padded, matches the grid's GEOID) — highlights that
+  // county in the base grid. Optional: national/no-county view passes none → uniform grid.
+  fips?:       string
   monthlyMap:  OfficialMapRecord | null
   seasonalMap: OfficialMapRecord | null
   // Per-layer, county-dynamic extras keyed by layer id (e.g. USDM's static-image fallback).
@@ -90,7 +93,7 @@ const COUNTY_LINES_SRC = '/geo/cattle-belt-counties.json'
 // (static, county-independent) grid.
 let countyGeoCache: FeatureCollection | null = null
 
-function CountyLines() {
+function CountyLines({ selectedFips }: { selectedFips?: string }) {
   const [geo, setGeo] = useState<FeatureCollection | null>(countyGeoCache)
   // Per-instance canvas renderer (a renderer binds to one map; only one map is mounted
   // at a time, but each CountyLines gets its own to be safe).
@@ -111,22 +114,33 @@ function CountyLines() {
   }, [])
 
   if (!geo) return null
+  // Per-feature style: the SELECTED county (GEOID === selectedFips, both 5-char zero-padded
+  // strings — no normalization) draws a heavier near-black outline so the rancher finds it
+  // at a glance; every other county keeps the thin gray grid. Still stroke-only and
+  // interactive:false (no fill to fight the data, never eats an alert tap). The closure is
+  // a fresh reference each render, so on a county change react-leaflet's GeoJSON re-applies
+  // it via setStyle — no key bump, no re-fetch (the cached `data` ref is unchanged).
   return (
     <GeoJSON
       data={geo}
       interactive={false}
-      style={() => ({ color: '#9ca3af', weight: 0.5, opacity: 0.5, fill: false, interactive: false, renderer })}
+      style={(feature) =>
+        feature?.properties?.GEOID === selectedFips
+          ? { color: '#1f2937', weight: 1.75, opacity: 0.9, fill: false, interactive: false, renderer }
+          : { color: '#9ca3af', weight: 0.5,  opacity: 0.5, fill: false, interactive: false, renderer }
+      }
     />
   )
 }
 
 // Generic VECTOR layer renderer — fetches the layer's proxy (GeoJSON + asOf) and draws it.
-function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
-  layer:       VectorLayer
-  runtime?:    LayerRuntime
-  center:      [number, number]
-  zoom:        number
-  countyLabel: string
+function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFips }: {
+  layer:        VectorLayer
+  runtime?:     LayerRuntime
+  center:       [number, number]
+  zoom:         number
+  countyLabel:  string
+  selectedFips?: string
 }) {
   // County-dynamic endpoint (e.g. alerts ?area=ST) is injected via runtime; layers
   // without one (USDM) fall back to their static registry endpoint, unchanged.
@@ -191,7 +205,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
     <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
       <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
         {/* County base grid FIRST → bottom of the overlay stack, under the data layer. */}
-        <CountyLines />
+        <CountyLines selectedFips={selectedFips} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -231,7 +245,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
 // frame labelled current.
 interface RadarFrame { time: number; path: string }
 
-function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [number, number]; zoom: number }) {
+function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLayer; center: [number, number]; zoom: number; selectedFips?: string }) {
   const [host, setHost]       = useState<string | null>(null)
   const [frames, setFrames]   = useState<RadarFrame[]>([])
   const [status, setStatus]   = useState<'loading' | 'ok' | 'error'>('loading')
@@ -319,7 +333,7 @@ function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [n
       <style dangerouslySetInnerHTML={{ __html: `.leaflet-radar-fade{transition:opacity ${layer.fadeMs}ms linear;}` }} />
       <MapContainer ref={mapRef} center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
         {/* County base grid on the RADAR default view too — sits under the radar tiles. */}
-        <CountyLines />
+        <CountyLines selectedFips={selectedFips} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -372,7 +386,7 @@ function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [n
   )
 }
 
-export default function RegionalMapClient({ center, countyLabel, monthlyMap, seasonalMap, runtime = {} }: RegionalMapClientProps) {
+export default function RegionalMapClient({ center, countyLabel, fips, monthlyMap, seasonalMap, runtime = {} }: RegionalMapClientProps) {
   const [tab, setTab] = useState<string>(LAYERS[0]?.id ?? 'usdm')
   const mapCenter = center ?? CONUS
   const mapZoom   = center ? 6 : 4
@@ -408,11 +422,11 @@ export default function RegionalMapClient({ center, countyLabel, monthlyMap, sea
         // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
         // fresh on a layer OR county change — geo/status re-init per layer from the
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
-        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} />
+        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
       ) : activeLayer?.type === 'radar' ? (
         // NEW additive branch — animated radar tiles. The vector + OfficialMap branches
         // are unchanged.
-        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} />
+        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
       ) : (
         <OfficialMap
           map={tab === 'monthly' ? monthlyMap : seasonalMap}
