@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
@@ -112,6 +113,40 @@ function formatDate(iso: string) {
   })
 }
 
+// ─── Rainfall unit (streamed behind Suspense) ────────────────────────────────────
+// The ACIS rainfall fetch can be slow on a cold cache, so it resolves INSIDE a Suspense
+// boundary — the page shell, the news feed, and the Latest Reading card paint
+// immediately while this streams in. RainfallPanelAsync awaits the precip promise
+// server-side and hands the resolved value to the client PrecipVsNormalPanel, which
+// renders every state honestly (data / no-station / 'data_unavailable' / null) — so a
+// slow or failed ACIS shows skeleton → "temporarily unavailable", never a false zero.
+async function RainfallPanelAsync({
+  dataPromise,
+  countyName,
+}: {
+  dataPromise: Promise<PrecipNormalResult>
+  countyName: string
+}) {
+  const data = await dataPromise
+  return <PrecipVsNormalPanel data={data} countyName={countyName} />
+}
+
+// Quiet on-brand placeholder while the panel streams (animate-pulse is disabled in
+// this project's @theme, so it uses a scoped keyframe).
+function RainfallPanelSkeleton() {
+  return (
+    <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm sm:p-6" aria-hidden="true">
+      <style>{`@keyframes dlRainShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-rain-skel{animation:dlRainShimmer 1.4s ease-in-out infinite}`}</style>
+      <div className="dl-rain-skel h-40 w-full rounded-lg bg-forest-green/5" />
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
+        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
+        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export async function generateMetadata({
@@ -197,32 +232,33 @@ export default async function DashboardPage({
   let lfpResult: LfpEligibilityResult | null          = null
   let priorYearLfpResult: LfpEligibilityResult | null = null
   let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
-  let precipNormal: PrecipNormalResult              = null
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
   let hayPrimaryVariety: string | null              = null
   let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
-  // Always-fetched chrome data (independent of which view is open): the cheap latest
-  // drought reading (drives the shared Share label + heading) AND the ACIS rainfall-
-  // vs-normal series. Precip is lifted here (from the Drought-only block) so the
-  // Rainfall unit can render in always-on chrome on both views. Run CONCURRENTLY via
-  // Promise.all — the slow ACIS call overlaps the cheap DB read, so this is max(db,
-  // acis), never additive. getPrecipNormal keeps its own 9s deadline / 24h cache /
-  // 'data_unavailable' honest-failure — unchanged.
+  // Rainfall (ACIS) is held as a PROMISE and resolved behind a <Suspense> boundary in
+  // the chrome (RainfallPanelAsync below) so it NEVER blocks the page's server render —
+  // the feed and Latest Reading paint immediately; the rainfall panel streams in. The
+  // call still starts here (concurrent with the cheap `latest` query). A rejection
+  // degrades to the honest 'data_unavailable' state — never a crash, never a false
+  // deficit. getPrecipNormal owns its own 9s deadline / 24h cache / honest-failure.
+  const precipPromise: Promise<PrecipNormalResult> = selectedCounty
+    ? getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon)
+        .catch(() => 'data_unavailable' as const)
+    : Promise.resolve(null)
+
+  // Cheap latest reading — always awaited (drives the shared Share label + heading and
+  // the Latest Reading chrome card), independent of which view is open.
   if (selectedCounty) {
-    const [latestRes, precipNormalRes] = await Promise.all([
-      db
-        .from('drought_data')
-        .select('week_date, d0, d1, d2, d3, d4')
-        .eq('county_id', selectedCounty.id)
-        .order('week_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
-    ])
-    latest = latestRes.data as DroughtReading | null
-    precipNormal = precipNormalRes
+    const { data: latestRow } = await db
+      .from('drought_data')
+      .select('week_date, d0, d1, d2, d3, d4')
+      .eq('county_id', selectedCounty.id)
+      .order('week_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    latest = latestRow as DroughtReading | null
   }
 
   // Heavy ranch-view data only when the Drought view is open — keeps News fast and
@@ -511,6 +547,15 @@ export default async function DashboardPage({
               </div>
             )}
 
+            {/* Rainfall vs normal — persistent chrome, both views. Streamed behind a
+                Suspense boundary so the slow ACIS call never blocks the page render. */}
+            <div>
+              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
+              <Suspense fallback={<RainfallPanelSkeleton />}>
+                <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
+              </Suspense>
+            </div>
+
             {/* Peer-view toggle — Market News ↔ Drought (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
@@ -635,16 +680,6 @@ export default async function DashboardPage({
                         countyName={selectedCounty.name}
                       />
                     ) : null}
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Conditions & rainfall"
-                    preview="Latest USDM reading + rainfall vs normal"
-                  >
-                    <div className="mt-6">
-                      <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
-                      <PrecipVsNormalPanel data={precipNormal} countyName={selectedCounty.name} />
-                    </div>
                   </DashboardAccordion>
 
                   <DashboardAccordion
