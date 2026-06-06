@@ -27,6 +27,11 @@ export interface VectorLayer extends BaseLayer {
   style:      (feature?: Feature) => PathOptions
   clickInfo?: (feature: Feature) => { title: string; body?: string }
   asOfFrom?:  (geo: FeatureCollection & { releaseDate?: number }) => number | null
+  // When true, an empty result (features:[] with error:false) is a GOOD, honest state
+  // — render `emptyNote` ("No active alerts"), NOT the failure note. Layers WITHOUT
+  // this flag (e.g. USDM) keep treating empty as an error, unchanged.
+  emptyIsHonest?: boolean
+  emptyNote?:     string
 }
 
 export interface TileLayer extends BaseLayer {
@@ -47,6 +52,9 @@ export type LayerDefinition = VectorLayer | TileLayer | ImageLayer
 // USDM static-image fallback URL, which is computed server-side per county).
 export interface LayerRuntime {
   fallbackImage?: { url: string | null; sourceUrl: string }
+  // Per-county dynamic endpoint override (the registry `endpoint` is a static string;
+  // alerts need ?area=ST). When present, the renderer fetches this instead.
+  endpoint?: string
 }
 
 // ─── USDM — the first registry layer (official D0–D4 palette) ──────────────────
@@ -81,4 +89,31 @@ export const usdm: VectorLayer = {
   asOfFrom: geo => geo.releaseDate ?? null,
 }
 
-export const LAYERS: LayerDefinition[] = [usdm]
+// ─── NWS active alerts — the hazard vector layer ───────────────────────────────
+// Single warning-red stroke with a faint fill so it reads as a warning OUTLINE on
+// top of (and distinct from) the filled drought palette. County-dynamic: the real
+// endpoint (?area=ST) is injected via LayerRuntime per render. Honest-empty: a quiet
+// day shows "No active alerts", never a false "unavailable" (see the proxy + renderer).
+
+const ALERT_RED = '#DC2626'
+
+function alertsStyle(): PathOptions {
+  return { color: ALERT_RED, weight: 2, fillColor: ALERT_RED, fillOpacity: 0.08, opacity: 0.9, interactive: false }
+}
+
+export const alerts: VectorLayer = {
+  id:            'alerts',
+  label:         'Alerts',
+  category:      'hazard',
+  type:          'vector',
+  endpoint:      '/api/layers/alerts', // static default; the per-county ?area=ST comes via runtime
+  attribution:   'NWS Active Alerts',
+  loadingNote:   'Loading alerts…',
+  failure:       { note: 'Alerts temporarily unavailable' },
+  emptyIsHonest: true,
+  emptyNote:     'No active alerts',
+  legend: [{ color: ALERT_RED, label: 'Active warning / advisory' }],
+  style: alertsStyle,
+}
+
+export const LAYERS: LayerDefinition[] = [usdm, alerts]

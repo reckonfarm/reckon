@@ -583,6 +583,8 @@ export default async function DashboardPage({
                     sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
                   },
                 },
+                // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
+                alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
               }}
             />
 

@@ -34,20 +34,27 @@ export interface RegionalMapClientProps {
   runtime?:    Record<string, LayerRuntime>
 }
 
-type Status = 'loading' | 'ok' | 'error'
+type Status = 'loading' | 'ok' | 'empty' | 'error'
 
 // Shared legend / freshness card for a vector layer.
-function LegendCard({ layer, status, asOf }: { layer: VectorLayer; status: Status; asOf: string | null }) {
+function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status: Status; asOf: string | null; count: number }) {
+  // Status line, in priority order. 'empty' (honest-good, e.g. "No active alerts") is
+  // distinct from 'error' (honest-degraded, "temporarily unavailable"). An 'ok' layer
+  // with no asOf (e.g. alerts) shows a live count instead of a date.
+  const line =
+    status === 'loading'
+      ? (layer.loadingNote ?? 'Loading…')
+      : status === 'error'
+        ? <span style={{ color: RUST }}>{layer.failure.note}</span>
+        : status === 'empty'
+          ? <span className="text-forest-green/60">{layer.emptyNote ?? 'None active'}</span>
+          : asOf
+            ? `As of ${asOf}`
+            : <span className="text-forest-green/70">{count} active</span>
   return (
     <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
       <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
-      <div className="mb-1.5 text-[10px] text-forest-green/50">
-        {status === 'ok' && asOf
-          ? `As of ${asOf}`
-          : status === 'loading'
-            ? (layer.loadingNote ?? 'Loading…')
-            : <span style={{ color: RUST }}>{layer.failure.note}</span>}
-      </div>
+      <div className="mb-1.5 text-[10px] text-forest-green/50">{line}</div>
       {layer.legend.map(({ color, label }) => (
         <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
@@ -66,26 +73,35 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
   zoom:        number
   countyLabel: string
 }) {
-  const cached = layerCache.get(layer.endpoint)
+  // County-dynamic endpoint (e.g. alerts ?area=ST) is injected via runtime; layers
+  // without one (USDM) fall back to their static registry endpoint, unchanged.
+  const endpoint = runtime?.endpoint ?? layer.endpoint
+  const cached = layerCache.get(endpoint)
   const [geo, setGeo]       = useState<FeatureCollection | null>(cached?.geo ?? null)
   const [status, setStatus] = useState<Status>(cached ? 'ok' : 'loading')
   const [asOfMs, setAsOfMs] = useState<number | null>(cached?.asOfMs ?? null)
 
   useEffect(() => {
-    if (layerCache.has(layer.endpoint)) return  // already loaded this session — no re-fetch / no flash
+    if (layerCache.has(endpoint)) return  // already loaded this session — no re-fetch / no flash
     let cancelled = false
-    fetch(layer.endpoint)
+    fetch(endpoint)
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
       .then((g: FeatureCollection & { releaseDate?: number; error?: boolean }) => {
         if (cancelled) return
-        if (g.error || !Array.isArray(g.features) || g.features.length === 0) { setStatus('error'); return }
+        // Three-state honesty: error:true is a real failure; features:[] WITHOUT error
+        // is genuinely empty — honest-good for flagged layers (alerts → "No active
+        // alerts"), but treated as error for others (USDM) exactly as before.
+        if (g.error) { setStatus('error'); return }
+        if (!Array.isArray(g.features) || g.features.length === 0) {
+          setStatus(layer.emptyIsHonest ? 'empty' : 'error'); return
+        }
         const ms = layer.asOfFrom ? layer.asOfFrom(g) : null
-        layerCache.set(layer.endpoint, { geo: g, asOfMs: ms })
+        layerCache.set(endpoint, { geo: g, asOfMs: ms })
         setGeo(g); setAsOfMs(ms); setStatus('ok')
       })
       .catch(() => { if (!cancelled) setStatus('error') })
     return () => { cancelled = true }
-  }, [layer])
+  }, [endpoint, layer])
 
   const asOf          = asOfMs ? fmtEpoch(asOfMs) : null
   const fallbackImage = runtime?.fallbackImage
@@ -123,7 +139,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
         />
         {geo && <GeoJSON key={asOfMs ?? layer.id} data={geo} style={layer.style} />}
       </MapContainer>
-      <LegendCard layer={layer} status={status} asOf={asOf} />
+      <LegendCard layer={layer} status={status} asOf={asOf} count={geo?.features.length ?? 0} />
     </div>
   )
 }
