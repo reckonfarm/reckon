@@ -5,12 +5,16 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import type { User } from '@supabase/supabase-js'
 
+// The wordmark tagline is a fixed lockup — rendered identically on every page, never
+// overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
+// "Markets" on the homepage, nothing on most pages.)
+const TAGLINE = 'Ranch Intelligence for Cattle Country'
+
 interface Props {
-  subtitle?: string
   center?: React.ReactNode
 }
 
-export default function SiteHeader({ subtitle, center }: Props) {
+export default function SiteHeader({ center }: Props) {
   const [user, setUser] = useState<User | null>(null)
   const [unread, setUnread] = useState(0)
 
@@ -51,11 +55,9 @@ export default function SiteHeader({ subtitle, center }: Props) {
           <span className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
             Dryline
           </span>
-          {subtitle && (
-            <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
-              {subtitle}
-            </span>
-          )}
+          <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
+            {TAGLINE}
+          </span>
         </Link>
 
         {center && (
