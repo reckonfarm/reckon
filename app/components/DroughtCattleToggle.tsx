@@ -37,27 +37,36 @@ export default function DroughtCattleToggle({
 }) {
   const seg = (href: string, label: string, isActive: boolean) => (
     <Link
+      key={href}
       href={href}
       scroll={false}
       aria-current={isActive ? 'page' : undefined}
       className={[
-        'flex-1 rounded-md px-4 py-1.5 text-center font-dm-sans text-sm font-medium transition-colors',
+        'flex-1 basis-0 inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-center font-dm-sans text-sm font-medium transition-colors',
         isActive
           ? 'bg-forest-green text-white shadow-sm'
-          : 'text-forest-green/60 hover:bg-forest-green/5',
+          : 'text-forest-green/70 hover:bg-forest-green/5',
       ].join(' ')}
     >
       <SegLabel label={label} />
     </Link>
   )
+
+  // Data-driven so a 3rd/4th view is one array entry (+ widen `active` / the ?view= parse),
+  // not a redesign. Each item's href / scroll={false} / aria-current / active=== logic is
+  // identical to the previous hardcoded segments — this is structure only.
+  // NOTE: the 'drought' key drives ?view=drought while its label reads "Weather" — the
+  // label↔key mismatch is deliberate (renaming the value would break deep links, the
+  // heavy-fetch gate, and the auth redirect).
+  const segments: { key: 'news' | 'drought'; label: string; href: string }[] = [
+    { key: 'news',    label: 'News',    href: `/dashboard?fips=${fips}` },
+    { key: 'drought', label: 'Weather', href: `/dashboard?fips=${fips}&view=drought` },
+  ]
+
   return (
-    <div className="flex w-full rounded-lg border border-forest-green/15 bg-white p-0.5">
+    <div className="flex w-full rounded-xl bg-forest-green/8 p-1">
       <style>{`@keyframes dlToggleSpin{to{transform:rotate(360deg)}}.dl-toggle-spin{animation:dlToggleSpin .6s linear infinite}`}</style>
-      {seg(`/dashboard?fips=${fips}`, 'News', active === 'news')}
-      {/* Label is "Weather" but the URL value / branch key stays 'drought' — the
-          label↔key mismatch is deliberate (renaming the value would break deep links,
-          the heavy-fetch gate, and the auth redirect). */}
-      {seg(`/dashboard?fips=${fips}&view=drought`, 'Weather', active === 'drought')}
+      {segments.map(s => seg(s.href, s.label, active === s.key))}
     </div>
   )
 }
