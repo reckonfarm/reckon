@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -219,20 +219,27 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
 }
 
 // ─── Animated RADAR layer renderer (RainViewer) ────────────────────────────────
-// Structurally separate from VectorLayerView: a Leaflet TileLayer cycling timestamped
-// frames over the base map (no GeoJSON). Opens on the LATEST frame only (one tile-set,
-// light for 3G); a play control loops the recent frames on demand. All provider knobs
+// Structurally separate from VectorLayerView: Leaflet TileLayers cycling timestamped
+// frames over the base map (no GeoJSON). Opens on the LATEST frame only (ONE tile-set,
+// light for 3G); a play control loops the recent frames on demand. While playing it
+// renders TWO tile buffers and CROSS-FADES opacity between the outgoing/incoming frame
+// (masking the ~10-min positional jump that a hard swap shows as a pop), and PRELOADS
+// the loop's tiles so frames don't arrive in chunks — both opt-in on PLAY, so the cab
+// open cost is unchanged. All provider knobs (frameCount, loopSpeedMs cadence, fadeMs)
 // come from the RadarLayer def (the swap point). Honest-degraded: a failed frame-list
 // fetch shows "temporarily unavailable" with the base map still live — never a stale
 // frame labelled current.
 interface RadarFrame { time: number; path: string }
 
 function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [number, number]; zoom: number }) {
-  const [host, setHost]     = useState<string | null>(null)
-  const [frames, setFrames] = useState<RadarFrame[]>([])
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
-  const [idx, setIdx]       = useState(0)         // active frame
+  const [host, setHost]       = useState<string | null>(null)
+  const [frames, setFrames]   = useState<RadarFrame[]>([])
+  const [status, setStatus]   = useState<'loading' | 'ok' | 'error'>('loading')
+  const [idx, setIdx]         = useState(0)           // active (front) frame
+  const [prevIdx, setPrevIdx] = useState(0)           // outgoing (fading-out) frame
+  const [front, setFront]     = useState<'a' | 'b'>('a')   // which of the two buffers is on top
   const [playing, setPlaying] = useState(layer.defaultMode === 'loop')
+  const mapRef = useRef<L.Map | null>(null)
 
   // Fetch the frame list; open on the LATEST frame (no auto-loop unless defaultMode says).
   useEffect(() => {
@@ -243,39 +250,91 @@ function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [n
         if (cancelled) return
         if (d.error || !d.host || !Array.isArray(d.frames) || d.frames.length === 0) { setStatus('error'); return }
         const recent = d.frames.slice(-layer.frameCount)           // most-recent N
-        setHost(d.host); setFrames(recent); setIdx(recent.length - 1); setStatus('ok')   // latest
+        const last = recent.length - 1
+        setHost(d.host); setFrames(recent); setIdx(last); setPrevIdx(last); setStatus('ok')   // latest
       })
       .catch(() => { if (!cancelled) setStatus('error') })
     return () => { cancelled = true }
   }, [layer.endpoint, layer.frameCount])
 
-  // Loop only while playing — advances the frame; tiles fetch on demand.
+  // Loop only while playing — advance the frame AND flip the front buffer, so the new
+  // frame fades IN (0 → opacity) while the outgoing one fades OUT. The two-buffer swap is
+  // what turns the old hard cut into a cross-fade.
   useEffect(() => {
     if (!playing || frames.length < 2) return
-    const t = setInterval(() => setIdx(i => (i + 1) % frames.length), layer.loopSpeedMs)
+    const t = setInterval(() => {
+      setIdx(i => { setPrevIdx(i); return (i + 1) % frames.length })
+      setFront(f => (f === 'a' ? 'b' : 'a'))
+    }, layer.loopSpeedMs)
     return () => clearInterval(t)
   }, [playing, frames.length, layer.loopSpeedMs])
 
-  const frame = frames[idx]
-  const tileUrl = host && frame
-    ? layer.tileUrlTemplate
-        .replace('{host}', host).replace('{path}', frame.path)
-        .replace('{size}', String(layer.size))
-        .replace('{palette}', String(layer.palette))
-        .replace('{smooth}', String(layer.smooth)).replace('{snow}', String(layer.snow))
-    : null   // {z}/{x}/{y} are left for Leaflet to fill
+  // PRELOAD — opt-in on PLAY only (cab open cost unchanged). Warm the browser cache for
+  // the visible viewport across every loop frame, so frames don't arrive in chunks mid-
+  // loop (the load-flash). Best-effort and capped, so a zoomed-out view can't fire a
+  // tile storm; tiles the buffers then request come straight from cache.
+  useEffect(() => {
+    if (!playing || !host || frames.length < 2) return
+    const map = mapRef.current
+    if (!map) return
+    const z = Math.round(map.getZoom())
+    const b = map.getBounds()
+    const nw = map.project(b.getNorthWest(), z).divideBy(256).floor()
+    const se = map.project(b.getSouthEast(), z).divideBy(256).floor()
+    const cols = Math.max(0, Math.min(se.x - nw.x + 1, 6))
+    const rows = Math.max(0, Math.min(se.y - nw.y + 1, 6))
+    const imgs: HTMLImageElement[] = []
+    for (const f of frames) {
+      for (let dx = 0; dx < cols; dx++) {
+        for (let dy = 0; dy < rows; dy++) {
+          const img = new Image()
+          img.src = `${host}${f.path}/${layer.size}/${z}/${nw.x + dx}/${nw.y + dy}/${layer.palette}/${layer.smooth}_${layer.snow}.png`
+          imgs.push(img)
+        }
+      }
+    }
+    return () => { imgs.forEach(i => { i.src = '' }) }
+  }, [playing, host, frames, layer.size, layer.palette, layer.smooth, layer.snow])
+
+  // Build a frame's full tile-URL template ({z}/{x}/{y} left for Leaflet to fill).
+  const frameUrl = (f?: RadarFrame) =>
+    host && f
+      ? layer.tileUrlTemplate
+          .replace('{host}', host).replace('{path}', f.path)
+          .replace('{size}', String(layer.size))
+          .replace('{palette}', String(layer.palette))
+          .replace('{smooth}', String(layer.smooth)).replace('{snow}', String(layer.snow))
+      : null
+
+  const frame   = frames[idx]
+  const tileUrl = frameUrl(frame)                                  // single layer (latest / paused)
+  const aUrl    = frameUrl(frames[front === 'a' ? idx : prevIdx])  // buffer A
+  const bUrl    = frameUrl(frames[front === 'b' ? idx : prevIdx])  // buffer B
   const asOf = frame ? new Date(frame.time * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
 
   return (
     <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
-      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+      {/* Cross-fade timing — the className lands on each radar buffer's Leaflet layer
+          container, whose opacity setOpacity animates over fadeMs (a radar-def knob). */}
+      <style dangerouslySetInnerHTML={{ __html: `.leaflet-radar-fade{transition:opacity ${layer.fadeMs}ms linear;}` }} />
+      <MapContainer ref={mapRef} center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
         {/* County base grid on the RADAR default view too — sits under the radar tiles. */}
         <CountyLines />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {status === 'ok' && tileUrl && <TileLayer url={tileUrl} opacity={layer.opacity} zIndex={500} />}
+        {/* Paused / latest: ONE tile-set (light for the cab). Playing: TWO buffers that
+            cross-fade — the new frame fades in as the old fades out. */}
+        {status === 'ok' && !playing && tileUrl && (
+          <TileLayer url={tileUrl} opacity={layer.opacity} zIndex={500} />
+        )}
+        {status === 'ok' && playing && aUrl && (
+          <TileLayer className="leaflet-radar-fade" url={aUrl} opacity={front === 'a' ? layer.opacity : 0} zIndex={500} />
+        )}
+        {status === 'ok' && playing && bUrl && (
+          <TileLayer className="leaflet-radar-fade" url={bUrl} opacity={front === 'b' ? layer.opacity : 0} zIndex={500} />
+        )}
       </MapContainer>
 
       {/* Play/pause (only when there's a loop to run). */}

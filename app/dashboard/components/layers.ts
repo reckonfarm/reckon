@@ -59,7 +59,8 @@ export interface RadarLayer extends BaseLayer {
   snow:            0 | 1
   opacity:         number                  // drawn ABOVE the base map
   frameCount:      number                  // how many recent frames the loop uses (cab-tunable)
-  loopSpeedMs:     number                  // ms per frame while playing
+  loopSpeedMs:     number                  // ms per frame while playing (the cadence knob)
+  fadeMs:          number                  // cross-fade duration between frames while playing
   defaultMode:     'latest' | 'loop'       // 'latest' = open on newest frame only (light for 3G)
 }
 
@@ -169,8 +170,9 @@ export const radar: RadarLayer = {
   smooth:          1,
   snow:            1,
   opacity:         0.65,
-  frameCount:      10,
-  loopSpeedMs:     500,
+  frameCount:      13,     // RainViewer's full past set (~2h of 10-min frames)
+  loopSpeedMs:     650,    // cadence that feels smooth once the cross-fades overlap
+  fadeMs:          280,    // cross-fade between outgoing/incoming frame (< loopSpeedMs)
   defaultMode:     'latest',
 }
 
