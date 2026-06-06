@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import OfficialMap, { type OfficialMapRecord } from './OfficialMap'
@@ -68,6 +69,54 @@ function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status
         </div>
       ))}
     </div>
+  )
+}
+
+// ─── County-boundary base grid (always-on, UNDER every layer) ──────────────────
+// Static cattle-belt county outlines (1,169 counties, GEOID-only, ~42 KB gzipped),
+// fetched ONCE and drawn as a thin stroke-only reference grid on a CANVAS renderer
+// (~1,169 paths drawn to one canvas, NOT 1,169 SVG nodes — smooth on the cab). The
+// grid is interactive:false → it captures no taps, so alert popups still fire and the
+// grid never eats a tap; the data layers keep their own (default SVG) renderer, so
+// USDM/alerts draw exactly as before. Inserted as the FIRST child of each MapContainer
+// → its renderer container is created first, so the grid sits at the BOTTOM of the
+// overlay stack (under drought fills / alert polygons) and above the base + radar tiles
+// (which live in the lower tilePane). Honest-degraded: if the asset fails to load, the
+// map renders normally WITHOUT the grid — it's a reference overlay, not data, so there
+// is no error state, just no lines.
+const COUNTY_LINES_SRC = '/geo/cattle-belt-counties.json'
+
+// Module-level cache so toggling tabs / re-mounting either map never re-fetches the
+// (static, county-independent) grid.
+let countyGeoCache: FeatureCollection | null = null
+
+function CountyLines() {
+  const [geo, setGeo] = useState<FeatureCollection | null>(countyGeoCache)
+  // Per-instance canvas renderer (a renderer binds to one map; only one map is mounted
+  // at a time, but each CountyLines gets its own to be safe).
+  const renderer = useMemo(() => L.canvas(), [])
+
+  useEffect(() => {
+    if (countyGeoCache) return            // already loaded this session — no re-fetch
+    let cancelled = false
+    fetch(COUNTY_LINES_SRC)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
+      .then((g: FeatureCollection) => {
+        if (cancelled) return
+        countyGeoCache = g
+        setGeo(g)
+      })
+      .catch(() => { /* reference overlay — on failure just render no grid, no error UI */ })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!geo) return null
+  return (
+    <GeoJSON
+      data={geo}
+      interactive={false}
+      style={() => ({ color: '#9ca3af', weight: 0.5, opacity: 0.5, fill: false, interactive: false, renderer })}
+    />
   )
 }
 
@@ -141,6 +190,8 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
   return (
     <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
       <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+        {/* County base grid FIRST → bottom of the overlay stack, under the data layer. */}
+        <CountyLines />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -218,6 +269,8 @@ function RadarLayerView({ layer, center, zoom }: { layer: RadarLayer; center: [n
   return (
     <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
       <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+        {/* County base grid on the RADAR default view too — sits under the radar tiles. */}
+        <CountyLines />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
