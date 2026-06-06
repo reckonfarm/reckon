@@ -499,7 +499,14 @@ export default async function DashboardPage({
             {/* Peer-view toggle — Market News ↔ Drought (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
-            {/* Latest Reading — persistent chrome, both views, above the toggle. */}
+            {view === 'news' && (
+              <MarketsNews fips={selectedCounty.fips} />
+            )}
+
+            {view === 'drought' && (
+              <>
+
+            {/* Latest Reading — drought chrome, Weather view only (above the map). */}
             {latest && (
               <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -550,21 +557,14 @@ export default async function DashboardPage({
               </div>
             )}
 
-            {/* Rainfall vs normal — persistent chrome, both views. Streamed behind a
-                Suspense boundary so the slow ACIS call never blocks the page render. */}
+            {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
+                boundary so the slow ACIS call never blocks the Weather view paint. */}
             <div>
               <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
               <Suspense fallback={<RainfallPanelSkeleton />}>
                 <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
               </Suspense>
             </div>
-
-            {view === 'news' && (
-              <MarketsNews fips={selectedCounty.fips} />
-            )}
-
-            {view === 'drought' && (
-              <>
 
             {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
 
