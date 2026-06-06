@@ -460,6 +460,57 @@ export default async function DashboardPage({
               </div>
             </div>
 
+            {/* Latest Reading — persistent chrome, both views, above the toggle. */}
+            {latest && (
+              <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                    Latest Reading
+                  </h2>
+                  <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
+                    Week of {formatDate(latest.week_date)}
+                  </span>
+                </div>
+
+                <DroughtBar reading={latest} />
+
+                {/* Compact legend — actual per-category, only categories > 0.5% */}
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
+                  {(() => {
+                    const d0 = latest.d0 ?? 0
+                    const d1 = latest.d1 ?? 0
+                    const d2 = latest.d2 ?? 0
+                    const d3 = latest.d3 ?? 0
+                    const d4 = latest.d4 ?? 0
+                    const items = [
+                      { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
+                      { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
+                      { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
+                      { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
+                      { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
+                    ].filter(c => c.pct > 0.5)
+                    if (items.length === 0) {
+                      return <span className="text-forest-green/40">No drought this week.</span>
+                    }
+                    return items.map((c, i) => (
+                      <span key={i} className="inline-flex items-center gap-1">
+                        {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
+                        <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
+                        {c.label} {c.pct.toFixed(1)}%
+                      </span>
+                    ))
+                  })()}
+                </div>
+
+                <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+                  Source:{' '}
+                  <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
+                    U.S. Drought Monitor
+                  </a>
+                </p>
+              </div>
+            )}
+
             {/* Peer-view toggle — Market News ↔ Drought (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
@@ -590,56 +641,6 @@ export default async function DashboardPage({
                     title="Conditions & rainfall"
                     preview="Latest USDM reading + rainfall vs normal"
                   >
-                    {latest && (
-                      <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                          <h2 className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                            Latest Reading
-                          </h2>
-                          <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
-                            Week of {formatDate(latest.week_date)}
-                          </span>
-                        </div>
-
-                        <DroughtBar reading={latest} />
-
-                        {/* Compact legend — actual per-category, only categories > 0.5% */}
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
-                          {(() => {
-                            const d0 = latest.d0 ?? 0
-                            const d1 = latest.d1 ?? 0
-                            const d2 = latest.d2 ?? 0
-                            const d3 = latest.d3 ?? 0
-                            const d4 = latest.d4 ?? 0
-                            const items = [
-                              { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
-                              { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
-                              { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
-                              { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
-                              { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
-                            ].filter(c => c.pct > 0.5)
-                            if (items.length === 0) {
-                              return <span className="text-forest-green/40">No drought this week.</span>
-                            }
-                            return items.map((c, i) => (
-                              <span key={i} className="inline-flex items-center gap-1">
-                                {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
-                                <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
-                                {c.label} {c.pct.toFixed(1)}%
-                              </span>
-                            ))
-                          })()}
-                        </div>
-
-                        <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
-                          Source:{' '}
-                          <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
-                            U.S. Drought Monitor
-                          </a>
-                        </p>
-                      </div>
-                    )}
-
                     <div className="mt-6">
                       <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
                       <PrecipVsNormalPanel data={precipNormal} countyName={selectedCounty.name} />
