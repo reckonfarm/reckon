@@ -412,7 +412,6 @@ export default async function DashboardPage({
     <div className="min-h-screen bg-cream">
 
       <SiteHeader
-        subtitle="Ranch Intelligence for Cattle Country"
         center={selectedCounty ? `${selectedCounty.name}, ${selectedCounty.state}` : undefined}
       />
 

@@ -130,7 +130,7 @@ export default async function MarketsHome({ fips }: { fips?: string | null }) {
           DNS/TLS handshake. */}
       <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossOrigin="anonymous" />
       <link rel="preconnect" href="https://b.tile.openstreetmap.org" crossOrigin="anonymous" />
-      <SiteHeader subtitle="Markets" />
+      <SiteHeader />
       <main className="min-h-screen bg-cream">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
           {/* ── Funnel: county search (TOP) + driest chips + nearby hay ─────────── */}
