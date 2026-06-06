@@ -91,9 +91,11 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
         // Three-state honesty: error:true is a real failure; features:[] WITHOUT error
         // is genuinely empty — honest-good for flagged layers (alerts → "No active
         // alerts"), but treated as error for others (USDM) exactly as before.
-        if (g.error) { setStatus('error'); return }
+        // Clear any prior geometry on a non-ok result so the map never keeps drawing
+        // a previous layer/county's polygons under a new status (the cross-layer bleed).
+        if (g.error) { setGeo(null); setAsOfMs(null); setStatus('error'); return }
         if (!Array.isArray(g.features) || g.features.length === 0) {
-          setStatus(layer.emptyIsHonest ? 'empty' : 'error'); return
+          setGeo(null); setAsOfMs(null); setStatus(layer.emptyIsHonest ? 'empty' : 'error'); return
         }
         const ms = layer.asOfFrom ? layer.asOfFrom(g) : null
         layerCache.set(endpoint, { geo: g, asOfMs: ms })
@@ -137,7 +139,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel }: {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {geo && <GeoJSON key={asOfMs ?? layer.id} data={geo} style={layer.style} />}
+        {status === 'ok' && geo && <GeoJSON key={asOfMs ?? layer.id} data={geo} style={layer.style} />}
       </MapContainer>
       <LegendCard layer={layer} status={status} asOf={asOf} count={geo?.features.length ?? 0} />
     </div>
@@ -177,7 +179,10 @@ export default function RegionalMapClient({ center, countyLabel, monthlyMap, sea
       </div>
 
       {activeLayer && activeLayer.type === 'vector' ? (
-        <VectorLayerView layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} />
+        // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
+        // fresh on a layer OR county change — geo/status re-init per layer from the
+        // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
+        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} />
       ) : (
         <OfficialMap
           map={tab === 'monthly' ? monthlyMap : seasonalMap}
