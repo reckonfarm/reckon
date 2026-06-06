@@ -203,17 +203,26 @@ export default async function DashboardPage({
   let hayPrimaryVariety: string | null              = null
   let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
-  // Cheap latest reading — always fetched (drives the shared Share label + heading),
-  // independent of which view is open.
+  // Always-fetched chrome data (independent of which view is open): the cheap latest
+  // drought reading (drives the shared Share label + heading) AND the ACIS rainfall-
+  // vs-normal series. Precip is lifted here (from the Drought-only block) so the
+  // Rainfall unit can render in always-on chrome on both views. Run CONCURRENTLY via
+  // Promise.all — the slow ACIS call overlaps the cheap DB read, so this is max(db,
+  // acis), never additive. getPrecipNormal keeps its own 9s deadline / 24h cache /
+  // 'data_unavailable' honest-failure — unchanged.
   if (selectedCounty) {
-    const { data: latestRow } = await db
-      .from('drought_data')
-      .select('week_date, d0, d1, d2, d3, d4')
-      .eq('county_id', selectedCounty.id)
-      .order('week_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    latest = latestRow as DroughtReading | null
+    const [latestRes, precipNormalRes] = await Promise.all([
+      db
+        .from('drought_data')
+        .select('week_date, d0, d1, d2, d3, d4')
+        .eq('county_id', selectedCounty.id)
+        .order('week_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
+    ])
+    latest = latestRes.data as DroughtReading | null
+    precipNormal = precipNormalRes
   }
 
   // Heavy ranch-view data only when the Drought view is open — keeps News fast and
@@ -228,7 +237,6 @@ export default async function DashboardPage({
       cpcMonthlyMapRes,
       cpcSeasonalMapRes,
       lfpRes,
-      precipNormalRes,
       priorYearLfpRes,
       threeYearRaw,
       hayListingsRes,
@@ -279,9 +287,6 @@ export default async function DashboardPage({
         .then(result => ({ ok: true as const, result }))
         .catch(() => ({ ok: false as const })),
 
-      // ACIS YTD precipitation vs 30-year normals
-      getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon),
-
       // Prior year LFP eligibility — same forage period but year - 1
       computeLfpEligibility(
         selectedCounty.fips,
@@ -330,7 +335,6 @@ export default async function DashboardPage({
     lfpResult          = lfpRes.ok ? lfpRes.result : null
     lfpUnavailable     = !lfpRes.ok
     priorYearLfpResult = priorYearLfpRes
-    precipNormal       = precipNormalRes
 
     if (selectedCounty.lat != null && selectedCounty.lon != null) {
       const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
