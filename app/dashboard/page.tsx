@@ -496,6 +496,9 @@ export default async function DashboardPage({
               </div>
             </div>
 
+            {/* Peer-view toggle — Market News ↔ Drought (same county) */}
+            <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
+
             {/* Latest Reading — persistent chrome, both views, above the toggle. */}
             {latest && (
               <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
@@ -555,9 +558,6 @@ export default async function DashboardPage({
                 <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
               </Suspense>
             </div>
-
-            {/* Peer-view toggle — Market News ↔ Drought (same county) */}
-            <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
             {view === 'news' && (
               <MarketsNews fips={selectedCounty.fips} />
