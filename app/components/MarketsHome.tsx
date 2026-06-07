@@ -8,6 +8,7 @@ import CountySearch from '@/app/components/CountySearch'
 import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import MarketsNews from '@/app/components/MarketsNews'
 import MarketsComingSoon from '@/app/components/MarketsComingSoon'
+import { Heading } from '@/app/components/ui/Heading'
 
 // ─── Markets surface (the default landing) ──────────────────────────────────────
 // Async SERVER component rendered by BOTH / and /markets-preview so the two stay
@@ -202,9 +203,9 @@ export default async function MarketsHome({ fips }: { fips?: string | null }) {
 
           {/* ── Drought map ────────────────────────────────────────────────────── */}
           <section className="mt-8">
-            <h2 className="mb-3 font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
+            <Heading level={2} className="mb-3">
               Drought conditions
-            </h2>
+            </Heading>
             <HomeDroughtMap />
           </section>
 

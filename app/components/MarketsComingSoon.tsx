@@ -2,6 +2,8 @@
 
 import { trackEvent } from '@/lib/analytics'
 import { useEffect, useState } from 'react'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 
 // Markets-surface demand probe — a strictly additive sibling of ComingSoon. The live
 // ComingSoon has a hardcoded tile list and renders on the homepage, and Phase 1 is
@@ -94,9 +96,9 @@ export default function MarketsComingSoon({ signedIn }: { signedIn: boolean }) {
 
   return (
     <section className="mt-16">
-      <h2 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
+      <Heading level={2}>
         Coming soon
-      </h2>
+      </Heading>
       <p className="mt-2 font-dm-sans text-base leading-relaxed text-forest-green/60">
         Tap the ones you&apos;d use — it tells us what to build next.
       </p>
@@ -105,16 +107,16 @@ export default function MarketsComingSoon({ signedIn }: { signedIn: boolean }) {
         {FEATURES.map(f => {
           const st = status[f.key] ?? 'idle'
           return (
-            <div
+            <Card
               key={f.key}
-              className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+              className="flex flex-col p-5"
             >
-              <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/8 px-2.5 py-0.5 font-dm-sans text-[11px] font-medium text-forest-green/60">
+              <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/8 px-2.5 py-0.5 font-dm-sans text-xs font-medium text-forest-green/60">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-rust/60" />
                 Coming soon
               </span>
 
-              <p className="font-fraunces text-base font-semibold text-forest-green">{f.title}</p>
+              <Heading level={5}>{f.title}</Heading>
               <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
                 {f.body}
               </p>
@@ -173,7 +175,7 @@ export default function MarketsComingSoon({ signedIn }: { signedIn: boolean }) {
                   </button>
                 )}
               </div>
-            </div>
+            </Card>
           )
         })}
       </div>
