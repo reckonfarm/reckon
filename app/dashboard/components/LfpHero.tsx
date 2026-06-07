@@ -116,7 +116,7 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
                   {shortLabel(t.label)}
                 </span>
                 {current && (
-                  <span className="font-dm-sans text-[11px] font-medium uppercase tracking-wide text-forest-green/50">
+                  <span className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/50">
                     Current
                   </span>
                 )}

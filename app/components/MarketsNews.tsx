@@ -268,23 +268,22 @@ function NewsCard({
           left; timestamp + external-link affordance right-aligned on the same row. */}
       <div className="mb-2.5 flex items-center gap-2">
         <SourceFavicon link={item.link} source={item.source} size={20} />
-        <span className="font-dm-sans text-[13px] font-semibold text-forest-green/70">
+        <span className="font-dm-sans text-sm font-semibold text-forest-green/70">
           {item.source}
         </span>
         {item.regional && !hideRegionalBadge && <NearYouBadge />}
         <span className="ml-auto flex items-center gap-2">
           {item.pubDate && (
-            <span className="font-dm-sans text-[11px] text-forest-green/40">
+            <span className="font-dm-sans text-xs text-forest-green/40">
               {relativeTime(item.pubDate)}
             </span>
           )}
           <ExternalArrow />
         </span>
       </div>
-      {/* Headline under the source — Heading level 4 (text-lg) + responsive/leading/hover
-          via className. Size/layout match the old h3; the color is now text-ink (warm
-          near-black) instead of forest-green — the intentional headline punch. */}
-      <Heading level={4} className="leading-snug group-hover:text-ink/80 sm:text-xl">
+      {/* Headline under the source — Heading L4 (text-xl, leading baked in). text-ink (warm
+          near-black) is the intentional headline punch; size comes from the modular scale. */}
+      <Heading level={4} className="group-hover:text-ink/80">
         {item.title}
       </Heading>
       {item.snippet && (
@@ -308,12 +307,12 @@ function NewsCardCompact({ item }: { item: NewsItem }) {
       className="group flex items-baseline justify-between gap-3 py-3"
     >
       <div className="min-w-0">
-        <h3 className="font-fraunces text-base font-semibold leading-snug text-forest-green group-hover:text-forest-green/80">
+        <Heading level={5} className="group-hover:text-ink/80">
           {item.title}
-        </h3>
+        </Heading>
         <div className="mt-1 flex items-center gap-1.5">
           <SourceFavicon link={item.link} source={item.source} size={16} />
-          <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
+          <span className="font-dm-sans text-xs font-medium text-forest-green/45">
             {item.source}
           </span>
           {item.pubDate && (
@@ -321,7 +320,7 @@ function NewsCardCompact({ item }: { item: NewsItem }) {
               <span className="text-forest-green/20" aria-hidden="true">
                 ·
               </span>
-              <span className="font-dm-sans text-[11px] text-forest-green/40">
+              <span className="font-dm-sans text-xs text-forest-green/40">
                 {relativeTime(item.pubDate)}
               </span>
             </>
@@ -339,9 +338,7 @@ function NewsCardCompact({ item }: { item: NewsItem }) {
 function TierHeader({ title, count }: { title: string; count: number }) {
   return (
     <div className="mb-4 flex items-baseline gap-2">
-      <h3 className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
-        {title}
-      </h3>
+      <Heading level={3}>{title}</Heading>
       <span className="font-dm-sans text-sm font-medium text-forest-green/40">{count}</span>
     </div>
   )
@@ -549,9 +546,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
     <section>
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
-          <h2 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
-            Cattle Country
-          </h2>
+          <Heading level={2}>Cattle Country</Heading>
           <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
             The headlines moving cattle, hay, and ranch markets.
           </p>

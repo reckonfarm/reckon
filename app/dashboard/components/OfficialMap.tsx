@@ -82,7 +82,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
             className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
             loading="lazy"
           />
-          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             Tap to enlarge
           </span>
         </div>

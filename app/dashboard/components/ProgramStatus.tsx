@@ -90,7 +90,7 @@ function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
           <span className={`font-dm-sans text-xs ${tier.triggered ? 'text-forest-green font-medium' : 'text-forest-green/40'}`}>
             Tier {tier.tier} — {tier.label}
             {isMax && tier.triggered && (
-              <span className="ml-2 inline-block rounded-full bg-forest-green px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cream">
+              <span className="ml-2 inline-block rounded-full bg-forest-green px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-cream">
                 Max
               </span>
             )}
@@ -632,7 +632,7 @@ function LivestockPanel({
                   <p className="font-fraunces text-3xl font-semibold text-forest-green sm:text-4xl">
                     {usd(estimate.cappedEstimate, 0)}
                   </p>
-                  <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-[10px] font-semibold text-white">
+                  <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-xs font-semibold text-white">
                     ✓ triggered
                   </span>
                 </div>

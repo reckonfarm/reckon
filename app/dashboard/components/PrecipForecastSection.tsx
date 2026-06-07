@@ -321,7 +321,7 @@ function CpcMapPanel({
       <div className="group relative cursor-pointer overflow-hidden rounded-lg" onClick={() => setOpen(true)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={alt} className="w-full rounded-lg transition-opacity group-hover:opacity-90" loading="lazy" />
-        <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           Tap to enlarge
         </span>
       </div>

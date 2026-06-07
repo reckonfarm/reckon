@@ -512,7 +512,7 @@ export default async function DashboardPage({
             {latest && (
               <Card shadow="soft" className="p-4 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <Heading level={5} className="sm:text-lg">
+                  <Heading level={5}>
                     Latest Reading
                   </Heading>
                   <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
@@ -761,7 +761,7 @@ function EmptyState() {
           <path d="m21 21-4.35-4.35"/>
         </svg>
       </div>
-      <Heading level={3} className="sm:text-2xl">
+      <Heading level={3}>
         Select a county to begin
       </Heading>
       <p className="mt-2 max-w-xs text-sm text-forest-green/60 font-dm-sans">
