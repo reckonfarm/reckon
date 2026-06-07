@@ -6,6 +6,7 @@ import MarkerClusterGroup from 'react-leaflet-cluster'
 import Link from 'next/link'
 import 'leaflet/dist/leaflet.css'
 import type { Feature, FeatureCollection } from 'geojson'
+import { warning } from '@/lib/brand-colors'
 
 interface MapListing {
   id: string
@@ -248,7 +249,7 @@ export default function HayMapClient({
           {status === 'ok' && asOf && `As of ${asOf}`}
           {status === 'loading' && 'Loading drought layer…'}
           {status === 'error' && (
-            <span style={{ color: '#C2410C' }}>Drought layer temporarily unavailable</span>
+            <span style={{ color: warning }}>Drought layer temporarily unavailable</span>
           )}
         </div>
 

@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
 import { createServiceClient } from '@/lib/supabase'
+import { warning } from '@/lib/brand-colors'
 
 export const alt = 'County drought and LFP status'
 export const size = { width: 1200, height: 630 }
@@ -15,7 +16,8 @@ export default async function Image({
 
   const FOREST_GREEN = '#1B4332'
   const CREAM = '#FDFBF7'
-  const RUST = '#C2410C'
+  // Triggered-state background uses the semantic "warning" role (lib/brand-colors),
+  // not brand rust. FOREST_GREEN/CREAM here are deferred to the later hex consolidation.
 
   if (!fips) {
     return new ImageResponse(
@@ -127,7 +129,7 @@ export default async function Image({
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginTop: '8px' }}>
           <span
             style={{
-              background: triggered ? RUST : CREAM,
+              background: triggered ? warning : CREAM,
               color: triggered ? CREAM : FOREST_GREEN,
               fontSize: '32px',
               fontWeight: 700,

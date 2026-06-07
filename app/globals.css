@@ -10,6 +10,24 @@
   --color-forest-green: #1B4332;
   --color-rust: #8B3A2B;
 
+  /* ── Semantic roles (modernize sprint, commit 1) ──────────────────────────────
+     Role-based aliases so later commits re-point ONE token instead of sweeping 52
+     files. Each maps to its CURRENT value → adding them changes nothing visually.
+     ink/body/muted are intentionally identical to forest-green TODAY; ink re-points
+     to a near-black in a later commit. surface = the de-facto bg-white card; line =
+     the hairline border (used as border-line/10 = today's border-forest-green/10);
+     accent = brand green. warning is the degraded/error state — a DISTINCT role from
+     brand --color-rust (#8B3A2B), kept at its current #C2410C so nothing moves.
+     MIRROR — the JS-side copy of these values lives in lib/brand-colors.ts (for
+     Leaflet/canvas/inline-style code that can't use classes). Keep the two in sync. */
+  --color-ink: #1B4332;
+  --color-body: #1B4332;
+  --color-muted: #1B4332;
+  --color-line: #1B4332;
+  --color-surface: #ffffff;
+  --color-accent: #1B4332;
+  --color-warning: #C2410C;
+
   --font-fraunces: var(--font-fraunces);
   --font-dm-sans: var(--font-dm-sans);
 

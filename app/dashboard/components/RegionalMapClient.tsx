@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import { LAYERS, type VectorLayer, type RadarLayer, type LayerRuntime } from './layers'
 import { timeoutSignal } from '@/lib/external-fetch'
+import { warning } from '@/lib/brand-colors'
 
 // alerts stays REGISTERED (its data + LayerRuntime endpoint flow normally) but is NOT a
 // toggle tab (inToggle:false) — it renders only as the radar overlay. Resolve its static
@@ -22,7 +23,8 @@ const ALERTS_LAYER: VectorLayer | null =
 // layer = +1 definition + 1 proxy route, 0 changes here.
 
 const CONUS: [number, number] = [39.5, -98.5]
-const RUST = '#C2410C'
+// Degraded/error text color — the semantic "warning" role (lib/brand-colors), distinct
+// from brand rust. Inline because it lands in a Leaflet-overlay style={{}}, not a class.
 
 function fmtEpoch(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -59,7 +61,7 @@ function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status
     status === 'loading'
       ? (layer.loadingNote ?? 'Loading…')
       : status === 'error'
-        ? <span style={{ color: RUST }}>{layer.failure.note}</span>
+        ? <span style={{ color: warning }}>{layer.failure.note}</span>
         : status === 'empty'
           ? <span className="text-forest-green/60">{layer.emptyNote ?? 'None active'}</span>
           : asOf
@@ -247,7 +249,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
       <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white">
         <div className="border-b border-forest-green/10 px-4 py-3">
           <h3 className="font-fraunces text-base font-semibold text-forest-green">{layer.attribution}</h3>
-          <p className="mt-0.5 font-dm-sans text-xs" style={{ color: RUST }}>
+          <p className="mt-0.5 font-dm-sans text-xs" style={{ color: warning }}>
             Interactive map temporarily unavailable — showing the latest static map.
           </p>
         </div>
@@ -441,7 +443,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
       {ALERTS_LAYER && alertsStatus !== 'loading' && (
         <div className="absolute top-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs shadow-sm">
           {alertsStatus === 'error'
-            ? <span style={{ color: RUST }}>Alerts unavailable</span>
+            ? <span style={{ color: warning }}>Alerts unavailable</span>
             : alertsStatus === 'empty'
               ? <span className="text-forest-green/60">No active alerts</span>
               : <span className="text-forest-green/80">{alertsCount} active alert{alertsCount !== 1 ? 's' : ''}</span>}
@@ -455,7 +457,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
           {status === 'loading'
             ? (layer.loadingNote ?? 'Loading…')
             : status === 'error'
-              ? <span style={{ color: RUST }}>{layer.failure.note}</span>
+              ? <span style={{ color: warning }}>{layer.failure.note}</span>
               : asOf
                 ? `Radar as of ${asOf}`
                 : ''}
