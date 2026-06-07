@@ -1,10 +1,9 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 
 // Heading — Fraunces, semibold, ink-colored headings, single source of truth for the
-// app's heading scale. text-ink == forest-green TODAY (so this is visually identical
-// to the current text-forest-green headings); re-pointing --color-ink to a near-black
-// in a later commit flows through every Heading at once. level → current size:
-// 1=text-3xl, 2=text-2xl, 3=text-xl, 4=text-lg.
+// app's heading scale. text-ink is a warm near-black (#1C1917) so headings punch on the
+// cream canvas; re-pointing --color-ink flows through every Heading at once. level →
+// size: 1=text-3xl, 2=text-2xl, 3=text-xl, 4=text-lg.
 type Level = 1 | 2 | 3 | 4
 
 const SIZES: Record<Level, string> = {

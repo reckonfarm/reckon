@@ -282,7 +282,8 @@ function NewsCard({
         </span>
       </div>
       {/* Headline under the source — Heading level 4 (text-lg) + responsive/leading/hover
-          via className reproduces the old h3 exactly (text-ink == forest-green today). */}
+          via className. Size/layout match the old h3; the color is now text-ink (warm
+          near-black) instead of forest-green — the intentional headline punch. */}
       <Heading level={4} className="leading-snug group-hover:text-ink/80 sm:text-xl">
         {item.title}
       </Heading>

@@ -7,7 +7,8 @@
 // #C2410C warning color drifted apart from brand rust in the first place — this
 // header is the leash that keeps them together.
 
-export const forestGreen = '#1B4332' // brand green — ink/body/muted/line/accent today
+export const forestGreen = '#1B4332' // brand green — body/muted/line/accent today
+export const ink = '#1C1917' // headline ink — warm near-black (diverged from forest-green)
 export const cream = '#FDFBF7' // app canvas + on-accent text
 export const rust = '#8B3A2B' // brand accent (NOT the error state — see warning)
 export const warning = '#C2410C' // degraded / error state — semantically distinct from brand rust
