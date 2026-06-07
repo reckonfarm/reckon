@@ -1,6 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Card } from './ui/Card'
+import { Heading } from './ui/Heading'
+import { Badge } from './ui/Badge'
 
 // Markets news feed UI. Reads /api/news (region-aware: passes through ?fips when the
 // surface knows a county, else the route falls back to the geo header). Headline +
@@ -166,11 +169,13 @@ function relativeTime(iso: string | null): string {
 }
 
 function NearYouBadge() {
+  // Built from the Badge primitive (rust tone) — same pill chrome as before, now
+  // sourced from one place; the dot + label are the NearYou-specific content.
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-rust/10 px-2 py-0.5 font-dm-sans text-[11px] font-semibold text-rust">
+    <Badge tone="rust">
       <span className="inline-block h-1.5 w-1.5 rounded-full bg-rust" />
       Near you
-    </span>
+    </Badge>
   )
 }
 
@@ -248,11 +253,16 @@ function NewsCard({
   hideRegionalBadge?: boolean
 }) {
   return (
-    <a
+    // Clickable card built from the Card primitive (as="a"). Card supplies the chrome
+    // (rounded-xl border-line/10 bg-surface shadow-sm == the old forest-green/10 + bg-white);
+    // padding + interactive hover/transition stay caller-supplied via className — identical
+    // to the previous inline classes.
+    <Card
+      as="a"
       href={item.link}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm transition-colors hover:border-forest-green/25 sm:p-5"
+      className="group block p-4 transition-colors hover:border-line/25 sm:p-5"
     >
       {/* Source identity LEADS the card, Apple-News style — [favicon] Source Name on the
           left; timestamp + external-link affordance right-aligned on the same row. */}
@@ -271,16 +281,17 @@ function NewsCard({
           <ExternalArrow />
         </span>
       </div>
-      {/* Headline under the source. */}
-      <h3 className="font-fraunces text-lg font-semibold leading-snug text-forest-green group-hover:text-forest-green/80 sm:text-xl">
+      {/* Headline under the source — Heading level 4 (text-lg) + responsive/leading/hover
+          via className reproduces the old h3 exactly (text-ink == forest-green today). */}
+      <Heading level={4} className="leading-snug group-hover:text-ink/80 sm:text-xl">
         {item.title}
-      </h3>
+      </Heading>
       {item.snippet && (
         <p className="mt-2 line-clamp-2 font-dm-sans text-sm leading-relaxed text-forest-green/55">
           {item.snippet}
         </p>
       )}
-    </a>
+    </Card>
   )
 }
 
