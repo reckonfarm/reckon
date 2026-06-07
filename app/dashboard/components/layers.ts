@@ -70,7 +70,28 @@ export interface RadarLayer extends BaseLayer {
   defaultMode:     'latest' | 'loop'       // 'latest' = open on newest frame only (light for 3G)
 }
 
-export type LayerDefinition = VectorLayer | TileLayer | ImageLayer | RadarLayer
+// ─── AHPS observed-precipitation RASTER (NOAA RFC QPE export service) ───────────
+// A dynamic ArcGIS MapServer raster (export-only, NOT tile-cached) served in Web
+// Mercator (3857) — so it aligns NATIVELY with the OSM base, radar, and the county
+// grid (no reprojection). Rendered as <img> export tiles fetched per-tile-bbox
+// straight from NOAA (same direct-load path as the radar tiles), behind its own
+// thin /api/layers/<id> proxy for honest availability + the "as of" ending date.
+// Multi-window: one toggle tab, with a 30-day / 90-day segmented control IN the view
+// (the same in-view-control pattern as radar's play/pause).
+export interface RasterWindow {
+  label:   string          // segmented-control text ('30-day' / '90-day')
+  layerId: number          // ArcGIS Image sublayer id to export (68 = 30-day, 76 = 90-day)
+  legend:  LegendItem[]    // condensed, EXACT service colors (decoded from /legend?f=json)
+}
+
+export interface RasterLayer extends BaseLayer {
+  type:     'raster'                                     // proxy returns { ok, asOf, error }
+  service:  string                                       // ArcGIS MapServer base (…/MapServer)
+  windows:  RasterWindow[]                               // ≥1; the in-view control switches them
+  opacity:  number                                       // drawn ABOVE the base map, UNDER the county grid
+}
+
+export type LayerDefinition = VectorLayer | TileLayer | ImageLayer | RadarLayer | RasterLayer
 
 // Per-render, county-dynamic extras keyed by layer id, injected by the page (e.g. the
 // USDM static-image fallback URL, which is computed server-side per county).
@@ -199,6 +220,53 @@ export const radar: RadarLayer = {
   defaultMode:     'latest',
 }
 
+// ─── AHPS observed precipitation — the observed-accumulation raster layer ───────
+// "How much did my county actually receive." Distinct from radar (instantaneous
+// reflectivity): this is multi-sensor QPE accumulated over the window, in inches.
+// Two condensed legends (30-day / 90-day) — the service maps the SAME palette to
+// DIFFERENT inch breaks per window, so each window shows its own scale. Colors are
+// the EXACT service hex (decoded from the MapServer /legend swatches), at the lower
+// bound of each band; never invented. Bands chosen for what a rancher distinguishes.
+const AHPS_LEGEND_30: LegendItem[] = [
+  { color: '#7d0000', label: '8"+' },
+  { color: '#fa9600', label: '4–8"' },
+  { color: '#fafa00', label: '2–4"' },
+  { color: '#00a110', label: '1–2"' },
+  { color: '#00fa15', label: '0.5–1"' },
+  { color: '#14c8fa', label: '< 0.5"' },
+]
+const AHPS_LEGEND_90: LegendItem[] = [
+  { color: '#fafa00', label: '8"+' },
+  { color: '#00a110', label: '4–8"' },
+  { color: '#00fa15', label: '2–4"' },
+  { color: '#001496', label: '1–2"' },
+  { color: '#3e87c7', label: '0.5–1"' },
+  { color: '#14c8fa', label: '< 0.5"' },
+]
+
+export const ahpsObserved: RasterLayer = {
+  id:          'ahps',
+  label:       'Observed Rain',
+  category:    'water',
+  type:        'raster',
+  service:     'https://mapservices.weather.noaa.gov/raster/rest/services/obs/rfc_qpe/MapServer',
+  endpoint:    '/api/layers/ahps',          // thin availability + asOf proxy (tiles load direct)
+  attribution: 'NOAA/NWS AHPS — Observed Precipitation',
+  loadingNote: 'Loading observed precipitation…',
+  failure:     { note: 'Observed precipitation temporarily unavailable' },
+  opacity:     0.7,
+  // First window is the default (30-day). The Image sublayer ids (68/76) are the
+  // confirmed children of the "Last 30/90 Days Observed (inches)" groups (65/73) —
+  // exporting Image-only keeps the RFC boundary/footprint off our county grid.
+  windows: [
+    { label: '30-day', layerId: 68, legend: AHPS_LEGEND_30 },
+    { label: '90-day', layerId: 76, legend: AHPS_LEGEND_90 },
+  ],
+  // Registry-level legend (the generic default); the view renders the active window's.
+  legend: AHPS_LEGEND_30,
+}
+
 // Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector
-// layers (USDM, alerts) and the outlook images stay as switchable tabs after it.
-export const LAYERS: LayerDefinition[] = [radar, usdm, alerts]
+// layers (USDM, alerts) and the AHPS observed-precip raster stay as switchable tabs
+// after it. alerts is inToggle:false (radar overlay only), so it gets no tab.
+export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, alerts]

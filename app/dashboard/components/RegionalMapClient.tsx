@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
-import { LAYERS, type VectorLayer, type RadarLayer, type LayerRuntime } from './layers'
+import { LAYERS, type VectorLayer, type RadarLayer, type RasterLayer, type LayerRuntime } from './layers'
 import { timeoutSignal } from '@/lib/external-fetch'
 import { warning } from '@/lib/brand-colors'
 
@@ -473,6 +473,133 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
   )
 }
 
+// ─── AHPS observed-precip export tiles (NOAA RFC QPE) ──────────────────────────
+// The service is export-only (no XYZ cache), so we subclass L.TileLayer and build a
+// per-tile ArcGIS `export` URL from each tile's Web-Mercator (3857) bbox. The service
+// is already 3857, identical to Leaflet's CRS, so tiles align natively with the base
+// map and county grid — no reprojection. Tiles load as <img> straight from NOAA (same
+// direct path as the radar tiles). zIndex sits above the base map; the county grid
+// lives in the overlayPane (always above the tilePane) so the outline draws over it.
+function AhpsExportTiles({ service, layerId, opacity }: { service: string; layerId: number; opacity: number }) {
+  const map = useMap()
+  useEffect(() => {
+    const R = 20037508.342789244   // Web-Mercator world half-extent (meters)
+    const AhpsLayer = L.TileLayer.extend({
+      getTileUrl(coords: L.Coords) {
+        const span = (2 * R) / 2 ** coords.z
+        const xmin = -R + coords.x * span
+        const xmax = -R + (coords.x + 1) * span
+        const ymax =  R - coords.y * span
+        const ymin =  R - (coords.y + 1) * span
+        return `${service}/export?bbox=${xmin},${ymin},${xmax},${ymax}` +
+          `&bboxSR=3857&imageSR=3857&size=256,256&dpi=96&format=png32&transparent=true` +
+          `&layers=show:${layerId}&f=image`
+      },
+    })
+    // url template unused (getTileUrl is overridden). Leaflet's Class.extend returns a
+    // no-arg-typed constructor, so cast it to the real TileLayer (url, options) signature.
+    const Ctor = AhpsLayer as unknown as new (url: string, opts?: L.TileLayerOptions) => L.TileLayer
+    const layer = new Ctor('', { opacity, zIndex: 450 })
+    layer.addTo(map)
+    return () => { map.removeLayer(layer) }
+  }, [map, service, layerId, opacity])
+  return null
+}
+
+// Generic RASTER layer view — its OWN MapContainer (AHPS observed precip). Sibling of
+// RadarLayerView: base map + county grid + the export-tile raster + an in-view 30/90-day
+// control + a legend/freshness card. Honest-degraded: the raster draws only when the
+// availability probe is healthy; on loading/error the base map + county grid still paint,
+// with the honest note in the legend card — never a blank layer pretending to be loaded.
+function RasterLayerView({ layer, center, zoom, selectedFips }: {
+  layer:         RasterLayer
+  center:        [number, number]
+  zoom:          number
+  selectedFips?: string
+}) {
+  const [winIdx, setWinIdx] = useState(0)
+  const win = layer.windows[winIdx] ?? layer.windows[0]
+
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
+  const [asOf, setAsOf]     = useState<string | null>(null)
+
+  // Availability + asOf via the thin proxy (timed-out, like the vector hook). A slow/hung
+  // NOAA never blocks the paint; the layer just resolves to ok / error when it answers.
+  useEffect(() => {
+    let cancelled = false
+    fetch(layer.endpoint, { signal: timeoutSignal() })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
+      .then((d: { ok?: boolean; asOf?: string | null; error?: boolean }) => {
+        if (cancelled) return
+        if (d.error || !d.ok) { setStatus('error'); return }
+        setAsOf(d.asOf ?? null); setStatus('ok')
+      })
+      .catch(() => { if (!cancelled) setStatus('error') })
+    return () => { cancelled = true }
+  }, [layer.endpoint])
+
+  const asOfText = asOf
+    ? new Date(`${asOf}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  return (
+    <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
+      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+        {/* County base grid FIRST → overlayPane sits above the tilePane, so the county
+            outline draws OVER the precip raster (county outlined, precip colored inside). */}
+        <CountyLines selectedFips={selectedFips} />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        {/* Export tiles only when the probe is healthy; keyed by window so a 30↔90 switch
+            swaps the raster cleanly. */}
+        {status === 'ok' && (
+          <AhpsExportTiles key={win.layerId} service={layer.service} layerId={win.layerId} opacity={layer.opacity} />
+        )}
+      </MapContainer>
+
+      {/* 30-day / 90-day segmented control — in-view, same pattern as radar's play/pause. */}
+      <div className="absolute top-3 left-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
+        {layer.windows.map((w, i) => (
+          <button
+            key={w.label}
+            type="button"
+            onClick={() => setWinIdx(i)}
+            aria-pressed={i === winIdx}
+            className={`rounded-md px-2.5 py-1 font-dm-sans text-xs font-semibold transition-colors ${
+              i === winIdx ? 'bg-forest-green text-cream' : 'text-forest-green/60 hover:text-forest-green'
+            }`}
+          >
+            {w.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Legend + freshness / honest-degraded note — the ACTIVE window's scale (the service
+          maps the same palette to different inch breaks per window). */}
+      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
+        <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
+        <div className="mb-1.5 text-[10px] text-forest-green/50">
+          {status === 'loading'
+            ? (layer.loadingNote ?? 'Loading…')
+            : status === 'error'
+              ? <span style={{ color: warning }}>{layer.failure.note}</span>
+              : asOfText
+                ? `${win.label} total · as of ${asOfText}`
+                : `${win.label} total`}
+        </div>
+        {win.legend.map(({ color, label }) => (
+          <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
+            {label}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function RegionalMapClient({ center, countyLabel, fips, runtime = {} }: RegionalMapClientProps) {
   const [tab, setTab] = useState<string>(LAYERS[0]?.id ?? 'usdm')
   const mapCenter = center ?? CONUS
@@ -496,9 +623,11 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
         <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
       ) : activeLayer?.type === 'radar' ? (
-        // Animated radar tiles + the alerts overlay (county-dynamic endpoint). Both toggle
-        // segments are now one of these two branches.
+        // Animated radar tiles + the alerts overlay (county-dynamic endpoint).
         <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} alertsEndpoint={alertsEndpoint} />
+      ) : activeLayer?.type === 'raster' ? (
+        // AHPS observed-precip export-tile raster + in-view 30/90-day control.
+        <RasterLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-1 rounded-lg bg-forest-green/5 p-1">
