@@ -31,6 +31,7 @@ function iconFor(short: string): IconKind {
 interface DayRow {
   dateKey:     string
   label:       string
+  date:        string        // calendar date, e.g. "Jun 9"
   high:        number | null
   low:         number | null
   precip:      number | null   // % chance — the hero field (max across the day's periods)
@@ -51,7 +52,7 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
     if (!dateKey) continue
     let row = map.get(dateKey)
     if (!row) {
-      row = { dateKey, label: '', high: null, low: null, precip: null, iconKind: 'cloud', detailDay: '', detailNight: '' }
+      row = { dateKey, label: '', date: '', high: null, low: null, precip: null, iconKind: 'cloud', detailDay: '', detailNight: '' }
       map.set(dateKey, row)
       order.push(dateKey)
     }
@@ -70,9 +71,11 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
   }
   const rows = order.map(k => map.get(k)!)
   rows.forEach((r, i) => {
+    const d = new Date(`${r.dateKey}T12:00:00`)
     r.label = i === 0
       ? (r.high != null ? 'Today' : 'Tonight')
-      : new Date(`${r.dateKey}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' })
+      : d.toLocaleDateString('en-US', { weekday: 'short' })
+    r.date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
   return rows.slice(0, 7)
 }
@@ -118,7 +121,8 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                 isOpen ? 'border-forest-green/40 bg-forest-green/5' : 'border-forest-green/10 hover:bg-forest-green/5'
               }`}
             >
-              <div className="text-[11px] font-dm-sans font-semibold text-forest-green/70">{d.label}</div>
+              <div className="text-[11px] font-dm-sans font-semibold leading-tight text-forest-green/70">{d.label}</div>
+              <div className="text-[9px] font-dm-sans leading-tight text-forest-green/40">{d.date}</div>
               <div className="my-1 text-lg leading-none" aria-hidden="true">{ICON[d.iconKind]}</div>
               {/* Hero: % chance of rain — the field a rancher reads first. */}
               <div
@@ -152,9 +156,11 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
         </div>
       )}
 
-      {/* Visible freshness stamp (the never-lie rule). */}
-      <p className="mt-3 font-dm-sans text-[11px] text-forest-green/40">
-        NWS point forecast{updated ? ` · updated ${updated}` : ''} · tap a day for details
+      {/* Visible freshness stamp (the never-lie rule), honest about precision: this is
+          NWS's gridpoint forecast for the county CENTER, not a specific ranch. One line,
+          small, so it doesn't bloat the compact card. */}
+      <p className="mt-3 truncate font-dm-sans text-[10px] text-forest-green/40">
+        NWS · county center{updated ? ` · updated ${updated}` : ''}
       </p>
     </Card>
   )
