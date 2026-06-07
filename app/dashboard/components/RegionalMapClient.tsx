@@ -490,7 +490,18 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-1 rounded-lg bg-forest-green/5 p-1">
+      {activeLayer?.type === 'vector' ? (
+        // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
+        // fresh on a layer OR county change — geo/status re-init per layer from the
+        // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
+        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
+      ) : activeLayer?.type === 'radar' ? (
+        // Animated radar tiles + the alerts overlay (county-dynamic endpoint). Both toggle
+        // segments are now one of these two branches.
+        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} alertsEndpoint={alertsEndpoint} />
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-1 rounded-lg bg-forest-green/5 p-1">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
@@ -505,17 +516,6 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
           </button>
         ))}
       </div>
-
-      {activeLayer?.type === 'vector' ? (
-        // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
-        // fresh on a layer OR county change — geo/status re-init per layer from the
-        // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
-        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
-      ) : activeLayer?.type === 'radar' ? (
-        // Animated radar tiles + the alerts overlay (county-dynamic endpoint). Both toggle
-        // segments are now one of these two branches.
-        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} alertsEndpoint={alertsEndpoint} />
-      ) : null}
 
       <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
         {activeLayer
