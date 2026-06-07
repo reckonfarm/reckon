@@ -21,6 +21,8 @@ import type { County } from './components/CountySelector'
 import OfficialMap, { type OfficialMapRecord } from './components/OfficialMap'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
+import { getLocalForecast, type LocalForecast } from '@/lib/nws'
+import ForecastPanel from './components/ForecastPanel'
 import { timeoutSignal } from '@/lib/external-fetch'
 import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
@@ -195,6 +197,28 @@ function RainfallPanelSkeleton() {
   )
 }
 
+// 7-day NWS point forecast — awaited INSIDE a Suspense boundary so the 2-step NWS call
+// (points → forecast) never blocks the weather-view paint, exactly like the rainfall
+// panel. getLocalForecast owns its own timeout + cache + honest-null; a null degrades to
+// ForecastPanel's "temporarily unavailable", never a stale or blank-as-loaded card.
+async function ForecastPanelAsync({ dataPromise }: { dataPromise: Promise<LocalForecast | null> }) {
+  const data = await dataPromise
+  return <ForecastPanel data={data} />
+}
+
+function ForecastPanelSkeleton() {
+  return (
+    <Card className="p-4 sm:p-5" aria-hidden="true">
+      <style>{`@keyframes dlFcShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-fc-skel{animation:dlFcShimmer 1.4s ease-in-out infinite}`}</style>
+      <div className="flex gap-2 overflow-hidden">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="dl-fc-skel h-[92px] w-[64px] shrink-0 rounded-xl bg-forest-green/5" />
+        ))}
+      </div>
+    </Card>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export async function generateMetadata({
@@ -295,6 +319,14 @@ export default async function DashboardPage({
     ? getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon)
         .catch(() => 'data_unavailable' as const)
     : Promise.resolve(null)
+
+  // 7-day NWS forecast — same streamed-behind-Suspense pattern. Started here (concurrent
+  // with the cheap reads); resolved in ForecastPanelAsync. A rejection degrades to null →
+  // honest "temporarily unavailable". Needs the county centroid for the gridpoint lookup.
+  const forecastPromise: Promise<LocalForecast | null> =
+    selectedCounty && selectedCounty.lat != null && selectedCounty.lon != null
+      ? getLocalForecast(selectedCounty.lat, selectedCounty.lon).catch(() => null)
+      : Promise.resolve(null)
 
   // Cheap latest reading — always awaited (drives the shared Share label + heading and
   // the Latest Reading chrome card), independent of which view is open.
@@ -614,6 +646,15 @@ export default async function DashboardPage({
               <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
               <Suspense fallback={<RainfallPanelSkeleton />}>
                 <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
+              </Suspense>
+            </div>
+
+            {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
+                Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
+            <div>
+              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+              <Suspense fallback={<ForecastPanelSkeleton />}>
+                <ForecastPanelAsync dataPromise={forecastPromise} />
               </Suspense>
             </div>
 
