@@ -422,8 +422,18 @@ async function main() {
     return
   }
 
+  // Stamp ingested_at on EVERY row so the upsert advances it on conflict-UPDATE, not
+  // just on INSERT. Without this, a run that finds only already-seen links (a quiet-news
+  // run — every link a duplicate) updates rows in place but leaves ingested_at frozen at
+  // the last NEW-article time, so MAX(ingested_at) stops tracking cron health and the
+  // route's 6h freshness gate trips even though the pipeline is alive. With it,
+  // MAX(ingested_at) == last successful run → the gate measures cron health, not article
+  // cadence. (Column is a plain timestamptz default now(); article time lives in ts/pub_date.)
+  const now = new Date().toISOString()
+  const payload = rows.map(r => ({ ...r, ingested_at: now }))
+
   // Idempotent upsert on the link natural key.
-  const { error } = await db.from('news_items').upsert(rows, { onConflict: 'link' })
+  const { error } = await db.from('news_items').upsert(payload, { onConflict: 'link' })
   if (error) {
     console.error('[news-snapshot] upsert failed:', error.message)
     process.exit(1)
