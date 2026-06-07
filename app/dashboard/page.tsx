@@ -106,6 +106,52 @@ function DroughtBar({ reading }: { reading: DroughtReading }) {
   )
 }
 
+// Official USDM category colors — identical to the --color-usdm-* tokens (globals.css),
+// DroughtBar above, and the map legend, so the icon matches the map exactly. Keyed D0..D4.
+const USDM_HEX: Record<number, string> = {
+  0: '#FFFF00', 1: '#FCD37F', 2: '#FFAA00', 3: '#E60000', 4: '#730000',
+}
+
+// Current highest drought category for the Latest Reading icon. Computed from the SAME
+// per-category buckets (actual coverage, cumulative differences) that the card's legend
+// filters at > 0.5% — so the icon and the legend, sitting inches apart, can NEVER disagree
+// on the same reading. Returns null when no category clears 0.5%: a tracked county with no
+// active drought ("None").
+function highestCategory(reading: DroughtReading): number | null {
+  const d0 = reading.d0 ?? 0
+  const d1 = reading.d1 ?? 0
+  const d2 = reading.d2 ?? 0
+  const d3 = reading.d3 ?? 0
+  const d4 = reading.d4 ?? 0
+  const buckets = [d0 - d1, d1 - d2, d2 - d3, d3 - d4, d4]  // per-category actual %
+  for (let n = 4; n >= 0; n--) if (buckets[n] > 0.5) return n
+  return null
+}
+
+// Drought-severity icon for the Latest Reading header: a colored square (official USDM
+// hex) with the D-level in sharp black — or a neutral OUTLINED "None" chip when the county
+// has a reading but no active drought (never a green/D0 square implying a reading). Only
+// rendered alongside a real reading; when there's no data the whole card is already absent.
+function DroughtCategoryIcon({ reading }: { reading: DroughtReading }) {
+  const level = highestCategory(reading)
+  if (level === null) {
+    return (
+      <span className="rounded-md border border-forest-green/20 bg-forest-green/5 px-2.5 py-1 text-xs font-semibold text-forest-green/50 font-dm-sans">
+        None
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex h-7 w-9 items-center justify-center rounded-md text-xs font-bold font-dm-sans"
+      style={{ backgroundColor: USDM_HEX[level], color: '#000' }}
+      aria-label={`Current drought category D${level}`}
+    >
+      D{level}
+    </span>
+  )
+}
+
 
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
@@ -515,9 +561,12 @@ export default async function DashboardPage({
                   <Heading level={5}>
                     Latest Reading
                   </Heading>
-                  <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
-                    Week of {formatDate(latest.week_date)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <DroughtCategoryIcon reading={latest} />
+                    <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
+                      Week of {formatDate(latest.week_date)}
+                    </span>
+                  </div>
                 </div>
 
                 <DroughtBar reading={latest} />
