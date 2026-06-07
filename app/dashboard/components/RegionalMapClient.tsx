@@ -473,14 +473,16 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
   )
 }
 
-// ─── AHPS observed-precip export tiles (NOAA RFC QPE) ──────────────────────────
-// The service is export-only (no XYZ cache), so we subclass L.TileLayer and build a
-// per-tile ArcGIS `export` URL from each tile's Web-Mercator (3857) bbox. The service
-// is already 3857, identical to Leaflet's CRS, so tiles align natively with the base
-// map and county grid — no reprojection. Tiles load as <img> straight from NOAA (same
-// direct path as the radar tiles). zIndex sits above the base map; the county grid
-// lives in the overlayPane (always above the tilePane) so the outline draws over it.
-function AhpsExportTiles({ service, layerId, opacity }: { service: string; layerId: number; opacity: number }) {
+// ─── ArcGIS export tiles (shared by every raster layer) ────────────────────────
+// Dynamic ArcGIS MapServers are export-only (no XYZ cache), so we subclass L.TileLayer
+// and build a per-tile `export` URL from each tile's Web-Mercator (3857) bbox. We pass
+// imageSR=3857, so even a service whose NATIVE SR isn't web-mercator (e.g. WPC QPF's
+// sphere CRS) is reprojected server-side and returns a 3857-aligned PNG — no client
+// reprojection. Used by AHPS observed precip AND WPC QPF forecast. Tiles load as <img>
+// straight from NOAA (same direct path as the radar tiles). zIndex sits above the base
+// map; the county grid lives in the overlayPane (always above the tilePane) so the
+// outline draws over it.
+function ArcgisExportTiles({ service, layerId, opacity }: { service: string; layerId: number; opacity: number }) {
   const map = useMap()
   useEffect(() => {
     const R = 20037508.342789244   // Web-Mercator world half-extent (meters)
@@ -517,7 +519,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
   zoom:          number
   selectedFips?: string
 }) {
-  const [winIdx, setWinIdx] = useState(0)
+  const [winIdx, setWinIdx] = useState(layer.defaultWindow ?? 0)
   const win = layer.windows[winIdx] ?? layer.windows[0]
 
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
@@ -555,7 +557,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
         {/* Export tiles only when the probe is healthy; keyed by window so a 30↔90 switch
             swaps the raster cleanly. */}
         {status === 'ok' && (
-          <AhpsExportTiles key={win.layerId} service={layer.service} layerId={win.layerId} opacity={layer.opacity} />
+          <ArcgisExportTiles key={win.layerId} service={layer.service} layerId={win.layerId} opacity={layer.opacity} />
         )}
       </MapContainer>
 
@@ -582,14 +584,14 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
           "NOAA/NWS AHPS" attribution already shows in the caption under the map) and a
           width cap so a long "as of"/error note wraps instead of covering the county. */}
       <div className="absolute bottom-3 right-3 z-[1000] max-w-[150px] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
-        <div className="text-xs font-semibold text-forest-green">Observed precip</div>
+        <div className="text-xs font-semibold text-forest-green">{layer.legendTitle}</div>
         <div className="mb-1.5 text-[10px] text-forest-green/50">
           {status === 'loading'
             ? 'Loading…'
             : status === 'error'
               ? <span style={{ color: warning }}>{layer.failure.note}</span>
               : asOfText
-                ? `${win.label} · as of ${asOfText}`
+                ? `${win.label} · ${layer.asOfPrefix} ${asOfText}`
                 : win.label}
         </div>
         {win.legend.map(({ color, label }) => (

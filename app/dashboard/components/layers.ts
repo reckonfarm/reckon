@@ -85,10 +85,13 @@ export interface RasterWindow {
 }
 
 export interface RasterLayer extends BaseLayer {
-  type:     'raster'                                     // proxy returns { ok, asOf, error }
-  service:  string                                       // ArcGIS MapServer base (…/MapServer)
-  windows:  RasterWindow[]                               // ≥1; the in-view control switches them
-  opacity:  number                                       // drawn ABOVE the base map, UNDER the county grid
+  type:        'raster'                                  // proxy returns { ok, asOf, error }
+  service:     string                                    // ArcGIS MapServer base (…/MapServer)
+  windows:     RasterWindow[]                            // ≥1; the in-view control switches them
+  opacity:     number                                    // drawn ABOVE the base map, UNDER the county grid
+  legendTitle: string                                    // short legend heading ('Observed precip' / 'Forecast precip')
+  asOfPrefix:  string                                    // freshness framing ('as of' for observed, 'issued' for forecast)
+  defaultWindow?: number                                 // index of the window to open on (default 0)
 }
 
 export type LayerDefinition = VectorLayer | TileLayer | ImageLayer | RadarLayer | RasterLayer
@@ -262,11 +265,57 @@ export const ahpsObserved: RasterLayer = {
     { label: '30-day', layerId: 68, legend: AHPS_LEGEND_30 },
     { label: '90-day', layerId: 76, legend: AHPS_LEGEND_90 },
   ],
+  legendTitle: 'Observed precip',
+  asOfPrefix:  'as of',
   // Registry-level legend (the generic default); the view renders the active window's.
   legend: AHPS_LEGEND_30,
+}
+
+// ─── WPC QPF forecast precipitation — the FORECAST companion to AHPS observed ────
+// NOAA Weather Prediction Center quantitative precipitation forecast. It's a vector
+// (Feature) service in a non-3857 sphere CRS, but it rides the SAME export-tile path
+// as AHPS: ArcGIS rasterizes + reprojects to 3857 server-side (imageSR=3857), so the
+// PNG is web-mercator-aligned with the county grid — no client reprojection, no
+// renderer change beyond the shared legendTitle/asOfPrefix fields. Dry areas export
+// transparent (verified), so no qpf>0 filter is needed. One shared color scale across
+// all windows (unlike AHPS's per-window scales). Colors are the EXACT service hex
+// (decoded from the MapServer /legend swatches), condensed to the same band structure
+// as AHPS so observed + forecast read consistently. Honest forecast framing: the
+// legend says "Forecast precip · {window} · issued {date}" (real issue_time).
+const QPF_LEGEND: LegendItem[] = [
+  { color: '#ffd700', label: '8"+' },
+  { color: '#ee4000', label: '4–8"' },
+  { color: '#8b008b', label: '2–4"' },
+  { color: '#00b2ee', label: '1–2"' },
+  { color: '#104e8b', label: '0.5–1"' },
+  { color: '#7fff00', label: '< 0.5"' },
+]
+
+export const wpcQpf: RasterLayer = {
+  id:          'qpf',
+  label:       'Forecast Rain',
+  category:    'water',
+  type:        'raster',
+  service:     'https://mapservices.weather.noaa.gov/vector/rest/services/precip/wpc_qpf/MapServer',
+  endpoint:    '/api/layers/qpf',           // availability + real issuance date (tiles load direct)
+  attribution: 'NOAA/NWS WPC — Forecast Precipitation',
+  loadingNote: 'Loading forecast precipitation…',
+  failure:     { note: 'Forecast precipitation temporarily unavailable' },
+  opacity:     0.7,
+  // Cumulative forecast windows (Feature layer ids on the WPC QPF service): Day-1 24hr,
+  // Day 1–3 (72hr), Day 1–7 (168hr). Same QPF scale across all → one shared legend.
+  windows: [
+    { label: 'Next 24hr',   layerId: 1,  legend: QPF_LEGEND },
+    { label: 'Next 3 days', layerId: 9,  legend: QPF_LEGEND },
+    { label: 'Next 7 days', layerId: 11, legend: QPF_LEGEND },
+  ],
+  defaultWindow: 2,                          // open on the 7-day (least likely to look blank)
+  legendTitle: 'Forecast precip',
+  asOfPrefix:  'issued',
+  legend: QPF_LEGEND,
 }
 
 // Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector
 // layers (USDM, alerts) and the AHPS observed-precip raster stay as switchable tabs
 // after it. alerts is inToggle:false (radar overlay only), so it gets no tab.
-export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, alerts]
+export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, alerts]
