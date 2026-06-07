@@ -577,17 +577,20 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
       </div>
 
       {/* Legend + freshness / honest-degraded note — the ACTIVE window's scale (the service
-          maps the same palette to different inch breaks per window). */}
-      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
-        <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
+          maps the same palette to different inch breaks per window). Compact corner key,
+          same size/placement as the Drought Monitor + radar legends: a SHORT title (the full
+          "NOAA/NWS AHPS" attribution already shows in the caption under the map) and a
+          width cap so a long "as of"/error note wraps instead of covering the county. */}
+      <div className="absolute bottom-3 right-3 z-[1000] max-w-[150px] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
+        <div className="text-xs font-semibold text-forest-green">Observed precip</div>
         <div className="mb-1.5 text-[10px] text-forest-green/50">
           {status === 'loading'
-            ? (layer.loadingNote ?? 'Loading…')
+            ? 'Loading…'
             : status === 'error'
               ? <span style={{ color: warning }}>{layer.failure.note}</span>
               : asOfText
-                ? `${win.label} total · as of ${asOfText}`
-                : `${win.label} total`}
+                ? `${win.label} · as of ${asOfText}`
+                : win.label}
         </div>
         {win.legend.map(({ color, label }) => (
           <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
