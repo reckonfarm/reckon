@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import MapLightbox from './MapLightbox'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 
 export interface OfficialMapRecord {
   id: number
@@ -45,8 +47,9 @@ export default function OfficialMap({ map, title, note, className = '', regional
 
   if (!map) {
     return (
-      <div
-        className={`flex min-h-[180px] items-center justify-center rounded-xl border border-forest-green/10 bg-white p-6 text-center ${className}`}
+      <Card
+        shadow="none"
+        className={`flex min-h-[180px] items-center justify-center p-6 text-center ${className}`}
       >
         <div>
           <p className="text-sm font-medium text-forest-green/60 font-dm-sans">{displayTitle}</p>
@@ -54,18 +57,18 @@ export default function OfficialMap({ map, title, note, className = '', regional
             Official map updating — check back after the next Tuesday release.
           </p>
         </div>
-      </div>
+      </Card>
     )
   }
 
   const imgSrc = regionalMapUrl ?? map.image_url
 
   return (
-    <div
-      className={`overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm transition-shadow hover:shadow-md ${className}`}
+    <Card
+      className={`overflow-hidden transition-shadow hover:shadow-md ${className}`}
     >
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <h2 className="font-fraunces text-base font-semibold text-forest-green">{displayTitle}</h2>
+        <Heading level={5}>{displayTitle}</Heading>
       </div>
       <div className="p-4 sm:p-6">
         <div
@@ -100,6 +103,6 @@ export default function OfficialMap({ map, title, note, className = '', regional
       </div>
 
       <MapLightbox open={isOpen} onClose={() => setIsOpen(false)} src={imgSrc} alt={displayTitle} />
-    </div>
+    </Card>
   )
 }

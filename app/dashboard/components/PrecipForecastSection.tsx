@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import TabBar from './TabBar'
 import MapLightbox from './MapLightbox'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import {
   ComposedChart,
   Line,
@@ -348,12 +350,12 @@ export default function PrecipForecastSection({
   const [active, setActive] = useState<Tab>(TABS[0])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-sm">
+    <Card className="overflow-hidden">
       {!hideHeader && (
         <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-          <h2 className="font-fraunces text-base font-semibold text-forest-green">
+          <Heading level={5}>
             Rainfall Outlook
-          </h2>
+          </Heading>
         </div>
       )}
 
@@ -434,6 +436,6 @@ export default function PrecipForecastSection({
           </>
         )}
       </div>
-    </div>
+    </Card>
   )
 }

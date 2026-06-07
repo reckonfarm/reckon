@@ -11,16 +11,29 @@ import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react'
 // Polymorphic via `as` (default 'div'): a clickable card renders `as="a"` and forwards
 // href/target/rel etc. — interactive hover/transition stay caller-supplied via className
 // (no `interactive` variant yet). This is a sprint-wide capability, not a one-card hack.
+//
+// `shadow` (default 'sm') selects the elevation: 'sm' = the de-facto card shadow (so
+// existing callers are unchanged); 'soft' = the soft drop the LFP hero / ProgramStatus
+// use; 'none' = no shadow (e.g. OfficialMap's empty state). Radius/border live here.
+type CardShadow = 'sm' | 'soft' | 'none'
+
+const SHADOWS: Record<CardShadow, string> = {
+  sm: 'shadow-sm',
+  soft: 'shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
+  none: '',
+}
+
 type CardProps<T extends ElementType> = {
   as?: T
+  shadow?: CardShadow
   className?: string
   children?: ReactNode
-} & Omit<ComponentPropsWithoutRef<T>, 'as' | 'className' | 'children'>
+} & Omit<ComponentPropsWithoutRef<T>, 'as' | 'shadow' | 'className' | 'children'>
 
-export function Card<T extends ElementType = 'div'>({ as, className = '', children, ...rest }: CardProps<T>) {
+export function Card<T extends ElementType = 'div'>({ as, shadow = 'sm', className = '', children, ...rest }: CardProps<T>) {
   const Tag: ElementType = as ?? 'div'
   return (
-    <Tag className={`rounded-xl border border-line/10 bg-surface shadow-sm ${className}`} {...(rest as Record<string, unknown>)}>
+    <Tag className={`rounded-xl border border-line/10 bg-surface ${SHADOWS[shadow]} ${className}`} {...(rest as Record<string, unknown>)}>
       {children}
     </Tag>
   )

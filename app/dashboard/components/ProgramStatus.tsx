@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import type { LfpEligibilityResult, LfpTierStatus } from '@/lib/lfp-eligibility'
 import {
   estimatePayment,
@@ -961,7 +963,7 @@ export default function ProgramStatus({
   const priorYear   = priorYearEligibility?.grazingPeriod.startDate.slice(0, 4) ?? String(new Date().getFullYear() - 1)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
+    <Card shadow="soft" className="overflow-hidden">
 
       {eligibility && eligibility.maxTier >= 1 && (
         <div className="mb-6 rounded-xl bg-forest-green px-5 py-4 text-cream">
@@ -979,9 +981,9 @@ export default function ProgramStatus({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <h2 className="font-fraunces text-base font-semibold text-forest-green">
+        <Heading level={5}>
           Program Status
-        </h2>
+        </Heading>
 
         <div className="flex flex-wrap items-center gap-2">
           {priorYearEligibility && (
@@ -1042,6 +1044,6 @@ export default function ProgramStatus({
       <div className="border-t border-forest-green/10 px-4 py-4 sm:px-6">
         <LfpDisclaimer />
       </div>
-    </div>
+    </Card>
   )
 }

@@ -3,6 +3,7 @@ import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { getLfpDelta } from '@/lib/lfp-delta'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
+import { Card } from '@/app/components/ui/Card'
 
 // ─── LFP hero (SLICE 2 — sharp visual pass) ────────────────────────────────────
 // The LFP status at the permanent top of the dashboard. READS ENGINE OUTPUT ONLY
@@ -185,7 +186,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
   const chip      = severityChip(sev)
 
   return (
-    <section className="rounded-xl border border-forest-green/10 bg-white p-6 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-8">
+    <Card as="section" shadow="soft" className="p-6 sm:p-8">
 
       {/* a. County + severity chip — small, orienting, above the hero */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -245,6 +246,6 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
           Drought data as of {fmtAsOf(dataAsOf)}.
         </p>
       </div>
-    </section>
+    </Card>
   )
 }

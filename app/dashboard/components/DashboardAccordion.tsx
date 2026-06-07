@@ -29,7 +29,11 @@ export default function DashboardAccordion({
         aria-expanded={open}
       >
         <div className="flex flex-col gap-0.5">
-          <span className={`font-fraunces text-base font-semibold ${highlight ? 'text-cream' : 'text-forest-green'}`}>
+          {/* Accordion title is a real heading but lives inside the toggle <button>, where
+              an <h5> would be invalid HTML — so it stays a <span> and takes the near-black
+              ink directly (text-ink) to match the rest of the migrated headings. Highlight
+              (triggered, on the green header) keeps cream. */}
+          <span className={`font-fraunces text-base font-semibold ${highlight ? 'text-cream' : 'text-ink'}`}>
             {title}
           </span>
           {preview && !open && (

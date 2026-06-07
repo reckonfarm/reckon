@@ -26,6 +26,8 @@ import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/Droug
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, type DeliveredCost } from '@/lib/freight'
 import DashboardAccordion from './components/DashboardAccordion'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import MarketsNews from '@/app/components/MarketsNews'
@@ -135,7 +137,7 @@ async function RainfallPanelAsync({
 // this project's @theme, so it uses a scoped keyframe).
 function RainfallPanelSkeleton() {
   return (
-    <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm sm:p-6" aria-hidden="true">
+    <Card className="p-4 sm:p-6" aria-hidden="true">
       <style>{`@keyframes dlRainShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-rain-skel{animation:dlRainShimmer 1.4s ease-in-out infinite}`}</style>
       <div className="dl-rain-skel h-40 w-full rounded-lg bg-forest-green/5" />
       <div className="mt-4 grid grid-cols-3 gap-3">
@@ -143,7 +145,7 @@ function RainfallPanelSkeleton() {
         <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
         <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -471,9 +473,9 @@ export default async function DashboardPage({
             {/* County heading + actions — shared across both views, above the toggle */}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
               <div>
-                <h1 className="font-fraunces text-2xl font-semibold text-forest-green">
+                <Heading level={2}>
                   {selectedCounty.name}, {selectedCounty.state}
-                </h1>
+                </Heading>
                 <p className="text-sm text-forest-green/50 font-dm-sans mt-0.5">
                   FIPS {selectedCounty.fips}
                 </p>
@@ -508,11 +510,11 @@ export default async function DashboardPage({
 
             {/* Latest Reading — drought chrome, Weather view only (above the map). */}
             {latest && (
-              <div className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-[0_2px_12px_rgba(27,67,50,0.08)] sm:p-6">
+              <Card shadow="soft" className="p-4 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                  <Heading level={5} className="sm:text-lg">
                     Latest Reading
-                  </h2>
+                  </Heading>
                   <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
                     Week of {formatDate(latest.week_date)}
                   </span>
@@ -554,7 +556,7 @@ export default async function DashboardPage({
                     U.S. Drought Monitor
                   </a>
                 </p>
-              </div>
+              </Card>
             )}
 
             {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
@@ -605,11 +607,11 @@ export default async function DashboardPage({
             )}
 
             {!history.length && (
-              <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
+              <Card shadow="none" className="px-6 py-8 text-center">
                 <p className="text-sm text-forest-green/60 font-dm-sans">
                   No drought data yet for this county.
                 </p>
-              </div>
+              </Card>
             )}
 
             {history.length > 0 && (
@@ -618,7 +620,7 @@ export default async function DashboardPage({
                 <div className="space-y-3">
 
                   {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA */}
-                  <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-4">
+                  <Card shadow="none" className="px-5 py-4">
                     <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
                       Hay nearby
                     </p>
@@ -661,7 +663,7 @@ export default async function DashboardPage({
                         <LfpEstimateNote />
                       </div>
                     )}
-                  </div>
+                  </Card>
 
                 </div>
 
@@ -759,9 +761,9 @@ function EmptyState() {
           <path d="m21 21-4.35-4.35"/>
         </svg>
       </div>
-      <h2 className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
+      <Heading level={3} className="sm:text-2xl">
         Select a county to begin
-      </h2>
+      </Heading>
       <p className="mt-2 max-w-xs text-sm text-forest-green/60 font-dm-sans">
         Search above to view drought conditions and weekly history for any US county.
       </p>

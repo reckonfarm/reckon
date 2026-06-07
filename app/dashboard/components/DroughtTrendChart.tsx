@@ -1,5 +1,6 @@
 'use client'
 
+import { Heading } from '@/app/components/ui/Heading'
 import {
   ComposedChart,
   Bar,
@@ -157,9 +158,9 @@ export default function DroughtTrendChart({ history, countyName }: Props) {
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-[#FDFBF7] shadow-[0_2px_12px_rgba(27,67,50,0.08)]">
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <h2 className="font-fraunces text-base font-semibold text-forest-green">
+        <Heading level={5}>
           52-Week Trend
-        </h2>
+        </Heading>
         <p className="text-xs text-forest-green/50 font-dm-sans mt-0.5">
           Peak drought category per week — {countyName}
         </p>
