@@ -129,7 +129,7 @@ function alertsStyle(feature?: Feature): PathOptions {
     return { stroke: false, fill: false, interactive: true }
   }
   const { color } = getAlertStyle(event)
-  return { color, weight: 2, fillColor: color, fillOpacity: 0.08, opacity: 1, interactive: true }
+  return { color, weight: 2, fillColor: color, fillOpacity: 0.08, opacity: 0.9, interactive: true }
 }
 
 // FLAG-AND-HOLD: legend swatch only. The polygons are now per-event colored (above),
