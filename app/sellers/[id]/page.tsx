@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
 import SiteFooter from '@/app/components/SiteFooter'
@@ -166,9 +168,9 @@ export default async function SellerPage(
         </Link>
 
         {/* Seller header */}
-        <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 shadow-sm">
+        <Card className="px-5 py-6">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">{name}</h1>
+            <Heading level={2}>{name}</Heading>
             {profile.verified_phone && (
               <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -209,17 +211,17 @@ export default async function SellerPage(
               {profile.bio}
             </p>
           )}
-        </div>
+        </Card>
 
         {/* Reviews */}
-        <h2 className="mt-8 mb-4 font-fraunces text-lg font-semibold text-forest-green">
+        <Heading level={5} className="mt-8 mb-4">
           Reviews
           {(profile.seller_review_count ?? 0) > 0 && (
             <span className="ml-2 font-dm-sans text-sm font-normal text-forest-green/50">
               {renderStars(profile.seller_avg_rating ?? 0)} {(profile.seller_avg_rating ?? 0).toFixed(1)} · {profile.seller_review_count}
             </span>
           )}
-        </h2>
+        </Heading>
 
         {reviews.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-10 text-center">
@@ -230,11 +232,11 @@ export default async function SellerPage(
         ) : (
           <ul className="space-y-3">
             {reviews.map(r => (
-              <li key={r.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5">
+              <Card as="li" key={r.id} className="px-4 py-4 sm:px-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-dm-sans text-sm text-rust">{renderStars(r.rating)}</span>
                   {r.verified_deal && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
@@ -242,7 +244,7 @@ export default async function SellerPage(
                     </span>
                   )}
                   {r.reviewee_role === 'buyer' && (
-                    <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-forest-green/60 ring-1 ring-forest-green/15">
+                    <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green/60 ring-1 ring-forest-green/15">
                       As a buyer
                     </span>
                   )}
@@ -253,15 +255,15 @@ export default async function SellerPage(
                     {r.comment}
                   </p>
                 )}
-              </li>
+              </Card>
             ))}
           </ul>
         )}
 
         {/* Active listings */}
-        <h2 className="mt-8 mb-4 font-fraunces text-lg font-semibold text-forest-green">
+        <Heading level={5} className="mt-8 mb-4">
           Active listings{listings.length > 0 ? ` (${listings.length})` : ''}
-        </h2>
+        </Heading>
 
         {listings.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
@@ -283,7 +285,7 @@ export default async function SellerPage(
                     : 'Price TBD'
 
               return (
-                <li key={l.id} className="rounded-xl border border-forest-green/10 bg-white shadow-sm">
+                <Card as="li" key={l.id}>
                   <Link href={`/hay/${l.id}`} className="block">
                     {l.photo_urls && l.photo_urls.length > 0 && (
                       <div className="relative h-32 w-full overflow-hidden rounded-t-xl">
@@ -293,7 +295,7 @@ export default async function SellerPage(
                           className="h-full w-full object-cover"
                         />
                         {l.photo_urls.length > 1 && (
-                          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-[10px] text-white">
+                          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-xs text-white">
                             +{l.photo_urls.length - 1} more
                           </span>
                         )}
@@ -301,14 +303,14 @@ export default async function SellerPage(
                     )}
                     <div className="px-4 py-4 sm:px-5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-fraunces text-base font-semibold text-forest-green">
+                        <Heading level={5}>
                           {l.hay_type}
                           {l.cutting_number != null && (
                             <span className="font-dm-sans text-sm font-normal text-forest-green/60 ml-1">
                               — {ORDINALS[l.cutting_number]} cut
                             </span>
                           )}
-                        </h3>
+                        </Heading>
                         {l.listing_type === 'donate' && (
                           <span className="inline-flex items-center rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green ring-1 ring-forest-green/20">
                             Donation
@@ -347,7 +349,7 @@ export default async function SellerPage(
                       )}
                     </div>
                   </Link>
-                </li>
+                </Card>
               )
             })}
           </ul>

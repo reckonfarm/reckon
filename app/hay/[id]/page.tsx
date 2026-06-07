@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import { createClient } from '@/lib/supabase-browser'
 import { trackEvent } from '@/lib/analytics'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -438,9 +440,9 @@ export default function HayDetailPage() {
             )}
             <span className="text-xs text-forest-green/40 font-dm-sans">{daysAgo(listing.created_at)}</span>
           </div>
-          <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
+          <Heading level={2}>
             {title}
-          </h1>
+          </Heading>
           <p className="mt-1 text-sm text-forest-green/60 font-dm-sans">
             {county?.name}, {county?.state}
             {dist !== null && (
@@ -475,7 +477,7 @@ export default function HayDetailPage() {
 
         {/* ── Deal action / messaging card ──────────────────────────────────── */}
         {isSold ? (
-          <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
+          <Card className="mb-6 px-5 py-5">
             <p className="font-fraunces text-base font-semibold text-forest-green">This listing has been sold</p>
             {listing.viewer_has_reviewed ? (
               <p className="mt-2 text-sm font-dm-sans text-forest-green/60">
@@ -499,9 +501,9 @@ export default function HayDetailPage() {
                 This hay is no longer available.
               </p>
             )}
-          </div>
+          </Card>
         ) : (
-          <div className="mb-6 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
+          <Card className="mb-6 px-5 py-5">
             {listing.is_owner ? (
               <>
                 <Link
@@ -569,13 +571,13 @@ export default function HayDetailPage() {
                 </p>
               </>
             )}
-          </div>
+          </Card>
         )}
 
         {/* Estimated delivered cost — the number a rancher actually decides on */}
         {dc && (
-          <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-1">Estimated delivered cost</h2>
+          <Card className="mb-5 px-5 py-5">
+            <Heading level={5} className="mb-1">Estimated delivered cost</Heading>
             <p className="font-fraunces text-3xl font-semibold text-forest-green leading-none">
               ${dc.delivered}
               <span className="ml-1.5 font-dm-sans text-base font-medium text-forest-green/60">/ton est. delivered</span>
@@ -605,12 +607,12 @@ export default function HayDetailPage() {
               (straight-line distance × {ROAD_CIRCUITY_FACTOR} for road circuity).
               Partial loads cost more per ton. Confirm actual freight with your hauler.
             </p>
-          </div>
+          </Card>
         )}
 
         {/* Key details */}
-        <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-          <h2 className="font-fraunces text-base font-semibold text-forest-green mb-4">Listing Details</h2>
+        <Card className="mb-5 px-5 py-5">
+          <Heading level={5} className="mb-4">Listing Details</Heading>
           <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
             <DetailRow label="Hay Type" value={listing.hay_type} />
             {listing.bale_type && (
@@ -635,22 +637,22 @@ export default function HayDetailPage() {
               <DetailRow label="Distance" value={`${dist} miles from your watched county`} />
             )}
           </dl>
-        </div>
+        </Card>
 
         {/* Description */}
         {listing.description && (
-          <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-2">From the Seller</h2>
+          <Card className="mb-5 px-5 py-5">
+            <Heading level={5} className="mb-2">From the Seller</Heading>
             <p className="text-sm font-dm-sans text-forest-green/80 leading-relaxed whitespace-pre-wrap">
               {listing.description}
             </p>
-          </div>
+          </Card>
         )}
 
         {/* Hay test results */}
         {hasTest && (
-          <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-1">Forage Test Results</h2>
+          <Card className="mb-5 px-5 py-5">
+            <Heading level={5} className="mb-1">Forage Test Results</Heading>
             <div className="mt-3">
               {listing.hay_test_protein_pct != null && (
                 <TestRow
@@ -684,12 +686,12 @@ export default function HayDetailPage() {
             <p className="mt-3 text-xs text-forest-green/45 font-dm-sans leading-snug">
               Test results provided by seller. Independent verification recommended for large purchases.
             </p>
-          </div>
+          </Card>
         )}
 
         {/* Drought context */}
-        <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-5 shadow-sm">
-          <h2 className="font-fraunces text-base font-semibold text-forest-green mb-2">Drought Context</h2>
+        <Card className="mb-5 px-5 py-5">
+          <Heading level={5} className="mb-2">Drought Context</Heading>
           <p className="text-sm font-dm-sans text-forest-green/80">{droughtContextText}</p>
           <Link
             href={`/dashboard?fips=${county?.fips ?? ''}`}
@@ -697,11 +699,11 @@ export default function HayDetailPage() {
           >
             View {county?.name ?? ''} drought dashboard →
           </Link>
-        </div>
+        </Card>
 
         {/* About the Seller */}
-        <div className="mb-5 rounded-xl border border-forest-green/10 bg-white px-5 py-4 shadow-sm">
-          <h2 className="font-fraunces text-base font-semibold text-forest-green mb-3">About the Seller</h2>
+        <Card className="mb-5 px-5 py-4">
+          <Heading level={5} className="mb-3">About the Seller</Heading>
 
           <div className="flex items-center gap-2 mb-1">
             {listing.seller_user_id ? (
@@ -747,7 +749,7 @@ export default function HayDetailPage() {
               {sellerActivityLabel(listing.seller_since)}
             </p>
           )}
-        </div>
+        </Card>
 
         {/* Footer */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forest-green/40 font-dm-sans">
@@ -772,9 +774,9 @@ export default function HayDetailPage() {
       {showReview && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
           <div className="w-full max-w-md rounded-2xl bg-cream px-5 py-6 shadow-xl">
-            <h2 className="font-fraunces text-lg font-semibold text-forest-green">
+            <Heading level={5}>
               Rate {listing.counterparty_name ?? (listing.counterparty_role === 'seller' ? 'the seller' : 'the buyer')}
-            </h2>
+            </Heading>
             <p className="mt-1 text-sm font-dm-sans text-forest-green/60">
               Your review is tied to this completed deal and helps other ranchers trade with confidence.
             </p>
@@ -844,9 +846,9 @@ export default function HayDetailPage() {
               </div>
             ) : (
               <>
-                <h2 className="font-fraunces text-lg font-semibold text-forest-green">
+                <Heading level={5}>
                   Report this listing
-                </h2>
+                </Heading>
                 <p className="mt-1 text-sm font-dm-sans text-forest-green/60">
                   What&rsquo;s wrong with it? This goes straight to me.
                 </p>

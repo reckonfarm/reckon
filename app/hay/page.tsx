@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 import SiteFooter from '@/app/components/SiteFooter'
@@ -691,9 +693,9 @@ export default function HayPage() {
         {/* Header row */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
+            <Heading level={2}>
               Hay Network
-            </h1>
+            </Heading>
             <p className="mt-1 text-sm text-forest-green/50 font-dm-sans">
               Drought-aware hay listings. Buyers and sellers connect offline.
             </p>
@@ -734,10 +736,10 @@ export default function HayPage() {
 
         {/* ── Post form ──────────────────────────────────────────────────── */}
         {showForm && authed && (
-          <div className="mt-6 rounded-xl border border-forest-green/10 bg-white px-5 py-6 shadow-sm">
-            <h2 className="font-fraunces text-base font-semibold text-forest-green mb-5">
+          <Card className="mt-6 px-5 py-6">
+            <Heading level={5} className="mb-5">
               {editingId != null ? 'Edit listing' : 'New listing'}
-            </h2>
+            </Heading>
 
             {/* Group 1: Core */}
             <div className="grid gap-4 sm:grid-cols-2">
@@ -992,7 +994,7 @@ export default function HayPage() {
                           setPhotoFiles(prev => prev.filter((_, j) => j !== i))
                           setPhotoUrls(prev => prev.filter((_, j) => j !== i))
                         }}
-                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-forest-green text-cream text-[10px] font-bold"
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-forest-green text-cream text-xs font-bold"
                       >
                         ×
                       </button>
@@ -1036,11 +1038,11 @@ export default function HayPage() {
             </div>
 
             <MarketplaceDisclaimer className="mt-5 border-t border-forest-green/10 pt-4" />
-          </div>
+          </Card>
         )}
 
         {/* ── Deliver to ───────────────────────────────────────────────────── */}
-        <div className="mt-6 rounded-xl border border-forest-green/10 bg-white px-4 py-3">
+        <Card shadow="none" className="mt-6 px-4 py-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/50">
               Deliver to
@@ -1108,7 +1110,7 @@ export default function HayPage() {
               ? 'Prices below show est. delivered cost per ton to this county (assumes full truckload).'
               : 'Set your county to see est. delivered cost per ton — freight included.'}
           </p>
-        </div>
+        </Card>
 
         {/* Tab bar */}
         <div className="mt-6 flex gap-1 rounded-lg bg-forest-green/5 p-1 w-fit">
@@ -1237,7 +1239,7 @@ export default function HayPage() {
                     placeholder={buyerCounty ? 'e.g. 150' : 'Set a county above first'} disabled={!buyerCounty}
                     className={`${INPUT_CLS} disabled:opacity-50`} />
                   {!buyerCounty && (
-                    <p className="mt-1 font-dm-sans text-[11px] text-forest-green/40">
+                    <p className="mt-1 font-dm-sans text-xs text-forest-green/40">
                       Set a &ldquo;Deliver to&rdquo; county above to filter by distance.
                     </p>
                   )}
@@ -1323,10 +1325,11 @@ export default function HayPage() {
                 const contactLabel = l.listing_type === 'want' ? 'Contact' : 'Message'
 
                 return (
-                  <li
+                  <Card
+                    as="li"
                     key={l.id}
                     onClick={() => router.push(`/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`)}
-                    className="rounded-xl border border-forest-green/10 bg-white shadow-sm cursor-pointer"
+                    className="cursor-pointer"
                   >
                     {l.photo_urls && l.photo_urls.length > 0 && (
                       <div className="relative h-32 w-full overflow-hidden rounded-t-xl">
@@ -1336,7 +1339,7 @@ export default function HayPage() {
                           className="h-full w-full object-cover"
                         />
                         {l.photo_urls.length > 1 && (
-                          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-[10px] text-white">
+                          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-xs text-white">
                             +{l.photo_urls.length - 1} more
                           </span>
                         )}
@@ -1381,14 +1384,14 @@ export default function HayPage() {
 
                         {/* Title + badges row */}
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-fraunces text-base font-semibold text-forest-green">
+                          <Heading level={5}>
                             {l.hay_type}
                             {l.cutting_number != null && (
                               <span className="font-dm-sans text-sm font-normal text-forest-green/60 ml-1">
                                 — {ORDINALS[l.cutting_number]} cut
                               </span>
                             )}
-                          </h2>
+                          </Heading>
                           {l.listing_type === 'donate' && (
                             <span className="inline-flex items-center rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green ring-1 ring-forest-green/20">
                               Donation
@@ -1507,7 +1510,7 @@ export default function HayPage() {
                             <span className="font-dm-sans text-xs text-forest-green/60">{l.display_name}</span>
                           )}
                           {l.verified_phone && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/8 px-2 py-0.5 font-dm-sans text-[10px] font-medium text-forest-green">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/8 px-2 py-0.5 font-dm-sans text-xs font-medium text-forest-green">
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
@@ -1525,7 +1528,7 @@ export default function HayPage() {
                         </div>
                       )}
                     </div>
-                  </li>
+                  </Card>
                 )
               })}
             </ul>
