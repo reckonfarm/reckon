@@ -1,5 +1,6 @@
 import type { Feature, FeatureCollection } from 'geojson'
 import type { PathOptions } from 'leaflet'
+import { getAlertStyle, NON_RENDERING_EVENTS } from '@/lib/nws-alert-colors'
 
 // ─── Regional-map layer registry (the platform contract) ───────────────────────
 // Every layer is one of three Leaflet archetypes and gets its data through its own
@@ -108,18 +109,34 @@ export const usdm: VectorLayer = {
 }
 
 // ─── NWS active alerts — the hazard vector layer ───────────────────────────────
-// Single warning-red stroke with a faint fill so it reads as a warning OUTLINE on
-// top of (and distinct from) the filled drought palette. County-dynamic: the real
-// endpoint (?area=ST) is injected via LayerRuntime per render. Honest-empty: a quiet
-// day shows "No active alerts", never a false "unavailable" (see the proxy + renderer).
+// Per-event official NWS colors (the WWA table in lib/nws-alert-colors.ts) so a
+// rancher reads "pink = winter storm" the way every weather app/TV station shows it —
+// a stroke + faint fill that reads as a warning OUTLINE over the drought palette.
+// County-dynamic: the real endpoint (?area=ST) is injected via LayerRuntime per render.
+// Honest-empty: a quiet day shows "No active alerts", never a false "unavailable".
 
-const ALERT_RED = '#DC2626'
-
-// interactive:true so the polygons receive taps → the clickInfo popup (below). USDM's
-// usdmStyle stays interactive:false (no popup), so they don't share this behaviour.
-function alertsStyle(): PathOptions {
-  return { color: ALERT_RED, weight: 2, fillColor: ALERT_RED, fillOpacity: 0.08, opacity: 0.9, interactive: true }
+// Per-FEATURE style: Leaflet calls GeoJSON `style` once per feature, so each alert
+// polygon gets the official color for its own NWS `event` (feature.properties.event,
+// the api.weather.gov field). Unknown events fall to NWS_UNKNOWN_ALERT_STYLE gray via
+// getAlertStyle — NEVER red — so we never paint an unrecognized alert as a tornado
+// warning. Civil NON_RENDERING_EVENTS (Child Abduction Emergency, Blue Alert) are
+// non-geographic: drawn transparent (no stroke/fill), surfaced via the clickInfo popup
+// only. interactive:true so polygons still receive taps → the popup (USDM's usdmStyle
+// stays interactive:false, so they don't share that behaviour).
+function alertsStyle(feature?: Feature): PathOptions {
+  const event = (feature?.properties?.event as string | undefined) ?? ''
+  if (NON_RENDERING_EVENTS.has(event)) {
+    return { stroke: false, fill: false, interactive: true }
+  }
+  const { color } = getAlertStyle(event)
+  return { color, weight: 2, fillColor: color, fillOpacity: 0.08, opacity: 1, interactive: true }
 }
+
+// FLAG-AND-HOLD: legend swatch only. The polygons are now per-event colored (above),
+// so this single red swatch no longer represents the map — the per-event legend is its
+// own later slice (the convention is tap-the-polygon, already wired via clickInfo).
+// Left UNCHANGED this commit on purpose; kept solely so the existing legend still renders.
+const ALERT_RED = '#DC2626'
 
 export const alerts: VectorLayer = {
   id:            'alerts',
