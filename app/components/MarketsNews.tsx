@@ -174,6 +174,56 @@ function NearYouBadge() {
   )
 }
 
+// Publisher domain from the article URL (the external-link target), stripped of `www.`
+// — the source set is the cron's full tagged feed list, so deriving from the link is more
+// robust than a static name→domain map (it covers every source automatically). Null if
+// the URL won't parse → the favicon falls straight to its monogram.
+function sourceDomain(link: string): string | null {
+  try {
+    return new URL(link).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
+// Apple-News-style source favicon. Loads the publisher icon from DuckDuckGo's icon
+// service (privacy-cleaner than Google's). HONEST-DEGRADED, the icon-level form of the
+// project's no-dead-box rule: a missing/404/blocked icon falls to a clean circular
+// monogram (the source's first letter, forest-green on a faint tint) — NEVER a broken
+// image. Decorative (aria-hidden); the source name sits right beside it.
+function SourceFavicon({ link, source, size = 20 }: { link: string; source: string; size?: number }) {
+  const domain = sourceDomain(link)
+  const [failed, setFailed] = useState(false)
+  const letter = (source.trim()[0] ?? '?').toUpperCase()
+
+  if (!domain || failed) {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex flex-shrink-0 items-center justify-center rounded-full bg-forest-green/10 font-dm-sans font-semibold text-forest-green"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.5) }}
+      >
+        {letter}
+      </span>
+    )
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://icons.duckduckgo.com/ip3/${domain}.ico`}
+      alt=""
+      aria-hidden="true"
+      width={size}
+      height={size}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="flex-shrink-0 rounded-full bg-white object-contain"
+      style={{ width: size, height: size }}
+    />
+  )
+}
+
 function ExternalArrow() {
   return (
     <svg
@@ -204,7 +254,24 @@ function NewsCard({
       rel="noopener noreferrer"
       className="group block rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm transition-colors hover:border-forest-green/25 sm:p-5"
     >
-      {/* Title leads — the thing the user scans and taps. */}
+      {/* Source identity LEADS the card, Apple-News style — [favicon] Source Name on the
+          left; timestamp + external-link affordance right-aligned on the same row. */}
+      <div className="mb-2.5 flex items-center gap-2">
+        <SourceFavicon link={item.link} source={item.source} size={20} />
+        <span className="font-dm-sans text-[13px] font-semibold text-forest-green/70">
+          {item.source}
+        </span>
+        {item.regional && !hideRegionalBadge && <NearYouBadge />}
+        <span className="ml-auto flex items-center gap-2">
+          {item.pubDate && (
+            <span className="font-dm-sans text-[11px] text-forest-green/40">
+              {relativeTime(item.pubDate)}
+            </span>
+          )}
+          <ExternalArrow />
+        </span>
+      </div>
+      {/* Headline under the source. */}
       <h3 className="font-fraunces text-lg font-semibold leading-snug text-forest-green group-hover:text-forest-green/80 sm:text-xl">
         {item.title}
       </h3>
@@ -213,26 +280,6 @@ function NewsCard({
           {item.snippet}
         </p>
       )}
-      {/* Quiet meta footer — source · time, with the badge and link affordance. */}
-      <div className="mt-3 flex items-center gap-2">
-        {item.regional && !hideRegionalBadge && <NearYouBadge />}
-        <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
-          {item.source}
-        </span>
-        {item.pubDate && (
-          <>
-            <span className="text-forest-green/20" aria-hidden="true">
-              ·
-            </span>
-            <span className="font-dm-sans text-[11px] text-forest-green/40">
-              {relativeTime(item.pubDate)}
-            </span>
-          </>
-        )}
-        <span className="ml-auto">
-          <ExternalArrow />
-        </span>
-      </div>
     </a>
   )
 }
@@ -252,7 +299,8 @@ function NewsCardCompact({ item }: { item: NewsItem }) {
         <h3 className="font-fraunces text-base font-semibold leading-snug text-forest-green group-hover:text-forest-green/80">
           {item.title}
         </h3>
-        <div className="mt-1 flex items-center gap-2">
+        <div className="mt-1 flex items-center gap-1.5">
+          <SourceFavicon link={item.link} source={item.source} size={16} />
           <span className="font-dm-sans text-[11px] font-medium text-forest-green/45">
             {item.source}
           </span>
