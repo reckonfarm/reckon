@@ -252,8 +252,12 @@ async function fetchFeed(
 
 const TABLE_READ_LIMIT = 150
 // Older than this and the cron has likely stalled → fall back to live-fetch so the
-// feed is never stale-but-pretending-fresh.
-const TABLE_STALE_MS = 6 * 60 * 60 * 1000 // 6h
+// feed is never stale-but-pretending-fresh. Paired with the ingested_at heartbeat
+// (the snapshot now bumps it on every run, so MAX(ingested_at) tracks cron HEALTH,
+// not article cadence): with the cron firing ~every 4h, a 12h cushion tolerates ~2
+// missed GitHub Actions ticks before dropping to the 3-source fallback — riding out
+// normal scheduler flakiness while still catching a genuinely dead cron.
+const TABLE_STALE_MS = 12 * 60 * 60 * 1000 // 12h
 
 interface NewsRow {
   title: string
