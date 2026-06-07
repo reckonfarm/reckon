@@ -8,6 +8,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import {
   ComposedChart,
   Line,
+  Scatter,
   XAxis,
   YAxis,
   Tooltip,
@@ -107,18 +108,28 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
   )
 }
 
+// Water-blue rain-event accent (two weights) — blue reads instantly as rain and pops
+// against the forest-green data lines without fighting them. Light = good rain, saturated
+// = great rain. Shared by the tooltip readout and the Scatter markers below.
+const RAIN_GOOD  = '#60A5FA'   // 0.5–1.0" in a day
+const RAIN_GREAT = '#2563EB'   // ≥ 1.0" in a day
+
 function PrecipTooltip({
   active,
   payload,
   label,
 }: {
   active?: boolean
-  payload?: Array<{ name: string; value: number }>
+  payload?: Array<{ name: string; value: number; payload?: { dayRain?: number | null; tier?: number } }>
   label?: string
 }) {
   if (!active || !payload?.length || !label) return null
   const actual = payload.find(p => p.name === 'actualCumulative')
   const normal = payload.find(p => p.name === 'normalCumulative')
+  // Every payload entry shares the same source datum, so read the per-day rain off the first.
+  const datum  = payload[0]?.payload
+  const tier   = datum?.tier ?? 0
+  const dayRain = datum?.dayRain
   const date = new Date(`${label}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric',
   })
@@ -127,8 +138,27 @@ function PrecipTooltip({
       <p className="font-semibold text-forest-green mb-1">{date}</p>
       {actual && <p className="text-forest-green">Actual: {actual.value.toFixed(2)}&quot;</p>}
       {normal && <p className="text-forest-green/50">Normal: {normal.value.toFixed(2)}&quot;</p>}
+      {tier > 0 && dayRain != null && (
+        <p className="mt-1 font-semibold" style={{ color: tier === 2 ? RAIN_GREAT : RAIN_GOOD }}>
+          Rain that day: {dayRain.toFixed(2)}&quot;
+        </p>
+      )}
     </div>
   )
+}
+
+// Custom Scatter shape: a water-blue marker on notable single-day rain. Returns nothing for
+// non-event days (tier 0), a subtle HOLLOW dot for good rain (tier 1), and a fuller SATURATED
+// dot for great rain (tier 2) so great rains pop. Anchored a few px above the baseline (cy)
+// so it rides the bottom of the plot as a clean "rain rug", clear of the axis labels.
+function RainMarker(props: { cx?: number; cy?: number; payload?: { tier?: number } }) {
+  const { cx, cy, payload } = props
+  const tier = payload?.tier ?? 0
+  if (!tier || cx == null || cy == null) return null
+  const y = cy - 5
+  return tier === 2
+    ? <circle cx={cx} cy={y} r={5}   fill={RAIN_GREAT} stroke="#fff" strokeWidth={1} />
+    : <circle cx={cx} cy={y} r={3.5} fill="#fff"       stroke={RAIN_GOOD} strokeWidth={1.5} />
 }
 
 export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalResult; countyName?: string }) {
@@ -165,6 +195,33 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, context, outOfCounty } = data
   const isDeficit = deficit < 0
 
+  // Per-day rainfall for the event markers — derived from the cumulative series (NO new
+  // fetch). dayRain = today's cumulative − yesterday's, but ONLY when the two points are
+  // exactly one calendar day apart; a date gap means we can't attribute the delta to a
+  // single day, so we skip it (never collapse a multi-day span onto one marker). Missing
+  // days don't accumulate (cum stays flat), so a gap reads as 0, never a false spike.
+  // tier: 2 = great rain (≥1.0"), 1 = good rain (0.5–1.0"), 0 = none. markerY=0 anchors the
+  // Scatter to the baseline; RainMarker draws just above it.
+  // NOTE (future enhancement): ACIS can report a multi-day total on ONE date via the 'A'
+  // (accumulated) flag, which we don't fetch — such a day could over-read here. Out of
+  // scope now; add the 'a' flag to the precip fetch (lib/precip-normal.ts) and skip flagged
+  // days to harden this. Markers are notable-rain HINTS, not an authoritative daily record.
+  const ONE_DAY_MS = 86_400_000
+  const tierFor = (mm: number) => (mm >= 1 ? 2 : mm >= 0.5 ? 1 : 0)
+  const markerData = dailyData.map((d, i) => {
+    if (i === 0) {
+      const dayRain = d.actualCumulative   // cum starts at 0, so day 0's cum IS its own daily total
+      return { ...d, dayRain, tier: tierFor(dayRain), markerY: 0 }
+    }
+    const prev = dailyData[i - 1]
+    const gapDays = Math.round(
+      (Date.parse(`${d.date}T00:00:00Z`) - Date.parse(`${prev.date}T00:00:00Z`)) / ONE_DAY_MS,
+    )
+    if (gapDays !== 1) return { ...d, dayRain: null, tier: 0, markerY: 0 }   // gap → can't trust the diff
+    const dayRain = d.actualCumulative - prev.actualCumulative
+    return { ...d, dayRain, tier: tierFor(dayRain), markerY: 0 }
+  })
+
   const monthTicks = dailyData
     .filter(d => d.date.endsWith('-01'))
     .map(d => d.date)
@@ -176,7 +233,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   return (
     <div className="space-y-4">
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={dailyData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <ComposedChart data={markerData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="date"
             ticks={monthTicks}
@@ -199,6 +256,9 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           <Tooltip
             content={<PrecipTooltip />}
             cursor={{ fill: 'rgba(27,67,50,0.06)' }}
+            // Initialize the readout on the latest/rightmost point so the rancher opens on
+            // "where we are now," then can drag back. Any touch/drag overrides it.
+            defaultIndex={markerData.length - 1}
           />
           <Line
             type="monotone"
@@ -218,6 +278,9 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
             dot={false}
             isAnimationActive={false}
           />
+          {/* Two-tier rain-event markers (water-blue). RainMarker draws nothing for non-event
+              days, so this rides the baseline as a clean "rain rug" without touching the lines. */}
+          <Scatter dataKey="markerY" shape={<RainMarker />} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
 
