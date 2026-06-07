@@ -18,7 +18,7 @@ import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
 import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
-import type { OfficialMapRecord } from './components/OfficialMap'
+import OfficialMap, { type OfficialMapRecord } from './components/OfficialMap'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { timeoutSignal } from '@/lib/external-fetch'
@@ -575,8 +575,6 @@ export default async function DashboardPage({
               fips={selectedCounty.fips}
               center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
               countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-              monthlyMap={cpcMonthlyMap}
-              seasonalMap={cpcSeasonalMap}
               runtime={{
                 usdm: {
                   fallbackImage: {
@@ -712,6 +710,20 @@ export default async function DashboardPage({
                     <div className="space-y-6">
                       <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
                       <DroughtTrendChart history={history} countyName={selectedCounty.name} />
+                    </div>
+                  </DashboardAccordion>
+
+                  {/* Forecast — the CPC drought outlooks (national reference images), moved
+                      out of the map toggle. OfficialMap renders the image + lightbox, and on a
+                      null record shows its own honest "official map updating" note (no broken
+                      image), so a missing/failed outlook degrades gracefully. */}
+                  <DashboardAccordion
+                    title="Forecast"
+                    preview="30-day & 3-month CPC outlook"
+                  >
+                    <div className="space-y-6">
+                      <OfficialMap map={cpcMonthlyMap} title="Monthly Drought Outlook" />
+                      <OfficialMap map={cpcSeasonalMap} title="Seasonal Drought Outlook" />
                     </div>
                   </DashboardAccordion>
 

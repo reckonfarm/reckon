@@ -5,15 +5,14 @@ import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
-import OfficialMap, { type OfficialMapRecord } from './OfficialMap'
 import { LAYERS, type VectorLayer, type RadarLayer, type LayerRuntime } from './layers'
 
 // ─── Regional map — registry-driven (layer-platform STEP 1) ────────────────────
-// Renders the active layer GENERICALLY from the registry (./layers.ts). Map layers
-// (currently just USDM) come from LAYERS; the CPC Monthly/Seasonal drought-tendency
-// outlooks are national reference images (not map layers) shown via OfficialMap in
-// the same toggle. Adding a registry layer = +1 definition + 1 proxy route, 0 changes
-// here.
+// Renders the active layer GENERICALLY from the registry (./layers.ts). Every toggle
+// segment is a map layer from LAYERS (radar, USDM, alerts). The CPC Monthly/Seasonal
+// drought outlooks are national reference IMAGES (not map layers), so they live in the
+// "Forecast" deep-dive accordion on the dashboard, not in this toggle. Adding a registry
+// layer = +1 definition + 1 proxy route, 0 changes here.
 
 const CONUS: [number, number] = [39.5, -98.5]
 const RUST = '#C2410C'
@@ -38,8 +37,6 @@ export interface RegionalMapClientProps {
   // Selected county FIPS (5-char zero-padded, matches the grid's GEOID) — highlights that
   // county in the base grid. Optional: national/no-county view passes none → uniform grid.
   fips?:       string
-  monthlyMap:  OfficialMapRecord | null
-  seasonalMap: OfficialMapRecord | null
   // Per-layer, county-dynamic extras keyed by layer id (e.g. USDM's static-image fallback).
   runtime?:    Record<string, LayerRuntime>
 }
@@ -386,19 +383,16 @@ function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLay
   )
 }
 
-export default function RegionalMapClient({ center, countyLabel, fips, monthlyMap, seasonalMap, runtime = {} }: RegionalMapClientProps) {
+export default function RegionalMapClient({ center, countyLabel, fips, runtime = {} }: RegionalMapClientProps) {
   const [tab, setTab] = useState<string>(LAYERS[0]?.id ?? 'usdm')
   const mapCenter = center ?? CONUS
   const mapZoom   = center ? 6 : 4
 
   const activeLayer = LAYERS.find(l => l.id === tab)
 
-  // Toggle = registry map layers + the CPC outlook images.
-  const tabs = [
-    ...LAYERS.map(l => ({ id: l.id, label: l.label })),
-    { id: 'monthly',  label: 'Monthly Outlook'  },
-    { id: 'seasonal', label: 'Seasonal Outlook' },
-  ]
+  // Toggle = registry map layers only (radar, USDM, alerts). The CPC outlook images
+  // moved to the "Forecast" deep-dive accordion on the dashboard.
+  const tabs = LAYERS.map(l => ({ id: l.id, label: l.label }))
 
   return (
     <div>
@@ -424,20 +418,14 @@ export default function RegionalMapClient({ center, countyLabel, fips, monthlyMa
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
         <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
       ) : activeLayer?.type === 'radar' ? (
-        // NEW additive branch — animated radar tiles. The vector + OfficialMap branches
-        // are unchanged.
+        // Animated radar tiles. Every toggle segment is now one of these two branches.
         <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
-      ) : (
-        <OfficialMap
-          map={tab === 'monthly' ? monthlyMap : seasonalMap}
-          title={tab === 'monthly' ? 'Monthly Drought Outlook' : 'Seasonal Drought Outlook'}
-        />
-      )}
+      ) : null}
 
       <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
         {activeLayer
           ? `Interactive ${activeLayer.attribution}, centered on your county. Base map © OpenStreetMap.`
-          : 'CPC national drought outlook — issued monthly.'}
+          : ''}
       </p>
     </div>
   )
