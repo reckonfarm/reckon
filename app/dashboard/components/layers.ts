@@ -21,6 +21,11 @@ interface BaseLayer {
   legend:       LegendItem[]
   failure:      { note: string }   // honest "temporarily unavailable" copy
   loadingNote?: string             // optional; defaults to "Loading…"
+  // Decouples "is a toggle button" from "is a registered layer". Default true (a tab).
+  // false = the layer stays registered (its data + LayerRuntime endpoint flow normally)
+  // but gets NO toggle button — e.g. alerts, which renders as an overlay on the radar
+  // view rather than as its own segment.
+  inToggle?:    boolean
 }
 
 export interface VectorLayer extends BaseLayer {
@@ -141,6 +146,7 @@ const ALERT_RED = '#DC2626'
 export const alerts: VectorLayer = {
   id:            'alerts',
   label:         'Alerts',
+  inToggle:      false,   // registered (data + endpoint flow) but NO tab — drawn as the radar overlay
   category:      'hazard',
   type:          'vector',
   endpoint:      '/api/layers/alerts', // static default; the per-county ?area=ST comes via runtime

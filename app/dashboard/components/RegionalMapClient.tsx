@@ -6,6 +6,13 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import { LAYERS, type VectorLayer, type RadarLayer, type LayerRuntime } from './layers'
+import { timeoutSignal } from '@/lib/external-fetch'
+
+// alerts stays REGISTERED (its data + LayerRuntime endpoint flow normally) but is NOT a
+// toggle tab (inToggle:false) — it renders only as the radar overlay. Resolve its static
+// registry def once; the county-dynamic endpoint is passed in per render.
+const ALERTS_LAYER: VectorLayer | null =
+  (LAYERS.find((l): l is VectorLayer => l.id === 'alerts' && l.type === 'vector')) ?? null
 
 // ─── Regional map — registry-driven (layer-platform STEP 1) ────────────────────
 // Renders the active layer GENERICALLY from the registry (./layers.ts). Every toggle
@@ -130,27 +137,41 @@ function CountyLines({ selectedFips }: { selectedFips?: string }) {
   )
 }
 
-// Generic VECTOR layer renderer — fetches the layer's proxy (GeoJSON + asOf) and draws it.
-function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFips }: {
-  layer:        VectorLayer
-  runtime?:     LayerRuntime
-  center:       [number, number]
-  zoom:         number
-  countyLabel:  string
-  selectedFips?: string
-}) {
-  // County-dynamic endpoint (e.g. alerts ?area=ST) is injected via runtime; layers
-  // without one (USDM) fall back to their static registry endpoint, unchanged.
-  const endpoint = runtime?.endpoint ?? layer.endpoint
-  const cached = layerCache.get(endpoint)
+// ─── Shared vector-layer fetch (hook) ──────────────────────────────────────────
+// The fetch half of a vector layer: proxy → GeoJSON + asOf, the three-state honesty
+// contract, and the per-endpoint session cache. NON-BLOCKING (runs in an effect AFTER
+// paint, so it never delays the map render) and REQUEST-TIMED-OUT via timeoutSignal()
+// (the standing external-fetch rule) — a hung/slow upstream becomes an honest 'error'
+// instead of a permanent 'loading', never a false-empty. Used by BOTH the Drought
+// Monitor view and the radar alerts overlay, so they share ONE fetch path, not two.
+// Null endpoint/layer is tolerated (defensive: if alerts were ever unregistered) — it
+// simply fetches nothing.
+function useVectorLayer(endpoint: string | null, layer: VectorLayer | null) {
+  const cached = endpoint ? layerCache.get(endpoint) : undefined
   const [geo, setGeo]       = useState<FeatureCollection | null>(cached?.geo ?? null)
   const [status, setStatus] = useState<Status>(cached ? 'ok' : 'loading')
   const [asOfMs, setAsOfMs] = useState<number | null>(cached?.asOfMs ?? null)
 
+  // Reset to the new endpoint's cached state (or loading) the instant endpoint changes,
+  // so a county switch on a NON-remounting host (the radar view) never shows the previous
+  // county's polygons while the new fetch runs. React's sanctioned "adjust state when a
+  // prop changes" pattern: compare a tracked STATE value during render (no extra paint).
+  // Drought Monitor is keyed/remounted by its parent, so prevEndpoint already matches
+  // there → this never fires, leaving that path byte-for-byte unchanged.
+  const [prevEndpoint, setPrevEndpoint] = useState(endpoint)
+  if (prevEndpoint !== endpoint) {
+    setPrevEndpoint(endpoint)
+    const c = endpoint ? layerCache.get(endpoint) : undefined
+    setGeo(c?.geo ?? null)
+    setAsOfMs(c?.asOfMs ?? null)
+    setStatus(c ? 'ok' : 'loading')
+  }
+
   useEffect(() => {
+    if (!endpoint || !layer) return
     if (layerCache.has(endpoint)) return  // already loaded this session — no re-fetch / no flash
     let cancelled = false
-    fetch(endpoint)
+    fetch(endpoint, { signal: timeoutSignal() })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
       .then((g: FeatureCollection & { releaseDate?: number; error?: boolean }) => {
         if (cancelled) return
@@ -167,9 +188,55 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
         layerCache.set(endpoint, { geo: g, asOfMs: ms })
         setGeo(g); setAsOfMs(ms); setStatus('ok')
       })
-      .catch(() => { if (!cancelled) setStatus('error') })
+      .catch(() => { if (!cancelled) setStatus('error') })  // includes AbortError (timeout) → honest error
     return () => { cancelled = true }
   }, [endpoint, layer])
+
+  return { geo, status, asOfMs }
+}
+
+// ─── Shared vector GeoJSON overlay ─────────────────────────────────────────────
+// The drawable half: one <GeoJSON> with the layer's style (or a per-host override, e.g.
+// the radar alerts' heavier fill) and the alerts-scoped popup. Droppable as a child of
+// ANY MapContainer — the Drought Monitor map and the radar map both render it, so the
+// GeoJSON + popup code lives in exactly one place.
+function VectorOverlay({ layer, geo, styleOverride }: {
+  layer:          VectorLayer
+  geo:            FeatureCollection
+  styleOverride?: VectorLayer['style']
+}) {
+  return (
+    <GeoJSON
+      data={geo}
+      style={styleOverride ?? layer.style}
+      onEachFeature={(feature, lyr) => {
+        // Tap-to-identify, ALERTS-SCOPED: bind a popup only for layers that define
+        // clickInfo (alerts). USDM has no clickInfo → this no-ops, no behaviour change.
+        if (!layer.clickInfo) return
+        const { title, body } = layer.clickInfo(feature)
+        lyr.bindPopup(
+          `<strong>${escapeHtml(title)}</strong>${body ? `<br><span>${escapeHtml(body)}</span>` : ''}`,
+        )
+      }}
+    />
+  )
+}
+
+// Generic VECTOR layer view — its OWN MapContainer (Drought Monitor). Fetches via the
+// shared hook, draws via the shared overlay; behaviour is identical to before the
+// extraction (same condition, same key on the GeoJSON via the keyed overlay, same style).
+function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFips }: {
+  layer:        VectorLayer
+  runtime?:     LayerRuntime
+  center:       [number, number]
+  zoom:         number
+  countyLabel:  string
+  selectedFips?: string
+}) {
+  // County-dynamic endpoint (e.g. alerts ?area=ST) is injected via runtime; layers
+  // without one (USDM) fall back to their static registry endpoint, unchanged.
+  const endpoint = runtime?.endpoint ?? layer.endpoint
+  const { geo, status, asOfMs } = useVectorLayer(endpoint, layer)
 
   const asOf          = asOfMs ? fmtEpoch(asOfMs) : null
   const fallbackImage = runtime?.fallbackImage
@@ -208,20 +275,9 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         {status === 'ok' && geo && (
-          <GeoJSON
-            key={asOfMs ?? layer.id}
-            data={geo}
-            style={layer.style}
-            onEachFeature={(feature, lyr) => {
-              // Tap-to-identify, ALERTS-SCOPED: bind a popup only for layers that define
-              // clickInfo (alerts). USDM has no clickInfo → this no-ops, no behaviour change.
-              if (!layer.clickInfo) return
-              const { title, body } = layer.clickInfo(feature)
-              lyr.bindPopup(
-                `<strong>${escapeHtml(title)}</strong>${body ? `<br><span>${escapeHtml(body)}</span>` : ''}`,
-              )
-            }}
-          />
+          // Keyed by asOfMs (USDM: release date) ?? layer.id — remounts the GeoJSON on new
+          // data so Leaflet redraws, exactly as the inline GeoJSON key did before extraction.
+          <VectorOverlay key={asOfMs ?? layer.id} layer={layer} geo={geo} />
         )}
       </MapContainer>
       <LegendCard layer={layer} status={status} asOf={asOf} count={geo?.features.length ?? 0} />
@@ -242,7 +298,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
 // frame labelled current.
 interface RadarFrame { time: number; path: string }
 
-function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLayer; center: [number, number]; zoom: number; selectedFips?: string }) {
+function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: { layer: RadarLayer; center: [number, number]; zoom: number; selectedFips?: string; alertsEndpoint: string | null }) {
   const [host, setHost]       = useState<string | null>(null)
   const [frames, setFrames]   = useState<RadarFrame[]>([])
   const [status, setStatus]   = useState<'loading' | 'ok' | 'error'>('loading')
@@ -251,6 +307,17 @@ function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLay
   const [front, setFront]     = useState<'a' | 'b'>('a')   // which of the two buffers is on top
   const [playing, setPlaying] = useState(layer.defaultMode === 'loop')
   const mapRef = useRef<L.Map | null>(null)
+
+  // ALERTS OVERLAY — same shared fetch path as the Drought Monitor view (NON-blocking +
+  // timed-out), so a slow/hung api.weather.gov never delays the radar paint; the overlay
+  // just arrives when ready (or shows an honest status). Polygons reuse commit-2's
+  // per-event NWS colors with a HEAVIER fill (0.18 vs 0.08) so the radar reads through;
+  // NON_RENDERING events stay non-drawing (fill:false wins over the override). Honest
+  // status surfaced below — fetch-fail must never look like a quiet day.
+  const { geo: alertsGeo, status: alertsStatus } = useVectorLayer(alertsEndpoint, ALERTS_LAYER)
+  const radarAlertStyle: VectorLayer['style'] = (feature) =>
+    ALERTS_LAYER ? { ...ALERTS_LAYER.style(feature), fillOpacity: 0.18 } : {}
+  const alertsCount = alertsGeo?.features.length ?? 0
 
   // Fetch the frame list; open on the LATEST frame (no auto-loop unless defaultMode says).
   useEffect(() => {
@@ -346,6 +413,11 @@ function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLay
         {status === 'ok' && playing && bUrl && (
           <TileLayer className="leaflet-radar-fade" url={bUrl} opacity={front === 'b' ? layer.opacity : 0} zIndex={500} />
         )}
+        {/* Alerts LAST → top of the stack (base → radar → county lines → alerts). Draws
+            ONLY on 'ok'; keyed by endpoint so a county switch remounts it fresh (no bleed). */}
+        {ALERTS_LAYER && alertsStatus === 'ok' && alertsGeo && (
+          <VectorOverlay key={alertsEndpoint ?? 'alerts'} layer={ALERTS_LAYER} geo={alertsGeo} styleOverride={radarAlertStyle} />
+        )}
       </MapContainer>
 
       {/* Play/pause (only when there's a loop to run). */}
@@ -358,6 +430,22 @@ function RadarLayerView({ layer, center, zoom, selectedFips }: { layer: RadarLay
         >
           {playing ? '❚❚ Pause' : '▶ Play'}
         </button>
+      )}
+
+      {/* Alerts honest-status chip (top-left) — the merge's honest-degraded guarantee:
+          a fetch-fail must NOT look like a quiet day. SEPARATE from the radar legend
+          (below) and NOT a per-event color legend (that's a held-back later slice).
+          'ok' draws polygons + shows the count; 'empty' = a genuine quiet day; 'error'
+          (incl. the request timeout) = rust "Alerts unavailable"; 'loading' stays silent
+          so the radar never looks blocked while alerts load. */}
+      {ALERTS_LAYER && alertsStatus !== 'loading' && (
+        <div className="absolute top-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs shadow-sm">
+          {alertsStatus === 'error'
+            ? <span style={{ color: RUST }}>Alerts unavailable</span>
+            : alertsStatus === 'empty'
+              ? <span className="text-forest-green/60">No active alerts</span>
+              : <span className="text-forest-green/80">{alertsCount} active alert{alertsCount !== 1 ? 's' : ''}</span>}
+        </div>
       )}
 
       {/* Legend + staleness ("Radar as of HH:MM") / honest-degraded note. */}
@@ -390,9 +478,13 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
 
   const activeLayer = LAYERS.find(l => l.id === tab)
 
-  // Toggle = registry map layers only (radar, USDM, alerts). The CPC outlook images
-  // moved to the "Forecast" deep-dive accordion on the dashboard.
-  const tabs = LAYERS.map(l => ({ id: l.id, label: l.label }))
+  // Toggle = registry layers flagged for the toggle only → Radar + Drought Monitor.
+  // alerts is registered (inToggle:false) but gets NO tab — it renders as the radar
+  // overlay. The CPC outlook images live in the dashboard "Forecast" accordion.
+  const tabs = LAYERS.filter(l => l.inToggle !== false).map(l => ({ id: l.id, label: l.label }))
+
+  // alerts' county-dynamic endpoint (runtime ?area=ST) → fed to the radar overlay.
+  const alertsEndpoint = ALERTS_LAYER ? (runtime.alerts?.endpoint ?? ALERTS_LAYER.endpoint) : null
 
   return (
     <div>
@@ -418,8 +510,9 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
         <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
       ) : activeLayer?.type === 'radar' ? (
-        // Animated radar tiles. Every toggle segment is now one of these two branches.
-        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
+        // Animated radar tiles + the alerts overlay (county-dynamic endpoint). Both toggle
+        // segments are now one of these two branches.
+        <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} alertsEndpoint={alertsEndpoint} />
       ) : null}
 
       <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
