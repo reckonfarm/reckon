@@ -79,9 +79,15 @@ export interface RadarLayer extends BaseLayer {
 // Multi-window: one toggle tab, with a 30-day / 90-day segmented control IN the view
 // (the same in-view-control pattern as radar's play/pause).
 export interface RasterWindow {
-  label:   string          // segmented-control text ('30-day' / '90-day')
-  layerId: number          // ArcGIS Image sublayer id to export (68 = 30-day, 76 = 90-day)
-  legend:  LegendItem[]    // condensed, EXACT service colors (decoded from /legend?f=json)
+  label:    string         // segmented-control text ('30-day' / '90-day' / '6–10 day')
+  layerId:  number         // ArcGIS export sublayer id
+  legend:   LegendItem[]   // condensed, EXACT service colors (decoded from /legend?f=json)
+  // Per-window service override. AHPS/QPF windows are all one MapServer (omit this), but
+  // the CPC outlook's horizons live on DIFFERENT MapServers, so each window names its own.
+  service?: string
+  // Key into the proxy's per-horizon metadata ({issued, valid}). Omit for layers whose
+  // windows share one flat asOf (AHPS/QPF); set for per-horizon dates (the outlooks).
+  key?:     string
 }
 
 export interface RasterLayer extends BaseLayer {
@@ -315,7 +321,48 @@ export const wpcQpf: RasterLayer = {
   legend: QPF_LEGEND,
 }
 
-// Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector
-// layers (USDM, alerts) and the AHPS observed-precip raster stay as switchable tabs
-// after it. alerts is inToggle:false (radar overlay only), so it gets no tab.
-export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, alerts]
+// ─── CPC precip OUTLOOK — the probability-tilt layer (NOT inches) ───────────────
+// CPC 6–10 day + monthly precipitation outlooks: a probability TILT (leaning wetter /
+// equal chances / leaning drier), never an amount — so it gets its OWN diverging legend,
+// never the AHPS/QPF inches scale, and "issued"/"outlook" framing so a rancher can't read
+// a tilt as inches. Two horizons live on DIFFERENT MapServers (per-window `service`), both
+// SR 4269 → reprojected to 3857 on export (same path as QPF), aligned with the county grid.
+// Equal-Chances renders TRANSPARENT, so the legend carries an explicit "Equal chances" row
+// (a hollow swatch) so transparent reads as "no strong signal", never as missing data.
+// Seasonal precip is intentionally excluded — ~98% equal-chances over Montana reads empty.
+// Colors are the EXACT service hex (decoded from /legend), condensed to a diverging key.
+const OUTLOOK_BASE = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks'
+const OUTLOOK_LEGEND: LegendItem[] = [
+  { color: '#007814',     label: 'Wetter (strong)' },
+  { color: '#95ce7f',     label: 'Wetter (slight)' },
+  { color: 'transparent', label: 'Equal chances' },   // EC = no fill on the map (hollow swatch here)
+  { color: '#d8a74f',     label: 'Drier (slight)' },
+  { color: '#804000',     label: 'Drier (strong)' },
+]
+
+export const cpcOutlook: RasterLayer = {
+  id:          'outlook',
+  label:       'Rain Outlook',
+  category:    'water',
+  type:        'raster',
+  service:     `${OUTLOOK_BASE}/cpc_6_10_day_outlk/MapServer`,  // default; each window overrides
+  endpoint:    '/api/layers/outlook',       // per-horizon { issued, valid } proxy
+  attribution: 'NOAA/NWS CPC — Precipitation Outlook',
+  loadingNote: 'Loading rain outlook…',
+  failure:     { note: 'Rain outlook temporarily unavailable' },
+  opacity:     0.6,                          // broad fills — a touch lighter so the base reads through
+  windows: [
+    { label: '6–10 day', key: '610',     layerId: 1, service: `${OUTLOOK_BASE}/cpc_6_10_day_outlk/MapServer`,     legend: OUTLOOK_LEGEND },
+    { label: 'Monthly',  key: 'monthly', layerId: 0, service: `${OUTLOOK_BASE}/cpc_mthly_precip_outlk/MapServer`, legend: OUTLOOK_LEGEND },
+  ],
+  defaultWindow: 0,                          // open on 6–10 day (most signal, nearest term)
+  legendTitle: 'Rain outlook',
+  asOfPrefix:  'issued',
+  legend: OUTLOOK_LEGEND,
+}
+
+// Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector layers
+// (USDM, alerts) and the three precip rasters (observed → forecast → outlook) follow it.
+// The five toggle tabs form a now→past→future timeline. alerts is inToggle:false (radar
+// overlay only), so it gets no tab.
+export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, cpcOutlook, alerts]

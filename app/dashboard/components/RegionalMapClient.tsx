@@ -523,25 +523,42 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
   const win = layer.windows[winIdx] ?? layer.windows[0]
 
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
-  const [asOf, setAsOf]     = useState<string | null>(null)
+  // Proxy metadata. AHPS/QPF return a flat `asOf` shared by all windows; the CPC outlooks
+  // return per-horizon `{ issued, valid }` keyed by window.key (different issued dates +
+  // valid labels per horizon). We store the whole response and resolve per active window.
+  const [meta, setMeta] = useState<{
+    asOf?: string | null
+    horizons?: Record<string, { issued?: string | null; valid?: string }>
+  } | null>(null)
 
-  // Availability + asOf via the thin proxy (timed-out, like the vector hook). A slow/hung
-  // NOAA never blocks the paint; the layer just resolves to ok / error when it answers.
+  // Availability + freshness via the thin proxy (timed-out, like the vector hook). A
+  // slow/hung NOAA never blocks the paint; the layer resolves to ok / error when it answers.
   useEffect(() => {
     let cancelled = false
     fetch(layer.endpoint, { signal: timeoutSignal() })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status'))))
-      .then((d: { ok?: boolean; asOf?: string | null; error?: boolean }) => {
+      .then((d: {
+        ok?: boolean
+        error?: boolean
+        asOf?: string | null
+        horizons?: Record<string, { issued?: string | null; valid?: string }>
+      }) => {
         if (cancelled) return
         if (d.error || !d.ok) { setStatus('error'); return }
-        setAsOf(d.asOf ?? null); setStatus('ok')
+        setMeta({ asOf: d.asOf ?? null, horizons: d.horizons }); setStatus('ok')
       })
       .catch(() => { if (!cancelled) setStatus('error') })
     return () => { cancelled = true }
   }, [layer.endpoint])
 
-  const asOfText = asOf
-    ? new Date(`${asOf}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  // Per active window: a per-horizon entry (outlooks) wins; else the flat asOf (AHPS/QPF).
+  // `lead` is the label shown before the date (the outlook's composed "valid", else the
+  // window label); `dateRaw` is the issued/as-of date for that window.
+  const horizon = win.key && meta?.horizons ? meta.horizons[win.key] : undefined
+  const lead = horizon?.valid ?? win.label
+  const dateRaw = horizon?.issued ?? meta?.asOf ?? null
+  const asOfText = dateRaw
+    ? new Date(`${dateRaw}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null
 
   return (
@@ -557,7 +574,12 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
         {/* Export tiles only when the probe is healthy; keyed by window so a 30↔90 switch
             swaps the raster cleanly. */}
         {status === 'ok' && (
-          <ArcgisExportTiles key={win.layerId} service={layer.service} layerId={win.layerId} opacity={layer.opacity} />
+          <ArcgisExportTiles
+            key={`${win.service ?? layer.service}|${win.layerId}`}
+            service={win.service ?? layer.service}
+            layerId={win.layerId}
+            opacity={layer.opacity}
+          />
         )}
       </MapContainer>
 
@@ -591,8 +613,8 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
             : status === 'error'
               ? <span style={{ color: warning }}>{layer.failure.note}</span>
               : asOfText
-                ? `${win.label} · ${layer.asOfPrefix} ${asOfText}`
-                : win.label}
+                ? `${lead} · ${layer.asOfPrefix} ${asOfText}`
+                : lead}
         </div>
         {win.legend.map(({ color, label }) => (
           <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
