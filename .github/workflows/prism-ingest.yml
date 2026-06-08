@@ -36,3 +36,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/prism-ingest.ts
+      # Sibling step: zonal aggregation over the grids just stored → one precip
+      # percent-of-normal per county into public.hay_score_inputs (Phase A step 3).
+      - name: Aggregate grids → percent-of-normal per county
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/prism-aggregate.ts
