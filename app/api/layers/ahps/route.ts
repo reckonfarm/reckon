@@ -28,11 +28,11 @@ export async function GET() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 6000)
   try {
-    // Truest availability test: a tiny 1×1 export of the 30-day Image sublayer (68) — the
-    // exact path the client tiles use. If export answers, the layer can render.
+    // Truest availability test: a tiny 1×1 export of the 30-day % - of - normal Image sublayer
+    // (227) — the exact path the client tiles use. If export answers, the layer can render.
     const probe =
       `${SERVICE}/export?bbox=-11131949,4865942,-11119592,4878298` +
-      `&bboxSR=3857&imageSR=3857&size=1,1&format=png32&transparent=true&layers=show:68&f=image`
+      `&bboxSR=3857&imageSR=3857&size=1,1&format=png32&transparent=true&layers=show:227&f=image`
     const res = await fetch(probe, {
       signal: controller.signal,
       headers: { 'User-Agent': UA },

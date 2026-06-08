@@ -230,28 +230,26 @@ export const radar: RadarLayer = {
   defaultMode:     'latest',
 }
 
-// ─── AHPS observed precipitation — the observed-accumulation raster layer ───────
-// "How much did my county actually receive." Distinct from radar (instantaneous
-// reflectivity): this is multi-sensor QPE accumulated over the window, in inches.
-// Two condensed legends (30-day / 90-day) — the service maps the SAME palette to
-// DIFFERENT inch breaks per window, so each window shows its own scale. Colors are
-// the EXACT service hex (decoded from the MapServer /legend swatches), at the lower
-// bound of each band; never invented. Bands chosen for what a rancher distinguishes.
-const AHPS_LEGEND_30: LegendItem[] = [
-  { color: '#7d0000', label: '8"+' },
-  { color: '#fa9600', label: '4–8"' },
-  { color: '#fafa00', label: '2–4"' },
-  { color: '#00a110', label: '1–2"' },
-  { color: '#00fa15', label: '0.5–1"' },
-  { color: '#14c8fa', label: '< 0.5"' },
-]
-const AHPS_LEGEND_90: LegendItem[] = [
-  { color: '#fafa00', label: '8"+' },
-  { color: '#00a110', label: '4–8"' },
-  { color: '#00fa15', label: '2–4"' },
-  { color: '#001496', label: '1–2"' },
-  { color: '#3e87c7', label: '0.5–1"' },
-  { color: '#14c8fa', label: '< 0.5"' },
+// ─── AHPS observed precip vs normal — the drought-relevant raster layer ─────────
+// "Am I short on water?" — multi-sensor QPE expressed as PERCENT OF NORMAL (QPE vs the
+// PRISM 1991–2020 normal) over the window, NOT raw inches. % of normal is the drought-
+// relevant metric (NOAA only produces it for 7+ day windows that have a stable normal).
+// One SHARED diverging legend — the service uses the SAME % scale for both windows.
+// CRITICAL: the raster is colored SERVER-SIDE, so the legend MUST match the colors the
+// service paints (we can't remap a server-rendered raster). These are the EXACT service
+// hex decoded from the /legend swatches; condensed so each band is one real service color
+// and the FAMILY never contradicts the map (warm = below normal/short, gray ≈ normal,
+// cool = above normal/surplus). The 17 service classes are folded into 7 bands; finer
+// gradations the raster paints within a band stay in the same color family. DRY AT TOP —
+// this is a drought product, so the alarming low end ("< 25% short") leads.
+const AHPS_PCT_LEGEND: LegendItem[] = [
+  { color: '#fa0000', label: '< 25% (short)' },
+  { color: '#fa9600', label: '25–50%' },
+  { color: '#ffd966', label: '50–75%' },
+  { color: '#fafa00', label: '75–100%' },
+  { color: '#dcdcdc', label: '≈100% normal' },     // service paints 100–110% gray near-normal
+  { color: '#00fa14', label: '110–150%' },
+  { color: '#14c8fa', label: '150%+ (surplus)' },
 ]
 
 export const ahpsObserved: RasterLayer = {
@@ -261,21 +259,21 @@ export const ahpsObserved: RasterLayer = {
   type:        'raster',
   service:     'https://mapservices.weather.noaa.gov/raster/rest/services/obs/rfc_qpe/MapServer',
   endpoint:    '/api/layers/ahps',          // thin availability + asOf proxy (tiles load direct)
-  attribution: 'NOAA/NWS AHPS — Observed Precipitation',
-  loadingNote: 'Loading observed precipitation…',
-  failure:     { note: 'Observed precipitation temporarily unavailable' },
+  attribution: 'NOAA/NWS AHPS — Precipitation, % of normal',
+  loadingNote: 'Loading precip vs normal…',
+  failure:     { note: 'Precip-vs-normal data temporarily unavailable' },
   opacity:     0.7,
-  // First window is the default (30-day). The Image sublayer ids (68/76) are the
-  // confirmed children of the "Last 30/90 Days Observed (inches)" groups (65/73) —
-  // exporting Image-only keeps the RFC boundary/footprint off our county grid.
+  // % - of - normal Image sublayers: 227 (30-day) / 235 (90-day) — the Image children of the
+  // "Last 30/90 Days Percent of Normal (%)" mosaics (224/232). Exporting Image-only keeps
+  // the RFC boundary/footprint off our county grid. Both windows share AHPS_PCT_LEGEND.
   windows: [
-    { label: '30-day', layerId: 68, legend: AHPS_LEGEND_30 },
-    { label: '90-day', layerId: 76, legend: AHPS_LEGEND_90 },
+    { label: '30-day', layerId: 227, legend: AHPS_PCT_LEGEND },
+    { label: '90-day', layerId: 235, legend: AHPS_PCT_LEGEND },
   ],
-  legendTitle: 'Observed precip',
-  asOfPrefix:  'as of',
+  legendTitle: 'Precip vs normal',
+  asOfPrefix:  '% of normal · as of',       // status → "30-day · % of normal · as of {date}"
   // Registry-level legend (the generic default); the view renders the active window's.
-  legend: AHPS_LEGEND_30,
+  legend: AHPS_PCT_LEGEND,
 }
 
 // ─── WPC QPF forecast precipitation — the FORECAST companion to AHPS observed ────
