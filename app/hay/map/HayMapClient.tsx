@@ -8,7 +8,7 @@ import 'leaflet/dist/leaflet.css'
 import type { Feature, FeatureCollection } from 'geojson'
 import { warning } from '@/lib/brand-colors'
 
-interface MapListing {
+export interface MapListing {
   id: string
   hay_type: string | null
   listing_type: string

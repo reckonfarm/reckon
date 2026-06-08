@@ -27,6 +27,8 @@ import { timeoutSignal } from '@/lib/external-fetch'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
 import HayNearbyCards, { type NearbyHayCard } from './components/HayNearbyCards'
+import HayMapLoader from './components/HayMapLoader'
+import type { MapListing } from '@/app/hay/map/HayMapClient'
 import DashboardAccordion from './components/DashboardAccordion'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
@@ -235,6 +237,7 @@ export default async function DashboardPage({
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
   let hayNearbyCards: NearbyHayCard[]               = []   // nearest-4 sell listings — Hay view only
+  let hayMapPins: MapListing[]                      = []   // same nearest-4, shaped for the hay map pins
   let hayPrimaryVariety: string | null              = null
   let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
@@ -497,6 +500,20 @@ export default async function DashboardPage({
       droughtTier:     tierByCounty.get(county.id) ?? null,
       delivered:       deliveredCost(buyer, { listing_type: row.listing_type, price_per_ton: row.price_per_ton, counties: county }),
     }))
+
+    // Same nearest-4, shaped for the map pins (reuses the marketplace map renderer).
+    hayMapPins = ranked.map(({ row, county }): MapListing => ({
+      id:           row.id,
+      hay_type:     row.hay_type,
+      listing_type: row.listing_type,
+      price_per_ton: row.price_per_ton,
+      tonnage:      row.tonnage,
+      lat:          county.lat,
+      lon:          county.lon,
+      drought_tier: tierByCounty.get(county.id) ?? null,
+      county_name:  county.name,
+      state:        county.state,
+    }))
   }
 
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
@@ -590,6 +607,16 @@ export default async function DashboardPage({
                 <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
                   Hay for sale near you
                 </p>
+
+                {/* Map-prominent lead: the nearest-4 pinned on a hay map centered on the
+                    home county. Pins tap → /hay/[id]. Renders whenever the home county has
+                    a centroid (the drought overlay gives regional context even at 0 pins). */}
+                {selectedCounty.lat != null && selectedCounty.lon != null && (
+                  <HayMapLoader
+                    listings={hayMapPins}
+                    center={[selectedCounty.lat, selectedCounty.lon]}
+                  />
+                )}
 
                 <HayNearbyCards listings={hayNearbyCards} deliverToFips={selectedCounty.fips} />
 
