@@ -192,8 +192,10 @@ export default async function DashboardPage({
   searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string; view?: string }>
 }) {
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
-  // My Operation defaults to the Market News view; Drought is opt-in via &view=drought.
-  const view: 'news' | 'drought' = viewParam === 'drought' ? 'drought' : 'news'
+  // My Operation defaults to the Market News view; Drought is opt-in via &view=drought,
+  // Hay via &view=hay.
+  const view: 'news' | 'drought' | 'hay' =
+    viewParam === 'drought' ? 'drought' : viewParam === 'hay' ? 'hay' : 'news'
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -484,6 +486,30 @@ export default async function DashboardPage({
 
             {view === 'news' && (
               <MarketsNews fips={selectedCounty.fips} />
+            )}
+
+            {/* Hay view — placeholder only. Nearest-4 pins/cards + the hay map land in
+                later commits. For now it just routes into the existing marketplace. */}
+            {view === 'hay' && (
+              <div className="space-y-4">
+                <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
+                  Hay
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    href="/hay"
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+                  >
+                    Browse all hay
+                  </Link>
+                  <Link
+                    href="/hay"
+                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-forest-green/20 bg-white px-4 font-dm-sans text-sm font-medium text-forest-green transition-colors hover:bg-forest-green/5"
+                  >
+                    Post a listing
+                  </Link>
+                </div>
+              </div>
             )}
 
             {view === 'drought' && (
