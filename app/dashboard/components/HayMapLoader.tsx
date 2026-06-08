@@ -28,7 +28,7 @@ export default function HayMapLoader({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-forest-green/10">
-      <HayMapClient listings={listings} center={center} zoom={zoom} height="400px" />
+      <HayMapClient listings={listings} center={center} zoom={zoom} height="400px" compactLegend />
     </div>
   )
 }

@@ -34,6 +34,17 @@ const DROUGHT_COLORS: Record<number, string> = {
 }
 const NO_DROUGHT = '#1B4332'
 
+// Shared legend rows (D-scale, dry → wet). Used by BOTH the full legend and the
+// compact collapsible one so they never drift; text labels keep it colorblind-safe.
+const LEGEND_ROWS: { tier: number; label: string }[] = [
+  { tier: 4, label: 'D4 Exceptional' },
+  { tier: 3, label: 'D3 Extreme' },
+  { tier: 2, label: 'D2 Severe' },
+  { tier: 1, label: 'D1 Moderate' },
+  { tier: 0, label: 'D0 Abnormally dry' },
+  { tier: -1, label: 'No drought' },
+]
+
 function pinColor(tier: number | null): string {
   if (tier === null) return NO_DROUGHT
   return DROUGHT_COLORS[tier] ?? NO_DROUGHT
@@ -105,6 +116,10 @@ interface HayMapClientProps {
   height?: string
   interactive?: boolean
   showLegend?: boolean
+  // Compact legend — a collapsed-by-default "Legend" chip that expands on demand,
+  // for small embeds (the dashboard hay map) where the full panel covers the canvas.
+  // Defaults false so the full-screen /hay/map keeps its existing always-open legend.
+  compactLegend?: boolean
   // Fires once the base tiles AND the drought overlay have actually loaded — lets
   // the homepage cross-fade the live map in only when it's fully painted (no flash).
   onReady?: () => void
@@ -117,12 +132,14 @@ export default function HayMapClient({
   height = 'calc(100vh - 64px)',
   interactive = true,
   showLegend = true,
+  compactLegend = false,
   onReady,
 }: HayMapClientProps) {
   const [drought, setDrought] = useState<FeatureCollection | null>(null)
   const [releaseDate, setReleaseDate] = useState<number | null>(null)
   const [status, setStatus] = useState<DroughtStatus>('loading')
   const [tilesLoaded, setTilesLoaded] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(false)   // compact legend: collapsed by default
   const readyFired = useRef(false)
 
   // Signal "fully painted" once the basemap tiles have loaded AND the drought
@@ -234,8 +251,10 @@ export default function HayMapClient({
         {interactive && <ResetButton />}
       </MapContainer>
 
-      {/* Legend — drought layer (shaded regions) + pins, one shared D-scale */}
-      {showLegend && (
+      {/* Legend — drought layer (shaded regions) + pins, one shared D-scale.
+          Full (always-open) panel for the full-screen /hay/map; compact collapsible
+          chip for small embeds (compactLegend) so it never covers the canvas. */}
+      {showLegend && !compactLegend && (
       <div style={{
         position: 'absolute', bottom: 32, right: 12, zIndex: 1000,
         background: 'white', border: '1px solid rgba(0,0,0,0.1)',
@@ -253,14 +272,7 @@ export default function HayMapClient({
           )}
         </div>
 
-        {[
-          { tier: 4, label: 'D4 Exceptional' },
-          { tier: 3, label: 'D3 Extreme' },
-          { tier: 2, label: 'D2 Severe' },
-          { tier: 1, label: 'D1 Moderate' },
-          { tier: 0, label: 'D0 Abnormally dry' },
-          { tier: -1, label: 'No drought' },
-        ].map(({ tier, label }) => (
+        {LEGEND_ROWS.map(({ tier, label }) => (
           <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
             <div style={{
               width: 11, height: 11, borderRadius: 2,
@@ -274,6 +286,70 @@ export default function HayMapClient({
         <div style={{ color: '#888', marginTop: 6, fontSize: 10, lineHeight: 1.35, borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: 6 }}>
           Shaded regions show drought severity. Pins are hay listings, colored by their county&apos;s level.
         </div>
+      </div>
+      )}
+
+      {/* Compact legend — collapsed-by-default chip; expands to the same D-scale. */}
+      {showLegend && compactLegend && (
+      <div style={{
+        position: 'absolute', bottom: 32, right: 12, zIndex: 1000,
+        fontFamily: 'var(--font-dm-sans)', fontSize: 11,
+      }}>
+        {legendOpen ? (
+          <div style={{
+            background: 'white', border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: 8, padding: '8px 10px', maxWidth: 180,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
+              <span style={{ fontWeight: 600, color: '#1B4332' }}>Drought Monitor</span>
+              <button
+                onClick={() => setLegendOpen(false)}
+                aria-label="Hide legend"
+                style={{ border: 'none', background: 'none', color: '#888', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ color: '#888', marginBottom: 6, fontSize: 10 }}>
+              {status === 'ok' && asOf && `As of ${asOf}`}
+              {status === 'loading' && 'Loading…'}
+              {status === 'error' && (
+                <span style={{ color: warning }}>Layer unavailable</span>
+              )}
+            </div>
+            {LEGEND_ROWS.map(({ tier, label }) => (
+              <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <div style={{
+                  width: 11, height: 11, borderRadius: 2,
+                  background: pinColor(tier === -1 ? null : tier),
+                  border: '1px solid rgba(0,0,0,0.15)',
+                }} />
+                <span style={{ color: '#444' }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button
+            onClick={() => setLegendOpen(true)}
+            aria-label="Show drought legend"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'white', border: '1px solid rgba(0,0,0,0.1)',
+              borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
+              color: '#1B4332', fontWeight: 600, fontSize: 11,
+              fontFamily: 'var(--font-dm-sans)', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+            }}
+          >
+            {/* Mini D-scale swatch strip so the chip reads as a legend at a glance */}
+            <span style={{ display: 'inline-flex', borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.15)' }}>
+              {[0, 1, 2, 3, 4].map(t => (
+                <span key={t} style={{ width: 7, height: 11, background: pinColor(t) }} />
+              ))}
+            </span>
+            Legend
+          </button>
+        )}
       </div>
       )}
     </div>
