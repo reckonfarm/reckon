@@ -1,0 +1,38 @@
+name: PRISM ingest
+
+# Fetches RAW PRISM monthly precip (last complete Apr–Jun) + the matching 1991–2020
+# monthly precip NORMALS from GitHub's runners (kept off Vercel's egress like the
+# other snapshot jobs), clips each grid to the 5-state Northern Plains bbox, and
+# upserts the raw clipped grid into Supabase (public.prism_grid_raw). NOTHING reads
+# that table yet — Phase A step 2 of the Hay Opportunity Score, data layer only.
+#
+# Idempotent on the grid key; already-stored grids are SKIPPED — PRISM allows a file
+# to be downloaded only twice per 24h, so there is no same-day retry.
+
+on:
+  schedule:
+    # Monthly, after PRISM's mid-month release of the prior month's grid.
+    - cron: '0 16 18 * *'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: prism-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + clip + upsert PRISM precip & normals
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/prism-ingest.ts
