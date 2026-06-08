@@ -50,6 +50,21 @@ function pinColor(tier: number | null): string {
   return DROUGHT_COLORS[tier] ?? NO_DROUGHT
 }
 
+// ── Toggleable overlays — self-contained layer registry for THIS map ─────────────
+// Data-driven like the regional map's layers.ts, but deliberately NOT on that system
+// (no RasterLayerView, no regional map). Adding the future hay-score layer = ONE entry
+// here + one render gate keyed on its id (see the {overlayVisible.<id>} gate below).
+// Pins are NOT overlays — they always render regardless of these toggles.
+interface HayMapOverlay {
+  id:    'drought'   // widen the union as layers are added (e.g. | 'hayScore')
+  label: string
+  defaultVisible: boolean
+}
+const HAY_MAP_OVERLAYS: HayMapOverlay[] = [
+  { id: 'drought', label: 'Drought Monitor', defaultVisible: false },
+  // future: { id: 'hayScore', label: 'Hay score', defaultVisible: false },
+]
+
 function clusterColor(markers: { options: { fillColor?: string } }[]): string {
   const priority = ['#730000', '#E60000', '#FFAA00', '#FCD37F', '#FFFF00']
   for (const color of priority) {
@@ -90,6 +105,45 @@ function ResetButton() {
   )
 }
 
+// Self-contained on-map layer control (mirrors ResetButton's leaflet-control pattern).
+// One checkbox per overlay in the registry — a new layer needs no control changes.
+// Top-right, clear of the legend (bottom-right), Reset (bottom-left), and zoom (top-left).
+function LayerControl({
+  overlays,
+  visible,
+  onToggle,
+}: {
+  overlays: HayMapOverlay[]
+  visible: Record<string, boolean>
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div className="leaflet-top leaflet-right" style={{ marginTop: 12, marginRight: 12 }}>
+      <div className="leaflet-control">
+        <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+          <p className="mb-1.5 font-dm-sans text-[10px] font-semibold uppercase tracking-wide text-forest-green/40">
+            Layers
+          </p>
+          {overlays.map(o => (
+            <label
+              key={o.id}
+              className="flex cursor-pointer items-center gap-2 font-dm-sans text-xs text-forest-green"
+            >
+              <input
+                type="checkbox"
+                checked={visible[o.id] ?? false}
+                onChange={() => onToggle(o.id)}
+                className="h-3.5 w-3.5 accent-forest-green"
+              />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Translucent fill per drought category, non-interactive so it never steals
 // clicks from the pins/clusters above it.
 function droughtLayerStyle(feature?: Feature) {
@@ -120,6 +174,10 @@ interface HayMapClientProps {
   // for small embeds (the dashboard hay map) where the full panel covers the canvas.
   // Defaults false so the full-screen /hay/map keeps its existing always-open legend.
   compactLegend?: boolean
+  // Show the on-map layer control and make the drought overlay toggleable (default off
+  // when control is shown). Defaults false so the full-screen /hay/map keeps drought
+  // always-on with no control — byte-identical to today.
+  layerControl?: boolean
   // Fires once the base tiles AND the drought overlay have actually loaded — lets
   // the homepage cross-fade the live map in only when it's fully painted (no flash).
   onReady?: () => void
@@ -133,6 +191,7 @@ export default function HayMapClient({
   interactive = true,
   showLegend = true,
   compactLegend = false,
+  layerControl = false,
   onReady,
 }: HayMapClientProps) {
   const [drought, setDrought] = useState<FeatureCollection | null>(null)
@@ -140,6 +199,17 @@ export default function HayMapClient({
   const [status, setStatus] = useState<DroughtStatus>('loading')
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [legendOpen, setLegendOpen] = useState(false)   // compact legend: collapsed by default
+
+  // Per-overlay visibility, seeded from the registry defaults. Only consulted when the
+  // layer control is shown; /hay/map (layerControl=false) keeps drought always-on below.
+  const [overlayVisible, setOverlayVisible] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(HAY_MAP_OVERLAYS.map(o => [o.id, o.defaultVisible])),
+  )
+  const toggleOverlay = (id: string) =>
+    setOverlayVisible(v => ({ ...v, [id]: !v[id] }))
+
+  // /hay/map (no control) keeps the overlay always-on; the dashboard embed follows the toggle.
+  const showDrought = layerControl ? overlayVisible.drought : true
   const readyFired = useRef(false)
 
   // Signal "fully painted" once the basemap tiles have loaded AND the drought
@@ -201,8 +271,9 @@ export default function HayMapClient({
           eventHandlers={{ load: () => setTilesLoaded(true) }}
         />
 
-        {/* Drought layer — rendered first so it sits beneath the pins/clusters */}
-        {drought && (
+        {/* Drought layer — rendered first so it sits beneath the pins/clusters.
+            Toggleable via the layer control on the dashboard embed; always-on elsewhere. */}
+        {showDrought && drought && (
           <GeoJSON
             key={releaseDate ?? 'usdm'}
             data={drought}
@@ -249,6 +320,9 @@ export default function HayMapClient({
           ))}
         </MarkerClusterGroup>
         {interactive && <ResetButton />}
+        {layerControl && (
+          <LayerControl overlays={HAY_MAP_OVERLAYS} visible={overlayVisible} onToggle={toggleOverlay} />
+        )}
       </MapContainer>
 
       {/* Legend — drought layer (shaded regions) + pins, one shared D-scale.
