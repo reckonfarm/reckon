@@ -7,6 +7,7 @@ import Link from 'next/link'
 import 'leaflet/dist/leaflet.css'
 import type { Feature, FeatureCollection } from 'geojson'
 import { warning } from '@/lib/brand-colors'
+import { loadNpCounties } from '@/lib/np-counties'
 
 export interface MapListing {
   id: string
@@ -56,13 +57,14 @@ function pinColor(tier: number | null): string {
 // here + one render gate keyed on its id (see the {overlayVisible.<id>} gate below).
 // Pins are NOT overlays — they always render regardless of these toggles.
 interface HayMapOverlay {
-  id:    'drought'   // widen the union as layers are added (e.g. | 'hayScore')
+  id:    'drought' | 'hayScore'
   label: string
   defaultVisible: boolean
 }
 const HAY_MAP_OVERLAYS: HayMapOverlay[] = [
-  { id: 'drought', label: 'Drought Monitor', defaultVisible: false },
-  // future: { id: 'hayScore', label: 'Hay score', defaultVisible: false },
+  // Hay score is the payoff layer → on by default; drought is contextual → off.
+  { id: 'hayScore', label: 'Hay score',      defaultVisible: true },
+  { id: 'drought',  label: 'Drought Monitor', defaultVisible: false },
 ]
 
 function clusterColor(markers: { options: { fillColor?: string } }[]): string {
@@ -159,6 +161,36 @@ function droughtLayerStyle(feature?: Feature) {
   }
 }
 
+// Hay Opportunity Score v0 choropleth — YlGn sequential (colorblind-safe): pale yellow =
+// dry / low score, deep green = wet / high opportunity. Gray is RESERVED for no-data, so a
+// county with no score can never be mistaken for bone-dry (a deliberate deviation from the
+// spec's "gray = low" — honesty about missing data wins).
+const HAY_SCORE_NODATA = '#bdbdbd'
+const HAY_SCORE_BUCKETS: { min: number; color: string; label: string }[] = [
+  { min: 75, color: '#006837', label: '75–100' },
+  { min: 60, color: '#31a354', label: '60–74' },
+  { min: 50, color: '#78c679', label: '50–59' },
+  { min: 40, color: '#c2e699', label: '40–49' },
+  { min: 0,  color: '#ffffcc', label: '0–39' },
+]
+function hayScoreColor(score: number | null | undefined): string {
+  if (score == null) return HAY_SCORE_NODATA
+  for (const b of HAY_SCORE_BUCKETS) if (score >= b.min) return b.color
+  return HAY_SCORE_NODATA
+}
+// Fill under the pins, non-interactive (never steals a pin tap). White hairline county borders.
+function hayScoreStyle(feature?: Feature) {
+  const s = feature?.properties?.score as number | null | undefined
+  return {
+    fillColor: hayScoreColor(s),
+    fillOpacity: 0.6,
+    color: '#ffffff',
+    weight: 0.4,
+    opacity: 0.5,
+    interactive: false,
+  }
+}
+
 type DroughtStatus = 'loading' | 'ok' | 'error'
 
 interface HayMapClientProps {
@@ -199,6 +231,12 @@ export default function HayMapClient({
   const [status, setStatus] = useState<DroughtStatus>('loading')
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [legendOpen, setLegendOpen] = useState(false)   // compact legend: collapsed by default
+
+  // Hay Opportunity Score choropleth — loaded only on the dashboard embed (layerControl);
+  // /hay/map (layerControl=false) never mounts/fetches it → byte-identical to today.
+  const [hayScoreGeo, setHayScoreGeo] = useState<FeatureCollection | null>(null)
+  const [hayScoreStatus, setHayScoreStatus] = useState<DroughtStatus>('loading')
+  const [hayScoreAsOf, setHayScoreAsOf] = useState<string | null>(null)
 
   // Per-overlay visibility, seeded from the registry defaults. Only consulted when the
   // layer control is shown; /hay/map (layerControl=false) keeps drought always-on below.
@@ -247,6 +285,44 @@ export default function HayMapClient({
     return () => { cancelled = true }
   }, [])
 
+  // Hay score: county geometry (Commit-1 loader, first use) joined to the latest snapshot
+  // via the service-role route. Honest-degraded — on any failure the choropleth simply
+  // doesn't paint and the legend says "temporarily unavailable" (never a false blank/zero).
+  useEffect(() => {
+    if (!layerControl) return
+    let cancelled = false
+    Promise.all([
+      loadNpCounties(),
+      fetch('/api/hay-score').then(r => (r.ok ? r.json() : Promise.reject(new Error('bad status')))),
+    ])
+      .then(([geo, payload]: [
+        FeatureCollection | null,
+        { asOf: string | null; scores?: Record<string, number | null>; error?: boolean },
+      ]) => {
+        if (cancelled) return
+        if (!geo || payload?.error || !payload?.scores) { setHayScoreStatus('error'); return }
+        const scores = payload.scores
+        setHayScoreGeo({
+          type: 'FeatureCollection',
+          features: geo.features.map(f => ({
+            ...f,
+            properties: {
+              ...(f.properties ?? {}),
+              score: scores[(f.properties as { GEOID?: string })?.GEOID ?? ''] ?? null,
+            },
+          })),
+        })
+        setHayScoreAsOf(payload.asOf)
+        setHayScoreStatus('ok')
+      })
+      .catch(() => { if (!cancelled) setHayScoreStatus('error') })
+    return () => { cancelled = true }
+  }, [layerControl])
+
+  const hayScoreAsOfLabel = hayScoreAsOf
+    ? new Date(hayScoreAsOf + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
   const asOf = releaseDate
     ? new Date(releaseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null
@@ -271,7 +347,13 @@ export default function HayMapClient({
           eventHandlers={{ load: () => setTilesLoaded(true) }}
         />
 
-        {/* Drought layer — rendered first so it sits beneath the pins/clusters.
+        {/* Hay score choropleth — painted first so it sits beneath the drought layer (when
+            both are on) and the pins. Dashboard embed only; /hay/map never mounts it. */}
+        {layerControl && overlayVisible.hayScore && hayScoreGeo && (
+          <GeoJSON key="hay-score" data={hayScoreGeo} style={hayScoreStyle} interactive={false} />
+        )}
+
+        {/* Drought layer — rendered beneath the pins/clusters.
             Toggleable via the layer control on the dashboard embed; always-on elsewhere. */}
         {showDrought && drought && (
           <GeoJSON
@@ -372,11 +454,11 @@ export default function HayMapClient({
         {legendOpen ? (
           <div style={{
             background: 'white', border: '1px solid rgba(0,0,0,0.1)',
-            borderRadius: 8, padding: '8px 10px', maxWidth: 180,
+            borderRadius: 8, padding: '8px 10px', maxWidth: 184,
             boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 2 }}>
-              <span style={{ fontWeight: 600, color: '#1B4332' }}>Drought Monitor</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, color: '#1B4332' }}>Legend</span>
               <button
                 onClick={() => setLegendOpen(false)}
                 aria-label="Hide legend"
@@ -384,6 +466,41 @@ export default function HayMapClient({
               >
                 ✕
               </button>
+            </div>
+
+            {/* Hay score ramp — shown when the choropleth layer is on. */}
+            {overlayVisible.hayScore && (
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ fontWeight: 600, color: '#1B4332', fontSize: 10.5 }}>Hay score</div>
+                <div style={{ color: '#888', marginBottom: 4, fontSize: 10 }}>
+                  {hayScoreStatus === 'ok' && hayScoreAsOfLabel && `As of ${hayScoreAsOfLabel}`}
+                  {hayScoreStatus === 'loading' && 'Loading…'}
+                  {hayScoreStatus === 'error' && <span style={{ color: warning }}>Temporarily unavailable</span>}
+                </div>
+                {hayScoreStatus === 'ok' && (
+                  <>
+                    {HAY_SCORE_BUCKETS.map(b => (
+                      <div key={b.min} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <div style={{ width: 11, height: 11, borderRadius: 2, background: b.color, border: '1px solid rgba(0,0,0,0.15)' }} />
+                        <span style={{ color: '#444' }}>{b.label}{b.min === 75 ? ' · wettest' : b.min === 0 ? ' · driest' : ''}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <div style={{ width: 11, height: 11, borderRadius: 2, background: HAY_SCORE_NODATA, border: '1px solid rgba(0,0,0,0.15)' }} />
+                      <span style={{ color: '#444' }}>No data</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Drought / pins D-scale — pins are always colored by their county's level. */}
+            <div style={{
+              fontWeight: 600, color: '#1B4332', fontSize: 10.5,
+              borderTop: overlayVisible.hayScore ? '1px solid rgba(0,0,0,0.08)' : 'none',
+              paddingTop: overlayVisible.hayScore ? 6 : 0,
+            }}>
+              Drought Monitor
             </div>
             <div style={{ color: '#888', marginBottom: 6, fontSize: 10 }}>
               {status === 'ok' && asOf && `As of ${asOf}`}
@@ -415,10 +532,14 @@ export default function HayMapClient({
               fontFamily: 'var(--font-dm-sans)', boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
             }}
           >
-            {/* Mini D-scale swatch strip so the chip reads as a legend at a glance */}
+            {/* Mini swatch strip so the chip reads as a legend at a glance — the hay-score
+                ramp when the choropleth is on, otherwise the drought D-scale. */}
             <span style={{ display: 'inline-flex', borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.15)' }}>
-              {[0, 1, 2, 3, 4].map(t => (
-                <span key={t} style={{ width: 7, height: 11, background: pinColor(t) }} />
+              {(overlayVisible.hayScore
+                ? ['#ffffcc', '#c2e699', '#78c679', '#31a354', '#006837']
+                : [0, 1, 2, 3, 4].map(t => pinColor(t))
+              ).map((col, i) => (
+                <span key={i} style={{ width: 7, height: 11, background: col }} />
               ))}
             </span>
             Legend
