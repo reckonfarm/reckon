@@ -42,6 +42,27 @@ Sprint 3 — Trust architecture (active)
 - Multi-county ops view on watchlist (combined payment estimate,
   sortable table, alert preferences per county)
 
+## Weather + map sprint — COMPLETE (current state)
+
+### Regional map layers (the toggle below the map)
+- 6 layers in a clean 2×3 toggle grid (`grid grid-cols-3`, in RegionalMapClient): Radar · Drought Monitor · Observed Rain · Forecast Rain · Rain Outlook · Drought Forecast. (alerts is registered but `inToggle:false` — radar overlay only.)
+- **RasterLayerView is the shared renderer** for all raster layers. Adding a raster layer = **+1 def in layers.ts + 1 `/api/layers/<id>` proxy**, 0 renderer changes. RasterWindow/RasterLayer support per-window `service` override, `defaultZoom`, `defaultWindow`, `legendTitle`, `asOfPrefix`, and per-horizon proxy metadata (`{issued, valid}` keyed by `window.key`).
+- Export-tile path (`ArcgisExportTiles`): dynamic ArcGIS MapServers are export-only; we subclass L.TileLayer and build per-tile `export` URLs with `imageSR=3857`, so non-3857 services reproject server-side and align with the county grid. Tiles load `<img>` direct from NOAA; the proxy only returns availability + as-of/issued.
+- The layers:
+  - **Observed Rain = % OF NORMAL** (not raw inches): obs/rfc_qpe Image sublayers **227** (30-day) / **235** (90-day). Diverging legend, dry-at-top, EXACT service hex (warm=below normal/short, gray ≈100%, cool=above/surplus). Framing "Precip vs normal · % of normal · as of {date}". Tab still labeled "Observed Rain". (Inches sublayers 68/76 are no longer used.)
+  - **Forecast Rain** = WPC QPF (vector/precip/wpc_qpf), windows Next 24hr/3-day/7-day (L1/9/11), inches.
+  - **Rain Outlook** = CPC 6-10 day + monthly PRECIP tilt (outlooks/cpc_6_10_day_outlk L1, outlooks/cpc_mthly_precip_outlk L0). Seasonal precip excluded (≈98% equal-chances over MT = empty). Diverging tilt legend; EC = transparent (hollow swatch).
+  - **Drought Forecast** = CPC monthly + seasonal DROUGHT direction (outlooks/cpc_drought_outlk L1 monthly / L4 seasonal). Categorical legend (Develops/Persists/Improves/Removal/No drought). fcst_date is "MM/DD/YYYY" (not epoch ms).
+- The old static bottom "Forecast" accordion (CPC drought *images* from official_maps) was **REMOVED** — superseded by the Drought Forecast map layer. The official_maps cpc_monthly/cpc_seasonal rows + cron still ingest but are no longer rendered.
+
+### Latest Reading card — unified timeline ribbon
+- Rebuilt as one card (`LatestReadingCard.tsx`): **hero** (current category + one "% in drought" number, from reliable DB `latest`) + **weekly 3-year color ribbon** (USDM hex, 1-yr tick) + **one summary line** ("Worst: D{n} · {season year} · in drought N of last M months").
+- `threeYearHistory` (weekly USDM API, statisticsType=2) feeds the ribbon; hero degrades **independently** of the ribbon (ribbon → "3-year history unavailable" on API fail, hero still renders).
+- The old 52-week + 3-year history accordion/charts were removed (`DroughtTrendChart.tsx` + `DroughtHistoryChart.tsx` deleted). `history` (52-wk drought_data) still gates the lower dashboard.
+
+### NOTE for future work
+PK plans to eventually render the map from **RAW DATA with custom color scales** — the current toggle / layer registry / export-tile system is **TRANSITIONAL scaffold** that will be replaced. Don't over-invest in it (e.g. no toggle-grouping restructure; 6 flat tabs is an accepted temporary state).
+
 ## Acceptance criteria on every feature
 - Works from the tractor cab on one bar of 3G. Required on every PR, not a someday project.
 - Offline-first: service worker + local cache of operation profile, FIPS data, last-known county conditions. Sync deltas on reconnect.
@@ -69,9 +90,11 @@ Tone: plain-spoken, trusted neighbor. Not pitch language.
 
 ## Data sources confirmed working
 - USDM consecutive weeks: usdmdataservices.unl.edu/api/ConsecutiveNonConsecutiveStatistics/GetConsecutiveWeeksCounty
-- USDM 3-year history: usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?statisticsType=2
-- ACIS precip vs normal: station-based
+- USDM 3-year history: usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?statisticsType=2 (weekly; feeds the Latest Reading ribbon)
+- ACIS precip vs normal: station-based (the rainfall-vs-normal *graph*; distinct from the map's % - of - normal raster)
 - NWS Local Discussion: 2-step /points/{lat},{lon} then /products/types/AFD/locations/{cwa}/latest
+- NWS 7-day forecast: lib/nws.ts getLocalForecast (points → gridpoint /forecast; parses temp + precipProbability + wind)
+- Map raster services (NOAA mapservices.weather.noaa.gov, all export → imageSR=3857): obs/rfc_qpe (Observed Rain % of normal, L227/235), vector/precip/wpc_qpf (Forecast Rain), outlooks/cpc_6_10_day_outlk + cpc_mthly_precip_outlk (Rain Outlook), outlooks/cpc_drought_outlk (Drought Forecast)
 
 ## FSA LFP rules verified against NDMC FSA tool
 - OBBBA tiers 1-6 active from July 2025.
