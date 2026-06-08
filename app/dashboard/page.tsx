@@ -25,7 +25,8 @@ import { getLocalForecast, type LocalForecast } from '@/lib/nws'
 import ForecastPanel from './components/ForecastPanel'
 import { timeoutSignal } from '@/lib/external-fetch'
 import { estimatePayment } from '@/lib/lfp-payment'
-import { deliveredCost, type DeliveredCost } from '@/lib/freight'
+import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
+import HayNearbyCards, { type NearbyHayCard } from './components/HayNearbyCards'
 import DashboardAccordion from './components/DashboardAccordion'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
@@ -233,6 +234,7 @@ export default async function DashboardPage({
   let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
+  let hayNearbyCards: NearbyHayCard[]               = []   // nearest-4 sell listings — Hay view only
   let hayPrimaryVariety: string | null              = null
   let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
@@ -404,6 +406,99 @@ export default async function DashboardPage({
     }
   }
 
+  // ── Hay view data — nearest-4 sell listings (Hay view ONLY) ──────────────────
+  // Runs only on view === 'hay' so news/drought never pay for it. Sell-only (matches
+  // the "Hay nearby" card's listing-type filter), active, non-expired, with seller
+  // county coords (coordless listings are dropped — never ranked, never shown).
+  // Ranked by road miles from the home county centroid (selectedCounty), nearest 4.
+  if (selectedCounty && view === 'hay' && selectedCounty.lat != null && selectedCounty.lon != null) {
+    const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
+
+    const { data: hayRows } = await db
+      .from('hay_listings')
+      .select(
+        'id, listing_type, hay_type, cutting_number, bale_type, storage_method, ' +
+        'tonnage, price_per_ton, haul_radius_miles, relief_flag, description, photo_urls, ' +
+        'hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct, ' +
+        'counties(id, name, state, lat, lon)',
+      )
+      .eq('active', true)
+      .eq('listing_type', 'sell')
+      .gt('expires_at', new Date().toISOString())
+
+    type HayRow = {
+      id: string
+      listing_type: string
+      hay_type: string | null
+      cutting_number: number | null
+      bale_type: string | null
+      storage_method: string | null
+      tonnage: number | null
+      price_per_ton: number | null
+      haul_radius_miles: number | null
+      relief_flag: boolean | null
+      description: string | null
+      photo_urls: string[] | null
+      hay_test_protein_pct: number | null
+      hay_test_tdn_pct: number | null
+      hay_test_rfv: number | null
+      hay_test_moisture_pct: number | null
+      counties: { id: number; name: string; state: string; lat: number | null; lon: number | null } | { id: number; name: string; state: string; lat: number | null; lon: number | null }[] | null
+    }
+
+    const ranked = ((hayRows ?? []) as unknown as HayRow[])
+      .flatMap(row => {
+        const c = Array.isArray(row.counties) ? row.counties[0] : row.counties
+        if (!c || c.lat == null || c.lon == null) return []
+        return [{ row, county: { id: c.id, name: c.name, state: c.state, lat: c.lat, lon: c.lon }, miles: Math.round(roadMiles(buyer.lat, buyer.lon, c.lat, c.lon)) }]
+      })
+      .sort((a, b) => a.miles - b.miles)
+      .slice(0, 4)
+
+    // Latest drought tier for the displayed counties — one cheap lookup, only the few
+    // counties actually shown. Mirrors the tier derivation used on the marketplace map.
+    const countyIds = [...new Set(ranked.map(r => r.county.id))]
+    const tierByCounty = new Map<number, number | null>()
+    if (countyIds.length > 0) {
+      const { data: droughtRows } = await db
+        .from('drought_data')
+        .select('county_id, d0, d1, d2, d3, d4')
+        .in('county_id', countyIds)
+        .order('week_date', { ascending: false })
+      for (const d of droughtRows ?? []) {
+        if (tierByCounty.has(d.county_id)) continue
+        tierByCounty.set(
+          d.county_id,
+          d.d4 > 0 ? 4 : d.d3 > 0 ? 3 : d.d2 > 0 ? 2 : d.d1 > 0 ? 1 : d.d0 > 0 ? 0 : null,
+        )
+      }
+    }
+
+    hayNearbyCards = ranked.map(({ row, county, miles }): NearbyHayCard => ({
+      id:              row.id,
+      hayType:         row.hay_type,
+      cuttingNumber:   row.cutting_number,
+      baleType:        row.bale_type,
+      storageMethod:   row.storage_method,
+      tonnage:         row.tonnage,
+      pricePerTon:     row.price_per_ton,
+      haulRadiusMiles: row.haul_radius_miles,
+      reliefFlag:      row.relief_flag ?? false,
+      hasTest:
+        row.hay_test_protein_pct  != null ||
+        row.hay_test_tdn_pct      != null ||
+        row.hay_test_rfv          != null ||
+        row.hay_test_moisture_pct != null,
+      photoUrls:       row.photo_urls ?? [],
+      description:     row.description,
+      countyName:      county.name,
+      state:           county.state,
+      miles,
+      droughtTier:     tierByCounty.get(county.id) ?? null,
+      delivered:       deliveredCost(buyer, { listing_type: row.listing_type, price_per_ton: row.price_per_ton, counties: county }),
+    }))
+  }
+
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
 
@@ -493,8 +588,11 @@ export default async function DashboardPage({
             {view === 'hay' && (
               <div className="space-y-4">
                 <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
-                  Hay
+                  Hay for sale near you
                 </p>
+
+                <HayNearbyCards listings={hayNearbyCards} deliverToFips={selectedCounty.fips} />
+
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Link
                     href="/hay"
