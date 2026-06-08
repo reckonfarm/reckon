@@ -18,7 +18,7 @@ import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
 import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
-import OfficialMap, { type OfficialMapRecord } from './components/OfficialMap'
+import { type OfficialMapRecord } from './components/OfficialMap'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { getLocalForecast, type LocalForecast } from '@/lib/nws'
@@ -299,8 +299,6 @@ export default async function DashboardPage({
   let history: DroughtReading[]                     = []
   let threeYearHistory: DroughtHistoryWeek[]        = []
   let stateMap: OfficialMapRecord | null            = null
-  let cpcMonthlyMap: OfficialMapRecord | null       = null
-  let cpcSeasonalMap: OfficialMapRecord | null      = null
   let lfpResult: LfpEligibilityResult | null          = null
   let priorYearLfpResult: LfpEligibilityResult | null = null
   let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
@@ -350,8 +348,6 @@ export default async function DashboardPage({
     const [
       historyRes,
       stateMapRes,
-      cpcMonthlyMapRes,
-      cpcSeasonalMapRes,
       lfpRes,
       priorYearLfpRes,
       threeYearRaw,
@@ -371,24 +367,6 @@ export default async function DashboardPage({
         .select('id, map_type, scope, release_date, image_url, source_url')
         .eq('map_type', 'usdm_state')
         .eq('scope', state)
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-
-      // CPC monthly outlook map
-      db
-        .from('official_maps')
-        .select('id, map_type, scope, release_date, image_url, source_url')
-        .eq('map_type', 'cpc_monthly')
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-
-      // CPC seasonal outlook map
-      db
-        .from('official_maps')
-        .select('id, map_type, scope, release_date, image_url, source_url')
-        .eq('map_type', 'cpc_seasonal')
         .order('release_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -446,8 +424,6 @@ export default async function DashboardPage({
       }),
     ).reverse()
     stateMap           = stateMapRes.data as OfficialMapRecord | null
-    cpcMonthlyMap      = cpcMonthlyMapRes.data as OfficialMapRecord | null
-    cpcSeasonalMap     = cpcSeasonalMapRes.data as OfficialMapRecord | null
     lfpResult          = lfpRes.ok ? lfpRes.result : null
     lfpUnavailable     = !lfpRes.ok
     priorYearLfpResult = priorYearLfpRes
@@ -805,19 +781,9 @@ export default async function DashboardPage({
                     </div>
                   </DashboardAccordion>
 
-                  {/* Forecast — the CPC drought outlooks (national reference images), moved
-                      out of the map toggle. OfficialMap renders the image + lightbox, and on a
-                      null record shows its own honest "official map updating" note (no broken
-                      image), so a missing/failed outlook degrades gracefully. */}
-                  <DashboardAccordion
-                    title="Forecast"
-                    preview="30-day & 3-month CPC outlook"
-                  >
-                    <div className="space-y-6">
-                      <OfficialMap map={cpcMonthlyMap} title="Monthly Drought Outlook" />
-                      <OfficialMap map={cpcSeasonalMap} title="Seasonal Drought Outlook" />
-                    </div>
-                  </DashboardAccordion>
+                  {/* The CPC monthly + seasonal drought outlooks now live on the map as the
+                      "Drought Forecast" layer (live cpc_drought_outlk service), so the static
+                      "Forecast" accordion that showed them as images was removed here. */}
 
                 </div>
 

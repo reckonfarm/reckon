@@ -363,8 +363,48 @@ export const cpcOutlook: RasterLayer = {
   legend: OUTLOOK_LEGEND,
 }
 
+// ─── CPC DROUGHT outlook — categorical drought-DIRECTION forecast ───────────────
+// CPC monthly + seasonal drought outlooks: a forecast of drought DIRECTION (develops /
+// persists / improves / removes), not a probability tilt and not an amount — so it gets
+// its OWN categorical legend. Both horizons live on ONE MapServer (cpc_drought_outlk),
+// differing only by layerId (1 = monthly US&PR, 4 = seasonal US&PR), so no per-window
+// service override is needed. SR 4326 → reprojected to 3857 on export (same path as the
+// precip outlooks), aligned with the county grid. "No Drought" renders TRANSPARENT, so the
+// legend carries an explicit hollow "No drought" row. Framing is "issued {date}" so it
+// reads as a forecast of direction, never a certainty. Colors are the EXACT service hex.
+const DROUGHT_OUTLOOK_SERVICE = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/cpc_drought_outlk/MapServer'
+const DROUGHT_OUTLOOK_LEGEND: LegendItem[] = [
+  { color: '#ffde63',     label: 'Develops' },     // drought likely to develop
+  { color: '#9b634a',     label: 'Persists' },     // drought continues
+  { color: '#ded4bc',     label: 'Improves' },     // improves but remains
+  { color: '#b2ad69',     label: 'Removal likely' },// drought likely removed
+  { color: 'transparent', label: 'No drought' },   // no category → no fill on the map (hollow swatch)
+]
+
+export const cpcDroughtOutlook: RasterLayer = {
+  id:          'drought-outlook',
+  label:       'Drought Forecast',
+  category:    'drought',
+  type:        'raster',
+  service:     DROUGHT_OUTLOOK_SERVICE,      // both windows share it (different layerIds only)
+  endpoint:    '/api/layers/drought-outlook',
+  attribution: 'NOAA/NWS CPC — Drought Outlook',
+  loadingNote: 'Loading drought outlook…',
+  failure:     { note: 'Drought outlook temporarily unavailable' },
+  opacity:     0.6,
+  windows: [
+    { label: 'Monthly',  key: 'monthly',  layerId: 1, legend: DROUGHT_OUTLOOK_LEGEND },
+    { label: 'Seasonal', key: 'seasonal', layerId: 4, legend: DROUGHT_OUTLOOK_LEGEND },
+  ],
+  defaultWindow: 0,                          // open on Monthly (nearer-term)
+  defaultZoom:   5,                          // broad regional view, like Rain Outlook
+  legendTitle: 'Drought forecast',
+  asOfPrefix:  'issued',
+  legend: DROUGHT_OUTLOOK_LEGEND,
+}
+
 // Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector layers
-// (USDM, alerts) and the three precip rasters (observed → forecast → outlook) follow it.
-// The five toggle tabs form a now→past→future timeline. alerts is inToggle:false (radar
-// overlay only), so it gets no tab.
-export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, cpcOutlook, alerts]
+// (USDM, alerts), the three precip rasters (observed → forecast → outlook), and the
+// drought outlook follow it. Six toggle tabs (a transitional flat bar — wraps cleanly).
+// alerts is inToggle:false (radar overlay only), so it gets no tab.
+export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, cpcOutlook, cpcDroughtOutlook, alerts]
