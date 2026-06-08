@@ -43,3 +43,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/prism-aggregate.ts
+      # Sibling step: map each county's percent-of-normal to a v0 0–100 score and
+      # snapshot it into public.hay_score (as-of stamp; Phase A step 4).
+      - name: Score percent-of-normal → hay_score snapshot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/prism-score.ts
