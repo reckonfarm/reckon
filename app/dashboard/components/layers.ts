@@ -98,6 +98,7 @@ export interface RasterLayer extends BaseLayer {
   legendTitle: string                                    // short legend heading ('Observed precip' / 'Forecast precip')
   asOfPrefix:  string                                    // freshness framing ('as of' for observed, 'issued' for forecast)
   defaultWindow?: number                                 // index of the window to open on (default 0)
+  defaultZoom?:   number                                 // override the shared county zoom (e.g. a broad outlook opens wider)
 }
 
 export type LayerDefinition = VectorLayer | TileLayer | ImageLayer | RadarLayer | RasterLayer
@@ -356,6 +357,7 @@ export const cpcOutlook: RasterLayer = {
     { label: 'Monthly',  key: 'monthly', layerId: 0, service: `${OUTLOOK_BASE}/cpc_mthly_precip_outlk/MapServer`, legend: OUTLOOK_LEGEND },
   ],
   defaultWindow: 0,                          // open on 6–10 day (most signal, nearest term)
+  defaultZoom:   5,                          // broad regional view (~5 states) — the tilt pattern needs context, not one county
   legendTitle: 'Rain outlook',
   asOfPrefix:  'issued',
   legend: OUTLOOK_LEGEND,

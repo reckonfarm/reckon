@@ -434,14 +434,14 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
         </button>
       )}
 
-      {/* Alerts honest-status chip (top-left) — the merge's honest-degraded guarantee:
-          a fetch-fail must NOT look like a quiet day. SEPARATE from the radar legend
-          (below) and NOT a per-event color legend (that's a held-back later slice).
-          'ok' draws polygons + shows the count; 'empty' = a genuine quiet day; 'error'
-          (incl. the request timeout) = rust "Alerts unavailable"; 'loading' stays silent
-          so the radar never looks blocked while alerts load. */}
+      {/* Alerts honest-status chip (TOP-RIGHT so it never covers Leaflet's zoom +/- at
+          top-left) — the merge's honest-degraded guarantee: a fetch-fail must NOT look like
+          a quiet day. SEPARATE from the radar legend (below) and NOT a per-event color
+          legend (that's a held-back later slice). 'ok' draws polygons + shows the count;
+          'empty' = a genuine quiet day; 'error' (incl. the request timeout) = rust "Alerts
+          unavailable"; 'loading' stays silent so the radar never looks blocked. */}
       {ALERTS_LAYER && alertsStatus !== 'loading' && (
-        <div className="absolute top-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs shadow-sm">
+        <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs shadow-sm">
           {alertsStatus === 'error'
             ? <span style={{ color: warning }}>Alerts unavailable</span>
             : alertsStatus === 'empty'
@@ -563,7 +563,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
 
   return (
     <div className="relative h-[400px] overflow-hidden rounded-xl border border-forest-green/10">
-      <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
+      <MapContainer center={center} zoom={layer.defaultZoom ?? zoom} style={{ height: '100%', width: '100%' }} scrollWheelZoom>
         {/* County base grid FIRST → overlayPane sits above the tilePane, so the county
             outline draws OVER the precip raster (county outlined, precip colored inside). */}
         <CountyLines selectedFips={selectedFips} />
@@ -583,8 +583,8 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
         )}
       </MapContainer>
 
-      {/* 30-day / 90-day segmented control — in-view, same pattern as radar's play/pause. */}
-      <div className="absolute top-3 left-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
+      {/* In-view window control — TOP-RIGHT so it never covers Leaflet's zoom +/- (top-left). */}
+      <div className="absolute top-3 right-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
         {layer.windows.map((w, i) => (
           <button
             key={w.label}
@@ -605,9 +605,9 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
           same size/placement as the Drought Monitor + radar legends: a SHORT title (the full
           "NOAA/NWS AHPS" attribution already shows in the caption under the map) and a
           width cap so a long "as of"/error note wraps instead of covering the county. */}
-      <div className="absolute bottom-3 right-3 z-[1000] max-w-[150px] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
-        <div className="text-xs font-semibold text-forest-green">{layer.legendTitle}</div>
-        <div className="mb-1.5 text-[10px] text-forest-green/50">
+      <div className="absolute bottom-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans shadow-sm">
+        <div className="text-[11px] font-semibold leading-tight text-forest-green">{layer.legendTitle}</div>
+        <div className="mb-1 text-[9px] leading-tight text-forest-green/50">
           {status === 'loading'
             ? 'Loading…'
             : status === 'error'
@@ -617,8 +617,8 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
                 : lead}
         </div>
         {win.legend.map(({ color, label }) => (
-          <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
+          <div key={label} className="mb-0.5 flex items-center gap-1 text-[10px] leading-tight text-forest-green/70">
+            <span className="inline-block h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
             {label}
           </div>
         ))}
