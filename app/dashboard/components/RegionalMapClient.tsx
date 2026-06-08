@@ -657,7 +657,11 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
         <RasterLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
       ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-1 rounded-lg bg-forest-green/5 p-1">
+      {/* 3-column grid → the six tabs land as an even 2×3 (grid items stretch to equal
+          column width, so rows aren't ragged regardless of label length). Row 1: Radar /
+          Drought Monitor / Observed Rain · Row 2: Forecast Rain / Rain Outlook / Drought
+          Forecast — the LAYERS order already maps to this. */}
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-forest-green/5 p-1">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
