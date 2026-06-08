@@ -12,7 +12,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import RegionalMapLoader from './components/RegionalMapLoader'
-import DroughtTrendChart from './components/DroughtTrendChart'
+import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
@@ -24,7 +24,6 @@ import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { getLocalForecast, type LocalForecast } from '@/lib/nws'
 import ForecastPanel from './components/ForecastPanel'
 import { timeoutSignal } from '@/lib/external-fetch'
-import DroughtHistoryChart, { type DroughtHistoryWeek } from './components/DroughtHistoryChart'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, type DeliveredCost } from '@/lib/freight'
 import DashboardAccordion from './components/DashboardAccordion'
@@ -82,78 +81,6 @@ interface CountyRow extends County {
 }
 
 // ─── Sub-components (server-safe) ─────────────────────────────────────────────
-
-function DroughtBar({ reading }: { reading: DroughtReading }) {
-  const d0 = reading.d0 ?? 0
-  const d1 = reading.d1 ?? 0
-  const d2 = reading.d2 ?? 0
-  const d3 = reading.d3 ?? 0
-  const d4 = reading.d4 ?? 0
-  // USDM values are cumulative (d2 = "D2 or worse"), so subtract to get actual per-category
-  const segments = [
-    { pct: d0 - d1, bg: '#FFFF00' },
-    { pct: d1 - d2, bg: '#FCD37F' },
-    { pct: d2 - d3, bg: '#FFAA00' },
-    { pct: d3 - d4, bg: '#E60000' },
-    { pct: d4,      bg: '#730000' },
-  ]
-  return (
-    <div className="flex h-3 w-full overflow-hidden rounded-full bg-forest-green/10">
-      {segments.map((s, i) =>
-        s.pct > 0 ? (
-          <div key={i} style={{ width: `${s.pct}%`, backgroundColor: s.bg }} className="h-full" />
-        ) : null,
-      )}
-    </div>
-  )
-}
-
-// Official USDM category colors — identical to the --color-usdm-* tokens (globals.css),
-// DroughtBar above, and the map legend, so the icon matches the map exactly. Keyed D0..D4.
-const USDM_HEX: Record<number, string> = {
-  0: '#FFFF00', 1: '#FCD37F', 2: '#FFAA00', 3: '#E60000', 4: '#730000',
-}
-
-// Current highest drought category for the Latest Reading icon. Computed from the SAME
-// per-category buckets (actual coverage, cumulative differences) that the card's legend
-// filters at > 0.5% — so the icon and the legend, sitting inches apart, can NEVER disagree
-// on the same reading. Returns null when no category clears 0.5%: a tracked county with no
-// active drought ("None").
-function highestCategory(reading: DroughtReading): number | null {
-  const d0 = reading.d0 ?? 0
-  const d1 = reading.d1 ?? 0
-  const d2 = reading.d2 ?? 0
-  const d3 = reading.d3 ?? 0
-  const d4 = reading.d4 ?? 0
-  const buckets = [d0 - d1, d1 - d2, d2 - d3, d3 - d4, d4]  // per-category actual %
-  for (let n = 4; n >= 0; n--) if (buckets[n] > 0.5) return n
-  return null
-}
-
-// Drought-severity icon for the Latest Reading header: a colored square (official USDM
-// hex) with the D-level in sharp black — or a neutral OUTLINED "None" chip when the county
-// has a reading but no active drought (never a green/D0 square implying a reading). Only
-// rendered alongside a real reading; when there's no data the whole card is already absent.
-function DroughtCategoryIcon({ reading }: { reading: DroughtReading }) {
-  const level = highestCategory(reading)
-  if (level === null) {
-    return (
-      <span className="rounded-md border border-forest-green/20 bg-forest-green/5 px-2.5 py-1 text-xs font-semibold text-forest-green/50 font-dm-sans">
-        None
-      </span>
-    )
-  }
-  return (
-    <span
-      className="inline-flex h-7 w-9 items-center justify-center rounded-md text-xs font-bold font-dm-sans"
-      style={{ backgroundColor: USDM_HEX[level], color: '#000' }}
-      aria-label={`Current drought category D${level}`}
-    >
-      D{level}
-    </span>
-  )
-}
-
 
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
@@ -562,58 +489,12 @@ export default async function DashboardPage({
             {view === 'drought' && (
               <>
 
-            {/* Latest Reading — drought chrome, Weather view only (above the map). */}
+            {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
+                summary). Weather view only (above the map). Hero renders from the reliable
+                DB `latest`; the ribbon + summary come from the live 3-year USDM history and
+                degrade independently to "history unavailable" if it failed. */}
             {latest && (
-              <Card shadow="soft" className="p-4 sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <Heading level={5}>
-                    Latest Reading
-                  </Heading>
-                  <div className="flex items-center gap-2">
-                    <DroughtCategoryIcon reading={latest} />
-                    <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
-                      Week of {formatDate(latest.week_date)}
-                    </span>
-                  </div>
-                </div>
-
-                <DroughtBar reading={latest} />
-
-                {/* Compact legend — actual per-category, only categories > 0.5% */}
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs font-dm-sans text-forest-green/70">
-                  {(() => {
-                    const d0 = latest.d0 ?? 0
-                    const d1 = latest.d1 ?? 0
-                    const d2 = latest.d2 ?? 0
-                    const d3 = latest.d3 ?? 0
-                    const d4 = latest.d4 ?? 0
-                    const items = [
-                      { pct: d0 - d1, label: 'D0 Abnormally Dry', dot: '#FFFF00' },
-                      { pct: d1 - d2, label: 'D1 Moderate',       dot: '#FCD37F' },
-                      { pct: d2 - d3, label: 'D2 Severe',         dot: '#FFAA00' },
-                      { pct: d3 - d4, label: 'D3 Extreme',        dot: '#E60000' },
-                      { pct: d4,      label: 'D4 Exceptional',    dot: '#730000' },
-                    ].filter(c => c.pct > 0.5)
-                    if (items.length === 0) {
-                      return <span className="text-forest-green/40">No drought this week.</span>
-                    }
-                    return items.map((c, i) => (
-                      <span key={i} className="inline-flex items-center gap-1">
-                        {i > 0 && <span className="mr-0.5 text-forest-green/30">·</span>}
-                        <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: c.dot }} />
-                        {c.label} {c.pct.toFixed(1)}%
-                      </span>
-                    ))
-                  })()}
-                </div>
-
-                <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
-                  Source:{' '}
-                  <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
-                    U.S. Drought Monitor
-                  </a>
-                </p>
-              </Card>
+              <LatestReadingCard latest={latest} history={threeYearHistory} />
             )}
 
             {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
@@ -769,16 +650,6 @@ export default async function DashboardPage({
                         countyName={selectedCounty.name}
                       />
                     ) : null}
-                  </DashboardAccordion>
-
-                  <DashboardAccordion
-                    title="Drought history"
-                    preview="3-year and 52-week trend charts"
-                  >
-                    <div className="space-y-6">
-                      <DroughtHistoryChart data={threeYearHistory} countyName={selectedCounty.name} />
-                      <DroughtTrendChart history={history} countyName={selectedCounty.name} />
-                    </div>
                   </DashboardAccordion>
 
                   {/* The CPC monthly + seasonal drought outlooks now live on the map as the
