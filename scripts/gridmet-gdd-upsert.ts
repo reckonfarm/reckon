@@ -12,7 +12,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 
-const SOURCE = 'gridMET 4km daily tmin/tmax · GDD base 41°F cap 86°F · stage ladder LITERATURE (contested)'
+const SOURCE = 'gridMET 4km daily tmin/tmax/vpd/vs · GDD base 41°F cap 86°F · stage ladder LITERATURE + stage-weighted freeze + heat (VPD≥1.5kPa, wind-amp) — all contested'
 const SENTINELS = new Set(['30069', '31109', '46033'])
 
 interface SpineRow {
@@ -27,6 +27,9 @@ interface SpineRow {
   frost_multiplier: number | null
   freeze_days: number | null
   worst_freeze_stage: string | null
+  heat_multiplier: number | null
+  heat_days: number | null
+  worst_heat_stage: string | null
 }
 
 async function main() {
@@ -60,13 +63,17 @@ async function main() {
     frost_multiplier: r.frost_multiplier,
     freeze_days: r.freeze_days,
     worst_freeze_stage: r.worst_freeze_stage,
+    heat_multiplier: r.heat_multiplier,
+    heat_days: r.heat_days,
+    worst_heat_stage: r.worst_heat_stage,
     source: SOURCE,
   }))
 
   for (const r of rows) {
     if (SENTINELS.has(r.fips)) {
       console.log(`[gdd-upsert] ${r.fips}: GDD=${r.gdd_cumulative ?? 'NULL'} stage=${r.stage ?? 'NULL'} green_up=${r.green_up_date ?? 'NULL'} ` +
-        `frost_mult=${r.frost_multiplier ?? 'NULL'} freeze_days=${r.freeze_days ?? 'NULL'} worst=${r.worst_freeze_stage ?? 'NULL'} days=${r.days_used}`)
+        `frost_mult=${r.frost_multiplier ?? 'NULL'} freeze_days=${r.freeze_days ?? 'NULL'} worst=${r.worst_freeze_stage ?? 'NULL'} ` +
+        `heat_mult=${r.heat_multiplier ?? 'NULL'} heat_days=${r.heat_days ?? 'NULL'} worst_heat=${r.worst_heat_stage ?? 'NULL'} days=${r.days_used}`)
     }
   }
 

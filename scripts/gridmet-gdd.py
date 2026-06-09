@@ -47,6 +47,26 @@ STAGE_FREEZE_WEIGHT = {
     'pre-green-up': 0.0, 'establishment': 1.0, 'boot-heading': 0.7,
     'first-cutting': 0.3, 'past-first-cutting': 0.1,
 }
+
+# ── Stage-weighted heat (Phase B Commit 9a) — all CONTESTED, calibration-pending ────────
+# Heat/VPD stress proxy: county-mean DAILY-MEAN vpd ≥ VPD_HEAT (kPa). VPD integrates heat+dryness
+# (a hot dry windy day stresses the plant even when tmax isn't extreme), so it is the trigger and
+# tmax is fetched but LEFT UNUSED as a Commit-11 lever. Wind ≥ WIND_HEAT amplifies that day's
+# per-event ×WIND_AMP (boundary-layer stripping → more transpiration demand). Heat is weighted by
+# the stage the county was IN that day. Per spec agronomy, heat PEAKS at boot-heading (max
+# transpiration + heat-sensitive reproductive tissue) — LATER than freeze (which peaked at
+# establishment), a deliberately different shape. Repeated heat days compound multiplicatively,
+# floored at 0.30 (NOT 0.20 like freeze: a ~2-week spell at per-day 0.20 would zero any crop, so
+# per_event is smaller and the floor is higher). Magnitudes are starting estimates — drive data tunes.
+VPD_HEAT = 1.5      # kPa daily-mean — heat-stress day trigger
+WIND_HEAT = 5.0     # m/s daily-mean — wind amplifier threshold
+WIND_AMP = 1.5      # per-event multiplier on a windy heat day
+PER_HEAT = 0.05     # per heat-day damage at full stage weight (smaller than freeze's 0.20)
+HEAT_FLOOR = 0.30   # heat_mult floor
+STAGE_HEAT_WEIGHT = {
+    'pre-green-up': 0.0, 'establishment': 0.4, 'boot-heading': 1.0,
+    'first-cutting': 0.8, 'past-first-cutting': 0.5,
+}
 SEASON_START_MONTH, SEASON_END_MONTH = 2, 7  # Feb–Jul
 SENTINELS = {'30069', '31109', '46033'}
 EPOCH = date(1900, 1, 1)  # gridMET `day` = days since 1900-01-01
@@ -54,7 +74,13 @@ EPOCH = date(1900, 1, 1)  # gridMET `day` = days since 1900-01-01
 VARS = {  # element -> gridMET OPeNDAP base
     'tmin': 'http://thredds.northwestknowledge.net:8080/thredds/dodsC/MET/tmmn/tmmn_{y}.nc',
     'tmax': 'http://thredds.northwestknowledge.net:8080/thredds/dodsC/MET/tmmx/tmmx_{y}.nc',
+    'vpd':  'http://thredds.northwestknowledge.net:8080/thredds/dodsC/MET/vpd/vpd_{y}.nc',
+    'vs':   'http://thredds.northwestknowledge.net:8080/thredds/dodsC/MET/vs/vs_{y}.nc',
 }
+# OPeNDAP array name per element (differs from the element key): temp files share
+# 'air_temperature'; vpd/vs use their own variable names. Used to build the .ascii subset query.
+ARR = {'tmin': 'air_temperature', 'tmax': 'air_temperature',
+       'vpd': 'mean_vapor_pressure_deficit', 'vs': 'wind_speed'}
 
 glat = lambda i: GLAT0 - i * GSTEP
 glon = lambda j: GLON0 + j * GSTEP
@@ -85,6 +111,12 @@ def parse_ascii(txt: str) -> dict:
 def k_to_f(packed: int) -> float:
     # gridMET packs temp as UInt16: K = packed*0.1 + 210; _FillValue 32767.
     return ((packed * 0.1 + 210.0) - 273.15) * 9.0 / 5.0 + 32.0
+
+
+# vpd/vs use the plain gridMET packing: value = packed * scale_factor (NO +210 offset like temp).
+# vpd scale_factor 0.01 → kPa ; vs scale_factor 0.1 → m/s. _FillValue 32767 (checked at call site).
+unpack_vpd = lambda packed: packed * 0.01   # kPa
+unpack_vs = lambda packed: packed * 0.1     # m/s
 
 
 def rings(feat):
@@ -165,34 +197,59 @@ def main():
     freeze_days = {f['properties']['GEOID']: 0 for f, _ in county_cells}   # # freeze days in a WEIGHTED stage
     worst_w = {f['properties']['GEOID']: 0.0 for f, _ in county_cells}
     worst_stage = {f['properties']['GEOID']: None for f, _ in county_cells}
+    heat_mult = {f['properties']['GEOID']: 1.0 for f, _ in county_cells}
+    heat_days = {f['properties']['GEOID']: 0 for f, _ in county_cells}     # # heat days in a WEIGHTED stage
+    vpd_days = {f['properties']['GEOID']: 0 for f, _ in county_cells}      # # days vpd was usable (NULL-vs-1.0 test)
+    heat_worst_w = {f['properties']['GEOID']: 0.0 for f, _ in county_cells}
+    heat_worst_stage = {f['properties']['GEOID']: None for f, _ in county_cells}
     CHUNK = 20
     for c0 in range(d0, d1 + 1, CHUNK):
         c1 = min(c0 + CHUNK - 1, d1)
         sub = {}
         for el, tmpl in VARS.items():
-            q = f'.ascii?air_temperature%5B{c0}:{c1}%5D%5B{la0}:{la1}%5D%5B{lo0}:{lo1}%5D'
+            q = f'.ascii?{ARR[el]}%5B{c0}:{c1}%5D%5B{la0}:{la1}%5D%5B{lo0}:{lo1}%5D'
             sub[el] = parse_ascii(fetch(tmpl.format(y=year) + q))
         for di in range(c1 - c0 + 1):
             for f, cells in county_cells:
                 fips = f['properties']['GEOID']
-                tns, txs = [], []
+                tns, txs, vpds, winds = [], [], [], []
                 for (li, lj) in cells:
                     rn = sub['tmin'].get((di, li)); rx = sub['tmax'].get((di, li))
                     if rn and rx and lj < len(rn) and rn[lj] != 32767 and rx[lj] != 32767:
                         tns.append(k_to_f(rn[lj])); txs.append(k_to_f(rx[lj]))
+                    rv = sub['vpd'].get((di, li)); rw = sub['vs'].get((di, li))
+                    if rv and lj < len(rv) and rv[lj] != 32767:
+                        vpds.append(unpack_vpd(rv[lj]))
+                    if rw and lj < len(rw) and rw[lj] != 32767:
+                        winds.append(unpack_vs(rw[lj]))
                 if not tns:
                     continue
                 tn = sum(tns) / len(tns); tx = sum(txs) / len(txs)
-                # Freeze — weighted by the stage as of the cumulative BEFORE today's GDD is
-                # added (the stage the crop was in at dawn when the freeze hit).
+                st = stage_of(gdd[fips])  # stage at dawn — cumulative BEFORE today's GDD is added
+                # Freeze — weighted by the stage the crop was in at dawn when the freeze hit.
                 if tn <= FREEZE_F:
-                    st = stage_of(gdd[fips])
                     w = STAGE_FREEZE_WEIGHT[st]
                     frost_mult[fips] *= (1.0 - w * PER_FREEZE)
                     if w > 0:
                         freeze_days[fips] += 1
                         if w > worst_w[fips]:
                             worst_w[fips] = w; worst_stage[fips] = st
+                # Heat — VPD is the trigger; wind ≥ WIND_HEAT amplifies that day's per-event;
+                # tmax left unused (Commit-11 lever). Same dawn-stage weighting as freeze. Wind
+                # missing for the day → amplifier off, the VPD day still counts. vpd_days tracks
+                # whether heat was COMPUTABLE at all (NULL ≠ 1.0 at emit).
+                if vpds:
+                    vpd_days[fips] += 1
+                    vpd = sum(vpds) / len(vpds)
+                    wind = sum(winds) / len(winds) if winds else 0.0
+                    if vpd >= VPD_HEAT:
+                        w = STAGE_HEAT_WEIGHT[st]
+                        per = PER_HEAT * (WIND_AMP if wind >= WIND_HEAT else 1.0)
+                        heat_mult[fips] *= (1.0 - w * per)
+                        if w > 0:
+                            heat_days[fips] += 1
+                            if w > heat_worst_w[fips]:
+                                heat_worst_w[fips] = w; heat_worst_stage[fips] = st
                 gdd[fips] += (min(max(tx, BASE_F), CAP_F) + min(max(tn, BASE_F), CAP_F)) / 2 - BASE_F
                 used[fips] += 1
                 # Green-up date = the first day cumulative GDD crosses the threshold.
@@ -208,6 +265,10 @@ def main():
         # frost: NULL if no temp (couldn't compute), else floored multiplier (1.0 = real "no
         # weighted freeze"). Distinct: NULL ≠ 1.0.
         fm = round(max(FROST_FLOOR, frost_mult[fips]), 3) if used[fips] > 0 else None
+        # heat: NULL if heat was never COMPUTABLE (no temp to place the stage, OR no usable vpd) —
+        # distinct from 1.0 (vpd seen but no weighted heat day, or none at all). Floored at HEAT_FLOOR.
+        heat_ok = used[fips] > 0 and vpd_days[fips] > 0
+        hm = round(max(HEAT_FLOOR, heat_mult[fips]), 3) if heat_ok else None
         rows.append({
             'fips': fips,
             'season_year': year,
@@ -220,11 +281,16 @@ def main():
             'frost_multiplier': fm,
             'freeze_days': freeze_days[fips] if used[fips] > 0 else None,
             'worst_freeze_stage': worst_stage[fips] if used[fips] > 0 else None,
+            'heat_multiplier': hm,
+            'heat_days': heat_days[fips] if heat_ok else None,
+            'worst_heat_stage': heat_worst_stage[fips] if heat_ok else None,
         })
         if fips in SENTINELS:
             print(f"[gridmet-gdd] {fips} {f['properties']['NAME']}: "
                   f"GDD={g} stage={stage_of(g)} green_up={greenup[fips]} days={used[fips]} "
-                  f"frost_mult={fm} freeze_days={freeze_days[fips]} worst={worst_stage[fips]}", file=sys.stderr)
+                  f"frost_mult={fm} freeze_days={freeze_days[fips]} worst={worst_stage[fips]} "
+                  f"heat_mult={hm} heat_days={heat_days[fips] if heat_ok else None} "
+                  f"worst_heat={heat_worst_stage[fips] if heat_ok else None}", file=sys.stderr)
 
     json.dump({'as_of': as_of, 'season_year': year, 'rows': rows}, sys.stdout)
     print(f'[gridmet-gdd] emitted {len(rows)} counties', file=sys.stderr)
