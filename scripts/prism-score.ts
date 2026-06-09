@@ -16,7 +16,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // The exact mapping, recorded in every row's `source` so the snapshot self-documents
 // (and a future phenology score is a visibly different source string).
-const SOURCE = 'precip %-of-normal round(clamp(pct,0,200)/2) × starting-condition ceiling C'
+const SOURCE = 'precip round(clamp(pct,0,200)/2) × ceiling C × stage-weighted freeze (heat pending Commit 9)'
 const SENTINELS = new Set(['30069', '31109', '46033']) // logged for verification
 
 // Precip base: NULL-honest (no usable precip → no score, never a fabricated 0).
@@ -26,11 +26,22 @@ function scoreFromPct(pct: number | null): number | null {
 }
 
 // Apply the ceiling. ceiling_c NULL = "couldn't compute" → precip-only (NOT a fake cap).
-// A real ceiling_c (incl. 1.00) caps: final = round(C × precip). C only caps, never boosts.
+// A real ceiling_c (incl. 1.00) caps: round(C × precip). C only caps, never boosts.
 function applyCeiling(precip: number | null, ceiling: number | null): number | null {
   if (precip == null) return null
   if (ceiling == null) return precip
   return Math.round(ceiling * precip)
+}
+
+// Apply the stage-weighted freeze multiplier (from hay_gdd_spine). NULL = "couldn't compute"
+// (no spine/temp) → no penalty (NOT a fake "no freeze"). A real 1.00 = freezes seen but none
+// in a weighted stage, OR no freeze at all (e.g. Sheridan dodged the May frosts by greening up
+// late). Freeze only penalizes (≤1), never boosts. Forward-consistent with the spec's
+// min(frost, heat) once heat lands (Commit 9).
+function applyFrost(score: number | null, frost: number | null): number | null {
+  if (score == null) return null
+  if (frost == null) return score
+  return Math.round(frost * score)
 }
 
 interface InputRow {
@@ -68,9 +79,16 @@ async function main() {
   const inputs = (data ?? []) as InputRow[]
   if (inputs.length === 0) { console.error('[prism-score] hay_score_inputs is empty — aborting'); process.exit(1) }
 
+  // Stage-weighted freeze multiplier from the spine (gridMET-derived). NULL per fips = no penalty.
+  const { data: spine, error: e2 } = await db.from('hay_gdd_spine').select('fips, frost_multiplier')
+  if (e2) { console.error('[prism-score] read hay_gdd_spine failed:', e2.message); process.exit(1) }
+  const frostByFips = new Map<string, number | null>()
+  for (const s of spine ?? []) frostByFips.set(s.fips as string, (s.frost_multiplier as number | null) ?? null)
+
   let nullScore = 0
   const rows = inputs.map(r => {
-    const score = applyCeiling(scoreFromPct(r.pct_of_normal), r.ceiling_c)
+    const frost = frostByFips.get(r.fips) ?? null
+    const score = applyFrost(applyCeiling(scoreFromPct(r.pct_of_normal), r.ceiling_c), frost)
     if (score == null) nullScore++
     return {
       fips: r.fips,
@@ -80,6 +98,7 @@ async function main() {
       score,
       pct_of_normal: r.pct_of_normal,
       ceiling_c: r.ceiling_c,
+      frost_multiplier: frost,
       is_provisional: r.is_provisional,
       months_used: r.months_used,
       capture_source: 'live',
@@ -90,10 +109,12 @@ async function main() {
   for (const r of inputs) {
     if (SENTINELS.has(r.fips)) {
       const precip = scoreFromPct(r.pct_of_normal)
+      const frost = frostByFips.get(r.fips) ?? null
+      const cScore = applyCeiling(precip, r.ceiling_c)
       console.log(
         `[prism-score] ${r.fips} ${r.county_name ?? ''}: ` +
-        `precip=${precip ?? 'NULL'} × C=${r.ceiling_c != null ? r.ceiling_c.toFixed(2) : 'NULL(precip-only)'} → ` +
-        `final=${applyCeiling(precip, r.ceiling_c) ?? 'NULL'}`,
+        `precip=${precip ?? 'NULL'} × C=${r.ceiling_c != null ? r.ceiling_c.toFixed(2) : 'NULL'} ` +
+        `× frost=${frost != null ? frost.toFixed(2) : 'NULL'} → final=${applyFrost(cScore, frost) ?? 'NULL'}`,
       )
     }
   }
