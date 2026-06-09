@@ -44,8 +44,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/prism-aggregate.ts
-      # Sibling step: map each county's percent-of-normal to a v0 0–100 score and
-      # snapshot it into public.hay_score (as-of stamp; Phase A step 4).
+      # Sibling step: starting-condition ceiling C (reads the GDD spine's green-up date +
+      # USDM-at-green-up + antecedent) → ceiling_c on hay_score_inputs (Phase B Commit 7b).
+      - name: Compute starting-condition ceiling C
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/prism-ceiling.ts
+      # Sibling step: precip score × ceiling C → final, snapshot into public.hay_score.
       - name: Score percent-of-normal → hay_score snapshot
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

@@ -16,13 +16,21 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // The exact mapping, recorded in every row's `source` so the snapshot self-documents
 // (and a future phenology score is a visibly different source string).
-const SOURCE = 'v0 precip percent-of-normal · round(clamp(pct,0,200)/2)'
+const SOURCE = 'precip %-of-normal round(clamp(pct,0,200)/2) × starting-condition ceiling C'
 const SENTINELS = new Set(['30069', '31109', '46033']) // logged for verification
 
-// v0 score: NULL-honest (no usable precip → no score, never a fabricated 0).
+// Precip base: NULL-honest (no usable precip → no score, never a fabricated 0).
 function scoreFromPct(pct: number | null): number | null {
   if (pct == null) return null
   return Math.round(Math.min(Math.max(pct, 0), 200) / 2)
+}
+
+// Apply the ceiling. ceiling_c NULL = "couldn't compute" → precip-only (NOT a fake cap).
+// A real ceiling_c (incl. 1.00) caps: final = round(C × precip). C only caps, never boosts.
+function applyCeiling(precip: number | null, ceiling: number | null): number | null {
+  if (precip == null) return null
+  if (ceiling == null) return precip
+  return Math.round(ceiling * precip)
 }
 
 interface InputRow {
@@ -31,6 +39,7 @@ interface InputRow {
   season_year: number
   season_label: string
   pct_of_normal: number | null
+  ceiling_c: number | null
   is_provisional: boolean
   months_used: string[] | null
 }
@@ -54,14 +63,14 @@ async function main() {
 
   const { data, error } = await db
     .from('hay_score_inputs')
-    .select('fips, county_name, season_year, season_label, pct_of_normal, is_provisional, months_used')
+    .select('fips, county_name, season_year, season_label, pct_of_normal, ceiling_c, is_provisional, months_used')
   if (error) { console.error('[prism-score] read hay_score_inputs failed:', error.message); process.exit(1) }
   const inputs = (data ?? []) as InputRow[]
   if (inputs.length === 0) { console.error('[prism-score] hay_score_inputs is empty — aborting'); process.exit(1) }
 
   let nullScore = 0
   const rows = inputs.map(r => {
-    const score = scoreFromPct(r.pct_of_normal)
+    const score = applyCeiling(scoreFromPct(r.pct_of_normal), r.ceiling_c)
     if (score == null) nullScore++
     return {
       fips: r.fips,
@@ -70,6 +79,7 @@ async function main() {
       season_label: r.season_label,
       score,
       pct_of_normal: r.pct_of_normal,
+      ceiling_c: r.ceiling_c,
       is_provisional: r.is_provisional,
       months_used: r.months_used,
       capture_source: 'live',
@@ -79,10 +89,11 @@ async function main() {
 
   for (const r of inputs) {
     if (SENTINELS.has(r.fips)) {
+      const precip = scoreFromPct(r.pct_of_normal)
       console.log(
         `[prism-score] ${r.fips} ${r.county_name ?? ''}: ` +
-        `pct=${r.pct_of_normal != null ? Math.round(r.pct_of_normal) + '%' : 'NULL'} → ` +
-        `score=${scoreFromPct(r.pct_of_normal) ?? 'NULL'}`,
+        `precip=${precip ?? 'NULL'} × C=${r.ceiling_c != null ? r.ceiling_c.toFixed(2) : 'NULL(precip-only)'} → ` +
+        `final=${applyCeiling(precip, r.ceiling_c) ?? 'NULL'}`,
       )
     }
   }

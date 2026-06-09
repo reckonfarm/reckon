@@ -184,6 +184,7 @@ async function main() {
     season_year: number; season_label: string
     actual_sum_mm: number | null; normal_sum_mm: number | null
     pct_of_normal: number | null; cells_used: number
+    antecedent_ppt_pct: number | null  // Feb+Mar % of normal — proxy for Oct–Mar recharge (the ceiling C reads this)
     is_provisional: boolean; months_used: string[]; source: string
   }
   const rows: Row[] = []
@@ -208,13 +209,27 @@ async function main() {
       }
       if (ok) { actualSum = aSum; normalSum = nSum; pct = (wRatio / weightSum) * 100 }
     }
+
+    // Antecedent = (Feb+Mar actual) / (Feb+Mar normal) × 100, over whichever of Feb/Mar
+    // are present (matched). A PROXY for the spec's Oct–Mar recharge (we only ingest Feb+).
+    let antecedentPct: number | null = null
+    if (cellsUsed > 0) {
+      let aA = 0, aN = 0, seen = false
+      for (const m of months) {
+        if (m.mm !== 2 && m.mm !== 3) continue
+        const am = meanAt(m.actual, idx), nm = meanAt(m.normal, idx)
+        if (am != null && nm != null && nm > 0) { aA += am; aN += nm; seen = true }
+      }
+      if (seen && aN > 0) antecedentPct = (aA / aN) * 100
+    }
     if (pct == null) nullCount++
 
     const row: Row = {
       fips: f.properties.GEOID, county_name: f.properties.NAME, state_fips: f.properties.STATEFP,
       season_year: seasonYear, season_label: seasonLabel,
       actual_sum_mm: actualSum, normal_sum_mm: normalSum, pct_of_normal: pct,
-      cells_used: cellsUsed, is_provisional: isProvisional, months_used: monthsUsed, source: SOURCE,
+      cells_used: cellsUsed, antecedent_ppt_pct: antecedentPct,
+      is_provisional: isProvisional, months_used: monthsUsed, source: SOURCE,
     }
     rows.push(row)
     if (SENTINELS.has(row.fips)) {
