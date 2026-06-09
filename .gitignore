@@ -49,3 +49,7 @@ next-env.d.ts
 /e2e/prod-auth-artifacts/
 /e2e/prod-auth-results/
 /test-results/
+
+# Python
+__pycache__/
+*.pyc

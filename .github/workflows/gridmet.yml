@@ -1,0 +1,45 @@
+name: gridMET GDD spine
+
+# Fetches gridMET 4km DAILY tmin/tmax over OPeNDAP (5-state bbox × Feb-to-date subset —
+# never the 67MB CONUS file), computes a real daily GDD accumulation per county, and
+# upserts the phenology spine into Supabase (public.hay_gdd_spine). Separate source from
+# the PRISM precip job, independent weekly cadence. Spine only — does NOT touch the score
+# or the map (Phase B Commit 6; the spine is invisible until Commit 7 reads it).
+#
+# Full-recompute-from-Feb-1 each run, idempotent on fips — absorbs gridMET's revisions of
+# recent provisional days.
+
+on:
+  schedule:
+    # Weekly (Tuesdays 16:00 UTC) — gridMET updates daily with ~1-day lag; the spine
+    # rolls forward through the season.
+    - cron: '0 16 * * 2'
+  workflow_dispatch: {}
+
+concurrency:
+  group: gridmet-gdd
+  cancel-in-progress: false
+
+jobs:
+  spine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Compute (Python stdlib only — no pip installs needed) → JSON.
+      - name: Compute per-county GDD from gridMET
+        run: python3 scripts/gridmet-gdd.py > gridmet-gdd.json
+      # Write (supabase-js, same idiom as prism-*).
+      - name: Upsert GDD spine
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/gridmet-gdd-upsert.ts gridmet-gdd.json
