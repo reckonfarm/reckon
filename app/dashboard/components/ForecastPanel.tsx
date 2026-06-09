@@ -2,20 +2,15 @@
 
 import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
+import WeatherGlyph from './WeatherGlyph'
 import type { LocalForecast, NWSPeriod } from '@/lib/nws'
 
 // Rain-chance accent — the same water-blue used by the rain-event markers on the
 // rainfall graph, so "chance of rain" reads consistently across the weather view.
 const RAIN_BLUE = '#2563EB'
 
-type IconKind = 'sun' | 'partly' | 'cloud' | 'rain' | 'snow' | 'storm'
-
-// Small, scannable condition glyph. Emoji render crisply on iOS (the primary cab
-// device) and stay legible at a glance; swap for inline SVGs if a more on-brand look
-// is wanted later.
-const ICON: Record<IconKind, string> = {
-  sun: '☀️', partly: '⛅', cloud: '☁️', rain: '🌧️', snow: '❄️', storm: '⛈️',
-}
+// Condition class iconFor() resolves to; WeatherGlyph paints each as a custom brand SVG.
+export type IconKind = 'sun' | 'partly' | 'cloud' | 'rain' | 'snow' | 'storm'
 
 function iconFor(short: string): IconKind {
   const t = short.toLowerCase()
@@ -123,7 +118,7 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
             >
               <div className="text-[11px] font-dm-sans font-semibold leading-tight text-forest-green/70">{d.label}</div>
               <div className="text-[9px] font-dm-sans leading-tight text-forest-green/40">{d.date}</div>
-              <div className="my-1 text-lg leading-none" aria-hidden="true">{ICON[d.iconKind]}</div>
+              <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>
               {/* Hero: % chance of rain — the field a rancher reads first. */}
               <div
                 className="font-dm-sans text-lg font-bold leading-none"
