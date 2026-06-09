@@ -33,6 +33,20 @@ BASE_F, CAP_F = 41.0, 86.0
 # calibration-pending, same posture as the rest of the stage ladder (literature estimate,
 # not field-anchored — see project_gdd_calibration_anchors). Consumed by the ceiling (C).
 GREENUP_GDD = 150.0
+
+# ── Stage-weighted freeze (Phase B Commit 8a) — all CONTESTED, calibration-pending ──────
+# Killing-freeze proxy: county-mean DAILY tmin ≤ this (we have daily, not hourly — an honest
+# proxy for the spec's ≤25°F/4hr, conservative county-mean). A freeze is weighted by the stage
+# the county was IN that day (cumulative-GDD-at-the-date). Per spec agronomy, freeze PEAKS in
+# establishment (tender post-green-up shoots / exposed meristems), ~zero pre-green-up (dormant).
+# Repeated frosts compound multiplicatively, floored. Magnitudes are starting estimates.
+FREEZE_F = 25.0
+PER_FREEZE = 0.20
+FROST_FLOOR = 0.20
+STAGE_FREEZE_WEIGHT = {
+    'pre-green-up': 0.0, 'establishment': 1.0, 'boot-heading': 0.7,
+    'first-cutting': 0.3, 'past-first-cutting': 0.1,
+}
 SEASON_START_MONTH, SEASON_END_MONTH = 2, 7  # Feb–Jul
 SENTINELS = {'30069', '31109', '46033'}
 EPOCH = date(1900, 1, 1)  # gridMET `day` = days since 1900-01-01
@@ -147,6 +161,10 @@ def main():
     gdd = {f['properties']['GEOID']: 0.0 for f, _ in county_cells}
     used = {f['properties']['GEOID']: 0 for f, _ in county_cells}
     greenup = {f['properties']['GEOID']: None for f, _ in county_cells}  # date cum GDD first ≥ GREENUP_GDD
+    frost_mult = {f['properties']['GEOID']: 1.0 for f, _ in county_cells}
+    freeze_days = {f['properties']['GEOID']: 0 for f, _ in county_cells}   # # freeze days in a WEIGHTED stage
+    worst_w = {f['properties']['GEOID']: 0.0 for f, _ in county_cells}
+    worst_stage = {f['properties']['GEOID']: None for f, _ in county_cells}
     CHUNK = 20
     for c0 in range(d0, d1 + 1, CHUNK):
         c1 = min(c0 + CHUNK - 1, d1)
@@ -165,6 +183,16 @@ def main():
                 if not tns:
                     continue
                 tn = sum(tns) / len(tns); tx = sum(txs) / len(txs)
+                # Freeze — weighted by the stage as of the cumulative BEFORE today's GDD is
+                # added (the stage the crop was in at dawn when the freeze hit).
+                if tn <= FREEZE_F:
+                    st = stage_of(gdd[fips])
+                    w = STAGE_FREEZE_WEIGHT[st]
+                    frost_mult[fips] *= (1.0 - w * PER_FREEZE)
+                    if w > 0:
+                        freeze_days[fips] += 1
+                        if w > worst_w[fips]:
+                            worst_w[fips] = w; worst_stage[fips] = st
                 gdd[fips] += (min(max(tx, BASE_F), CAP_F) + min(max(tn, BASE_F), CAP_F)) / 2 - BASE_F
                 used[fips] += 1
                 # Green-up date = the first day cumulative GDD crosses the threshold.
@@ -177,6 +205,9 @@ def main():
     for f, _ in county_cells:
         fips = f['properties']['GEOID']
         g = round(gdd[fips], 1) if used[fips] > 0 else None
+        # frost: NULL if no temp (couldn't compute), else floored multiplier (1.0 = real "no
+        # weighted freeze"). Distinct: NULL ≠ 1.0.
+        fm = round(max(FROST_FLOOR, frost_mult[fips]), 3) if used[fips] > 0 else None
         rows.append({
             'fips': fips,
             'season_year': year,
@@ -186,10 +217,14 @@ def main():
             'days_used': used[fips],
             'as_of_date': as_of if used[fips] > 0 else None,
             'is_provisional': True,  # all current-year gridMET is preliminary
+            'frost_multiplier': fm,
+            'freeze_days': freeze_days[fips] if used[fips] > 0 else None,
+            'worst_freeze_stage': worst_stage[fips] if used[fips] > 0 else None,
         })
         if fips in SENTINELS:
             print(f"[gridmet-gdd] {fips} {f['properties']['NAME']}: "
-                  f"GDD={g} stage={stage_of(g)} green_up={greenup[fips]} days={used[fips]}", file=sys.stderr)
+                  f"GDD={g} stage={stage_of(g)} green_up={greenup[fips]} days={used[fips]} "
+                  f"frost_mult={fm} freeze_days={freeze_days[fips]} worst={worst_stage[fips]}", file=sys.stderr)
 
     json.dump({'as_of': as_of, 'season_year': year, 'rows': rows}, sys.stdout)
     print(f'[gridmet-gdd] emitted {len(rows)} counties', file=sys.stderr)
