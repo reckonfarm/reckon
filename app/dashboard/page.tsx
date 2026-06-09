@@ -618,6 +618,53 @@ export default async function DashboardPage({
                   />
                 )}
 
+                {/* Honest explainer of the hay-score choropleth — collapsed by default,
+                    opens inline (reuses DashboardAccordion's toggle so it matches the rest
+                    of the dashboard and can't trap the user). Copy is edited in one place
+                    after the calibration drive; render-only, no score/backend tie-in. */}
+                <DashboardAccordion title="How the Hay Score works">
+                  <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-forest-green/80">
+                    <p>
+                      Each county gets a 0–100 score for how its hay outlook is shaping up this
+                      season. Greener is better, redder is worse. It&rsquo;s built from four things:
+                    </p>
+                    <ul className="space-y-2">
+                      <li>
+                        <span className="font-semibold text-ink">Rain so far</span> — this year&rsquo;s
+                        moisture vs. normal for that county, updated weekly.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-ink">How the season started</span> — drought
+                        and moisture on hand at green-up. A county that started dry stays capped, no
+                        matter how spring went.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-ink">Spring frost</span> — whether a killing
+                        freeze hit after a county greened up, when new growth was tender. Counties that
+                        greened up early and got frosted score lower than ones still dormant when the
+                        cold came.
+                      </li>
+                      <li>
+                        <span className="font-semibold text-ink">Heat &amp; dry stress</span> — hot,
+                        windy, dry stretches that pull moisture out of the crop, weighted toward the
+                        stages when it hurts most.
+                      </li>
+                    </ul>
+                    <p>
+                      <span className="font-semibold text-ink">What it is and isn&rsquo;t.</span> This is
+                      an early, free tool, and the exact numbers are still being calibrated against real
+                      fields — including a drive across these counties this season. Treat the score as a
+                      directional read on the region, not a verdict on any one field, and not a
+                      substitute for walking your own ground. Conditions change fast as rain comes. If a
+                      county looks wrong to you, that&rsquo;s worth knowing — tell us.
+                    </p>
+                    <p className="text-forest-green/50">
+                      Data: PRISM precip, gridMET temperature/humidity/wind, USDM drought monitor.
+                      Updated weekly, provisional for the current season.
+                    </p>
+                  </div>
+                </DashboardAccordion>
+
                 <HayNearbyCards listings={hayNearbyCards} deliverToFips={selectedCounty.fips} />
 
                 <div className="flex flex-col gap-3 sm:flex-row">
