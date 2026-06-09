@@ -161,17 +161,29 @@ function droughtLayerStyle(feature?: Feature) {
   }
 }
 
-// Hay Opportunity Score v0 choropleth — YlGn sequential (colorblind-safe): pale yellow =
-// dry / low score, deep green = wet / high opportunity. Gray is RESERVED for no-data, so a
-// county with no score can never be mistaken for bone-dry (a deliberate deviation from the
-// spec's "gray = low" — honesty about missing data wins).
+// Hay Opportunity Score choropleth — 8 discrete bins on a FIXED 0–100 scale (NOT stretched to
+// the observed range), so a dry year reads honestly: the top greens sit empty when nobody had
+// a banner season, and a future wet year visibly climbs into them. BRAND diverging ramp: deep
+// forest green (#1B4332, high/best) → pale-tan center → rust (#8B3A2B, low/poorest).
+//
+// DELIBERATE TRADE: this replaced a colorblind-safe YlGn ramp ON PURPOSE (brand identity over
+// strict accessibility) — green↔rust is the classic red-green-confusion case. The pale-tan
+// center + the NUMERIC legend labels are the intentional disambiguation for colorblind viewers.
+// If accessibility ever outranks brand again, swap to a monotonic-lightness single-hue ramp.
+//
+// Gray is RESERVED for no-data (HAY_SCORE_NODATA) — a scoreless county must never read as the
+// lowest-score rust ("no data" ≠ "scored 0"). The legend + the collapsed-chip swatch BOTH derive
+// from this one array, so map fill / legend / chip can never drift.
 const HAY_SCORE_NODATA = '#bdbdbd'
 const HAY_SCORE_BUCKETS: { min: number; color: string; label: string }[] = [
-  { min: 75, color: '#006837', label: '75–100' },
-  { min: 60, color: '#31a354', label: '60–74' },
-  { min: 50, color: '#78c679', label: '50–59' },
-  { min: 40, color: '#c2e699', label: '40–49' },
-  { min: 0,  color: '#ffffcc', label: '0–39' },
+  { min: 70, color: '#1B4332', label: '70+'   },
+  { min: 60, color: '#2F6B4F', label: '60–69' },
+  { min: 50, color: '#5C8A6B', label: '50–59' },
+  { min: 40, color: '#93B49B', label: '40–49' },
+  { min: 30, color: '#E0D8C5', label: '30–39' },
+  { min: 20, color: '#D2A06B', label: '20–29' },
+  { min: 10, color: '#B26545', label: '10–19' },
+  { min: 0,  color: '#8B3A2B', label: '0–9'   },
 ]
 function hayScoreColor(score: number | null | undefined): string {
   if (score == null) return HAY_SCORE_NODATA
@@ -491,7 +503,7 @@ export default function HayMapClient({
                     {HAY_SCORE_BUCKETS.map(b => (
                       <div key={b.min} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <div style={{ width: 11, height: 11, borderRadius: 2, background: b.color, border: '1px solid rgba(0,0,0,0.15)' }} />
-                        <span style={{ color: '#444' }}>{b.label}{b.min === 75 ? ' · wettest' : b.min === 0 ? ' · driest' : ''}</span>
+                        <span style={{ color: '#444' }}>{b.label}{b.min === 70 ? ' · best outlook' : b.min === 0 ? ' · poorest' : ''}</span>
                       </div>
                     ))}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -545,10 +557,10 @@ export default function HayMapClient({
                 ramp when the choropleth is on, otherwise the drought D-scale. */}
             <span style={{ display: 'inline-flex', borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.15)' }}>
               {(overlayVisible.hayScore
-                ? ['#ffffcc', '#c2e699', '#78c679', '#31a354', '#006837']
+                ? HAY_SCORE_BUCKETS.map(b => b.color).reverse()  // rust→green, low→high, derived (no drift)
                 : [0, 1, 2, 3, 4].map(t => pinColor(t))
               ).map((col, i) => (
-                <span key={i} style={{ width: 7, height: 11, background: col }} />
+                <span key={i} style={{ width: 6, height: 11, background: col }} />
               ))}
             </span>
             Legend
