@@ -31,6 +31,8 @@ interface InputRow {
   season_year: number
   season_label: string
   pct_of_normal: number | null
+  is_provisional: boolean
+  months_used: string[] | null
 }
 
 async function main() {
@@ -45,11 +47,14 @@ async function main() {
     realtime: { transport: NoopWebSocket as unknown as RealtimeOpts['transport'] },
   })
 
-  const snapshotDate = new Date().toISOString().slice(0, 10) // UTC date — the as-of stamp
+  // snapshot_date is the HISTORY KEY ONLY — how snapshots accumulate over time. It is NOT
+  // the user-facing freshness signal (that derives from the data: season_label / months_used /
+  // is_provisional, surfaced by /api/hay-score). Never present snapshot_date as the "as of".
+  const snapshotDate = new Date().toISOString().slice(0, 10)
 
   const { data, error } = await db
     .from('hay_score_inputs')
-    .select('fips, county_name, season_year, season_label, pct_of_normal')
+    .select('fips, county_name, season_year, season_label, pct_of_normal, is_provisional, months_used')
   if (error) { console.error('[prism-score] read hay_score_inputs failed:', error.message); process.exit(1) }
   const inputs = (data ?? []) as InputRow[]
   if (inputs.length === 0) { console.error('[prism-score] hay_score_inputs is empty — aborting'); process.exit(1) }
@@ -65,6 +70,8 @@ async function main() {
       season_label: r.season_label,
       score,
       pct_of_normal: r.pct_of_normal,
+      is_provisional: r.is_provisional,
+      months_used: r.months_used,
       capture_source: 'live',
       source: SOURCE,
     }

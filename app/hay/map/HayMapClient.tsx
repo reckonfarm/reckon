@@ -236,7 +236,11 @@ export default function HayMapClient({
   // /hay/map (layerControl=false) never mounts/fetches it → byte-identical to today.
   const [hayScoreGeo, setHayScoreGeo] = useState<FeatureCollection | null>(null)
   const [hayScoreStatus, setHayScoreStatus] = useState<DroughtStatus>('loading')
-  const [hayScoreAsOf, setHayScoreAsOf] = useState<string | null>(null)
+  // Freshness is DATA-derived (the window the data covers + provisional flag), never a
+  // compute date — so the legend can't claim "now" on stale data.
+  const [hayScoreWindow, setHayScoreWindow] = useState<string | null>(null)
+  const [hayScoreAsOfData, setHayScoreAsOfData] = useState<string | null>(null)
+  const [hayScoreProvisional, setHayScoreProvisional] = useState(false)
 
   // Per-overlay visibility, seeded from the registry defaults. Only consulted when the
   // layer control is shown; /hay/map (layerControl=false) keeps drought always-on below.
@@ -297,7 +301,7 @@ export default function HayMapClient({
     ])
       .then(([geo, payload]: [
         FeatureCollection | null,
-        { asOf: string | null; scores?: Record<string, number | null>; error?: boolean },
+        { window?: string | null; asOfData?: string | null; isProvisional?: boolean; scores?: Record<string, number | null>; error?: boolean },
       ]) => {
         if (cancelled) return
         if (!geo || payload?.error || !payload?.scores) { setHayScoreStatus('error'); return }
@@ -312,15 +316,20 @@ export default function HayMapClient({
             },
           })),
         })
-        setHayScoreAsOf(payload.asOf)
+        setHayScoreWindow(payload.window ?? null)
+        setHayScoreAsOfData(payload.asOfData ?? null)
+        setHayScoreProvisional(!!payload.isProvisional)
         setHayScoreStatus('ok')
       })
       .catch(() => { if (!cancelled) setHayScoreStatus('error') })
     return () => { cancelled = true }
   }, [layerControl])
 
-  const hayScoreAsOfLabel = hayScoreAsOf
-    ? new Date(hayScoreAsOf + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  // Data-derived freshness line — the window covered + provisional state. NEVER a compute date.
+  const hayScoreFreshness = hayScoreWindow
+    ? (hayScoreProvisional
+        ? `${hayScoreWindow} · provisional · updated weekly`
+        : `${hayScoreWindow}${hayScoreAsOfData ? ` · as of ${hayScoreAsOfData}` : ''}`)
     : null
 
   const asOf = releaseDate
@@ -473,7 +482,7 @@ export default function HayMapClient({
               <div style={{ marginBottom: 6 }}>
                 <div style={{ fontWeight: 600, color: '#1B4332', fontSize: 10.5 }}>Hay score</div>
                 <div style={{ color: '#888', marginBottom: 4, fontSize: 10 }}>
-                  {hayScoreStatus === 'ok' && hayScoreAsOfLabel && `As of ${hayScoreAsOfLabel}`}
+                  {hayScoreStatus === 'ok' && hayScoreFreshness}
                   {hayScoreStatus === 'loading' && 'Loading…'}
                   {hayScoreStatus === 'error' && <span style={{ color: warning }}>Temporarily unavailable</span>}
                 </div>

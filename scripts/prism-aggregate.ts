@@ -20,18 +20,21 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const SEASON_MONTHS = [4, 5, 6] // Apr–Jun
-const SEASON_LABEL = 'Apr–Jun'
+const SEASON_MONTHS = [2, 3, 4, 5, 6, 7] // Feb–Jul (rolling; only months present in prism_grid_raw are used)
 const ELEMENT = 'ppt'
 const SENTINELS = new Set(['30069', '31109', '46033']) // logged for verification
-const SOURCE = 'PRISM 4km monthly ppt + 1991-2020 normals'
+const SOURCE = 'PRISM 4km monthly ppt vs 1991-2020 normals · weighted Feb–Jul'
+
+// Agronomic month weights (NDSU/MSU): Apr–Jun = the 80% growth engine, Feb–Mar = recharge
+// (light), Jul = closeout. Applied as a WEIGHTED AVERAGE of monthly percent-of-normal, with
+// the weights renormalized over whichever months actually exist (in-season). A deliberate,
+// flagged shift from the old equal-weight sum-then-ratio: agronomic importance ≠ mm magnitude.
+const MONTH_WEIGHT: Record<number, number> = { 2: 0.06, 3: 0.06, 4: 0.24, 5: 0.28, 6: 0.28, 7: 0.08 }
+const MONTH_ABBR: Record<number, string> = { 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul' }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-function lastCompleteSeasonYear(): number {
-  const now = new Date()
-  return now.getUTCMonth() + 1 >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1
-}
+const currentSeasonYear = (): number => new Date().getUTCFullYear()
 
 // ── Geometry types (np-counties.geojson) ────────────────────────────────────────
 type Ring = number[][]
@@ -116,10 +119,10 @@ function meanAt(g: Grid, idx: Array<[number, number]>): number | null {
   return n ? sum / n : null
 }
 
-async function loadGrid(db: SupabaseClient, periodType: string, period: string): Promise<Grid | null> {
+async function loadGrid(db: SupabaseClient, periodType: string, period: string): Promise<(Grid & { isStable: boolean }) | null> {
   const { data, error } = await db
     .from('prism_grid_raw')
-    .select('ncols, nrows, xllcorner, yllcorner, cellsize, nodata_value, cells')
+    .select('ncols, nrows, xllcorner, yllcorner, cellsize, nodata_value, cells, is_stable')
     .eq('element', ELEMENT).eq('period_type', periodType).eq('period', period)
     .maybeSingle()
   if (error) throw new Error(`read prism_grid_raw ${periodType}/${period}: ${error.message}`)
@@ -129,6 +132,7 @@ async function loadGrid(db: SupabaseClient, periodType: string, period: string):
     xllcorner: data.xllcorner, yllcorner: data.yllcorner,
     cellsize: data.cellsize, nodata: data.nodata_value,
     cells: data.cells as number[][],
+    isStable: data.is_stable as boolean,
   }
 }
 
@@ -144,70 +148,80 @@ async function main() {
     realtime: { transport: NoopWebSocket as unknown as RealtimeOpts['transport'] },
   })
 
-  const seasonYear = lastCompleteSeasonYear()
-  console.log(`[prism-aggregate] season=${seasonYear} ${SEASON_LABEL}`)
+  const seasonYear = currentSeasonYear()
 
-  // Load the 6 grids; abort (no partial writes) if any is missing.
-  const actuals: Grid[] = [], normals: Grid[] = []
+  // MATCHED month-sets: keep only months where BOTH the actual AND its normal exist, so the
+  // ratio is always Feb-to-date actual ÷ the SAME Feb-to-date normal — never partial ÷ full.
+  // Months not yet released are simply absent (not zero-filled).
+  const months: { mm: number; actual: Grid & { isStable: boolean }; normal: Grid }[] = []
   for (const mm of SEASON_MONTHS) {
     const a = await loadGrid(db, 'monthly', `${seasonYear}${pad2(mm)}`)
     const n = await loadGrid(db, 'normal_monthly', pad2(mm))
-    if (!a) { console.error(`[prism-aggregate] missing actual grid ${seasonYear}${pad2(mm)} — aborting`); process.exit(1) }
-    if (!n) { console.error(`[prism-aggregate] missing normal grid ${pad2(mm)} — aborting`); process.exit(1) }
-    actuals.push(a); normals.push(n)
+    if (a && n) months.push({ mm, actual: a, normal: n })
   }
-  const allGrids = [...actuals, ...normals]
+  if (months.length === 0) {
+    console.error(`[prism-aggregate] no matched ${seasonYear} Feb–Jul month grids found — aborting`); process.exit(1)
+  }
+  const allGrids = months.flatMap(m => [m.actual, m.normal])
   if (!allGrids.every(g => sameGeometry(g, allGrids[0]))) {
     console.error('[prism-aggregate] grids do not share geometry — aborting'); process.exit(1)
   }
   const geom = allGrids[0]
 
+  // In-season provisional unless EVERY month used is PRISM-stable; the months actually covered.
+  const isProvisional = !months.every(m => m.actual.isStable)
+  const monthsUsed = months.map(m => pad2(m.mm))
+  const seasonLabel = `Feb–${MONTH_ABBR[months[months.length - 1].mm]} ${seasonYear}`
+  const weightSum = months.reduce((s, m) => s + MONTH_WEIGHT[m.mm], 0)
+  console.log(`[prism-aggregate] ${seasonLabel} · months=${monthsUsed.join(',')} · provisional=${isProvisional} · grid ${geom.ncols}×${geom.nrows}`)
+
   const fc = JSON.parse(
     readFileSync(join(process.cwd(), 'public/geo/np-counties.geojson'), 'utf8'),
   ) as CountyFC
-  console.log(`[prism-aggregate] ${fc.features.length} counties · grid ${geom.ncols}×${geom.nrows}`)
 
   interface Row {
     fips: string; county_name: string; state_fips: string
     season_year: number; season_label: string
     actual_sum_mm: number | null; normal_sum_mm: number | null
-    pct_of_normal: number | null; cells_used: number; source: string
+    pct_of_normal: number | null; cells_used: number
+    is_provisional: boolean; months_used: string[]; source: string
   }
   const rows: Row[] = []
   let nullCount = 0
 
   for (const f of fc.features) {
-    const idx = inCountyCells(geom, f) // shared geometry → one index list for all 6 grids
+    const idx = inCountyCells(geom, f) // shared geometry → one index list for all grids
     const cellsUsed = idx.length
 
+    // Weighted average of monthly percent-of-normal, weights renormalized over the months
+    // present (Σ MONTH_WEIGHT over `months`). Raw seasonal sums kept for reference/debug.
     let actualSum: number | null = null
     let normalSum: number | null = null
+    let pct: number | null = null
     if (cellsUsed > 0) {
-      let aSum = 0, nSum = 0, ok = true
-      for (let i = 0; i < SEASON_MONTHS.length; i++) {
-        const am = meanAt(actuals[i], idx), nm = meanAt(normals[i], idx)
-        if (am == null || nm == null) { ok = false; break }
+      let aSum = 0, nSum = 0, wRatio = 0, ok = true
+      for (const m of months) {
+        const am = meanAt(m.actual, idx), nm = meanAt(m.normal, idx)
+        if (am == null || nm == null || nm <= 0) { ok = false; break }
         aSum += am; nSum += nm
+        wRatio += MONTH_WEIGHT[m.mm] * (am / nm)
       }
-      if (ok) { actualSum = aSum; normalSum = nSum }
+      if (ok) { actualSum = aSum; normalSum = nSum; pct = (wRatio / weightSum) * 100 }
     }
-    const pct = actualSum != null && normalSum != null && normalSum > 0
-      ? (actualSum / normalSum) * 100
-      : null
     if (pct == null) nullCount++
 
     const row: Row = {
       fips: f.properties.GEOID, county_name: f.properties.NAME, state_fips: f.properties.STATEFP,
-      season_year: seasonYear, season_label: SEASON_LABEL,
+      season_year: seasonYear, season_label: seasonLabel,
       actual_sum_mm: actualSum, normal_sum_mm: normalSum, pct_of_normal: pct,
-      cells_used: cellsUsed, source: SOURCE,
+      cells_used: cellsUsed, is_provisional: isProvisional, months_used: monthsUsed, source: SOURCE,
     }
     rows.push(row)
     if (SENTINELS.has(row.fips)) {
       console.log(
         `[prism-aggregate] ${row.fips} ${row.county_name}, ${row.state_fips}: ` +
-        `actual=${actualSum?.toFixed(1) ?? '–'}mm normal=${normalSum?.toFixed(1) ?? '–'}mm ` +
-        `pct=${pct != null ? Math.round(pct) + '%' : 'NULL'} cells=${cellsUsed}`,
+        `weighted pct=${pct != null ? Math.round(pct) + '%' : 'NULL'} cells=${cellsUsed} ` +
+        `(raw Σactual=${actualSum?.toFixed(1) ?? '–'} Σnormal=${normalSum?.toFixed(1) ?? '–'})`,
       )
     }
   }
@@ -215,7 +229,7 @@ async function main() {
   const { error } = await db.from('hay_score_inputs').upsert(rows, { onConflict: 'fips' })
   if (error) { console.error('[prism-aggregate] upsert failed:', error.message); process.exit(1) }
 
-  console.log(`[prism-aggregate] done — upserted ${rows.length} counties (${nullCount} NULL pct_of_normal)`)
+  console.log(`[prism-aggregate] done — upserted ${rows.length} counties (${nullCount} NULL pct_of_normal) · ${seasonLabel} provisional=${isProvisional}`)
   if (rows.length === 0) process.exit(1)
 }
 

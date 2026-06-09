@@ -30,17 +30,15 @@ import { join } from 'node:path'
 
 // ── Footprint (5-state Northern Plains bbox) + season ────────────────────────────
 const LON_MIN = -116.1, LON_MAX = -95.3, LAT_MIN = 40.0, LAT_MAX = 49.0
-const SEASON_MONTHS = [4, 5, 6] // Apr–Jun
+const SEASON_MONTHS = [2, 3, 4, 5, 6, 7] // Feb–Jul (rolling, in-season; later months skipped until released)
 const ELEMENT = 'ppt', REGION = 'us', RES = '4km'
 const BASE = 'https://services.nacse.org/prism/data/get'
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-// Last fully-complete Apr–Jun: that window for year Y closes when July Y begins.
-function lastCompleteSeasonYear(): number {
-  const now = new Date()
-  return now.getUTCMonth() + 1 >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1
-}
+// Current calendar year — the in-season window is Feb–Jul of THIS year, growing as PRISM
+// releases each month. Months that haven't been released yet are skipped, never zero-filled.
+const currentSeasonYear = (): number => new Date().getUTCFullYear()
 
 // A dated monthly grid is PRISM-"stable" once it's older than ~6 months.
 function isStableMonth(year: number, month1: number): boolean {
@@ -114,14 +112,15 @@ function clipToFootprint(h: BilHeader, bil: Buffer): ClippedGrid {
 }
 
 // ── Fetch + unzip (shell-out) a BIL grid package ─────────────────────────────────
-async function fetchBilGrid(url: string, workDir: string): Promise<{ hdr: BilHeader; bil: Buffer }> {
+// Returns null when the month isn't released yet — PRISM answers 200 text/html
+// ("Invalid date … Valid month ranges …") for a future/unreleased month. That's a
+// quiet skip (in-season rolling), NOT an error and NOT a zero-fill.
+async function fetchBilGrid(url: string, workDir: string): Promise<{ hdr: BilHeader; bil: Buffer } | null> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`)
   const buf = Buffer.from(await res.arrayBuffer())
   const ct = res.headers.get('content-type') ?? ''
-  if (!ct.includes('zip')) {
-    throw new Error(`expected zip, got "${ct}": ${buf.toString('utf8').slice(0, 160)}`)
-  }
+  if (!ct.includes('zip')) return null
   const dir = mkdtempSync(join(workDir, 'grid-'))
   const zipPath = join(dir, 'grid.zip')
   writeFileSync(zipPath, buf)
@@ -153,38 +152,47 @@ async function fetchReleaseInfo(period: string): Promise<{ releaseDate: string |
   }
 }
 
-// ── One ingest target (an actual month or a monthly normal) ──────────────────────
-interface Target {
-  periodType: 'monthly' | 'normal_monthly'
-  period: string          // 'YYYYMM' | 'MM'
-  url: string
-  releaseDate: string | null
-  stabilityCode: string | null
-  isStable: boolean
-}
+// ── Ingest one grid (actual month or monthly normal) ─────────────────────────────
+type GridOutcome = 'upserted' | 'skipped' | 'unavailable' | 'failed'
 
-async function buildTargets(seasonYear: number): Promise<Target[]> {
-  const targets: Target[] = []
-  for (const mm of SEASON_MONTHS) {
-    const period = `${seasonYear}${pad2(mm)}`
-    const rel = await fetchReleaseInfo(period)
-    targets.push({
-      periodType: 'monthly', period,
-      url: `${BASE}/${REGION}/${RES}/${ELEMENT}/${period}?format=bil`,
-      releaseDate: rel.releaseDate, stabilityCode: rel.stabilityCode,
-      isStable: isStableMonth(seasonYear, mm),
-    })
+async function ingestGrid(
+  db: SupabaseClient, workDir: string, have: Set<string>,
+  periodType: 'monthly' | 'normal_monthly', period: string, isStable: boolean,
+): Promise<GridOutcome> {
+  const key = `${ELEMENT}|${periodType}|${period}|${RES}|${REGION}`
+  if (have.has(key)) { console.log(`[prism-ingest] skip ${periodType} ${period} — already stored`); return 'skipped' }
+  const url = periodType === 'monthly'
+    ? `${BASE}/${REGION}/${RES}/${ELEMENT}/${period}?format=bil`
+    : `${BASE}/normals/${REGION}/${RES}/${ELEMENT}/${period}?format=bil`
+  try {
+    const grid = await fetchBilGrid(url, workDir)
+    if (!grid) { console.log(`[prism-ingest] ${periodType} ${period} — not released yet, skipping`); return 'unavailable' }
+    const g = clipToFootprint(grid.hdr, grid.bil)
+    const rel = periodType === 'monthly'
+      ? await fetchReleaseInfo(period)
+      : { releaseDate: null as string | null, stabilityCode: 'normal' as string | null }
+    console.log(
+      `[prism-ingest] ${periodType} ${period}: ${g.ncols}×${g.nrows} clip · ${g.stats.real} real cells · ` +
+      `mm min/mean/max = ${g.stats.min?.toFixed(1) ?? '–'}/${g.stats.mean?.toFixed(1) ?? '–'}/${g.stats.max?.toFixed(1) ?? '–'} · ` +
+      `stable=${isStable} release=${rel.releaseDate ?? '—'} code=${rel.stabilityCode ?? '—'}`,
+    )
+    const { error } = await db.from('prism_grid_raw').upsert(
+      {
+        element: ELEMENT, period_type: periodType, period, resolution: RES, region: REGION,
+        ncols: g.ncols, nrows: g.nrows, xllcorner: g.xllcorner, yllcorner: g.yllcorner,
+        cellsize: g.cellsize, nodata_value: g.nodata, cells: g.cells,
+        release_date: rel.releaseDate, stability_code: rel.stabilityCode, is_stable: isStable,
+        source_url: url, fetched_at: new Date().toISOString(),
+      },
+      { onConflict: 'element,period_type,period,resolution,region' },
+    )
+    if (error) throw new Error(`upsert failed: ${error.message}`)
+    console.log(`[prism-ingest] upserted ${periodType} ${period} ✓`)
+    return 'upserted'
+  } catch (err) {
+    console.error(`[prism-ingest] ${periodType} ${period} FAILED:`, err instanceof Error ? err.message : err)
+    return 'failed'
   }
-  for (const mm of SEASON_MONTHS) {
-    const period = pad2(mm)
-    targets.push({
-      periodType: 'normal_monthly', period,
-      url: `${BASE}/normals/${REGION}/${RES}/${ELEMENT}/${period}?format=bil`,
-      releaseDate: null, stabilityCode: 'normal',
-      isStable: true, // a fixed 1991–2020 climatology is, by definition, stable
-    })
-  }
-  return targets
 }
 
 async function main() {
@@ -203,8 +211,8 @@ async function main() {
     realtime: { transport: NoopWebSocket as unknown as RealtimeOpts['transport'] },
   })
 
-  const seasonYear = lastCompleteSeasonYear()
-  console.log(`[prism-ingest] season=${seasonYear} Apr–Jun + monthly normals · footprint lon[${LON_MIN},${LON_MAX}] lat[${LAT_MIN},${LAT_MAX}]`)
+  const seasonYear = currentSeasonYear()
+  console.log(`[prism-ingest] season=${seasonYear} Feb–Jul (in-season, rolling) · footprint lon[${LON_MIN},${LON_MAX}] lat[${LAT_MIN},${LAT_MAX}]`)
 
   // Skip grids already stored (idempotent + respects the 2-downloads/file/24h limit).
   const { data: existing } = await db
@@ -215,49 +223,37 @@ async function main() {
   )
 
   const workDir = mkdtempSync(join(tmpdir(), 'prism-'))
-  let upserted = 0, skipped = 0, failed = 0
+  let upserted = 0, skipped = 0, unavailable = 0, failed = 0
+  const availableMonths: number[] = []
+
+  const tally = (o: GridOutcome) => {
+    if (o === 'upserted') upserted++
+    else if (o === 'skipped') skipped++
+    else if (o === 'unavailable') unavailable++
+    else failed++
+  }
 
   try {
-    const targets = await buildTargets(seasonYear)
-    for (const t of targets) {
-      const key2 = `${ELEMENT}|${t.periodType}|${t.period}|${RES}|${REGION}`
-      if (have.has(key2)) {
-        console.log(`[prism-ingest] skip ${t.periodType} ${t.period} — already stored`)
-        skipped++
-        continue
-      }
-      try {
-        const { hdr, bil } = await fetchBilGrid(t.url, workDir)
-        const g = clipToFootprint(hdr, bil)
-        console.log(
-          `[prism-ingest] ${t.periodType} ${t.period}: ${g.ncols}×${g.nrows} clip · ` +
-          `${g.stats.real} real cells · mm min/mean/max = ` +
-          `${g.stats.min?.toFixed(1) ?? '–'}/${g.stats.mean?.toFixed(1) ?? '–'}/${g.stats.max?.toFixed(1) ?? '–'} · ` +
-          `stable=${t.isStable} release=${t.releaseDate ?? '—'} code=${t.stabilityCode ?? '—'}`,
-        )
-        const { error } = await db.from('prism_grid_raw').upsert(
-          {
-            element: ELEMENT, period_type: t.periodType, period: t.period, resolution: RES, region: REGION,
-            ncols: g.ncols, nrows: g.nrows, xllcorner: g.xllcorner, yllcorner: g.yllcorner,
-            cellsize: g.cellsize, nodata_value: g.nodata, cells: g.cells,
-            release_date: t.releaseDate, stability_code: t.stabilityCode, is_stable: t.isStable,
-            source_url: t.url, fetched_at: new Date().toISOString(),
-          },
-          { onConflict: 'element,period_type,period,resolution,region' },
-        )
-        if (error) throw new Error(`upsert failed: ${error.message}`)
-        console.log(`[prism-ingest] upserted ${t.periodType} ${t.period} ✓`)
-        upserted++
-      } catch (err) {
-        failed++
-        console.error(`[prism-ingest] ${t.periodType} ${t.period} FAILED:`, err instanceof Error ? err.message : err)
-      }
+    // Phase 1 — actual monthly grids. A not-yet-released month is skipped (unavailable),
+    // never zero-filled. A present month (fetched OR already stored) is "available".
+    for (const mm of SEASON_MONTHS) {
+      const o = await ingestGrid(db, workDir, have, 'monthly', `${seasonYear}${pad2(mm)}`, isStableMonth(seasonYear, mm))
+      tally(o)
+      if (o === 'upserted' || o === 'skipped') availableMonths.push(mm)
+    }
+    // Phase 2 — matching monthly normals, ONLY for months whose actual is available, so the
+    // aggregate always divides a Feb-to-date actual by the SAME Feb-to-date normal set.
+    for (const mm of availableMonths) {
+      tally(await ingestGrid(db, workDir, have, 'normal_monthly', pad2(mm), true))
     }
   } finally {
     rmSync(workDir, { recursive: true, force: true })
   }
 
-  console.log(`[prism-ingest] done — upserted=${upserted} skipped=${skipped} failed=${failed}`)
+  console.log(
+    `[prism-ingest] done — upserted=${upserted} skipped=${skipped} unavailable=${unavailable} failed=${failed} · ` +
+    `months=${availableMonths.map(pad2).join(',') || 'none'}`,
+  )
   // Fail the run only if nothing landed and nothing was already present (total failure).
   if (upserted === 0 && skipped === 0) process.exit(1)
 }

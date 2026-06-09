@@ -11,8 +11,9 @@ name: PRISM ingest
 
 on:
   schedule:
-    # Monthly, after PRISM's mid-month release of the prior month's grid.
-    - cron: '0 16 18 * *'
+    # Weekly (Mondays 16:00 UTC) — the score is in-season and rolling: PRISM revises the
+    # current provisional months and releases new ones through the season, so we re-run weekly.
+    - cron: '0 16 * * 1'
   workflow_dispatch: {}   # manual trigger (used to seed immediately)
 
 # Avoid overlapping runs clobbering each other.
