@@ -243,6 +243,19 @@ export default function HayMapClient({
   const [status, setStatus] = useState<DroughtStatus>('loading')
   const [tilesLoaded, setTilesLoaded] = useState(false)
   const [legendOpen, setLegendOpen] = useState(false)   // compact legend: collapsed by default
+  const legendRef = useRef<HTMLDivElement>(null)
+
+  // Tap-outside-to-dismiss (mobile): while the legend is open, a pointerdown anywhere outside
+  // it (incl. the map) closes it. Pairs with the tap-to-close header — so the legend can never
+  // trap the user even if the small ✕ is awkward to hit.
+  useEffect(() => {
+    if (!legendOpen) return
+    const onDown = (e: Event) => {
+      if (legendRef.current && !legendRef.current.contains(e.target as Node)) setLegendOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [legendOpen])
 
   // Hay Opportunity Score choropleth — loaded only on the dashboard embed (layerControl);
   // /hay/map (layerControl=false) never mounts/fetches it → byte-identical to today.
@@ -467,8 +480,8 @@ export default function HayMapClient({
       )}
 
       {/* Compact legend — collapsed-by-default chip; expands to the same D-scale. */}
-      {showLegend && compactLegend && (
-      <div style={{
+      {showLegend && compactLegend && (overlayVisible.hayScore || showDrought) && (
+      <div ref={legendRef} style={{
         position: 'absolute', bottom: 32, right: 12, zIndex: 1000,
         fontFamily: 'var(--font-dm-sans)', fontSize: 11,
       }}>
@@ -478,16 +491,21 @@ export default function HayMapClient({
             borderRadius: 8, padding: '8px 10px', maxWidth: 184,
             boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+            {/* Whole header bar is the close target — a real (~36px) tap area, so the legend
+                never traps the user. (Tap-outside also dismisses; see the effect above.) */}
+            <button
+              onClick={() => setLegendOpen(false)}
+              aria-label="Hide legend"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                width: '100%', minHeight: 32, marginBottom: 4, padding: '2px 0',
+                border: 'none', background: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-dm-sans)', fontSize: 11,
+              }}
+            >
               <span style={{ fontWeight: 600, color: '#1B4332' }}>Legend</span>
-              <button
-                onClick={() => setLegendOpen(false)}
-                aria-label="Hide legend"
-                style={{ border: 'none', background: 'none', color: '#888', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}
-              >
-                ✕
-              </button>
-            </div>
+              <span aria-hidden style={{ color: '#888', fontSize: 16, lineHeight: 1 }}>✕</span>
+            </button>
 
             {/* Hay score ramp — shown when the choropleth layer is on. */}
             {overlayVisible.hayScore && (
@@ -515,31 +533,36 @@ export default function HayMapClient({
               </div>
             )}
 
-            {/* Drought / pins D-scale — pins are always colored by their county's level. */}
-            <div style={{
-              fontWeight: 600, color: '#1B4332', fontSize: 10.5,
-              borderTop: overlayVisible.hayScore ? '1px solid rgba(0,0,0,0.08)' : 'none',
-              paddingTop: overlayVisible.hayScore ? 6 : 0,
-            }}>
-              Drought Monitor
-            </div>
-            <div style={{ color: '#888', marginBottom: 6, fontSize: 10 }}>
-              {status === 'ok' && asOf && `As of ${asOf}`}
-              {status === 'loading' && 'Loading…'}
-              {status === 'error' && (
-                <span style={{ color: warning }}>Layer unavailable</span>
-              )}
-            </div>
-            {LEGEND_ROWS.map(({ tier, label }) => (
-              <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            {/* Drought scale — shown ONLY when the drought overlay is on, so the legend stays
+                compact (one active layer's scale at a time, not both stacked). */}
+            {showDrought && (
+              <>
                 <div style={{
-                  width: 11, height: 11, borderRadius: 2,
-                  background: pinColor(tier === -1 ? null : tier),
-                  border: '1px solid rgba(0,0,0,0.15)',
-                }} />
-                <span style={{ color: '#444' }}>{label}</span>
-              </div>
-            ))}
+                  fontWeight: 600, color: '#1B4332', fontSize: 10.5,
+                  borderTop: overlayVisible.hayScore ? '1px solid rgba(0,0,0,0.08)' : 'none',
+                  paddingTop: overlayVisible.hayScore ? 6 : 0,
+                }}>
+                  Drought Monitor
+                </div>
+                <div style={{ color: '#888', marginBottom: 6, fontSize: 10 }}>
+                  {status === 'ok' && asOf && `As of ${asOf}`}
+                  {status === 'loading' && 'Loading…'}
+                  {status === 'error' && (
+                    <span style={{ color: warning }}>Layer unavailable</span>
+                  )}
+                </div>
+                {LEGEND_ROWS.map(({ tier, label }) => (
+                  <div key={tier} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{
+                      width: 11, height: 11, borderRadius: 2,
+                      background: pinColor(tier === -1 ? null : tier),
+                      border: '1px solid rgba(0,0,0,0.15)',
+                    }} />
+                    <span style={{ color: '#444' }}>{label}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         ) : (
           <button
