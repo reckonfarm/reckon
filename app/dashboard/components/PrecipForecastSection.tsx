@@ -120,7 +120,11 @@ function PrecipTooltip({
   label,
 }: {
   active?: boolean
-  payload?: Array<{ name: string; value: number; payload?: { dayRain?: number | null; tier?: number } }>
+  payload?: Array<{ name: string; value: number; payload?: {
+    dayRain?: number | null
+    tier?: number
+    nearestRain?: { date: string; amount: number; tier: number; dir: 'same' | 'past' | 'future' } | null
+  } }>
   label?: string
 }) {
   if (!active || !payload?.length || !label) return null
@@ -130,6 +134,9 @@ function PrecipTooltip({
   const datum  = payload[0]?.payload
   const tier   = datum?.tier ?? 0
   const dayRain = datum?.dayRain
+  const nearest = datum?.nearestRain
+  const fmtShort = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const date = new Date(`${label}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric',
   })
@@ -138,11 +145,17 @@ function PrecipTooltip({
       <p className="font-semibold text-forest-green mb-1">{date}</p>
       {actual && <p className="text-forest-green">Actual: {actual.value.toFixed(2)}&quot;</p>}
       {normal && <p className="text-forest-green/50">Normal: {normal.value.toFixed(2)}&quot;</p>}
-      {tier > 0 && dayRain != null && (
+      {/* Rain context follows the scrub: an event day shows "Rain that day"; a dry day
+          shows the NEAREST event ("Last rain" before it, "Next rain" if ahead of the first). */}
+      {tier > 0 && dayRain != null ? (
         <p className="mt-1 font-semibold" style={{ color: tier === 2 ? RAIN_GREAT : RAIN_GOOD }}>
           Rain that day: {dayRain.toFixed(2)}&quot;
         </p>
-      )}
+      ) : nearest ? (
+        <p className="mt-1 font-medium" style={{ color: nearest.tier === 2 ? RAIN_GREAT : RAIN_GOOD }}>
+          {nearest.dir === 'future' ? 'Next rain' : 'Last rain'}: {fmtShort(nearest.date)} · {nearest.amount.toFixed(2)}&quot;
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -222,6 +235,24 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
     return { ...d, dayRain, tier: tierFor(dayRain), markerY: 0 }
   })
 
+  // Nearest notable-rain event to each point, so dragging onto a DRY day still surfaces the
+  // closest rain ("Last rain …" before it, "Next rain …" if you're ahead of the first one)
+  // instead of going blank. Pure derivation off markerData — no new fetch — and it rides
+  // along in each datum so the tooltip reads it straight off the active point's payload.
+  // Ties (equidistant past/future) resolve to the PAST event (events are chronological, so
+  // the strict `<` keeps the earlier one) — "Last rain" is the more useful read.
+  const events = markerData
+    .filter(d => d.tier > 0 && d.dayRain != null)
+    .map(d => ({ date: d.date, amount: d.dayRain as number, tier: d.tier, ms: Date.parse(`${d.date}T00:00:00Z`) }))
+  const chartData = markerData.map(d => {
+    if (events.length === 0) return { ...d, nearestRain: null }
+    const ms = Date.parse(`${d.date}T00:00:00Z`)
+    let best = events[0]
+    for (const e of events) if (Math.abs(e.ms - ms) < Math.abs(best.ms - ms)) best = e
+    const dir: 'same' | 'past' | 'future' = best.date === d.date ? 'same' : best.ms < ms ? 'past' : 'future'
+    return { ...d, nearestRain: { date: best.date, amount: best.amount, tier: best.tier, dir } }
+  })
+
   const monthTicks = dailyData
     .filter(d => d.date.endsWith('-01'))
     .map(d => d.date)
@@ -232,8 +263,12 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
 
   return (
     <div className="space-y-4">
+      {/* touch-action: pan-y → a vertical drag still scrolls the page, but a HORIZONTAL
+          drag is left to Recharts to scrub the tooltip (the chart wins the scrub gesture
+          without trapping page scroll — the mobile gotcha). */}
+      <div style={{ touchAction: 'pan-y' }}>
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={markerData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="date"
             ticks={monthTicks}
@@ -258,7 +293,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
             cursor={{ fill: 'rgba(27,67,50,0.06)' }}
             // Initialize the readout on the latest/rightmost point so the rancher opens on
             // "where we are now," then can drag back. Any touch/drag overrides it.
-            defaultIndex={markerData.length - 1}
+            defaultIndex={chartData.length - 1}
           />
           <Line
             type="monotone"
@@ -283,6 +318,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           <Scatter dataKey="markerY" shape={<RainMarker />} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
 
       {/* Visible freshness label — tells a rancher who just got rain whether it's
           in the window yet. Station data lags a couple days; this is the honest
