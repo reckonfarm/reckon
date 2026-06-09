@@ -29,6 +29,10 @@ LON_MIN, LON_MAX, LAT_MIN, LAT_MAX = -116.1, -95.3, 40.0, 49.0
 GLAT0, GLON0, GSTEP = 49.4, -124.76666666666667, 1.0 / 24.0
 GLAT_N, GLON_N = 585, 1386
 BASE_F, CAP_F = 41.0, 86.0
+# Green-up = the date cumulative GDD (from Feb 1) first crosses this threshold. CONTESTED /
+# calibration-pending, same posture as the rest of the stage ladder (literature estimate,
+# not field-anchored — see project_gdd_calibration_anchors). Consumed by the ceiling (C).
+GREENUP_GDD = 150.0
 SEASON_START_MONTH, SEASON_END_MONTH = 2, 7  # Feb–Jul
 SENTINELS = {'30069', '31109', '46033'}
 EPOCH = date(1900, 1, 1)  # gridMET `day` = days since 1900-01-01
@@ -142,6 +146,7 @@ def main():
     # 4) accumulate GDD across day-chunks (bounded .ascii responses), per county.
     gdd = {f['properties']['GEOID']: 0.0 for f, _ in county_cells}
     used = {f['properties']['GEOID']: 0 for f, _ in county_cells}
+    greenup = {f['properties']['GEOID']: None for f, _ in county_cells}  # date cum GDD first ≥ GREENUP_GDD
     CHUNK = 20
     for c0 in range(d0, d1 + 1, CHUNK):
         c1 = min(c0 + CHUNK - 1, d1)
@@ -162,6 +167,9 @@ def main():
                 tn = sum(tns) / len(tns); tx = sum(txs) / len(txs)
                 gdd[fips] += (min(max(tx, BASE_F), CAP_F) + min(max(tn, BASE_F), CAP_F)) / 2 - BASE_F
                 used[fips] += 1
+                # Green-up date = the first day cumulative GDD crosses the threshold.
+                if greenup[fips] is None and gdd[fips] >= GREENUP_GDD:
+                    greenup[fips] = day_dates[c0 + di].isoformat()
         print(f'[gridmet-gdd] chunk days {c0}..{c1} done', file=sys.stderr)
 
     # 5) rows (honest-degraded: no usable days → NULL gdd/stage, days_used=0).
@@ -174,13 +182,14 @@ def main():
             'season_year': year,
             'gdd_cumulative': g,
             'stage': stage_of(g),
+            'green_up_date': greenup[fips] if used[fips] > 0 else None,  # NULL if no temp OR not yet greened up
             'days_used': used[fips],
             'as_of_date': as_of if used[fips] > 0 else None,
             'is_provisional': True,  # all current-year gridMET is preliminary
         })
         if fips in SENTINELS:
             print(f"[gridmet-gdd] {fips} {f['properties']['NAME']}: "
-                  f"GDD={g} stage={stage_of(g)} days={used[fips]}", file=sys.stderr)
+                  f"GDD={g} stage={stage_of(g)} green_up={greenup[fips]} days={used[fips]}", file=sys.stderr)
 
     json.dump({'as_of': as_of, 'season_year': year, 'rows': rows}, sys.stdout)
     print(f'[gridmet-gdd] emitted {len(rows)} counties', file=sys.stderr)

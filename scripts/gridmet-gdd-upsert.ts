@@ -20,6 +20,7 @@ interface SpineRow {
   season_year: number
   gdd_cumulative: number | null
   stage: string | null
+  green_up_date: string | null
   days_used: number
   as_of_date: string | null
   is_provisional: boolean
@@ -49,6 +50,7 @@ async function main() {
     season_year: r.season_year,
     gdd_cumulative: r.gdd_cumulative,
     stage: r.stage,
+    green_up_date: r.green_up_date,
     days_used: r.days_used,
     as_of_date: r.as_of_date,
     is_provisional: r.is_provisional,
@@ -57,7 +59,7 @@ async function main() {
 
   for (const r of rows) {
     if (SENTINELS.has(r.fips)) {
-      console.log(`[gdd-upsert] ${r.fips}: GDD=${r.gdd_cumulative ?? 'NULL'} stage=${r.stage ?? 'NULL'} days=${r.days_used} as_of=${r.as_of_date ?? '—'}`)
+      console.log(`[gdd-upsert] ${r.fips}: GDD=${r.gdd_cumulative ?? 'NULL'} stage=${r.stage ?? 'NULL'} green_up=${r.green_up_date ?? 'NULL'} days=${r.days_used} as_of=${r.as_of_date ?? '—'}`)
     }
   }
 
