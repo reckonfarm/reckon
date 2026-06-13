@@ -16,6 +16,17 @@ const COVERAGE_FLOOR = 0.5
 // reading is 3 weeks old) so the grid failsafe can keep the card current.
 const CURRENT_MAX_AGE_DAYS = 10
 
+// Freshness supersede: when the chosen primary station's most recent reading lags the
+// window end by MORE than this many days, we check the PRISM grid. If the grid (a
+// gap-free, whole-county series) is at least this many days FRESHER than the station,
+// we render the grid estimate instead — so the card isn't needlessly frozen behind a
+// gauge that simply stopped reporting. A station within this tolerance of the window
+// end stays primary and the grid call is never made (fast path). This does NOT change
+// station currency (CURRENT_MAX_AGE_DAYS): a lagging station is still valid, just
+// superseded when a materially fresher county source exists, with provenance flipped
+// visibly to "PRISM county estimate".
+const STATION_LAG_TOLERANCE_DAYS = 2
+
 // Distance cap for accepting an OUT-OF-COUNTY station as the PRIMARY gauge. An
 // in-county station is representative at any distance (no cap); an out-of-county
 // gauge is trusted only within this radius. Past it, a real gauge is no longer
@@ -100,6 +111,11 @@ function addDaysISO(isoDate: string, days: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+// Whole-day difference bIso − aIso (both ISO yyyy-mm-dd). Positive when b is later.
+function daysBetweenISO(aIso: string, bIso: string): number {
+  return (Date.parse(`${bIso}T00:00:00Z`) - Date.parse(`${aIso}T00:00:00Z`)) / 86_400_000
 }
 
 // Bounding box (W,S,E,N) ~`miles` around a point — ACIS MultiStnData area specifier.
@@ -340,6 +356,41 @@ function buildSeries(
   return { source, label, distanceMiles, dailyData, ytdActual, ytdNormal, deficit, deficitPct, dataThrough: last.date }
 }
 
+// PRISM grid failsafe series: county-centroid grid actual (gap-free, immune to station
+// outages) paired with the nearest full station's NORMAL climatology. The grid carries
+// no normal, so the normal is always station-sourced — and a station's normals exist for
+// every date even when its actuals have stopped, so a lagging gauge can still supply the
+// climatology for fresh grid actuals. Returns the labeled grid result, or { failed: true }
+// when an ACIS call failed (availability, not absence), or null when no normal-source
+// station / no usable series exists.
+async function buildGridFailsafe(
+  cands: Candidate[],
+  lat: number,
+  lon: number,
+  sdate: string,
+  edateStr: string,
+  fips: string,
+): Promise<{ data: PrecipNormalData } | { failed: true } | null> {
+  const normalStn = pickNearestFull(cands)
+  if (!normalStn) return null
+  const [gridRes, normRes] = await Promise.all([
+    fetchGridActual(lat, lon, sdate, edateStr, fips),
+    fetchStnRows(normalStn.uid, sdate, edateStr, fips),
+  ])
+  if (!gridRes.ok || !normRes.ok) return { failed: true }
+  if (!gridRes.rows || !normRes.rows) return null
+  const normalByDate = new Map(normRes.rows.map(r => [r[0], parseValue(r[2])]))
+  const series = buildSeries(gridRes.rows, normalByDate, 'grid', 'PRISM county estimate', 0)
+  if (!series) return null
+  return {
+    data: {
+      ...series,
+      context: { name: normalStn.name, distanceMiles: normalStn.distanceMiles, lastValid: normalStn.lastValid },
+      outOfCounty: false,
+    },
+  }
+}
+
 // ─── Main entrypoint ──────────────────────────────────────────────────────────
 //
 // Priority:
@@ -464,30 +515,43 @@ async function computePrecipNormal(
         const actual = rowsRes.rows.map(r => ({ date: r[0], actual: parseValue(r[1]) }))
         const normalByDate = new Map(rowsRes.rows.map(r => [r[0], parseValue(r[2])]))
         const series = buildSeries(actual, normalByDate, 'station', primary.name, primary.distanceMiles)
-        if (series) return { ...series, context: null, outOfCounty: !primary.inCounty }
+        if (series) {
+          const stationResult: PrecipNormalData = { ...series, context: null, outOfCounty: !primary.inCounty }
+          // Freshness supersede: if this gauge's last real reading lags the window end
+          // by more than the tolerance, check whether the PRISM grid has a materially
+          // fresher whole-county series. Only a lagging station pays for the extra grid
+          // call; a current station returns immediately (fast path, unchanged behavior).
+          const stationThrough = stationResult.dataThrough
+          if (
+            stationThrough &&
+            lat != null && lon != null &&
+            daysBetweenISO(stationThrough, edateStr) > STATION_LAG_TOLERANCE_DAYS
+          ) {
+            const grid = await buildGridFailsafe(cands, lat, lon, sdate, edateStr, fips)
+            if (
+              grid && 'data' in grid && grid.data.dataThrough &&
+              daysBetweenISO(stationThrough, grid.data.dataThrough) >= STATION_LAG_TOLERANCE_DAYS
+            ) {
+              // Grid is ≥ tolerance days newer → present the honest county estimate
+              // ('grid' source + "PRISM county estimate" label). Provenance flips
+              // visibly; we never relabel a modeled estimate as the gauge. A grid
+              // outage or a not-fresher grid falls through to the real gauge reading
+              // below (still valid, just stale) — never a downgrade to unavailable.
+              return grid.data
+            }
+          }
+          return stationResult
+        }
       }
     }
 
-    // 2. FAILSAFE — PRISM grid actual + nearest full station's normal climatology.
+    // 2. FAILSAFE — PRISM grid actual + nearest full station's normal climatology,
+    //    used when no current full station exists at all.
     if (lat != null && lon != null) {
-      const normalStn = pickNearestFull(cands)
-      if (normalStn) {
-        const [gridRes, normRes] = await Promise.all([
-          fetchGridActual(lat, lon, sdate, edateStr, fips),
-          fetchStnRows(normalStn.uid, sdate, edateStr, fips),
-        ])
-        if (!gridRes.ok || !normRes.ok) availabilityFailure = true
-        if (gridRes.ok && gridRes.rows && normRes.ok && normRes.rows) {
-          const normalByDate = new Map(normRes.rows.map(r => [r[0], parseValue(r[2])]))
-          const series = buildSeries(gridRes.rows, normalByDate, 'grid', 'PRISM county estimate', 0)
-          if (series) {
-            return {
-              ...series,
-              context: { name: normalStn.name, distanceMiles: normalStn.distanceMiles, lastValid: normalStn.lastValid },
-              outOfCounty: false,
-            }
-          }
-        }
+      const grid = await buildGridFailsafe(cands, lat, lon, sdate, edateStr, fips)
+      if (grid) {
+        if ('failed' in grid) availabilityFailure = true
+        else return grid.data
       }
     }
 
