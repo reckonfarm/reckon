@@ -22,6 +22,21 @@ const CROP_LABELS: Record<string, string> = {
   alfalfa:          'alfalfa',
   prf:              'PRF',
   lrp:              'LRP',
+  // Program-level obligations (not real crops) — clean labels for the agency filings.
+  fsa_acreage:      'seeded-acres report',
+  rma_acreage:      'crop insurance acreage report',
+}
+
+// Program-level rows (state-wide filings every producer makes) read with the AGENCY up
+// front and their own phrasing — NOT the "{verb} for {crop}" crop template. Presence in
+// this map = "this is a program row"; the value is its short agency tag. Mirrors
+// PROGRAM_LEVEL in lib/rma-deadline-service.ts (the always-show set).
+const PROGRAM_AGENCY: Record<string, string> = {
+  fsa_acreage: 'FSA',
+  rma_acreage: 'RMA',
+}
+function agencyOf(cropOrProgram: string): string | null {
+  return PROGRAM_AGENCY[cropOrProgram] ?? null
 }
 
 function deUnderscore(s: string): string {
@@ -32,6 +47,27 @@ function typeLabel(s: string): string {
 }
 function cropLabel(s: string): string {
   return CROP_LABELS[s] ?? deUnderscore(s)
+}
+
+// One deadline's title line. Program-level rows lead with the agency ("FSA · seeded-acres
+// report"); real-crop rows keep the existing "{verb} for {crop}" phrasing
+// ("sales closing for spring wheat"). `lead` prefixes the crop-row verb with "until" for
+// the hero, and omits it for the compact list rows.
+function DeadlineTitle({ d, lead }: { d: UpcomingDeadline; lead: boolean }) {
+  const agency = agencyOf(d.crop_or_program)
+  if (agency) {
+    return (
+      <>
+        <span className="font-medium text-forest-green">{agency}</span>
+        {' · '}{cropLabel(d.crop_or_program)}
+      </>
+    )
+  }
+  return (
+    <>
+      {lead ? 'until ' : ''}{typeLabel(d.deadline_type)} for {cropLabel(d.crop_or_program)}
+    </>
+  )
 }
 
 function fmtDate(iso: string): string {
@@ -68,7 +104,7 @@ function Hero({ d }: { d: UpcomingDeadline }) {
         {countdownText(d.daysUntil)}
       </p>
       <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
-        until {typeLabel(d.deadline_type)} for {cropLabel(d.crop_or_program)}
+        <DeadlineTitle d={d} lead />
         <span className="text-forest-green/40"> · {fmtDate(d.deadline_date)}</span>
       </p>
     </div>
@@ -113,7 +149,7 @@ export default function DeadlineCountdownCard({
               {result.deadlines.slice(1).map((d, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-3 font-dm-sans text-sm">
                   <span className="text-forest-green/70">
-                    {typeLabel(d.deadline_type)} · {cropLabel(d.crop_or_program)}
+                    <DeadlineTitle d={d} lead={false} />
                   </span>
                   <span className="shrink-0 text-forest-green/50 tabular-nums">
                     {fmtDate(d.deadline_date)} · {countdownText(d.daysUntil)}

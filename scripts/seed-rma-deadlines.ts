@@ -48,17 +48,22 @@ const ROWS: DeadlineRow[] = [
     deadline_date: '2026-03-15', crop_year: 2026,
     source: 'USDA RMA Billings RO', as_of: AS_OF, notes: null,
   },
+  // July 15 is TWO separate obligations that happen to share the date — an FSA
+  // seeded-acres report and an RMA acreage report: two filings at two different agencies.
+  // The AGENCY split is the meaningful axis, not crop (the producer knows their crops).
+  // These are PROGRAM-LEVEL (every MT producer files them), so county_fips stays null and
+  // they are NEVER crop-filtered — see PROGRAM_LEVEL in lib/rma-deadline-service.ts.
   {
     state: 'MT', county_fips: null,
-    crop_or_program: 'spring_wheat', deadline_type: 'acreage_reporting',
+    crop_or_program: 'fsa_acreage', deadline_type: 'acreage_reporting',
     deadline_date: '2026-07-15', crop_year: 2026,
     source: 'USDA FSA Montana', as_of: AS_OF, notes: null,
   },
   {
     state: 'MT', county_fips: null,
-    crop_or_program: 'perennial_forage', deadline_type: 'acreage_reporting',
+    crop_or_program: 'rma_acreage', deadline_type: 'acreage_reporting',
     deadline_date: '2026-07-15', crop_year: 2026,
-    source: 'USDA FSA Montana', as_of: AS_OF, notes: null,
+    source: 'USDA RMA', as_of: AS_OF, notes: null,
   },
   {
     state: 'MT', county_fips: null,
@@ -96,6 +101,28 @@ async function main() {
 
   console.log('\nDryline — RMA Deadline Seed\n')
   console.log(`  rows     ${ROWS.length} inline (state MT, statewide, crop_year 2026)\n`)
+
+  // Orphan cleanup — the July 15 obligations were RE-KEYED from crop slugs
+  // (spring_wheat / perennial_forage) to agency slugs (fsa_acreage / rma_acreage). The
+  // upsert below keys on (state, county_fips, crop_or_program, deadline_type, crop_year),
+  // so the new agency rows INSERT fresh and would NOT overwrite the old crop rows — those
+  // would linger as stale duplicates. Delete exactly the two superseded rows first.
+  // Scoped to deadline_type='acreage_reporting' so the spring_wheat SALES_CLOSING (Mar 15)
+  // row is left untouched. Idempotent: a no-op once they're already gone.
+  const { data: deleted, error: delError } = await db
+    .from('rma_deadlines')
+    .delete()
+    .eq('state', 'MT')
+    .is('county_fips', null)
+    .eq('crop_year', 2026)
+    .eq('deadline_type', 'acreage_reporting')
+    .in('crop_or_program', ['spring_wheat', 'perennial_forage'])
+    .select('id')
+
+  if (delError) {
+    throw new Error(`orphan delete failed (nothing written): ${delError.message}`)
+  }
+  console.log(`  cleaned   ${deleted?.length ?? 0} superseded crop-keyed July 15 row(s)\n`)
 
   // One atomic upsert of all rows — either every row lands or none do (no partial write).
   // Idempotent on the natural key; NULLS NOT DISTINCT on the constraint makes the
