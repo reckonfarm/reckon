@@ -64,7 +64,7 @@ function FreshnessLine({ asOf }: { asOf: string | null }) {
 function Hero({ d }: { d: UpcomingDeadline }) {
   return (
     <div>
-      <p className="font-fraunces text-4xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-5xl">
+      <p className="font-fraunces text-3xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-4xl">
         {countdownText(d.daysUntil)}
       </p>
       <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
