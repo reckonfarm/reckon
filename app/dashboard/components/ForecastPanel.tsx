@@ -136,7 +136,7 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                   Forest-green + muted: it's spray-planning context, not an alarm. */}
               {isWindy && (
                 <span
-                  className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 font-dm-sans text-[9px] font-semibold leading-none text-forest-green/60"
+                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[9px] font-semibold leading-none text-forest-green/60"
                   title={`Wind to ${d.windMph} mph`}
                 >
                   <WindGlyph size={12} />
