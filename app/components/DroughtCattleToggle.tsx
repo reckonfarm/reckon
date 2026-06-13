@@ -33,7 +33,7 @@ export default function DroughtCattleToggle({
   active,
 }: {
   fips: string
-  active: 'news' | 'drought' | 'hay'
+  active: 'news' | 'drought' | 'hay' | 'markets'
 }) {
   const seg = (href: string, label: string, isActive: boolean) => (
     <Link
@@ -58,10 +58,11 @@ export default function DroughtCattleToggle({
   // NOTE: the 'drought' key drives ?view=drought while its label reads "Weather" — the
   // label↔key mismatch is deliberate (renaming the value would break deep links, the
   // heavy-fetch gate, and the auth redirect).
-  const segments: { key: 'news' | 'drought' | 'hay'; label: string; href: string }[] = [
+  const segments: { key: 'news' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
     { key: 'news',    label: 'News',    href: `/dashboard?fips=${fips}` },
     { key: 'drought', label: 'Weather', href: `/dashboard?fips=${fips}&view=drought` },
     { key: 'hay',     label: 'Hay',     href: `/dashboard?fips=${fips}&view=hay` },
+    { key: 'markets', label: 'Markets', href: `/dashboard?fips=${fips}&view=markets` },
   ]
 
   return (

@@ -34,6 +34,8 @@ import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
 import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
+import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
+import LrpMarketsCard from './components/LrpMarketsCard'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
@@ -238,9 +240,12 @@ export default async function DashboardPage({
 }) {
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the Market News view; Drought is opt-in via &view=drought,
-  // Hay via &view=hay.
-  const view: 'news' | 'drought' | 'hay' =
-    viewParam === 'drought' ? 'drought' : viewParam === 'hay' ? 'hay' : 'news'
+  // Hay via &view=hay, Markets via &view=markets.
+  const view: 'news' | 'drought' | 'hay' | 'markets' =
+    viewParam === 'drought' ? 'drought'
+      : viewParam === 'hay' ? 'hay'
+        : viewParam === 'markets' ? 'markets'
+          : 'news'
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -325,6 +330,16 @@ export default async function DashboardPage({
     const profileResult = await getOperationProfile()
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
     deadlineResult = await getUpcomingDeadlines(selectedCounty.fips, crops)
+  }
+
+  // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
+  // for it. getLatestLrp is a fast Supabase SELECT (the RMA fetch is the offline seed,
+  // not a request-path call), so a direct await is fine — no Suspense needed. 'MT' is the
+  // seeded national-index snapshot; the card frames it as the CME national floor, never a
+  // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
+  let lrpResult: LrpResult = { status: 'none' }
+  if (selectedCounty && view === 'markets') {
+    lrpResult = await getLatestLrp('MT')
   }
 
   // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
@@ -674,6 +689,12 @@ export default async function DashboardPage({
 
             {view === 'news' && (
               <MarketsNews fips={selectedCounty.fips} />
+            )}
+
+            {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the
+                always-visible LFP + deadline band above the toggle is untouched. */}
+            {view === 'markets' && (
+              <LrpMarketsCard result={lrpResult} />
             )}
 
             {/* Hay view — placeholder only. Nearest-4 pins/cards + the hay map land in
