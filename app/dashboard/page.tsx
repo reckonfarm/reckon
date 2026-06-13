@@ -33,6 +33,7 @@ import DashboardAccordion from './components/DashboardAccordion'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
+import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
@@ -159,6 +160,34 @@ function ForecastPanelSkeleton() {
         ))}
       </div>
     </Card>
+  )
+}
+
+// LFP status alert — the slow external USDM consecutive-weeks eligibility fetch is held
+// as a PROMISE and awaited INSIDE a Suspense boundary so it NEVER blocks the page/news
+// paint (same pattern as the rainfall + forecast panels). The promise resolves to a
+// tagged outcome: a USDM outage/timeout → { ok: false } → the alert's honest
+// "unavailable" state, never a false zero. The SAME promise feeds the Drought view's
+// hero/banner/accordion (computed once, used in both).
+// result is nullable: computeLfpEligibility returns null if the county FIPS doesn't
+// resolve (near-unreachable here — selectedCounty is already resolved). A null result
+// or { ok: false } both degrade the alert to its honest "unavailable" state.
+type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } | { ok: false }
+
+async function LfpAlertAsync({
+  dataPromise,
+  countyName,
+}: {
+  dataPromise: Promise<LfpFetchOutcome>
+  countyName: string
+}) {
+  const res = await dataPromise
+  return (
+    <LfpAlertCard
+      eligibility={res.ok ? res.result : null}
+      unavailable={!res.ok}
+      countyName={countyName}
+    />
   )
 }
 
@@ -298,6 +327,21 @@ export default async function DashboardPage({
     deadlineResult = await getUpcomingDeadlines(selectedCounty.fips, crops)
   }
 
+  // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
+  // can show in EVERY view. Held as a PROMISE, not awaited here: it streams behind a
+  // <Suspense> boundary (LfpAlertAsync) so the slow USDM consecutive-weeks fetch never
+  // blocks the news/page paint. Resolves to a tagged outcome so an outage/timeout
+  // degrades honestly. The Drought view's Promise.all below consumes this SAME promise,
+  // so eligibility is computed ONCE and shared by the alert and the hero.
+  const lfpPromise: Promise<LfpFetchOutcome> = selectedCounty
+    ? computeLfpEligibility(selectedCounty.fips, (() => {
+        if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
+        return { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt) }
+      })())
+        .then(result => ({ ok: true as const, result }))
+        .catch(() => ({ ok: false as const }))
+    : Promise.resolve({ ok: false as const })
+
   // Heavy ranch-view data only when the Drought view is open — keeps News fast and
   // off the external USDM/ACIS calls.
   if (selectedCounty && view === 'drought') {
@@ -330,15 +374,9 @@ export default async function DashboardPage({
         .limit(1)
         .maybeSingle(),
 
-      // LFP eligibility
-      computeLfpEligibility(selectedCounty.fips, (() => {
-        if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
-        return { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt) }
-      })())
-        // Isolate: a USDM outage/timeout must NOT reject this Promise.all and 500
-        // the whole dashboard. Resolve to a tagged outcome instead.
-        .then(result => ({ ok: true as const, result }))
-        .catch(() => ({ ok: false as const })),
+      // LFP eligibility — reuse the hoisted always-run promise (computed ONCE, shared
+      // with the LFP alert). Same tagged { ok, result } outcome the destructure expects.
+      lfpPromise,
 
       // Prior year LFP eligibility — same forage period but year - 1
       computeLfpEligibility(
@@ -617,6 +655,14 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* LFP status alert — always visible, ON TOP of the insurance card (higher
+                priority). Streamed behind Suspense so the slow USDM eligibility fetch
+                never blocks the page/news paint; a failure degrades to the honest
+                "unavailable" state. Renders in all three views, persistent across the toggle. */}
+            <Suspense fallback={<LfpAlertSkeleton />}>
+              <LfpAlertAsync dataPromise={lfpPromise} countyName={selectedCounty.name} />
+            </Suspense>
 
             {/* Insurance deadline countdown — always visible, above the view toggle.
                 Serves all producers (farmers + ranchers), so it is never gated behind
