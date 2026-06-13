@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
-import WeatherGlyph from './WeatherGlyph'
+import WeatherGlyph, { WindGlyph } from './WeatherGlyph'
 import type { LocalForecast, NWSPeriod } from '@/lib/nws'
 
 // Rain-chance accent — the same water-blue used by the rain-event markers on the
@@ -30,9 +30,19 @@ interface DayRow {
   high:        number | null
   low:         number | null
   precip:      number | null   // % chance — the hero field (max across the day's periods)
+  windMph:     number | null   // sustained upper bound (mph), max across the day's periods
   iconKind:    IconKind
   detailDay:   string
   detailNight: string
+}
+
+// NWS returns windSpeed as a string — either a single value ("15 mph") or a range
+// ("10 to 15 mph"). We want the SUSTAINED UPPER BOUND, which is the last integer in the
+// string. Returns null when nothing parses (empty/absent), so cards stay honest.
+function parseWindUpper(windSpeed: string): number | null {
+  const nums = windSpeed.match(/\d+/g)
+  if (!nums || nums.length === 0) return null
+  return Number(nums[nums.length - 1])
 }
 
 // Pair the 14 day/night periods into ≤7 per-day rows: daytime period → high + conditions,
@@ -47,7 +57,7 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
     if (!dateKey) continue
     let row = map.get(dateKey)
     if (!row) {
-      row = { dateKey, label: '', date: '', high: null, low: null, precip: null, iconKind: 'cloud', detailDay: '', detailNight: '' }
+      row = { dateKey, label: '', date: '', high: null, low: null, precip: null, windMph: null, iconKind: 'cloud', detailDay: '', detailNight: '' }
       map.set(dateKey, row)
       order.push(dateKey)
     }
@@ -62,6 +72,10 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
     }
     if (p.precipProbability != null) {
       row.precip = row.precip == null ? p.precipProbability : Math.max(row.precip, p.precipProbability)
+    }
+    const windUpper = parseWindUpper(p.windSpeed)
+    if (windUpper != null) {
+      row.windMph = row.windMph == null ? windUpper : Math.max(row.windMph, windUpper)
     }
   }
   const rows = order.map(k => map.get(k)!)
@@ -106,16 +120,29 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
         {days.map((d, i) => {
           const isOpen = open === i
           const hasRain = d.precip != null && d.precip > 0
+          const isWindy = d.windMph != null && d.windMph > 15
           return (
             <button
               key={d.dateKey}
               type="button"
               onClick={() => setOpen(isOpen ? null : i)}
               aria-pressed={isOpen}
-              className={`snap-start shrink-0 w-[64px] rounded-xl border px-1.5 py-2 text-center transition-colors ${
+              className={`relative snap-start shrink-0 w-[64px] rounded-xl border px-1.5 py-2 text-center transition-colors ${
                 isOpen ? 'border-forest-green/40 bg-forest-green/5' : 'border-forest-green/10 hover:bg-forest-green/5'
               }`}
             >
+              {/* Wind badge — top-right corner, only on periods over 15 mph sustained.
+                  Absolutely positioned so no-wind cards keep their exact stacked layout.
+                  Forest-green + muted: it's spray-planning context, not an alarm. */}
+              {isWindy && (
+                <span
+                  className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 font-dm-sans text-[9px] font-semibold leading-none text-forest-green/60"
+                  title={`Wind to ${d.windMph} mph`}
+                >
+                  <WindGlyph size={12} />
+                  {d.windMph}
+                </span>
+              )}
               <div className="text-[11px] font-dm-sans font-semibold leading-tight text-forest-green/70">{d.label}</div>
               <div className="text-[9px] font-dm-sans leading-tight text-forest-green/40">{d.date}</div>
               <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>

@@ -93,6 +93,22 @@ const GLYPH: Record<IconKind, () => React.ReactElement> = {
   sun: Sun, partly: PartlyCloudy, cloud: Cloud, rain: Rain, snow: Snow, storm: Storm,
 }
 
+// Wind badge glyph — two round-capped gust lines in forest-green, same SVG conventions
+// as the condition set (24 viewBox, FOREST strokes). NOT part of the IconKind/GLYPH map:
+// it's an additive indicator shown alongside the condition glyph on windy days, never a
+// replacement. Muted on purpose — information (plan your spray), not a warning.
+export function WindGlyph({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <g stroke={FOREST} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 8h9a2.5 2.5 0 1 0-2.5-2.5" />
+        <path d="M3 16h13a2.5 2.5 0 1 1-2.5 2.5" />
+        <path d="M3 12h6" />
+      </g>
+    </svg>
+  )
+}
+
 export default function WeatherGlyph({ kind, size = 22 }: { kind: IconKind; size?: number }) {
   const Shape = GLYPH[kind]
   return (
