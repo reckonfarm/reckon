@@ -56,6 +56,13 @@ function precedenceKey(r: DeadlineRow): string {
   return `${r.crop_or_program}|${r.deadline_type}|${r.crop_year}`
 }
 
+// Program-level obligations: state-wide filings EVERY producer must make (e.g. the FSA
+// seeded-acres report and the RMA acreage report), not crop-specific deadlines. Their
+// crop_or_program is a program slug, not a real crop, so they must ALWAYS show — they
+// bypass the producer crop filter below. Without this, a producer who entered their crops
+// would lose these obligations entirely (a program slug matches no crop).
+const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage'])
+
 export async function getUpcomingDeadlines(
   countyFips: string,
   crops?: string[] | null,
@@ -102,10 +109,14 @@ export async function getUpcomingDeadlines(
     rows = rows.filter(r => !(r.county_fips === null && overridden.has(precedenceKey(r))))
 
     // 3) Crop filter — only when a non-empty crop list is given (a producer with
-    //    herd-but-no-crops passes null and gets the full county/state list).
+    //    herd-but-no-crops passes null and gets the full county/state list). A row is kept
+    //    if it's a PROGRAM-LEVEL obligation (always — state-wide filing every producer
+    //    makes) OR it matches one of the producer's crops. Equivalently: only filter OUT a
+    //    real-crop row that isn't in their set. So crops=['alfalfa'] still surfaces both
+    //    July 15 program rows alongside any alfalfa-specific deadlines.
     if (Array.isArray(crops) && crops.length > 0) {
       const wanted = new Set(crops)
-      rows = rows.filter(r => wanted.has(r.crop_or_program))
+      rows = rows.filter(r => PROGRAM_LEVEL.has(r.crop_or_program) || wanted.has(r.crop_or_program))
     }
 
     if (rows.length === 0) return { status: 'none' }
