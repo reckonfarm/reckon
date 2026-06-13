@@ -30,6 +30,9 @@ import HayNearbyCards, { type NearbyHayCard } from './components/HayNearbyCards'
 import HayMapLoader from './components/HayMapLoader'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import DashboardAccordion from './components/DashboardAccordion'
+import { getOperationProfile } from '@/lib/operation-profile-service'
+import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
+import DeadlineCountdownCard from './components/DeadlineCountdownCard'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
@@ -91,6 +94,16 @@ function formatDate(iso: string) {
     day: 'numeric',
     year: 'numeric',
   })
+}
+
+// Coerce the operation-profile `crops` jsonb into a clean string[] for deadline
+// filtering. Only a plain array of strings is trusted; any other shape (object array,
+// null, etc.) → null, which the deadline service reads as "show all". Never throws on
+// an unexpected jsonb shape.
+function cropsToStringArray(crops: unknown): string[] | null {
+  if (!Array.isArray(crops)) return null
+  const strings = crops.filter((c): c is string => typeof c === 'string')
+  return strings.length > 0 ? strings : null
 }
 
 // ─── Rainfall unit (streamed behind Suspense) ────────────────────────────────────
@@ -271,6 +284,18 @@ export default async function DashboardPage({
       .limit(1)
       .maybeSingle()
     latest = latestRow as DroughtReading | null
+  }
+
+  // Insurance deadline countdown — shown for EVERY selected county in EVERY view (it
+  // serves all producers, farmers included, so it is not gated behind the view toggle).
+  // Crops come from the signed-in user's operation profile when present; a missing
+  // profile or a crops jsonb that isn't a clean string array → null → show all county/
+  // state deadlines. Fast local queries, so a direct await (no Suspense) is fine.
+  let deadlineResult: UpcomingDeadlinesResult = { status: 'none' }
+  if (selectedCounty) {
+    const profileResult = await getOperationProfile()
+    const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
+    deadlineResult = await getUpcomingDeadlines(selectedCounty.fips, crops)
   }
 
   // Heavy ranch-view data only when the Drought view is open — keeps News fast and
@@ -592,6 +617,11 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* Insurance deadline countdown — always visible, above the view toggle.
+                Serves all producers (farmers + ranchers), so it is never gated behind
+                a view. Filters to the user's crops when set, else shows all. */}
+            <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
 
             {/* Peer-view toggle — Market News ↔ Drought (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
