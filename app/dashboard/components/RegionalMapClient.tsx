@@ -583,8 +583,10 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
         )}
       </MapContainer>
 
-      {/* In-view window control — TOP-RIGHT so it never covers Leaflet's zoom +/- (top-left). */}
-      <div className="absolute top-3 right-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
+      {/* In-view window control — BOTTOM-RIGHT so the interactive toggle sits in the phone
+          thumb-zone (the read-only legend takes the top). Right-aligned, so it stays clear
+          of Leaflet's zoom +/- (top-left). */}
+      <div className="absolute bottom-3 right-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
         {layer.windows.map((w, i) => (
           <button
             key={w.label}
@@ -601,11 +603,13 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
       </div>
 
       {/* Legend + freshness / honest-degraded note — the ACTIVE window's scale (the service
-          maps the same palette to different inch breaks per window). Compact corner key,
-          same size/placement as the Drought Monitor + radar legends: a SHORT title (the full
-          "NOAA/NWS AHPS" attribution already shows in the caption under the map) and a
-          width cap so a long "as of"/error note wraps instead of covering the county. */}
-      <div className="absolute bottom-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans shadow-sm">
+          maps the same palette to different inch breaks per window). Read-only, so it takes
+          the TOP-RIGHT (the interactive window toggle moved to the bottom thumb-zone); still
+          right-aligned, clear of Leaflet's zoom +/- (top-left). Compact corner key with a
+          SHORT title (the full "NOAA/NWS AHPS" attribution already shows in the caption under
+          the map) and a width cap so a long "as of"/error note wraps instead of covering the
+          county. */}
+      <div className="absolute top-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans shadow-sm">
         <div className="text-[11px] font-semibold leading-tight text-forest-green">{layer.legendTitle}</div>
         <div className="mb-1 text-[9px] leading-tight text-forest-green/50">
           {status === 'loading'
