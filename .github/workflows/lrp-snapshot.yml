@@ -1,0 +1,51 @@
+name: LRP price snapshot
+
+# Fetches + parses the USDA RMA Livestock Risk Protection (LRP) coverage-price report
+# from GitHub's runners and upserts one headline snapshot into Supabase
+# (public.lrp_price_snapshots). Runs OFF Vercel on purpose: RMA's report host may 403
+# datacenter egress the same way www.ams.usda.gov does for the cattle Action, and the
+# report is a 3-step antiforgery POST wizard — so we seed from a non-blocked runner and
+# the dashboard's Markets card only READS the snapshot.
+#
+# What it writes: ONE Montana national LRP snapshot (Feeder Cattle · Steers Weight 2),
+# idempotent upsert on the natural key (commodity, lrp_type, state, effective_date) — a
+# re-run for the same date overwrites, never duplicates. LRP coverage prices are national,
+# so the MT snapshot is the national figure (the card frames it as the CME national index
+# floor, not local cash).
+#
+# Cadence: RMA posts each business day ~4:30pm CT. We run weekdays at 23:30 UTC (~6:30pm
+# CDT / 5:30pm CST — 1-2h after the post, year-round). If a run is missed, the card flags
+# the snapshot STALE after 7 days (lib/lrp-service.ts) and labels it with its real
+# effective_date, so a gap degrades honestly rather than lying about currency.
+
+on:
+  schedule:
+    # Weekdays 23:30 UTC — comfortably after RMA's ~4:30pm CT daily post (RMA doesn't post
+    # weekends; a Friday run carries through the weekend within the 7-day stale window).
+    - cron: '30 23 * * 1-5'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately / test off-cron)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: lrp-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + parse + upsert LRP snapshot
+        env:
+          # Maps the existing SUPABASE_URL secret to NEXT_PUBLIC_SUPABASE_URL — the env
+          # name scripts/lrp-snapshot.ts actually reads (locally it comes from .env.local;
+          # in CI there's no .env file, so we supply it under that exact name).
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/lrp-snapshot.ts   # no CLI arg → newest effective date
