@@ -283,17 +283,26 @@ export const ahpsObserved: RasterLayer = {
 // PNG is web-mercator-aligned with the county grid — no client reprojection, no
 // renderer change beyond the shared legendTitle/asOfPrefix fields. Dry areas export
 // transparent (verified), so no qpf>0 filter is needed. One shared color scale across
-// all windows (unlike AHPS's per-window scales). Colors are the EXACT service hex
-// (decoded from the MapServer /legend swatches), condensed to the same band structure
-// as AHPS so observed + forecast read consistently. Honest forecast framing: the
-// legend says "Forecast precip · {window} · issued {date}" (real issue_time).
+// all windows (unlike AHPS's per-window scales).
+//
+// LOW-END WEIGHTED for the northern Plains: the WPC service ramp is a 19-class national
+// scale running to 20" (Gulf-Coast-tuned), where eastern MT forecast totals (<1" across
+// the window) collapse into the bottom couple of colors and the legend reads as broken.
+// So we key off the AUTHORITATIVE service classes (pulled from /MapServer/11?f=json) but
+// keep only the low-end breaks a rancher here actually sees, with a 1.5"+ catch-all for
+// the rare wet window. Each swatch hex is the EXACT service color for that class value, so
+// the legend matches the pixels the export tile renders (e.g. a 0.25" pixel is #088b00 on
+// the map AND in the key) — the legend can't drift from the raster. Ordered heavy→light
+// (catch-all on top), same as the prior QPF legend. Honest forecast framing: the legend
+// says "Forecast precip · {window} · issued {date}" (real issue_time).
 const QPF_LEGEND: LegendItem[] = [
-  { color: '#ffd700', label: '8"+' },
-  { color: '#ee4000', label: '4–8"' },
-  { color: '#8b008b', label: '2–4"' },
-  { color: '#00b2ee', label: '1–2"' },
-  { color: '#104e8b', label: '0.5–1"' },
-  { color: '#7fff00', label: '< 0.5"' },
+  { color: '#8968cd', label: '1.5"+' },   // service 1.50" class — wet-window catch-all
+  { color: '#00b2ee', label: '1"' },      // service 1.00" class
+  { color: '#1e90ff', label: '0.75"' },   // service 0.75" class
+  { color: '#104e8b', label: '0.5"' },    // service 0.50" class
+  { color: '#088b00', label: '0.25"' },   // service 0.25" class
+  { color: '#00ff00', label: '0.1"' },    // service 0.10" class
+  { color: '#7fff00', label: 'trace' },   // service 0.01" class (0.01–0.1")
 ]
 
 export const wpcQpf: RasterLayer = {
