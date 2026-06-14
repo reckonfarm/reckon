@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Dryline LRP price-snapshot — launchd agent (runs from PK's Mac).
+
+  WHY RESIDENTIAL: USDA RMA (public.rma.usda.gov) blocks GitHub's Azure runner IPs at the
+  connection layer (the CI seed threw "fetch failed" with no HTTP status, twice). RMA only
+  serves residential egress, so the durable daily refresh runs here, on this Mac's network,
+  via the same scripts/lrp-snapshot.ts that already seeds successfully by hand.
+
+  WHAT IT DOES: weekdays at 16:30 local (Mountain Time) — ~1h after RMA's ~4:30pm CT post —
+  runs the seed, which upserts ONE Montana national LRP snapshot into Supabase (idempotent
+  on the natural key). The dashboard Markets card READS that snapshot; if a run is missed
+  (Mac asleep/off), the card flags the snapshot stale after 7 days, so a gap degrades
+  honestly rather than lying about currency.
+
+  KEY DETAILS:
+    - WorkingDirectory MUST be the repo root: the seed calls loadEnvConfig(process.cwd())
+      to read NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from .env.local. Without
+      the right cwd it can't find the env and exits "Missing env vars".
+    - node is invoked DIRECTLY on the tsx CLI (not npx/.bin shim) because launchd has a
+      minimal PATH and the shims rely on `env node` being on PATH.
+    - Source of truth: deploy/com.dryline.lrp-snapshot.plist (version-controlled);
+      symlinked into ~/Library/LaunchAgents/ at install. Edit here, then bootout+bootstrap.
+    - StandardOut/Error both append to ~/Library/Logs/dryline-lrp.log so every run is
+      visible — success or failure, never silent.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dryline.lrp-snapshot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/prestonkiehl/reckon/node_modules/tsx/dist/cli.mjs</string>
+        <string>/Users/prestonkiehl/reckon/scripts/lrp-snapshot.ts</string>
+    </array>
+
+    <!-- Critical: cwd = repo root so loadEnvConfig(process.cwd()) finds .env.local. -->
+    <key>WorkingDirectory</key>
+    <string>/Users/prestonkiehl/reckon</string>
+
+    <!-- Mon(1) .. Fri(5) at 16:30 local time (launchd uses the machine clock; self-adjusts
+         across MST/MDT, no UTC conversion). RMA doesn't post weekends. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+    </array>
+
+    <!-- Do NOT run on (re)load — only on the calendar schedule (and manual kickstart). -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/prestonkiehl/Library/Logs/dryline-lrp.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/prestonkiehl/Library/Logs/dryline-lrp.log</string>
+</dict>
+</plist>
