@@ -42,8 +42,19 @@ export interface LrpHeadline {
   stale:                    boolean
 }
 
+// One rung of the endorsement ladder surfaced for the sale-window picker. Same basis as
+// the headline (100% coverage, adj 1.00) so the rungs are apples-to-apples with the hero.
+// endorsement_end_date is kept as the snapshot's raw US 'MM/DD/YYYY' string — the card's
+// fmtDate already parses that and derives the sale month from it.
+export interface LrpLadderRung {
+  endorsement_length_weeks: number
+  coverage_price:           number
+  producer_premium_per_cwt: number
+  endorsement_end_date:     string   // raw 'MM/DD/YYYY'
+}
+
 export type LrpResult =
-  | { status: 'ok'; lrp: LrpHeadline }
+  | { status: 'ok'; lrp: LrpHeadline; ladder: LrpLadderRung[] }
   | { status: 'none' }
   | { status: 'data_unavailable' }
 
@@ -68,6 +79,65 @@ interface RawHeadline {
 
 function finiteNum(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+// One snapshot.rows entry as the seed writes it (read defensively — everything unknown).
+interface RawRow {
+  endorsement_length_weeks?: unknown
+  coverage_price?:           unknown
+  producer_premium_per_cwt?: unknown
+  endorsement_end_date?:     unknown
+  coverage_level?:           unknown
+  price_adj_factor?:         unknown
+}
+
+// Parse the snapshot's raw US 'MM/DD/YYYY' end date to epoch ms; null if unparseable, so a
+// bad date DROPS the rung rather than NaN-sorting it.
+function parseUsDateMs(v: unknown): number | null {
+  if (typeof v !== 'string') return null
+  const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!m) return null
+  const ms = Date.parse(`${m[3]}-${m[1]}-${m[2]}T00:00:00Z`)
+  return Number.isFinite(ms) ? ms : null
+}
+
+// Build the endorsement ladder from snapshot.rows: the SAME basis as the headline
+// (100% coverage, adj 1.00), so the rungs are apples-to-apples with the hero. Drops any
+// rung missing a finite price/length or a parseable end date; sorts by end date ascending.
+// Returns [] when rows are absent or nothing qualifies — the card then degrades to the
+// headline-only view. NEVER throws, NEVER fabricates: a bad row is omitted, not zeroed.
+function buildLadder(snapshot: unknown): LrpLadderRung[] {
+  const rows = (snapshot as { rows?: unknown }).rows
+  if (!Array.isArray(rows)) return []
+
+  const rungs: Array<{ rung: LrpLadderRung; ms: number }> = []
+  for (const raw of rows as RawRow[]) {
+    if (!raw || typeof raw !== 'object') continue
+
+    // Headline basis only — 100% coverage, price-adjustment factor 1.00.
+    const level = finiteNum(raw.coverage_level)
+    const adj   = finiteNum(raw.price_adj_factor)
+    if (level === null || Math.abs(level - 1.0) > 1e-6) continue
+    if (adj === null || Math.abs(adj - 1.0) > 1e-6) continue
+
+    const price = finiteNum(raw.coverage_price)
+    const len   = finiteNum(raw.endorsement_length_weeks)
+    const ms    = parseUsDateMs(raw.endorsement_end_date)
+    if (price === null || len === null || ms === null) continue
+
+    rungs.push({
+      rung: {
+        endorsement_length_weeks: len,
+        coverage_price:           price,
+        producer_premium_per_cwt: finiteNum(raw.producer_premium_per_cwt) ?? 0,
+        endorsement_end_date:     raw.endorsement_end_date as string,
+      },
+      ms,
+    })
+  }
+
+  rungs.sort((a, b) => a.ms - b.ms)
+  return rungs.map(r => r.rung)
 }
 
 export async function getLatestLrp(state: string = 'MT'): Promise<LrpResult> {
@@ -127,7 +197,12 @@ export async function getLatestLrp(state: string = 'MT'): Promise<LrpResult> {
       stale,
     }
 
-    return { status: 'ok', lrp }
+    // Surface the endorsement ladder for the sale-window picker. Built off the SAME
+    // snapshot we just read; an unbuildable ladder is [] (card degrades to headline-only)
+    // and never affects the headline path above.
+    const ladder = buildLadder(row.snapshot)
+
+    return { status: 'ok', lrp, ladder }
   } catch (err) {
     console.error('[lrp] read threw:', err)
     return { status: 'data_unavailable' }
