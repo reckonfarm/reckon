@@ -1,0 +1,38 @@
+name: MARS reachability probe
+
+# ONE-OFF Azure-IP reachability test for marsapi.ams.usda.gov, BEFORE we commit to running
+# the MARS price pipeline in GitHub Actions. GitHub runners use Azure IPs; USDA RMA blocks
+# those at the connection layer (→ the LRP cron moved to launchd on PK's Mac). marsapi is a
+# DIFFERENT host + service (the key-authed AMS Market News API) and may NOT be blocked — but
+# it is UNTESTED from Azure, so we probe before building.
+#
+# Prints ONLY the HTTP status code — never the key, never the body. Reading:
+#   200 = reachable + auth OK from Azure  → run the pipeline in Actions (clone news-snapshot)
+#   000 / connection error / "fetch failed" = blocked like RMA → launchd fallback on PK's Mac
+#   401 = the AMS_MARS_API_KEY repo secret is missing or wrong
+#
+# workflow_dispatch only — no schedule; it never runs on its own.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe marsapi (HTTP code only — key never printed)
+        env:
+          KEY: ${{ secrets.AMS_MARS_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "AMS_MARS_API_KEY secret is empty — add it as a repo secret first, then re-run."
+            exit 1
+          fi
+          # -s -o /dev/null discards the body; -w prints only the status. || true so a
+          # connection-layer block (curl exit != 0, code "000") still prints rather than
+          # tripping errexit before the echo.
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -u "$KEY:" "https://marsapi.ams.usda.gov/services/v1.2/reports/1777" || true)
+          echo "marsapi HTTP status from this Azure runner: ${CODE:-000}"
+          echo "200 = Actions works · 000/connection error = blocked like RMA (use launchd) · 401 = secret issue"
