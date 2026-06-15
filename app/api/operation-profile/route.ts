@@ -6,6 +6,7 @@ import {
   type OperationProfileInput,
   type Json,
 } from '@/lib/operation-profile-service'
+import { normalizeHerd } from '@/lib/herd'
 
 // Thin verification route over the operation_profiles data layer. The auth + RLS
 // scoping live entirely in lib/operation-profile-service.ts, which uses the user-scoped
@@ -47,15 +48,29 @@ export async function PATCH(req: NextRequest) {
     input.county_fips = fips as string | null
   }
 
-  // herd / crops are jsonb — accept an object, array, or null (reject bare primitives so
-  // a stray string/number can't land in a payload column).
-  for (const key of ['herd', 'crops'] as const) {
-    if (key in body) {
-      const val = (body as Record<string, unknown>)[key]
-      if (val !== null && typeof val !== 'object') {
-        return NextResponse.json({ error: `${key} must be an object, array, or null` }, { status: 400 })
+  // crops stays generic jsonb — accept an object, array, or null (reject bare primitives so
+  // a stray string/number can't land in the column). Not typed yet.
+  if ('crops' in body) {
+    const val = (body as Record<string, unknown>).crops
+    if (val !== null && typeof val !== 'object') {
+      return NextResponse.json({ error: 'crops must be an object, array, or null' }, { status: 400 })
+    }
+    input.crops = val as Json
+  }
+
+  // herd is the typed lot structure (lib/herd.ts). null clears it; otherwise normalizeHerd
+  // rejects malformed lots and fills defaults/timestamps on sparse ones. We store the
+  // NORMALIZED herd so defaults persist instead of being re-derived on every read.
+  if ('herd' in body) {
+    const val = (body as Record<string, unknown>).herd
+    if (val === null) {
+      input.herd = null
+    } else {
+      const result = normalizeHerd(val)
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 })
       }
-      input[key] = val as Json
+      input.herd = result.herd as unknown as Json
     }
   }
 

@@ -1,0 +1,42 @@
+-- ============================================================
+-- 023_herd_typed.sql
+-- Type operation_profiles.herd into the lot-based structure.
+--
+-- *** NO STRUCTURAL DDL — THIS IS A DOCUMENTATION-ONLY MIGRATION. ***
+--
+-- WHY NO DDL CHANGE IS NEEDED:
+--   • herd is ALREADY `jsonb default null` (migration 020). Postgres jsonb stores the typed
+--     { lots: Lot[] } payload as-is — no column-type change, no new column, no new table.
+--   • Shape is enforced in the APP, by CFO decision: TypeScript (lib/herd.ts) + API
+--     validation (app/api/operation-profile/route.ts PATCH → normalizeHerd, which rejects
+--     malformed lots and fills defaults on sparse ones). Keeping enforcement in app code is
+--     deliberate — a new lot facet is a new optional key added in lib/herd.ts with ZERO
+--     migration, exactly the extensibility a hard SQL schema would block.
+--   • NOTHING reads herd today (only `crops` is consumed, by the dashboard deadline
+--     countdown), and no entry UI exists yet — so there is no data to backfill and nothing
+--     to orphan. Existing rows have herd = null, which stays valid.
+--   • RLS is unchanged: the four owner-scoped policies from 020 already govern every read/
+--     write of this row; typing the payload changes none of that.
+--
+-- WHAT THIS FILE DOES: refreshes the column COMMENT so the database self-documents the typed
+--   shape and points at the app-side source of truth. That is the ONLY statement — it is
+--   idempotent, order-independent, non-orphaning, and reversible, with NO behavioral effect.
+--   Running it or skipping it leaves the schema functionally identical.
+--
+-- Run in the Supabase SQL editor (optional — comment-only).
+-- ============================================================
+
+comment on column public.operation_profiles.herd is
+$$Typed lot structure: { lots: Lot[] }. Each Lot = { id, class (steers|heifers|yearlings|cows|bulls|old_cows), head_count int, avg_weight num, weight_unit (lb|cwt), frame, weaned, sale_windows[], created_at, updated_at }. Shape enforced in app (lib/herd.ts + operation-profile PATCH route), NOT in SQL — extend via optional keys with no migration. See migration 023_herd_typed.sql.$$;
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────
+-- OPTIONAL — NOT APPLIED, left commented BY DESIGN. A shallow top-level shape guard. We do
+-- NOT enable it: it would duplicate the app validation the CFO decision puts in TypeScript +
+-- API, and a too-strict CHECK risks rejecting a future valid extension. Enable ONLY if you
+-- ever want a DB backstop against a writer that bypasses the API. It is intentionally
+-- shallow — it asserts the envelope, never lot internals, so jsonb extensibility is kept:
+--
+--   alter table public.operation_profiles
+--     add constraint operation_profiles_herd_shape
+--     check (herd is null or jsonb_typeof(herd -> 'lots') = 'array');
+-- ─────────────────────────────────────────────────────────────────────────────────────────
