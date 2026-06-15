@@ -1,0 +1,47 @@
+name: MARS price snapshot
+
+# Pulls the fresh anchor auction barns — 1777 (Billings Livestock Commission, Thu), 1774
+# (Public Auction Yards, Billings, Wed), 1773 (Miles City, Tue) — from the USDA AMS Market
+# News API and upserts one row per barn into Supabase (public.mars_price_snapshots), the herd
+# Zestimate's price source. The Azure-IP probe confirmed GitHub runners can reach marsapi
+# (unlike RMA, which forced the LRP cron onto launchd).
+#
+# Idempotent: re-running upserts on slug_id (never duplicates); ingested_at is set every run
+# (the heartbeat). Freshness is ROW-LEVEL (newest report_date in the priced section), never
+# the catalog/publish date.
+
+on:
+  schedule:
+    # Weekdays at 05:00 UTC (~11 PM MDT / 10 PM MST) — late MT evening, AFTER the Tue/Wed/Thu
+    # sales post (observed posts ran as late as ~7:40 PM MT). The Tue sale (1773) is caught by
+    # the Wed-UTC run, Wed (1774) by Thu, Thu (1777) by Fri; the Mon/Tue runs are harmless
+    # no-op re-upserts (weekly sales; idempotent). GitHub cron is UTC, no DST shift.
+    # NOTE: a scheduled workflow only fires on the DEFAULT branch — this does nothing until
+    # merged to main (intended; we seed manually until then).
+    - cron: '0 5 * * 1-5'
+  workflow_dispatch: {}   # manual trigger (on-demand refresh once on the default branch)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: mars-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + parse + upsert MARS price snapshots
+        env:
+          AMS_MARS_API_KEY: ${{ secrets.AMS_MARS_API_KEY }}
+          # Script reads SUPABASE_URL || NEXT_PUBLIC_SUPABASE_URL; CI supplies SUPABASE_URL
+          # (the same secret news-snapshot uses). SERVICE_ROLE_KEY for the upsert.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/mars-snapshot.ts
