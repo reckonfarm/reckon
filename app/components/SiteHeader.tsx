@@ -95,6 +95,14 @@ export default function SiteHeader({ center }: Props) {
             </Link>
             {user && (
               <Link
+                href="/herd"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                My herd
+              </Link>
+            )}
+            {user && (
+              <Link
                 href="/messages"
                 className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
               >
