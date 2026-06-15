@@ -11,10 +11,12 @@ name: MARS reachability probe
 #   000 / connection error / "fetch failed" = blocked like RMA → launchd fallback on PK's Mac
 #   401 = the AMS_MARS_API_KEY repo secret is missing or wrong
 #
-# workflow_dispatch only — no schedule; it never runs on its own.
+# Triggered by PUSH to feat/mars-pipeline only — a throwaway diagnostic kept OFF main, so it
+# never deploys to production and never runs there. No schedule.
 
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [feat/mars-pipeline]
 
 jobs:
   probe:
