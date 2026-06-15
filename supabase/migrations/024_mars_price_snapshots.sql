@@ -46,6 +46,7 @@ create table if not exists public.mars_price_snapshots (
   -- The newest report's priced rows, AUCTION schema (avg_weight/avg_price — NOT the Direct
   -- reports' wtd_avg_*). Each element:
   --   { commodity, class, frame,
+  --     price_unit ('Per Cwt' | 'Per Unit' — REQUIRED: pairs/bred/fancy lots price per head),
   --     avg_weight, avg_weight_min, avg_weight_max,
   --     avg_price, avg_price_min, avg_price_max,
   --     head_count, receipts, receipts_week_ago, receipts_year_ago,
