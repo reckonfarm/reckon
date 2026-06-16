@@ -2,7 +2,7 @@ import { createServiceClient } from './supabase'
 import { roadMiles } from './freight'
 
 // ─── Nearest-fresh-barn resolver ──────────────────────────────────────────────────────
-// For an operator's home county: which auction barn(s) should the Zestimate value their herd
+// For an operator's home county: which auction barn(s) should the HerdEstimate value their herd
 // against, and HONESTLY at what tier? The entire fresh-barn universe today is 3 feeds in 2
 // towns — Billings (1777 BLC + 1774 PAYS) and Miles City (1773) — all in
 // public.mars_price_snapshots. Most of Montana has NO barn within a sane haul radius; this
@@ -34,7 +34,7 @@ export const BARN_GEO: Record<string, { town: string; lat: number; lon: number }
 
 // One priced row as stored in mars_price_snapshots.rows (auction schema). Nullable throughout
 // (the writer maps defensively). price_unit ('Per Cwt' | 'Per Unit') is REQUIRED to interpret
-// avg_price — per-head pairs/bred/fancy lots — and the Zestimate branches on it.
+// avg_price — per-head pairs/bred/fancy lots — and the HerdEstimate branches on it.
 export interface MarsPriceRow {
   commodity: string | null
   class: string | null
@@ -67,7 +67,7 @@ export interface BarnSnapshot {
 }
 
 // A barn after ranking: geo-resolved, distance + freshness computed. Carries `rows` so the
-// Zestimate can value lots against it without a second read.
+// HerdEstimate can value lots against it without a second read.
 export interface RankedBarn {
   slug_id: string
   barn_name: string
@@ -145,7 +145,7 @@ export function rankFreshBarns(
 
 // ─── Thin read wrapper — county centroid + fresh barns, then rank. Service-role (RLS-none). ─
 // Degrades honestly: missing centroid or any read error → regional-only (never throws, never
-// fakes a local barn). The Zestimate layers regional/national (the LRP national floor) context
+// fakes a local barn). The HerdEstimate layers regional/national (the LRP national floor) context
 // in every tier, and relies on it entirely when tier is 'regional-only'.
 export async function resolveBarns(countyFips: string): Promise<ResolveResult> {
   try {

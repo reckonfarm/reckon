@@ -1,7 +1,7 @@
 import { lotToMarsKey, LOT_CLASS_LABELS, type Lot, type LotClass } from './herd'
 import type { ResolveResult, RankedBarn, MarsPriceRow, ResolveTier } from './barn-resolver'
 
-// ─── Herd Zestimate engine ─────────────────────────────────────────────────────────────
+// ─── HerdEstimate engine ─────────────────────────────────────────────────────────────
 // PURE: takes a Herd's lots + the resolver's tiered barns (each carrying its priced rows) and
 // produces a per-lot + total herd value. No I/O — unit-testable on its own (type-only import
 // of the resolver, so it doesn't pull the service-role client).
@@ -85,7 +85,7 @@ export interface LotValuation {
   source: ValuationSource | null
 }
 
-export interface HerdZestimate {
+export interface HerdEstimate {
   perLot: LotValuation[]
   total_priced: number
   lots_priced: number
@@ -173,7 +173,7 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
   return null
 }
 
-export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): HerdZestimate {
+export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): HerdEstimate {
   const lots = herd.lots ?? []
   const pricingBarns = resolved.local // LOCAL barns only (honest basis)
   const perLot: LotValuation[] = []

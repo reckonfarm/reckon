@@ -13,7 +13,7 @@ export const cream = '#FDFBF7' // app canvas + on-accent text
 export const rust = '#8B3A2B' // brand accent (NOT the error state — see warning)
 export const warning = '#C2410C' // degraded / error state — semantically distinct from brand rust
 
-// Price-direction (herd Zestimate). MIRROR of --color-up / --color-down in app/globals.css.
+// Price-direction (HerdEstimate). MIRROR of --color-up / --color-down in app/globals.css.
 export const up = '#2D6A4F' // positive delta — a lighter forest, brand-calm (NOT a neon gain-green)
 export const down = '#8B3A2B' // negative delta — brand rust (same hex as `rust`; NOT the `warning` state)
 

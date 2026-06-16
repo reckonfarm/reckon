@@ -7,7 +7,7 @@ import HerdForm from './HerdForm'
 // Private, operation-scoped herd entry (operation_profiles.herd via /api/operation-profile).
 // Auth-gated exactly like /profile — the herd is private, owner-only data (RLS), NOT the
 // marketplace-identity page. Capture-first: lots are head counts + weights now; dollar
-// valuation (MARS + Zestimate engine) lands in a later step, not here.
+// valuation (MARS + HerdEstimate engine) lands in a later step, not here.
 export default async function HerdPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

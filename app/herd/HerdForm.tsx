@@ -20,7 +20,7 @@ import { Segmented } from '@/app/components/ui/Segmented'
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
 // behind "Sharpen details" — available, never blocking. Saves PATCH the whole lots array;
 // we adopt the server's normalized lots back into state so ids + timestamps round-trip.
-// No dollars here — valuation lands with the MARS/Zestimate engine later.
+// No dollars here — valuation lands with the MARS/HerdEstimate engine later.
 
 const FEEDER_CLASSES: readonly LotClass[] = ['steers', 'heifers', 'yearlings']
 const isFeeder = (c: LotClass) => FEEDER_CLASSES.includes(c)
