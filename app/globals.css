@@ -28,8 +28,8 @@
   --color-accent: #1B4332;
   --color-warning: #C2410C;
 
-  /* ── Markets direction + elevation (herd Zestimate sprint) ────────────────────
-     The ONE place boldness is spent is the Fraunces Zestimate number; these tokens
+  /* ── Markets direction + elevation (HerdEstimate sprint) ────────────────────
+     The ONE place boldness is spent is the Fraunces HerdEstimate number; these tokens
      dress its delta and the surfaces around it — everything else stays quiet.
        up   = a lighter forest (positive) — brand-calm, deliberately NOT a neon gain-green.
        down = brand rust (#8B3A2B) — a warm loss tone, NOT the #C2410C error 'warning'.

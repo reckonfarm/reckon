@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   LOT_CLASSES,
   LOT_CLASS_LABELS,
@@ -20,7 +21,7 @@ import { Segmented } from '@/app/components/ui/Segmented'
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
 // behind "Sharpen details" — available, never blocking. Saves PATCH the whole lots array;
 // we adopt the server's normalized lots back into state so ids + timestamps round-trip.
-// No dollars here — valuation lands with the MARS/Zestimate engine later.
+// No dollars here — valuation lands with the MARS/HerdEstimate engine later.
 
 const FEEDER_CLASSES: readonly LotClass[] = ['steers', 'heifers', 'yearlings']
 const isFeeder = (c: LotClass) => FEEDER_CLASSES.includes(c)
@@ -49,6 +50,7 @@ function formatMonth(ym: string): string {
 }
 
 export default function HerdForm() {
+  const router = useRouter()
   const [lots, setLots] = useState<Lot[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -142,6 +144,8 @@ export default function HerdForm() {
       }
       const serverLots = (json as { profile?: { herd?: { lots?: Lot[] } } })?.profile?.herd?.lots
       setLots(Array.isArray(serverLots) ? serverLots : [])
+      // Re-render the server-computed HerdEstimate above with the new lots.
+      router.refresh()
       setStatus('saved')
       setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 2000)
       return true

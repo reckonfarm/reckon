@@ -1,7 +1,7 @@
 // ─── MARS auction price snapshot writer (cron / local seed) ──────────────────────────
 //
 // Fetches the fresh anchor barns from the USDA AMS Market News API (marsapi) and UPSERTS
-// one row per barn into public.mars_price_snapshots (migration 024) — the herd Zestimate's
+// one row per barn into public.mars_price_snapshots (migration 024) — the HerdEstimate's
 // price source. PUBLIC reference data, so it writes with the SERVICE-ROLE client (never the
 // SSR/anon client). Runs OFF the Vercel request path (GitHub Actions — the Azure-IP probe
 // confirmed marsapi is reachable from runners, unlike RMA; or locally to seed). Mirrors
@@ -236,7 +236,7 @@ async function main() {
       console.log(`   report_date ${snap.report_date} · as_of ${snap.as_of ?? '—'} · ${snap.row_count} rows`)
       console.log(`   distribution: ${[...dist.entries()].map(([k, n]) => `${k}×${n}`).join(' · ')}`)
       // Sample a SPREAD across commodities so the mapping is visible on the rows that matter
-      // most: feeder steers/heifers carry frame + weight_break (the Zestimate's main path).
+      // most: feeder steers/heifers carry frame + weight_break (the HerdEstimate's main path).
       const pick = (p: (r: PriceRow) => boolean) => snap.rows.find(p)
       const sample = [
         pick(r => !!r.commodity?.includes('Feeder') && r.class === 'Steers'),

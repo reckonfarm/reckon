@@ -1,12 +1,12 @@
 -- ============================================================
 -- 024_mars_price_snapshots.sql
--- Newest auction priced-rows per anchor barn — the herd Zestimate's price source.
+-- Newest auction priced-rows per anchor barn — the HerdEstimate's price source.
 --
 -- WHAT THIS IS: one row per BARN (slug_id) holding that barn's NEWEST priced sale as a jsonb
 -- blob. Three anchors today: 1777 (Billings Livestock Commission, Thu), 1774 (Public Auction
 -- Yards, Billings, Wed), 1773 (Miles City Livestock Commission, Tue) — all validated fresh,
 -- year-round, herd-mappable. Written off-Vercel by a snapshot script (cron in GitHub Actions
--- OR launchd on PK's Mac — decided by the Azure-IP probe), READ by the Zestimate.
+-- OR launchd on PK's Mac — decided by the Azure-IP probe), READ by the HerdEstimate.
 --
 -- CURRENT-ONLY, NOT HISTORY: the natural key is slug_id, so each run OVERWRITES the barn's
 -- row with its newest sale. SQL-queryable price history is a separate Trend approach later;
@@ -17,12 +17,12 @@
 -- for the same class/frame/bracket that differ only by lot_desc (weaned/unweaned) or grade,
 -- which would collide on upsert and silently drop rows. Storing the newest priced rows as a
 -- jsonb array sidesteps that entirely and mirrors the LRP (022) + cattle (012) snapshot
--- posture. The Zestimate's weight-bracket match (weight_break_low ≤ lot weight ≤ high, plus
+-- posture. The HerdEstimate's weight-bracket match (weight_break_low ≤ lot weight ≤ high, plus
 -- commodity/class/frame) is app-side TS (reuses lotToMarsKey in lib/herd.ts), reading this
 -- jsonb exactly as lib/lrp-service reads snapshot.rows.
 --
 -- POSTURE: additive (new table only); RLS ON with NO policies — service-role writes (the
--- snapshot script) and reads (a server component / the Zestimate); the anon key can never
+-- snapshot script) and reads (a server component / the HerdEstimate); the anon key can never
 -- touch it. Mirrors 012 / 019 / 022 exactly.
 --
 -- Idempotent (create … if not exists) and additive — safe to re-run.
@@ -65,6 +65,6 @@ create table if not exists public.mars_price_snapshots (
 create index if not exists mars_price_snapshots_fresh_idx
   on public.mars_price_snapshots (state, report_date desc);
 
--- Service-role writes (the snapshot script) and reads (the Zestimate). Enable RLS with NO
+-- Service-role writes (the snapshot script) and reads (the HerdEstimate). Enable RLS with NO
 -- public policies so the anon key can never touch this table (mirrors 012 / 019 / 022).
 alter table public.mars_price_snapshots enable row level security;
