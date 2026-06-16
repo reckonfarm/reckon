@@ -33,15 +33,19 @@ export default function BottomTabBar() {
   // Flanking items, in left-to-right order around the raised center anchor.
   const leftTabs: Tab[] = [
     {
-      href: '/hay',
-      label: 'Hay',
-      match: p => p.startsWith('/hay'),
+      href: '/herd',
+      label: 'My herd',
+      match: p => p.startsWith('/herd'),
       icon: (active) => (
+        // Cow / steer head — hand-drawn to match the inline-SVG stroke style (no icon lib):
+        // two horns, a brow, the face tapering to a muzzle, and two nostril dots.
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="8" width="20" height="10" rx="2"/>
-          <path d="M6 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>
-          <line x1="12" y1="8" x2="12" y2="18"/>
-          <line x1="7" y1="13" x2="17" y2="13"/>
+          <path d="M7 8C5.5 7.2 3.6 7.5 2.9 5.6"/>
+          <path d="M17 8c1.5-.8 3.4-.5 4.1-2.4"/>
+          <path d="M7 8c1.2-1 3-1.6 5-1.6s3.8.6 5 1.6"/>
+          <path d="M7 8C6 9.2 5.5 10.8 5.5 12.5 5.5 16 8.4 18.5 12 18.5s6.5-2.5 6.5-6c0-1.7-.5-3.3-1.5-4.5"/>
+          <path d="M10.5 13h0"/>
+          <path d="M13.5 13h0"/>
         </svg>
       ),
     },
