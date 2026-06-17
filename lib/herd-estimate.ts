@@ -70,10 +70,14 @@ export interface ValuationSource {
   town: string
   miles: number
   report_date: string
+  commodity: string | null    // MARS commodity of the matched row (for Trend's price-Δ join)
+  mars_class: string | null    // MARS class ('|' joined for the class-avg path)
   matched: string        // "Feeder Cattle / Steers / Medium and Large / 550-600 brk" or "… class avg"
   price_unit: string | null
   price_basis: PriceBasis
   avg_price: number      // matched $/cwt or $/head (class-avg rounded to cents)
+  avg_price_min: number | null // matched-bracket range (Trend's price spread); null on the class-avg path
+  avg_price_max: number | null
   exact_bracket: boolean
 }
 
@@ -141,8 +145,10 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
         source: {
           slug_id: barn.slug_id, barn_name: barn.barn_name, town: barn.town, miles: barn.miles,
           report_date: barn.report_date,
+          commodity: row.commodity, mars_class: row.class,
           matched: `${row.commodity} / ${row.class} / ${row.frame ?? 'N/A'} / ${row.weight_break_low}-${row.weight_break_high} brk`,
-          price_unit: row.price_unit, price_basis: basis, avg_price: row.avg_price!, exact_bracket: true,
+          price_unit: row.price_unit, price_basis: basis, avg_price: row.avg_price!,
+          avg_price_min: row.avg_price_min, avg_price_max: row.avg_price_max, exact_bracket: true,
         },
       }
     }
@@ -164,9 +170,11 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
       source: {
         slug_id: barn.slug_id, barn_name: barn.barn_name, town: barn.town, miles: barn.miles,
         report_date: barn.report_date,
+        commodity: step.commodity, mars_class: step.classes.join('|'),
         matched: `${step.commodity} / ${step.classes.join('|')} / class avg $/${basis} (${group.length} rows, no exact bracket)`,
         price_unit: basis === 'cwt' ? 'Per Cwt (class avg)' : 'Per Unit (class avg)',
-        price_basis: basis, avg_price: price, exact_bracket: false,
+        price_basis: basis, avg_price: price,
+        avg_price_min: null, avg_price_max: null, exact_bracket: false,
       },
     }
   }
