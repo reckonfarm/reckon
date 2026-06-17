@@ -10,6 +10,7 @@ import HerdEstimatePanel from './HerdEstimatePanel'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
+import { buildTrend, type TrendData, type HerdHistoryRow, type PriceHistoryRow } from '@/lib/trend'
 import type { Lot } from '@/lib/herd'
 
 // Private, operation-scoped herd page. Auth-gated like /profile. Shows the HerdEstimate
@@ -28,6 +29,7 @@ export default async function HerdPage() {
   const lots = Array.isArray(herd?.lots) ? herd!.lots : []
 
   let estimate: HerdEstimate | null = null
+  let trend: TrendData | null = null
   let homeCountyMissing = false
   if (lots.length > 0) {
     const { data: prof } = await createServiceClient()
@@ -37,7 +39,36 @@ export default async function HerdPage() {
       .maybeSingle()
     const homeFips = (prof as { home_county_fips: string | null } | null)?.home_county_fips ?? null
     if (homeFips) {
-      estimate = estimateHerd({ lots }, await resolveBarns(homeFips))
+      const resolved = await resolveBarns(homeFips)
+      estimate = estimateHerd({ lots }, resolved)
+
+      // Trend reads (additive — degrade honestly; never block the estimate above). Herd history
+      // via the user-scoped SSR client so the owner-SELECT RLS scopes to the caller; price
+      // history via service-role (RLS-none). A read error → null → the panel shows "unavailable".
+      let herdHistory: HerdHistoryRow[] | null = null
+      try {
+        const { data, error } = await supabase
+          .from('herd_estimate_history')
+          .select('snapshot_date, total_value, lots_priced')
+          .order('snapshot_date', { ascending: false })
+          .limit(2)
+        herdHistory = error ? null : ((data ?? []) as HerdHistoryRow[])
+      } catch { herdHistory = null }
+
+      let priceHistory: PriceHistoryRow[] | null = []
+      const localSlugs = resolved.local.map(b => b.slug_id)
+      if (localSlugs.length > 0) {
+        try {
+          const { data, error } = await createServiceClient()
+            .from('mars_price_history')
+            .select('slug_id, report_date, rows')
+            .in('slug_id', localSlugs)
+            .order('report_date', { ascending: false })
+          priceHistory = error ? null : ((data ?? []) as PriceHistoryRow[])
+        } catch { priceHistory = null }
+      }
+
+      trend = buildTrend({ resolved, estimate, lots, herdHistory, priceHistory })
     } else {
       homeCountyMissing = true
     }
@@ -55,7 +86,7 @@ export default async function HerdPage() {
         {/* HerdEstimate (additive — the capture form below is unchanged) */}
         {estimate && (
           <div className="mt-8">
-            <HerdEstimatePanel estimate={estimate} />
+            <HerdEstimatePanel estimate={estimate} trend={trend} />
           </div>
         )}
 
