@@ -4,12 +4,13 @@ import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import { Segmented } from '@/app/components/ui/Segmented'
 import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
+import type { TrendData, VolumeRow } from '@/lib/trend'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
-// Fed the server-computed estimate (serializable); the toggle is the only interactive bit.
-// Honest throughout: an unpriced lot shows its reason and "—", never $0; a herd with nothing
-// priced shows the reason, not a fake number.
+// Fed the server-computed estimate + trend bundle (both serializable); the toggle is the only
+// interactive bit. Honest throughout: unpriced lots show "—" not $0; accruing Trend metrics
+// show their honest "building" line, never a fake/zero delta.
 
 const EYEBROW = 'font-dm-sans text-xs font-medium uppercase tracking-wider text-muted/50'
 
@@ -70,7 +71,121 @@ function Stub({ line }: { line: string }) {
   )
 }
 
-export default function HerdEstimatePanel({ estimate }: { estimate: HerdEstimate }) {
+// ─── Trend ───────────────────────────────────────────────────────────────────────────────
+// Restrained — this is data, not a hero: DM Sans, tabular-price, up/down tokens. Volume + spread
+// are LIVE; herd-value + price Δ render their honest "building" line until history accrues.
+
+function DeltaUSD({ abs }: { abs: number }) {
+  if (abs === 0) return <span className="font-medium text-muted/70">unchanged</span>
+  const up = abs > 0
+  return <span className={`font-semibold tabular-price ${up ? 'text-up' : 'text-down'}`}>{up ? '▲' : '▼'} {formatUSD(Math.abs(abs))}</span>
+}
+
+function DeltaCwt({ cwt }: { cwt: number }) {
+  if (cwt === 0) return <span className="font-medium text-muted/70">unchanged</span>
+  const up = cwt > 0
+  return <span className={`font-semibold tabular-price ${up ? 'text-up' : 'text-down'}`}>{up ? '▲' : '▼'} ${Math.abs(cwt)}</span>
+}
+
+function VolumeCard({ v }: { v: VolumeRow }) {
+  const wk = v.receipts != null && v.weekAgo != null ? v.receipts - v.weekAgo : null
+  return (
+    <Card shadow="sm" className="p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-dm-sans text-sm font-medium text-ink">{v.commodity}</p>
+        <p className="font-dm-sans text-sm">
+          <span className="tabular-price font-semibold text-ink">{v.receipts ?? '—'}</span>
+          <span className="text-muted/60"> head</span>
+          {wk != null && (
+            <span className={`ml-2 tabular-price font-medium ${wk >= 0 ? 'text-up' : 'text-down'}`}>
+              {wk >= 0 ? '▲' : '▼'} {Math.abs(wk)}
+            </span>
+          )}
+        </p>
+      </div>
+      <p className="mt-0.5 font-dm-sans text-xs text-muted/55">
+        {v.weekAgo != null ? <>vs <span className="tabular-price">{v.weekAgo}</span> last week</> : 'no week-ago figure'}
+        {v.yearAgo != null && <> · <span className="tabular-price">{v.yearAgo}</span> a year ago</>}
+      </p>
+    </Card>
+  )
+}
+
+function TrendPanel({ trend }: { trend: TrendData | null }) {
+  if (!trend) return <Stub line="Trend is temporarily unavailable — check back shortly." />
+  return (
+    <div className="space-y-5">
+      {/* VOLUME — live, the day-one signal */}
+      <div>
+        <p className={EYEBROW}>Volume{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</p>
+        {trend.volume.length > 0 ? (
+          <div className="mt-2 space-y-2">
+            {trend.volume.map(v => <VolumeCard key={v.commodity} v={v} />)}
+          </div>
+        ) : (
+          <p className="mt-1 font-dm-sans text-sm text-muted/60">No nearby auction this week — volume shows once a local barn reports.</p>
+        )}
+      </div>
+
+      {/* SPREAD — live */}
+      {trend.spread.length > 0 && (
+        <div>
+          <p className={EYEBROW}>This week&rsquo;s range</p>
+          <div className="mt-2 space-y-1">
+            {trend.spread.map((s, i) => (
+              <p key={i} className="font-dm-sans text-sm text-body/80">
+                {s.label}: <span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HERD VALUE Δ — accruing */}
+      <div>
+        <p className={EYEBROW}>Your herd value</p>
+        {trend.herd.status === 'ready' ? (
+          <p className="mt-1 font-dm-sans text-sm">
+            <DeltaUSD abs={trend.herd.abs} />{' '}
+            <span className="text-muted/70">
+              since {fmtShort(trend.herd.sinceDate)}
+              {trend.herd.pct != null && ` (${trend.herd.pct >= 0 ? '+' : ''}${trend.herd.pct.toFixed(1)}%)`}
+            </span>
+          </p>
+        ) : trend.herd.status === 'accruing' ? (
+          <p className="mt-1 font-dm-sans text-sm text-muted/60">Tracking daily — your week-over-week change appears here in a couple days.</p>
+        ) : (
+          <p className="mt-1 font-dm-sans text-sm text-muted/60">Temporarily unavailable.</p>
+        )}
+      </div>
+
+      {/* PER-CLASS PRICE Δ — accruing */}
+      {trend.priceDeltas.length > 0 && (
+        <div>
+          <p className={EYEBROW}>Price movement</p>
+          <div className="mt-1 space-y-1">
+            {trend.priceDeltas.map((p, i) => (
+              <p key={i} className="font-dm-sans text-sm">
+                <span className="text-body/80">{p.label}:</span>{' '}
+                {p.status === 'ready' && p.cwt != null ? (
+                  <>
+                    <DeltaCwt cwt={p.cwt} />/cwt <span className="text-muted/60">vs last sale ({fmtShort(p.sinceDate ?? null)})</span>
+                  </>
+                ) : p.status === 'accruing' ? (
+                  <span className="text-muted/60">builds over the next sale or two</span>
+                ) : (
+                  <span className="text-muted/60">temporarily unavailable</span>
+                )}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function HerdEstimatePanel({ estimate, trend }: { estimate: HerdEstimate; trend: TrendData | null }) {
   const [view, setView] = useState<'now' | 'trend' | 'outlook'>('now')
   const priced = estimate.lots_priced > 0
 
@@ -107,7 +222,7 @@ export default function HerdEstimatePanel({ estimate }: { estimate: HerdEstimate
           {estimate.perLot.map(l => <LotCard key={l.lotId} l={l} />)}
         </div>
       )}
-      {view === 'trend' && <Stub line="Weekly price history for your lots — how this number is moving — is coming." />}
+      {view === 'trend' && <TrendPanel trend={trend} />}
       {view === 'outlook' && <Stub line="Price protection for each lot (USDA LRP) lands here soon." />}
     </section>
   )
