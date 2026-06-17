@@ -291,6 +291,25 @@ async function main() {
   for (const r of landed) {
     console.log(`  ${r.slug_id} ${r.barn_name} — report_date ${r.report_date} · ${r.row_count} rows`)
   }
+
+  // ── Append to mars_price_history (Trend's price history). ADDITIVE + WRAPPED: a failure here
+  // logs and continues — it must NEVER fail the snapshot upsert above (the live HerdEstimate
+  // read path) or the run. One immutable row per barn per sale date (idempotent re-write).
+  try {
+    const history = good.map(({ barn, snap }) => ({
+      slug_id: barn.slug, barn_name: barn.barn_name, city: barn.city, state: barn.state,
+      report_date: snap.report_date, as_of: snap.as_of, source: 'USDA MARS',
+      rows: snap.rows, row_count: snap.row_count,
+    }))
+    const { error: histErr } = await db
+      .from('mars_price_history')
+      .upsert(history, { onConflict: 'slug_id,report_date' })
+    if (histErr) console.error('[mars-snapshot] history append failed (snapshot unaffected):', histErr.message)
+    else console.log(`[mars-snapshot] history: ${history.length} barn-date row(s) appended/updated ✓`)
+  } catch (err) {
+    console.error('[mars-snapshot] history append threw (snapshot unaffected):', err instanceof Error ? err.message : err)
+  }
+
   console.log('')
 }
 

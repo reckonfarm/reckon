@@ -45,3 +45,15 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/mars-snapshot.ts
+
+      # SECOND STEP (additive): snapshot each user's HerdEstimate into history, AFTER the price
+      # refresh above so it values off fresh prices. continue-on-error: a history failure must
+      # NOT fail the run — the price refresh is the critical path. (If the price step fails, this
+      # is skipped by default and the job goes red on the price failure, as it should. This step
+      # hits Supabase only — no marsapi — and is lib/supabase-free so it runs cleanly on Node 20.)
+      - name: Snapshot HerdEstimate history (additive — non-blocking)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/herd-estimate-snapshot.ts
