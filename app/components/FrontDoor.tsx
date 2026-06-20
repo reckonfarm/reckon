@@ -15,9 +15,8 @@ import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
 import type { Lot } from '@/lib/herd'
 
 // ─── Front door — the signed-out homepage (the acquisition front door) ───────────────────────
-// The Apple-restraint redesign of the Markets surface, built as its OWN component so it can be
-// previewed at /markets-preview while / still renders the current MarketsHome. At flip time, /
-// repoints here and MarketsHome retires (the small duplicated county queries below resolve then).
+// The Apple-restraint redesign of the Markets surface — the signed-out front door, rendered at
+// both / and /markets-preview. (Replaced the prior MarketsHome funnel.)
 //
 // THE HOOK is UNIVERSAL + NO-SIGNUP: the county dashboard is already public, so the CountySearch
 // (hero action) → /dashboard?fips=X gives any visitor their drought status + estimated FSA/LFP
@@ -26,7 +25,7 @@ import type { Lot } from '@/lib/herd'
 // as theirs) → "sign up to value your own herd." Auction pricing is MT-now/expanding; the example
 // is the honest demonstration of it.
 //
-// Every server query degrades to empty/honest and NEVER throws (mirrors MarketsHome).
+// Every server query degrades to empty/honest and NEVER throws.
 
 interface DriestChip { name: string; state: string; fips: string; tier: number }
 

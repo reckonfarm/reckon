@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
 import FrontDoor from '@/app/components/FrontDoor'
 
-// PREVIEW-ONLY, unlinked orphan route (no nav links to it). Renders the NEW FrontDoor
-// front-door redesign so it can be verified on the preview URL BEFORE / flips to it.
-// / still renders the current MarketsHome until the flip; at flip time, / repoints to
-// FrontDoor and MarketsHome retires.
+// PREVIEW-ONLY, unlinked orphan route (no nav links to it). Renders the shared FrontDoor
+// front door — identical to what / now renders — kept as a preview surface for reviewing
+// future homepage iterations before they reach /.
 
 export const dynamic = 'force-dynamic'
 

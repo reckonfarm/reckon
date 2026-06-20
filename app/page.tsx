@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import MarketsHome from '@/app/components/MarketsHome'
+import FrontDoor from '@/app/components/FrontDoor'
 
-// The default landing for EVERYONE — anonymous and signed-in — is the Markets
-// surface (county-search funnel + driest chips + drought map + news + tiles). No
-// redirect: signed-in users land here too (the drought dashboard stays reachable at
-// /dashboard via the My Operation tab and the chips/search). Rendering is delegated
-// to the shared MarketsHome component, also used by /markets-preview.
+// The signed-out landing — the acquisition front door (Fraunces hero + county-search hook +
+// the labeled Example HerdEstimate + signup CTA). Signed-in users are redirected by
+// middleware.ts (bare / → /dashboard), so this renders for anonymous visitors (and signed-in
+// users who hit /?fips=…). Delegates to the shared FrontDoor component, also rendered at
+// /markets-preview.
 
 export const dynamic = 'force-dynamic'
 
@@ -24,5 +24,5 @@ export default async function Home({
 }) {
   const { fips: fipsParam } = await searchParams
   const fips = fipsParam || null
-  return <MarketsHome fips={fips} />
+  return <FrontDoor fips={fips} />
 }
