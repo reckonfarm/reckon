@@ -141,6 +141,37 @@ export function lotToMarsKey(lot: Lot): MarsLotKey {
   }
 }
 
+// ─── herd → LRP (RMA) type map ───────────────────────────────────────────────────────────
+// The per-lot Outlook prices each lot against the RMA LRP Feeder Cattle matrix — Steers/Heifers
+// × Weight 1/Weight 2. This maps a lot onto that matrix, REUSING the lrpFeederEligible gate:
+//   • breeding/cull classes (cows, bulls, old_cows) have NO feeder-LRP product → lrp_class null.
+//   • a feeder lot above the LRP feeder ceiling (> 1000 lb)          → weight_code null.
+// Both null cases carry an honest `reason` so Outlook says "not LRP-eligible …", never a fake
+// floor. The join key Build 2 uses is `${lrp_class} ${weight_code}` ('Steers Weight 2') — exactly
+// the normalized lrp_type the snapshot writer stores.
+//
+// Weight bands are the RMA LRP Feeder Cattle categories (Weight 1 < 600 lb, Weight 2 600–1000
+// lb). The bands ROUTE the lot here; the snapshot writer confirms the actual type strings from
+// the report at seed time (it captures whatever Steers/Heifers Weight 1/2 rows the report has).
+export interface LrpTypeMatch {
+  lrp_class:   'Steers' | 'Heifers' | null
+  weight_code: 'Weight 1' | 'Weight 2' | null
+  reason?:     string   // present only when not eligible (lrp_class or weight_code is null)
+}
+
+export function lotToLrpType(lot: Lot): LrpTypeMatch {
+  const m = LOT_CLASS_TO_MARS[lot.class]
+  if (!m.lrpFeederEligible) {
+    return { lrp_class: null, weight_code: null, reason: 'breeding/cull stock — no LRP feeder product' }
+  }
+  // Eligible classes are steers/heifers/yearlings; their marsClass is Steers or Heifers.
+  const lrp_class: 'Steers' | 'Heifers' = m.marsClass === 'Heifers' ? 'Heifers' : 'Steers'
+  const wLb = lotToMarsKey(lot).avgWeightLb
+  if (wLb < 600)   return { lrp_class, weight_code: 'Weight 1' }
+  if (wLb <= 1000) return { lrp_class, weight_code: 'Weight 2' }
+  return { lrp_class, weight_code: null, reason: 'above LRP feeder weight range (> 1000 lb)' }
+}
+
 // ─── Validation / normalization (used by the operation-profile PATCH route) ──────────────
 // Contract: REJECT malformed lots (bad/missing required fields); ACCEPT sparse lots (required
 // fields only) and fill the DEFAULTED fields + timestamps + id. The normalized herd is what
