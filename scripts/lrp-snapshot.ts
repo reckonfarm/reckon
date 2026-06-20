@@ -64,9 +64,12 @@ const DASHBOARD_TYPE = 'Steers Weight 2'
 
 const KEY_COMMODITY = 'Feeder Cattle'   // stored natural-key commodity (stable across runs)
 
-// The headline row per type — the same EXACT filter as before (13-wk · 100% · adj 1.00). The
-// adj-factor=1.00 gate is what excludes the $1,346 Unborn-Calves 3.79-factor row.
-const HEADLINE = { lengthWeeks: 13, coverageLevel: 1.0, priceAdjFactor: 1.0 }
+// The headline row per type: 13-week · 100% coverage. We do NOT filter on price_adj_factor —
+// it's a per-TYPE property (Steers W1 1.10, W2 1.00, Heifers W1 1.00, W2 0.90), not a selection
+// criterion; requiring 1.00 wrongly dropped the non-base types (Steers W1, Heifers W2). The
+// per-type `re` already excludes the $1,346 Unborn-Calves 3.79-factor row (a different type),
+// and the exactly-one-row + $100–800 band checks below still guard against a wrong column.
+const HEADLINE = { lengthWeeks: 13, coverageLevel: 1.0 }
 
 // Plausible feeder $/cwt band — outside this, SKIP that type (catches a wrong column). Widened
 // to 800 (from 600) because lighter Weight-1 calves run higher $/cwt in a hot market (2025–26);
@@ -314,12 +317,11 @@ async function main() {
       continue
     }
 
-    // Headline — EXACT match (13-wk · 100% · adj 1.00). Anything but exactly one row → skip this
-    // type (refuse to guess); don't crash the run.
+    // Headline — EXACT match (13-wk · 100% coverage; the type's own adj factor rides along).
+    // Anything but exactly one row → skip this type (refuse to guess); don't crash the run.
     const headlineRows = typeRows.filter(c =>
       parseInt(c[cols.endLen], 10) === HEADLINE.lengthWeeks &&
-      approx(parseFloat(c[cols.coverageLevel]), HEADLINE.coverageLevel) &&
-      approx(num(c[cols.priceAdj]), HEADLINE.priceAdjFactor),
+      approx(parseFloat(c[cols.coverageLevel]), HEADLINE.coverageLevel),
     )
     if (headlineRows.length !== 1) {
       console.log(`  skip  ${t.key}: headline filter matched ${headlineRows.length} rows (expected 1)`)
