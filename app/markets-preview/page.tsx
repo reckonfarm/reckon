@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import MarketsHome from '@/app/components/MarketsHome'
+import FrontDoor from '@/app/components/FrontDoor'
 
-// PREVIEW-ONLY, unlinked orphan route (no nav links to it). Renders the shared
-// MarketsHome surface — identical to what / will render in Phase 2 — so the full
-// real homepage can be reviewed on the preview URL before / flips. Deletable once
-// / is the canonical Markets home.
+// PREVIEW-ONLY, unlinked orphan route (no nav links to it). Renders the NEW FrontDoor
+// front-door redesign so it can be verified on the preview URL BEFORE / flips to it.
+// / still renders the current MarketsHome until the flip; at flip time, / repoints to
+// FrontDoor and MarketsHome retires.
 
 export const dynamic = 'force-dynamic'
 
@@ -21,5 +21,5 @@ export default async function MarketsPreviewPage({
 }) {
   const { fips: fipsParam } = await searchParams
   const fips = fipsParam || null
-  return <MarketsHome fips={fips} />
+  return <FrontDoor fips={fips} />
 }
