@@ -22,17 +22,19 @@
 //   Local seed (explicit date): npx tsx scripts/lrp-snapshot.ts 06/12/2026
 //   (needs NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local)
 //
-// SAFETY: the headline row is extracted by an EXACT filter (Feeder Cattle · Steers
-// Weight 2 · 13-wk · 100% · adj 1.00). If that filter matches anything other than
-// EXACTLY ONE row, or the price isn't a plausible feeder $/cwt, the script THROWS and
-// writes NOTHING — a wrong row is worse than no row (the $1,346 "Unborn Calves" row is
-// the cautionary case the adj-factor=1.00 filter excludes).
+// SAFETY (per type): each type's headline row is extracted by an EXACT filter (13-wk ·
+// 100% · adj 1.00) and bounded to a plausible feeder $/cwt band. A type that fails (≠ 1
+// headline row, or a price outside the band) is SKIPPED with a log — never a guessed or
+// garbage row — while the OTHER types still write. The adj-factor=1.00 gate is what excludes
+// the $1,346 "Unborn Calves" 3.79-factor row. The run throws only if ALL types fail (nothing
+// written). The dashboard type (Steers Weight 2) being skipped warns loudly but isn't fatal —
+// the card falls back to its prior effective_date and flags itself stale.
 
 // @next/env must load before anything reads process.env (mirrors seed-rma-deadlines.ts).
 import { loadEnvConfig } from '@next/env'
 loadEnvConfig(process.cwd())
 
-// ─── Target (Montana feeder steers — the recon target; multi-state is future work) ──
+// ─── Target (Montana feeder beef matrix: Steers/Heifers × Weight 1/2; multi-state is future) ──
 const REPORT_URL  = 'https://public.rma.usda.gov/livestockreports/LRPReport'
 const UA          = 'Mozilla/5.0 (compatible; DrylineBot/1.0; +https://dryline.farm)'
 const REQ_TIMEOUT = 45_000   // the MT report is large (~13 MB); give it room
@@ -40,21 +42,37 @@ const REQ_TIMEOUT = 45_000   // the MT report is large (~13 MB); give it room
 const STATE_SELECTION = '30|Montana'   // the StateSelection <option> value
 const STATE_CODE      = 'MT'           // stored in the char(2) state column
 
-// The headline row we surface on the card — an EXACT, defensive filter.
-const FILTER = {
-  commodityRe: /feeder cattle/i,
-  typeRe:      /steers weight 2/i,
-  lengthWeeks: 13,
-  coverageLevel: 1.0,      // 100%
-  priceAdjFactor: 1.0,     // excludes the Unborn-Calves 3.79-factor row
-}
-// Stored natural-key values (must be STABLE across runs for idempotent upsert).
-const KEY_COMMODITY = 'Feeder Cattle'
-const KEY_TYPE      = 'Steers Weight 2'
+// We seed the FULL 4-type beef feeder matrix — Steers/Heifers × Weight 1/Weight 2 — one row per
+// type (the natural key (commodity, lrp_type, state, effective_date) already carries lrp_type,
+// so 4 types = 4 rows, no schema change). `key` is the NORMALIZED lrp_type stored in the column
+// (== lotToLrpType's `${lrp_class} ${weight_code}` join key); `re` matches the report's Type cell
+// ('810 Steers Weight 2'). Brahman / Dairy / Unborn are deliberately out of scope (a beef
+// operation). The run logs each type written/skipped, so a report whose labels drift surfaces
+// immediately rather than silently mismatching.
+const FEEDER_TYPES = [
+  { key: 'Steers Weight 1',  re: /steers weight 1/i },
+  { key: 'Steers Weight 2',  re: /steers weight 2/i },
+  { key: 'Heifers Weight 1', re: /heifers weight 1/i },
+  { key: 'Heifers Weight 2', re: /heifers weight 2/i },
+] as const
+const FEEDER_RE = /feeder cattle/i
 
-// Plausible feeder $/cwt band — outside this, refuse to write (caught a wrong column).
+// The dashboard Markets card reads ONLY this type (lib/lrp-service pins getLatestLrp to it). If
+// it's skipped, the card falls back to its prior effective_date (and goes stale on its own) — we
+// warn loudly but don't fail the run, since the other types still wrote.
+const DASHBOARD_TYPE = 'Steers Weight 2'
+
+const KEY_COMMODITY = 'Feeder Cattle'   // stored natural-key commodity (stable across runs)
+
+// The headline row per type — the same EXACT filter as before (13-wk · 100% · adj 1.00). The
+// adj-factor=1.00 gate is what excludes the $1,346 Unborn-Calves 3.79-factor row.
+const HEADLINE = { lengthWeeks: 13, coverageLevel: 1.0, priceAdjFactor: 1.0 }
+
+// Plausible feeder $/cwt band — outside this, SKIP that type (catches a wrong column). Widened
+// to 800 (from 600) because lighter Weight-1 calves run higher $/cwt in a hot market (2025–26);
+// a wrong column (rates < 1, head counts, the 4-digit Unborn row) is still well outside it.
 const PRICE_MIN = 100
-const PRICE_MAX = 600
+const PRICE_MAX = 800
 
 // ─── Small helpers ──────────────────────────────────────────────────────────────────
 
@@ -240,15 +258,7 @@ async function main() {
   const { cols, headerIdx } = locateColumns(rows)
   const dataRows = rows.slice(headerIdx + 1).filter(c => c.length > cols.premium)
 
-  // Keep the FULL set of Feeder Cattle / Steers Weight 2 rows (all lengths + levels) for
-  // the jsonb, and pull the single headline row out of it by the exact filter.
-  const steersW2 = dataRows.filter(c =>
-    FILTER.commodityRe.test(c[cols.commodity]) && FILTER.typeRe.test(c[cols.type]),
-  )
-  if (steersW2.length === 0) {
-    throw new Error('no Feeder Cattle / Steers Weight 2 rows in report — writing nothing')
-  }
-
+  // Row → stored object (one type's full rowset goes in the jsonb; reused for every type).
   const rowObj = (c: string[]) => ({
     endorsement_length_weeks: parseInt(c[cols.endLen], 10),
     practice:                 c[cols.practice] || null,
@@ -262,74 +272,104 @@ async function main() {
     endorsement_end_date:     c[cols.endDate] || null,
   })
 
-  // Headline — EXACT match. Anything but exactly one row is a refuse-to-write condition.
-  const headlineRows = steersW2.filter(c =>
-    parseInt(c[cols.endLen], 10) === FILTER.lengthWeeks &&
-    approx(parseFloat(c[cols.coverageLevel]), FILTER.coverageLevel) &&
-    approx(num(c[cols.priceAdj]), FILTER.priceAdjFactor),
-  )
-  if (headlineRows.length !== 1) {
-    throw new Error(
-      `headline filter matched ${headlineRows.length} rows (expected exactly 1) — ` +
-      'refusing to guess, writing nothing',
-    )
-  }
-
-  const hc = headlineRows[0]
-  const headline = {
-    commodity:                hc[cols.commodity],   // e.g. '0801 Feeder Cattle'
-    type:                     hc[cols.type],        // e.g. '810 Steers Weight 2'
-    coverage_price:           money(hc[cols.coveragePrice]),
-    expected_ending_value:    num(hc[cols.expEnd]),
-    coverage_level:           parseFloat(hc[cols.coverageLevel]),
-    endorsement_length_weeks: parseInt(hc[cols.endLen], 10),
-    rate:                     parseFloat(hc[cols.rate]),
-    cost_per_cwt:             num(hc[cols.cost]),
-    producer_premium_per_cwt: num(hc[cols.premium]),
-    endorsement_end_date:     hc[cols.endDate] || null,
-    effective_date:           effIso,
-  }
-
-  // Sanity — a plausible feeder $/cwt; outside the band means we grabbed the wrong column.
-  if (headline.coverage_price < PRICE_MIN || headline.coverage_price > PRICE_MAX) {
-    throw new Error(
-      `headline coverage price $${headline.coverage_price}/cwt outside plausible ` +
-      `${PRICE_MIN}–${PRICE_MAX} band — refusing to write`,
-    )
-  }
-
   const todayIso = new Date().toISOString().slice(0, 10)
-  const snapshot = {
-    headline,
-    rows: steersW2.map(rowObj),     // full Steers Weight 2 set (all lengths/levels)
-    state: STATE_CODE,
-    source_url: REPORT_URL,
-    parsed_at: new Date().toISOString(),
+  const written: string[] = []
+  const skipped: string[] = []
+
+  // One row per beef type — each type's safety is INDEPENDENT: a type that fails its filter is
+  // skipped (logged), never crashing the others. A type with no rows just isn't offered today.
+  for (const t of FEEDER_TYPES) {
+    const typeRows = dataRows.filter(c => FEEDER_RE.test(c[cols.commodity]) && t.re.test(c[cols.type]))
+    if (typeRows.length === 0) {
+      console.log(`  skip  ${t.key}: no rows in report`)
+      skipped.push(t.key)
+      continue
+    }
+
+    // Headline — EXACT match (13-wk · 100% · adj 1.00). Anything but exactly one row → skip this
+    // type (refuse to guess); don't crash the run.
+    const headlineRows = typeRows.filter(c =>
+      parseInt(c[cols.endLen], 10) === HEADLINE.lengthWeeks &&
+      approx(parseFloat(c[cols.coverageLevel]), HEADLINE.coverageLevel) &&
+      approx(num(c[cols.priceAdj]), HEADLINE.priceAdjFactor),
+    )
+    if (headlineRows.length !== 1) {
+      console.log(`  skip  ${t.key}: headline filter matched ${headlineRows.length} rows (expected 1)`)
+      skipped.push(t.key)
+      continue
+    }
+
+    const hc = headlineRows[0]
+    const headline = {
+      commodity:                hc[cols.commodity],   // raw, e.g. '0801 Feeder Cattle'
+      type:                     hc[cols.type],        // raw, e.g. '810 Steers Weight 2' (display)
+      coverage_price:           money(hc[cols.coveragePrice]),
+      expected_ending_value:    num(hc[cols.expEnd]),
+      coverage_level:           parseFloat(hc[cols.coverageLevel]),
+      endorsement_length_weeks: parseInt(hc[cols.endLen], 10),
+      rate:                     parseFloat(hc[cols.rate]),
+      cost_per_cwt:             num(hc[cols.cost]),
+      producer_premium_per_cwt: num(hc[cols.premium]),
+      endorsement_end_date:     hc[cols.endDate] || null,
+      effective_date:           effIso,
+    }
+
+    // Sanity — a plausible feeder $/cwt; outside the band means a wrong column → skip the type.
+    if (headline.coverage_price < PRICE_MIN || headline.coverage_price > PRICE_MAX) {
+      console.log(`  skip  ${t.key}: coverage price $${headline.coverage_price}/cwt outside ${PRICE_MIN}–${PRICE_MAX} band`)
+      skipped.push(t.key)
+      continue
+    }
+
+    const snapshot = {
+      headline,
+      rows: typeRows.map(rowObj),    // this type's full set (all lengths/levels)
+      state: STATE_CODE,
+      source_url: REPORT_URL,
+      parsed_at: new Date().toISOString(),
+    }
+
+    // Upsert ONE row for this type, idempotent on the natural key. lrp_type = the NORMALIZED key
+    // (matches lotToLrpType's join key); commodity/state/effective_date complete the key.
+    const { error } = await db.from('lrp_price_snapshots').upsert(
+      {
+        commodity:      KEY_COMMODITY,
+        lrp_type:       t.key,
+        state:          STATE_CODE,
+        effective_date: effIso,
+        snapshot,
+        source:         'USDA RMA',
+        as_of:          todayIso,
+      },
+      { onConflict: 'commodity,lrp_type,state,effective_date' },
+    )
+    if (error) {
+      console.log(`  skip  ${t.key}: upsert failed — ${error.message}`)
+      skipped.push(t.key)
+      continue
+    }
+
+    console.log(
+      `  wrote ${t.key.padEnd(16)} ${headline.endorsement_length_weeks}wk · 100% = ` +
+      `$${headline.coverage_price.toFixed(2)}/cwt (exp. end $${headline.expected_ending_value.toFixed(2)}, ${typeRows.length} rows)`,
+    )
+    written.push(t.key)
   }
 
-  // 4) Upsert ONE row, idempotent on the natural key.
-  const { error } = await db.from('lrp_price_snapshots').upsert(
-    {
-      commodity:      KEY_COMMODITY,
-      lrp_type:       KEY_TYPE,
-      state:          STATE_CODE,
-      effective_date: effIso,
-      snapshot,
-      source:         'USDA RMA',
-      as_of:          todayIso,
-    },
-    { onConflict: 'commodity,lrp_type,state,effective_date' },
-  )
-  if (error) {
-    throw new Error(`upsert failed (nothing written): ${error.message}`)
+  // Nothing written at all = a genuine failure (bad fetch / wrong report) — exit non-zero.
+  if (written.length === 0) {
+    throw new Error('no LRP types written (all beef types skipped) — check the report')
   }
 
-  console.log(
-    `  headline        ${KEY_COMMODITY} · ${KEY_TYPE} · ${headline.endorsement_length_weeks}wk · ` +
-    `100% = $${headline.coverage_price.toFixed(2)}/cwt (exp. end $${headline.expected_ending_value.toFixed(2)})`,
-  )
-  console.log(`  rows kept       ${steersW2.length} (Steers Weight 2, all lengths/levels)`)
-  console.log(`  done — upserted 1 LRP snapshot for ${STATE_CODE} ${effIso} ✓\n`)
+  // The dashboard type missing is not fatal (the card reads its prior effective_date), but it
+  // warrants a loud line in the launchd log so a persistent miss gets noticed.
+  if (!written.includes(DASHBOARD_TYPE)) {
+    console.warn(`  WARNING: dashboard type "${DASHBOARD_TYPE}" not written this run — the Markets card will read its prior effective_date`)
+  }
+
+  console.log(`\n  done — ${written.length}/${FEEDER_TYPES.length} types upserted for ${STATE_CODE} ${effIso} ✓`)
+  if (skipped.length) console.log(`  skipped: ${skipped.join(', ')}`)
+  console.log('')
 }
 
 main().catch(err => {
