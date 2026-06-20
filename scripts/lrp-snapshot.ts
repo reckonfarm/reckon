@@ -18,8 +18,8 @@
 // The antiforgery token from the IMMEDIATELY-PRIOR response + the cookie are threaded on
 // every POST.
 //
-//   Local seed (latest date):  npx tsx scripts/lrp-snapshot.ts
-//   Local seed (explicit date): npx tsx scripts/lrp-snapshot.ts 06/12/2026
+//   Local seed (latest complete date): npx tsx scripts/lrp-snapshot.ts  (skips swine-only partials)
+//   Local seed (explicit date):        npx tsx scripts/lrp-snapshot.ts 06/12/2026
 //   (needs NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local)
 //
 // SAFETY (per type): each type's headline row is extracted by an EXACT filter (13-wk ·
@@ -73,6 +73,12 @@ const HEADLINE = { lengthWeeks: 13, coverageLevel: 1.0, priceAdjFactor: 1.0 }
 // a wrong column (rates < 1, head counts, the 4-digit Unborn row) is still well outside it.
 const PRICE_MIN = 100
 const PRICE_MAX = 800
+
+// RMA posts swine first; the newest offered date is often a partial (swine-only) posting. The
+// date-selection loop tries the newest MAX_LOOKBACK offered dates and takes the first complete
+// cattle posting (recon: only the very newest staggers, so 5 is generous headroom — the loop
+// stops at the first hit, ~2 fetches in practice). None within the bound → honest fail.
+const MAX_LOOKBACK = 5
 
 // ─── Small helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,6 +163,29 @@ class Wizard {
   }
 }
 
+// Fetch the full MT report for ONE effective date. A fresh wizard per date (proven across the
+// recon's 6-date sweep): the antiforgery token chain is per-session, so each date gets its own
+// GET → POST EffectiveDate → POST StateSelection → report HTML.
+async function fetchReportForDate(effDate: string): Promise<string> {
+  const wiz = new Wizard()
+  const page1 = await wiz.get()
+  const page2 = await wiz.post({
+    CurrentQuestion: 'EffectiveDate',
+    EffectiveDate: effDate,
+    ReportType: 'HTML',
+    buttonType: 'Next >>',
+    __RequestVerificationToken: tokenOf(page1),
+  })
+  return wiz.post({
+    CurrentQuestion: 'StateSelection',
+    EffectiveDate: effDate,
+    StateSelection: STATE_SELECTION,
+    ReportType: 'HTML',
+    buttonType: 'Create Report',
+    __RequestVerificationToken: tokenOf(page2),
+  })
+}
+
 // ─── Column index map (header is the first populated <td> row — no <th>) ─────────────
 
 interface Cols {
@@ -219,44 +248,43 @@ async function main() {
 
   console.log('\nDryline — RMA LRP Snapshot\n')
 
-  // 1) GET criteria page → token + cookie + available effective dates.
-  const wiz = new Wizard()
-  const page1 = await wiz.get()
-  const dates = effectiveDateOptions(page1)
+  // 1) GET criteria page → available effective dates.
+  const dates = effectiveDateOptions(await new Wizard().get())
   if (dates.length === 0) throw new Error('no EffectiveDate options on the criteria page')
 
-  // Target date: CLI arg if given (must be one the report offers), else the newest.
+  // 2) Pick the date to seed. RMA posts swine first and cattle fills in, so the NEWEST offered
+  // date is often a partial (swine-only) posting with no feeder cattle (recon confirmed: only
+  // the very newest staggers, one-back is reliably complete). An explicit CLI date is honored
+  // as-is; otherwise we try the newest MAX_LOOKBACK offered dates and take the FIRST that
+  // actually contains the feeder-cattle anchor (Steers Weight 2 — the type the dashboard pins
+  // to). None within the bound → honest fail (write nothing, exit non-zero), never an older
+  // date masquerading as current.
   const argDate = process.argv[2]
-  const effDate = argDate ?? dates[0]
-  if (!dates.includes(effDate)) {
-    throw new Error(`effective date ${effDate} not offered (newest available: ${dates[0]})`)
+  const anchorRe = FEEDER_TYPES.find(t => t.key === DASHBOARD_TYPE)!.re
+  const candidates = argDate ? [argDate] : dates.slice(0, MAX_LOOKBACK)
+
+  let chosen: { effDate: string; dataRows: string[][]; cols: Cols } | null = null
+  for (const cand of candidates) {
+    if (!dates.includes(cand)) {
+      throw new Error(`effective date ${cand} not offered (newest available: ${dates[0]})`)
+    }
+    const rows = parseRows(await fetchReportForDate(cand))
+    const { cols: c, headerIdx } = locateColumns(rows)
+    const drows = rows.slice(headerIdx + 1).filter(r => r.length > c.premium)
+    const hasAnchor = drows.some(r => FEEDER_RE.test(r[c.commodity]) && anchorRe.test(r[c.type]))
+    if (hasAnchor) { chosen = { effDate: cand, dataRows: drows, cols: c }; break }
+    console.log(`  ${cand}: no feeder cattle (partial/swine-only posting) — trying prior date`)
   }
+  if (!chosen) {
+    throw new Error(
+      `no feeder cattle in the ${candidates.length} newest offered date(s) ` +
+      `(${candidates.join(', ')}) — RMA mid-post or down; writing nothing`,
+    )
+  }
+
+  const { effDate, dataRows, cols } = chosen
   const effIso = toIso(effDate)
   console.log(`  effective date  ${effDate}  (newest offered: ${dates[0]})`)
-
-  // 2) POST EffectiveDate → StateSelection page (fresh token).
-  const page2 = await wiz.post({
-    CurrentQuestion: 'EffectiveDate',
-    EffectiveDate: effDate,
-    ReportType: 'HTML',
-    buttonType: 'Next >>',
-    __RequestVerificationToken: tokenOf(page1),
-  })
-
-  // 3) POST StateSelection (+ carry EffectiveDate) with Create Report → the report.
-  const report = await wiz.post({
-    CurrentQuestion: 'StateSelection',
-    EffectiveDate: effDate,
-    StateSelection: STATE_SELECTION,
-    ReportType: 'HTML',
-    buttonType: 'Create Report',
-    __RequestVerificationToken: tokenOf(page2),
-  })
-
-  // Parse the table + locate columns defensively.
-  const rows = parseRows(report)
-  const { cols, headerIdx } = locateColumns(rows)
-  const dataRows = rows.slice(headerIdx + 1).filter(c => c.length > cols.premium)
 
   // Row → stored object (one type's full rowset goes in the jsonb; reused for every type).
   const rowObj = (c: string[]) => ({
