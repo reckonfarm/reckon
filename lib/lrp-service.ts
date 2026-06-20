@@ -27,6 +27,13 @@ import { createServiceClient } from './supabase'
 // day, so ~7 days tolerates a normal weekend/holiday gap before we call it stale.
 const STALE_DAYS = 7
 
+// The dashboard Markets card has always shown ONE type: Feeder Cattle · Steers Weight 2. The
+// snapshot writer now seeds the full 4-type beef matrix (Steers/Heifers × Weight 1/2), so
+// getLatestLrp must PIN to this type — otherwise its limit(1) across multiple types per
+// effective_date would be non-deterministic and the card could silently switch types. Outlook
+// reads the whole matrix via getLrpMatrix; the card stays on this pinned type, unchanged.
+const DASHBOARD_LRP_TYPE = 'Steers Weight 2'
+
 export interface LrpHeadline {
   commodity:                string
   lrp_type:                 string
@@ -140,6 +147,42 @@ function buildLadder(snapshot: unknown): LrpLadderRung[] {
   return rungs.map(r => r.rung)
 }
 
+// Build the LrpHeadline from a snapshot row (defensive — every field unknown until checked).
+// Returns null on a bad payload (missing headline object or a non-finite coverage price) so the
+// caller degrades to data_unavailable, never a NaN. `lrpTypeOverride` lets the matrix path key
+// on the NORMALIZED lrp_type column ('Steers Weight 2'); the dashboard path omits it and keeps
+// the raw report string (e.g. '810 Steers Weight 2') it has always displayed.
+function headlineFromRow(row: SnapshotRow, lrpTypeOverride?: string): LrpHeadline | null {
+  const head = (row.snapshot as { headline?: RawHeadline }).headline
+  if (!head || typeof head !== 'object') return null
+
+  const coveragePrice = finiteNum(head.coverage_price)
+  if (coveragePrice === null) return null
+
+  // Staleness from the real effective_date — never fabricate currency. No trustworthy date →
+  // treat as stale rather than imply currency.
+  let stale = true
+  if (row.effective_date) {
+    const ageDays = (Date.now() - Date.parse(`${row.effective_date}T00:00:00Z`)) / 86_400_000
+    stale = ageDays > STALE_DAYS
+  }
+
+  return {
+    commodity:                typeof head.commodity === 'string' ? head.commodity : '',
+    lrp_type:                 lrpTypeOverride ?? (typeof head.type === 'string' ? head.type : ''),
+    coverage_price:           coveragePrice,
+    expected_ending_value:    finiteNum(head.expected_ending_value) ?? coveragePrice,
+    coverage_level:           finiteNum(head.coverage_level) ?? 0,
+    endorsement_length_weeks: finiteNum(head.endorsement_length_weeks) ?? 0,
+    producer_premium_per_cwt: finiteNum(head.producer_premium_per_cwt) ?? 0,
+    endorsement_end_date:     typeof head.endorsement_end_date === 'string' ? head.endorsement_end_date : null,
+    effective_date:           row.effective_date,
+    as_of:                    row.as_of,
+    source:                   row.source ?? 'USDA RMA',
+    stale,
+  }
+}
+
 export async function getLatestLrp(state: string = 'MT'): Promise<LrpResult> {
   try {
     const db = createServiceClient()
@@ -147,6 +190,7 @@ export async function getLatestLrp(state: string = 'MT'): Promise<LrpResult> {
       .from('lrp_price_snapshots')
       .select('effective_date, as_of, source, snapshot')
       .eq('state', state)
+      .eq('lrp_type', DASHBOARD_LRP_TYPE)   // PIN — the seed now writes 4 types; the card stays on this one
       .order('effective_date', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -159,52 +203,77 @@ export async function getLatestLrp(state: string = 'MT'): Promise<LrpResult> {
     const row = data as SnapshotRow | null
     if (!row || !row.snapshot) return { status: 'none' }
 
-    // Pull the headline out of the jsonb defensively — a missing headline or a
-    // non-finite coverage price is a bad payload, NOT a fabricated number.
-    const head = (row.snapshot as { headline?: RawHeadline }).headline
-    if (!head || typeof head !== 'object') {
-      console.error('[lrp] snapshot missing headline — treating as unavailable')
+    // Defensive headline parse — a missing headline / non-finite price is a bad payload, not a
+    // fabricated number.
+    const lrp = headlineFromRow(row)
+    if (!lrp) {
+      console.error('[lrp] snapshot headline unparseable — treating as unavailable')
       return { status: 'data_unavailable' }
     }
 
-    const coveragePrice = finiteNum(head.coverage_price)
-    if (coveragePrice === null) {
-      console.error('[lrp] headline coverage_price is not a finite number — unavailable')
-      return { status: 'data_unavailable' }
-    }
-
-    // Staleness from the real effective_date — never fabricate currency.
-    let stale = false
-    if (row.effective_date) {
-      const ageDays = (Date.now() - Date.parse(`${row.effective_date}T00:00:00Z`)) / 86_400_000
-      stale = ageDays > STALE_DAYS
-    } else {
-      stale = true   // no trustworthy date → treat as stale rather than imply currency
-    }
-
-    const lrp: LrpHeadline = {
-      commodity:                typeof head.commodity === 'string' ? head.commodity : '',
-      lrp_type:                 typeof head.type === 'string' ? head.type : '',
-      coverage_price:           coveragePrice,
-      expected_ending_value:    finiteNum(head.expected_ending_value) ?? coveragePrice,
-      coverage_level:           finiteNum(head.coverage_level) ?? 0,
-      endorsement_length_weeks: finiteNum(head.endorsement_length_weeks) ?? 0,
-      producer_premium_per_cwt: finiteNum(head.producer_premium_per_cwt) ?? 0,
-      endorsement_end_date:     typeof head.endorsement_end_date === 'string' ? head.endorsement_end_date : null,
-      effective_date:           row.effective_date,
-      as_of:                    row.as_of,
-      source:                   row.source ?? 'USDA RMA',
-      stale,
-    }
-
-    // Surface the endorsement ladder for the sale-window picker. Built off the SAME
-    // snapshot we just read; an unbuildable ladder is [] (card degrades to headline-only)
-    // and never affects the headline path above.
+    // Surface the endorsement ladder for the sale-window picker. Built off the SAME snapshot we
+    // just read; an unbuildable ladder is [] (card degrades to headline-only).
     const ladder = buildLadder(row.snapshot)
 
     return { status: 'ok', lrp, ladder }
   } catch (err) {
     console.error('[lrp] read threw:', err)
+    return { status: 'data_unavailable' }
+  }
+}
+
+// ─── Outlook matrix (per-lot read path) ───────────────────────────────────────────────────
+// The per-lot Outlook reads the FULL 4-type beef matrix (Steers/Heifers × Weight 1/2), each
+// type at its own most-recent effective_date with its own stale flag (the seed is residential/
+// launchd; a type that didn't post stays at its last date and goes stale on its own). Build 2
+// maps a lot → 'Steers Weight 2' via lotToLrpType and looks up its floor here; a missing or
+// stale type degrades honestly in the panel (never a stale-as-current floor). Pure read; never
+// throws — a query error → data_unavailable, nothing seeded → none.
+
+export interface LrpTypeFloor {
+  // `lrp.lrp_type` here is the NORMALIZED column value ('Steers Weight 2') — the lot→type join
+  // key — NOT the raw report string (the dashboard path keeps the raw string).
+  lrp:    LrpHeadline
+  ladder: LrpLadderRung[]
+}
+
+export type LrpMatrixResult =
+  | { status: 'ok'; floors: LrpTypeFloor[] }
+  | { status: 'none' }
+  | { status: 'data_unavailable' }
+
+export async function getLrpMatrix(state: string = 'MT'): Promise<LrpMatrixResult> {
+  try {
+    const db = createServiceClient()
+    const { data, error } = await db
+      .from('lrp_price_snapshots')
+      .select('lrp_type, effective_date, as_of, source, snapshot')
+      .eq('state', state)
+      .order('effective_date', { ascending: false })
+
+    if (error) {
+      console.error('[lrp] matrix read failed:', error.message)
+      return { status: 'data_unavailable' }
+    }
+
+    const rows = (data ?? []) as Array<SnapshotRow & { lrp_type: string }>
+    if (rows.length === 0) return { status: 'none' }
+
+    // Newest effective_date per lrp_type (rows are date-desc → first seen per type wins).
+    const seen = new Set<string>()
+    const floors: LrpTypeFloor[] = []
+    for (const row of rows) {
+      if (!row.lrp_type || seen.has(row.lrp_type) || !row.snapshot) continue
+      const lrp = headlineFromRow(row, row.lrp_type)   // normalize the join key to the column
+      if (!lrp) continue                                // bad payload for this type — skip it
+      seen.add(row.lrp_type)
+      floors.push({ lrp, ladder: buildLadder(row.snapshot) })
+    }
+
+    if (floors.length === 0) return { status: 'data_unavailable' }
+    return { status: 'ok', floors }
+  } catch (err) {
+    console.error('[lrp] matrix read threw:', err)
     return { status: 'data_unavailable' }
   }
 }
