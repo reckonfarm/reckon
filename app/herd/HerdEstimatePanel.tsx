@@ -5,6 +5,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Segmented } from '@/app/components/ui/Segmented'
 import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData, VolumeRow } from '@/lib/trend'
+import type { OutlookData, OutlookLot } from '@/lib/outlook'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -22,6 +23,22 @@ function fmtShort(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// raw 'MM/DD/YYYY' (LRP endorsement end date) → "Sep 16"
+function fmtEndDate(mmddyyyy: string): string {
+  const m = mmddyyyy.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!m) return mmddyyyy
+  const d = new Date(`${m[3]}-${m[1]}-${m[2]}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? mmddyyyy : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// 'YYYY-MM' (sale window) → "Sep"
+function fmtMonth(ym: string): string {
+  const m = ym.match(/^(\d{4})-(\d{2})$/)
+  if (!m) return ym
+  const d = new Date(`${m[1]}-${m[2]}-01T00:00:00`)
+  return Number.isNaN(d.getTime()) ? ym : d.toLocaleDateString('en-US', { month: 'short' })
 }
 
 // "Billings cash · as of Jun 11 · 1 of 1 lot priced" — or, when nothing priced, the honest note.
@@ -185,7 +202,76 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
   )
 }
 
-export default function HerdEstimatePanel({ estimate, trend }: { estimate: HerdEstimate; trend: TrendData | null }) {
+// ─── Outlook ───────────────────────────────────────────────────────────────────────────────
+// Per-lot forward floor (USDA LRP). Restrained like Trend — DM Sans, tabular-price, no hero. The
+// floor is a per-cwt REFERENCE off the national CME index; the caveat (panel footer) carries the
+// insurance honesty, and NO dollar total is shown (multiplying a national index into a herd total
+// would read as false basis precision). Honest states: priced / stale / unavailable / not-eligible.
+
+function OutlookCard({ l }: { l: OutlookLot }) {
+  const f = l.floor
+  return (
+    <Card shadow="sm" className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-dm-sans text-sm font-semibold text-ink">{l.label}</p>
+
+          {l.state === 'priced' && f ? (
+            <>
+              <p className="mt-0.5 font-dm-sans text-xs text-muted/70">
+                {l.lrpType} · <span className="text-muted/55">ref. floor</span>
+              </p>
+              <p className="mt-1 font-dm-sans text-xs text-muted/60">
+                {f.endorsement_length_weeks}-wk · ends {fmtEndDate(f.endorsement_end_date)}
+                {f.matchedWindow
+                  ? <> · matched to your {fmtMonth(f.matchedWindow)} window</>
+                  : <> · set a sale window to match your sell date</>}
+                {f.producer_premium_per_cwt > 0 && <> · ≈${f.producer_premium_per_cwt.toFixed(2)}/cwt premium</>}
+              </p>
+            </>
+          ) : l.state === 'stale' ? (
+            <p className="mt-0.5 font-dm-sans text-xs text-muted/60">
+              {l.lrpType} · floor temporarily unavailable
+              {l.effective_date ? ` — last priced ${fmtShort(l.effective_date)}` : ''}
+            </p>
+          ) : l.state === 'unavailable' ? (
+            <p className="mt-0.5 font-dm-sans text-xs text-muted/60">
+              {l.lrpType ? `${l.lrpType} · ` : ''}floor temporarily unavailable
+            </p>
+          ) : (
+            <p className="mt-0.5 font-dm-sans text-xs text-muted/60">{l.reason}</p>
+          )}
+        </div>
+
+        <p className="shrink-0 font-dm-sans text-base font-semibold tabular-price text-ink">
+          {l.state === 'priced' && f
+            ? <>${f.coverage_price.toFixed(2)}<span className="text-xs font-normal text-muted/55">/cwt</span></>
+            : '—'}
+        </p>
+      </div>
+    </Card>
+  )
+}
+
+function OutlookPanel({ outlook }: { outlook: OutlookData | null }) {
+  if (!outlook || outlook.status === 'unavailable') {
+    return <Stub line="Forward floors temporarily unavailable — check back shortly." />
+  }
+  return (
+    <div className="space-y-2">
+      {outlook.as_of && (
+        <p className="font-dm-sans text-xs text-muted/55">Forward floors as of {fmtShort(outlook.as_of)}</p>
+      )}
+      {outlook.lots.map(l => <OutlookCard key={l.lotId} l={l} />)}
+      <p className="px-1 pt-2 font-dm-sans text-xs leading-relaxed text-muted/55">
+        Reference floor from USDA&nbsp;LRP (CME national index) — not a quote, not your local cash; basis varies.
+        LRP is insurance bought through an RMA agent in set windows at daily-changing premiums; your agent&nbsp;/&nbsp;RMA sets the actual price.
+      </p>
+    </div>
+  )
+}
+
+export default function HerdEstimatePanel({ estimate, trend, outlook }: { estimate: HerdEstimate; trend: TrendData | null; outlook: OutlookData | null }) {
   const [view, setView] = useState<'now' | 'trend' | 'outlook'>('now')
   const priced = estimate.lots_priced > 0
 
@@ -223,7 +309,7 @@ export default function HerdEstimatePanel({ estimate, trend }: { estimate: HerdE
         </div>
       )}
       {view === 'trend' && <TrendPanel trend={trend} />}
-      {view === 'outlook' && <Stub line="Price protection for each lot (USDA LRP) lands here soon." />}
+      {view === 'outlook' && <OutlookPanel outlook={outlook} />}
     </section>
   )
 }
