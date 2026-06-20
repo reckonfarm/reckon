@@ -11,6 +11,8 @@ import { getOperationProfile } from '@/lib/operation-profile-service'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
 import { buildTrend, type TrendData, type HerdHistoryRow, type PriceHistoryRow } from '@/lib/trend'
+import { getLrpMatrix } from '@/lib/lrp-service'
+import { buildOutlook, type OutlookData } from '@/lib/outlook'
 import type { Lot } from '@/lib/herd'
 
 // Private, operation-scoped herd page. Auth-gated like /profile. Shows the HerdEstimate
@@ -30,6 +32,7 @@ export default async function HerdPage() {
 
   let estimate: HerdEstimate | null = null
   let trend: TrendData | null = null
+  let outlook: OutlookData | null = null
   let homeCountyMissing = false
   if (lots.length > 0) {
     const { data: prof } = await createServiceClient()
@@ -69,6 +72,12 @@ export default async function HerdPage() {
       }
 
       trend = buildTrend({ resolved, estimate, lots, herdHistory, priceHistory })
+
+      // Outlook (additive — degrade honestly; never block estimate/trend). Feeder LRP coverage
+      // price is the national CME index, so the MT seed carries the national floor (state-
+      // agnostic for feeder). getLrpMatrix never throws; buildOutlook is pure.
+      const matrix = await getLrpMatrix('MT')
+      outlook = buildOutlook({ lots, matrix })
     } else {
       homeCountyMissing = true
     }
@@ -86,7 +95,7 @@ export default async function HerdPage() {
         {/* HerdEstimate (additive — the capture form below is unchanged) */}
         {estimate && (
           <div className="mt-8">
-            <HerdEstimatePanel estimate={estimate} trend={trend} />
+            <HerdEstimatePanel estimate={estimate} trend={trend} outlook={outlook} />
           </div>
         )}
 
