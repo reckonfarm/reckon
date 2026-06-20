@@ -121,11 +121,12 @@ function buildLadder(snapshot: unknown): LrpLadderRung[] {
   for (const raw of rows as RawRow[]) {
     if (!raw || typeof raw !== 'object') continue
 
-    // Headline basis only — 100% coverage, price-adjustment factor 1.00.
+    // 100% coverage only. We do NOT filter price_adj_factor — it's a per-TYPE property, not a
+    // basis criterion; filtering 1.00 empties the ladder for non-base types (e.g. Heifers
+    // Weight 2, adj 0.90). Steers Weight 2 is adj 1.00 throughout, so the dashboard ladder
+    // (pinned to Steers Weight 2) is byte-identical with or without this filter.
     const level = finiteNum(raw.coverage_level)
-    const adj   = finiteNum(raw.price_adj_factor)
     if (level === null || Math.abs(level - 1.0) > 1e-6) continue
-    if (adj === null || Math.abs(adj - 1.0) > 1e-6) continue
 
     const price = finiteNum(raw.coverage_price)
     const len   = finiteNum(raw.endorsement_length_weeks)
