@@ -199,9 +199,9 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
                 <span className="px-3 py-1 text-forest-green/50">Outlook</span>
               </div>
               <p className="mt-3 max-w-md font-dm-sans text-sm leading-relaxed text-muted/70">
-                <span className="font-medium text-ink">Now</span> values your herd at this week&rsquo;s nearest
-                auction. <span className="font-medium text-ink">Trend</span> tracks week-over-week.{' '}
-                <span className="font-medium text-ink">Outlook</span> shows an LRP price floor per lot.
+                <span className="font-medium text-ink">Now</span>{' '}values your herd at this week&rsquo;s nearest auction.{' '}
+                <span className="font-medium text-ink">Trend</span>{' '}tracks week-over-week.{' '}
+                <span className="font-medium text-ink">Outlook</span>{' '}shows an LRP price floor per lot.
               </p>
 
               <p className="mt-4 font-dm-sans text-xs leading-relaxed text-muted/55">
