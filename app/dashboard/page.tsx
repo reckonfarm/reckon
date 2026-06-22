@@ -41,6 +41,11 @@ import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import MarketsNews from '@/app/components/MarketsNews'
+import { createClient } from '@/lib/supabase-server'
+import { getHomeCountyFips } from '@/lib/concierge-service'
+import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
+import HerdEstimatePanel from '@/app/herd/HerdEstimatePanel'
+import type { Lot } from '@/lib/herd'
 
 export const dynamic = 'force-dynamic'
 
@@ -326,10 +331,34 @@ export default async function DashboardPage({
   // profile or a crops jsonb that isn't a clean string array → null → show all county/
   // state deadlines. Fast local queries, so a direct await (no Suspense) is fine.
   let deadlineResult: UpcomingDeadlinesResult = { status: 'none' }
+  // Operation zone (Block 2, Slice 1) — the herd-value anchor for a signed-in user with a
+  // herd. Additive: gated on the SAME getOperationProfile() result the deadline read already
+  // uses (NO new getUser/auth call). userId comes from the profile row; homeFips via the
+  // existing service-role home-county helper; the user-scoped SSR client is created only so
+  // the herd_estimate_history read inside getHerdAnchor stays RLS-scoped to the owner. Anon /
+  // no-herd / no-home-county all leave herdAnchor null → nothing renders, and any failure
+  // degrades to null so the public county view below never blocks.
+  let herdAnchor: HerdAnchor | null = null
   if (selectedCounty) {
     const profileResult = await getOperationProfile()
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
     deadlineResult = await getUpcomingDeadlines(selectedCounty.fips, crops)
+
+    if (profileResult.status === 'ok') {
+      const herd = profileResult.profile.herd as { lots?: Lot[] } | null
+      const lots = Array.isArray(herd?.lots) ? herd!.lots : []
+      if (lots.length > 0) {
+        try {
+          const homeFips = await getHomeCountyFips(profileResult.profile.user_id)
+          if (homeFips) {
+            const supabase = await createClient()
+            herdAnchor = await getHerdAnchor({ lots, homeFips, supabase })
+          }
+        } catch {
+          herdAnchor = null
+        }
+      }
+    }
   }
 
   // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
@@ -642,6 +671,17 @@ export default async function DashboardPage({
         {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
+
+            {/* Operation zone (Block 2, Slice 1) — herd-value anchor, on top for a signed-in
+                user with a herd. Additive: renders nothing for anon / no-herd / no-home-county
+                (herdAnchor null), leaving the public county view below byte-for-byte unchanged. */}
+            {herdAnchor && (
+              <HerdEstimatePanel
+                estimate={herdAnchor.estimate}
+                trend={herdAnchor.trend}
+                outlook={herdAnchor.outlook}
+              />
+            )}
 
             {/* County heading + actions — shared across both views, above the toggle */}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
