@@ -169,25 +169,69 @@ Dad sources it from fertilizer/chemical dealers and feedlot contacts in the Corn
 LARGELY from watching weather: where drought is, where good moisture is, where good crop
 numbers are — rainfall indexes for the areas where the feedlots are.
 
-**Built from existing/cheap data, composed into ONE read:**
-- **Corn Belt moisture/drought** — our existing precip + USDM layer, *re-aimed at the feeding
-  states* (not home county).
-- **Corn crop condition** — USDA NASS good/excellent corn ratings (free, same rail) — the
-  direct feed-cost proxy.
-- **Corn futures (ZC)** — the board, confirming feed cheap or dear in price terms.
+### THREE LEGS, sequenced by lead time (this sequence IS the read)
+The chain decomposes into three data legs with different lead times. Don't pick one — show
+all three, ordered leading → confirming → priced. When all three agree, high-confidence
+lean; when they diverge, honest "mixed." (This RESOLVES the old open question of "rainfall
+vs NASS condition": dad reads rainfall as the leading edge, condition confirms it a week or
+two later, the board says what's already priced in. Sequence, don't choose.)
 
-Composed read: "Corn Belt wet, crop rated strong, corn soft → feed cheap → feedlots must buy
-→ demand for your calves leans up."
+- **Leg 1 — Moisture (LEADING). We already own this. Zero new acquisition.** Our USDM drought
+  layer + PRISM/ACIS precip-anomaly data are already national → re-aim the bounding box at the
+  feeding states. "Is the Corn Belt making rain right now," the thing dad reads first. The
+  east/west Corn Belt split is the signal (western CB dry vs eastern CB wet shows up directly
+  in the precip layer).
+- **Leg 2 — Crop condition (CONFIRMING). Free, and it's a MAP LAYER.** USDA NASS corn
+  good+excellent %, via the **Quick Stats API** (free key, JSON — the SAME rail as the
+  heifer-cycle data). Released ~4:00 PM the first business day of each week, **April–November
+  only** (seasonal). Headline = good+excellent % with week-over-week and vs-last-year deltas
+  (state-level: IA, IL, NE, etc.). PLUS a geospatial option: NASS **Crop Progress & Condition
+  Gridded Layers** — 9km synthetic county-level corn condition, weekly geoTIFF, with a clean
+  numeric index `Condition = (5·E + 4·G + 3·F + 2·P + VP)/100` (range 1–5). This is a
+  CHOROPLETH — it drops into our existing `layers.ts` map registry exactly like a drought
+  layer, aimed at the Corn Belt.
+- **Leg 3 — Price (PRICED-IN). Free, on our existing cron rail.** Corn futures (ZC) daily
+  settles — CME delayed settlement pages or Yahoo `ZC=F`. Fetch via GitHub Actions →
+  Supabase, the EXACT pattern the news cron already uses. Daily settle is enough; no
+  intraday, no paid tier.
 
-**Why it's a moat, not a feature:** every competitor shows a drought map. None *interpret*
-Corn Belt moisture as feeder demand and tell a Montana rancher "your calves just got more
-valuable because Iowa's making cheap corn." That interpretation — our own data, re-aimed and
-read through dad's logic — IS the trusted-interpreter layer.
+### Bonus tie-in to our weather data: NASA soil moisture, gridded
+**Crop-CASMA** serves NASA SMAP soil-moisture + MODIS vegetation as gridded layers for US
+corn/soybeans — the literal made-visible bridge between "rain" (Leg 1) and "crop" (Leg 2).
+Another raster layer next to our drought layer, same map engine. (Fast-follow, not v1.)
 
-**OPEN (confirm with dad — §15):** does he watch NASS corn crop condition directly, or read
-corn-belt rainfall as the leading indicator with crop rating as confirmation? Which states —
-classic Corn Belt (IA/IL/NE/E.KS) only, or include Southern Plains / Texas Panhandle
-feedyards? Anything else in our data already feeding this read?
+### How to SHOW it (the recommended design — read leads, map is depth)
+NOT a corn dashboard. The same Zillow move as the herd anchor: one interpreted line on top,
+evidence + map as depth.
+- **Lead line (the read):** "Feed's getting cheap in the Corn Belt — that's pulling feeder
+  demand up" / inverse / "mixed." Dad's interpretation, never a number, never a sell/hold.
+- **Evidence chips beneath:** moisture / crop / price — each shows direction + freshness
+  (e.g. "Corn Belt wetter than normal" · "corn 68% G/E, +1 wk / −4 yr" · "Dec corn soft").
+- **Drill-down:** tapping opens the **re-aimed conditions map** — our existing map engine
+  recentered on the Corn Belt, with corn-condition (and later SMAP soil-moisture) as new
+  layers alongside the drought layer. The map is the proof a skeptic (dad) can open and check.
+
+**Why this is the moat in one sentence:** two of the three legs are our existing data
+re-pointed, and the third rides our existing cron — and nobody else interprets Iowa's rain as
+Montana's calf price, because nobody else already has the map to show it.
+
+### Honest degradation for the corn read
+- Leg 2 (NASS) is seasonal (Apr–Nov). Off-season the read leans on moisture + price and SAYS
+  so ("crop condition resumes in April"). Never fake a stale G/E number.
+- Each leg shows its OWN freshness independently.
+- When the three legs diverge, the read says "mixed" — never manufacture false confidence.
+
+### v1 build (Slice 2) vs fast-follow
+- **v1 (own-it-now):** Leg 1 (re-aimed moisture, existing data) + Leg 3 (ZC daily settle via
+  existing cron) → a v1 lead line + two evidence chips. The corn-condition leg can start as
+  the NASS good+excellent *number* (Quick Stats) even before the gridded choropleth layer.
+- **Fast-follow:** NASS gridded corn-condition choropleth layer in the map; Crop-CASMA SMAP
+  soil-moisture layer; richer week-over-week condition deltas.
+
+**OPEN (confirm with dad — §15):** feeding-country scope — classic Corn Belt (IA/IL/NE/E.KS)
+only, or include Southern Plains / Texas Panhandle feedyards? (The leading/confirming/priced
+question is now RESOLVED: sequence all three, don't choose.) Anything else in our data already
+feeding this read?
 
 ---
 
@@ -412,10 +456,10 @@ post-sprint.
 ---
 
 ## 15. Open questions (confirm with dad)
-1. Corn read (§4): NASS crop condition directly, or corn-belt rainfall as leading indicator
-   with crop rating as confirmation?
-2. Feeding-country scope (§4): classic Corn Belt only, or include Southern Plains / Texas
-   Panhandle feedyards?
+1. Corn read (§4): RESOLVED — sequence all three legs leading (moisture) → confirming (NASS
+   condition) → priced (ZC); don't choose between rainfall and condition.
+2. Feeding-country scope (§4): classic Corn Belt only (IA/IL/NE/E.KS), or include Southern
+   Plains / Texas Panhandle feedyards? (Sets the map re-aim bounding box + the NASS states.)
 3. Anything else in our existing data already feeding the feedlot-demand read?
 4. Sequencing confirmed decision-forward (read leads, value foundation) — re-confirm once he
    sees it live.
