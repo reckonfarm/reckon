@@ -228,10 +228,19 @@ Montana's calf price, because nobody else already has the map to show it.
 - **Fast-follow:** NASS gridded corn-condition choropleth layer in the map; Crop-CASMA SMAP
   soil-moisture layer; richer week-over-week condition deltas.
 
-**OPEN (confirm with dad — §15):** feeding-country scope — classic Corn Belt (IA/IL/NE/E.KS)
-only, or include Southern Plains / Texas Panhandle feedyards? (The leading/confirming/priced
-question is now RESOLVED: sequence all three, don't choose.) Anything else in our data already
-feeding this read?
+### Feeding-country scope (RESOLVED by dad — the re-aim footprint)
+Wider than the classic Corn Belt. Dad's read covers **wherever the feeders are**: Northern
+Plains + Corn Belt + Colorado + into the Southern Plains. Concretely the re-aim bounding
+box / NASS state list:
+- **Northern Plains:** MT, ND, SD, NE, WY
+- **Corn Belt:** IA, IL, IN, MN, MO, OH, KS
+- **Colorado:** CO
+- **Southern Plains (feedyard country):** OK, TX (Panhandle), and into eastern NM as relevant
+This is the demand-region footprint for the moisture re-aim (the USDM/precip bounding box) AND
+the NASS corn-condition state list. The read isn't "is Iowa wet" — it's "across feeder
+country, where is feed cheap." Note many of these states overlap the home-county/LFP geography
+(MT/ND/SD/NE/WY) — same data, different LENS: home county → money owed; feeding region →
+feeder demand (§5). Do not conflate the two reads even though the map data overlaps.
 
 ---
 
@@ -458,8 +467,9 @@ post-sprint.
 ## 15. Open questions (confirm with dad)
 1. Corn read (§4): RESOLVED — sequence all three legs leading (moisture) → confirming (NASS
    condition) → priced (ZC); don't choose between rainfall and condition.
-2. Feeding-country scope (§4): classic Corn Belt only (IA/IL/NE/E.KS), or include Southern
-   Plains / Texas Panhandle feedyards? (Sets the map re-aim bounding box + the NASS states.)
+2. Feeding-country scope (§4): RESOLVED — wherever the feeders are: Northern Plains (MT/ND/
+   SD/NE/WY) + Corn Belt (IA/IL/IN/MN/MO/OH/KS) + CO + Southern Plains (OK/TX Panhandle/E.NM).
+   This is the re-aim bounding box + the NASS state list.
 3. Anything else in our existing data already feeding the feedlot-demand read?
 4. Sequencing confirmed decision-forward (read leads, value foundation) — re-confirm once he
    sees it live.
