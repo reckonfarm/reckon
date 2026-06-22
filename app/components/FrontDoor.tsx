@@ -5,9 +5,7 @@ import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import SiteFooter from '@/app/components/SiteFooter'
 import CountySearch from '@/app/components/CountySearch'
-import HomeDroughtMap from '@/app/components/HomeDroughtMap'
 import MarketsComingSoon from '@/app/components/MarketsComingSoon'
-import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
@@ -218,12 +216,6 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
                 Sign up to value your herd →
               </Link>
             </Card>
-          </section>
-
-          {/* ── Quiet supporting content ─────────────────────────────────────────────── */}
-          <section className="mt-20">
-            <Heading level={2} className="mb-3">Drought conditions</Heading>
-            <HomeDroughtMap />
           </section>
 
           <div className="mt-16">
