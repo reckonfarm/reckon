@@ -45,6 +45,7 @@ import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
 import HerdAnchorLoader from './components/HerdAnchorLoader'
+import MarketReadShell from './components/MarketReadShell'
 import type { Lot } from '@/lib/herd'
 
 export const dynamic = 'force-dynamic'
@@ -672,9 +673,13 @@ export default async function DashboardPage({
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
 
-            {/* Operation zone (Block 2, Slice 1) — herd-value anchor, on top for a signed-in
-                user with a herd. Additive: renders nothing for anon / no-herd / no-home-county
-                (herdAnchor null), leaving the public county view below byte-for-byte unchanged. */}
+            {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
+                Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
+                SAME condition (signed-in user with a herd) so the two move together; anon /
+                no-herd ?fips= sees neither and the public county view below is unchanged. */}
+            {herdAnchor && <MarketReadShell />}
+
+            {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
             {herdAnchor && (
               <HerdAnchorLoader
                 estimate={herdAnchor.estimate}
