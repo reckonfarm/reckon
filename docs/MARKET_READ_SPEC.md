@@ -329,10 +329,50 @@ post-sprint.
 - **QA harness** — DONE (8/8; `/.qa/` seed-auth + screenshots, localhost storageState).
 - **Spec** — this file.
 - **Block 1 (homepage beacon)** — DONE on main.
-- **Block 2 — Operation Home restructure** (rain-sprint centerpiece, middleware-adjacent):
-  decision-forward money sequence (§1) — Market Read lead surface on top, herd value as its
-  foundation, auth-checked layer on the public dashboard. Preserves public-access +
-  middleware-redirect contract. Own recon; full smoke test after every commit.
+- **Block 2 — Operation Home restructure** (rain-sprint centerpiece, middleware-adjacent).
+
+  **Current dashboard IA (from live walkthrough of `/dashboard?fips=X`, public/anon):**
+  Fixed top — county selector → county heading + Share / "Sign in to watch" → LFP status
+  card → Insurance-deadlines card. Then a **breadth toggle, News-default**:
+  • News (`view=news`): Cattle Country feed, All/Prices/Conditions/Herd filters, tiered local.
+  • Weather (`view=drought`): Latest Reading + 3-yr drought ribbon → Rainfall-vs-Normal + YTD
+    + honest station caveat → 7-day forecast carousel → map with 6 layers (Radar / Drought
+    Monitor / Observed Rain / Forecast Rain / Rain Outlook / Drought Forecast).
+  • Hay (`view=hay`): hay-score choropleth (Hay score / Drought Monitor) + marketplace.
+  • Markets (`view=markets`): **LRP only today** — $/cwt floor, national-index caveat,
+    sale-month endorsement-window selector. This is the slot the Market Read mounts into.
+  The public dashboard IS the location zone already. No operation zone (herd value) exists
+  on it yet — "Sign in to watch" is the un-built hook for exactly that.
+
+  **The Zillow principle (the genius path, not a rewrite).** Zillow led with the Zestimate,
+  then layered "is it a good time to sell" → comps → market temp ON TOP, over years, on one
+  decision-sequenced page — never a "news view vs value view" toggle. Dad is the same: he
+  opens it for the *call*, value is what the call is about. So: **the toggle survives as a
+  MECHANIC (depth inside cards: Now/Trend/Outlook, the 6 map layers, news filters) and dies
+  as an ARCHITECTURE (four peer destinations, news-default).** Breadth-toggle dissolves into
+  the money sequence; depth-toggles stay everywhere. Do NOT bury the decision layer inside
+  the Markets tab (buries dad behind tab 4 while News lands first). Do NOT big-bang rewrite
+  the highest-blast-radius surface. Layer onto the working location zone the way Zillow
+  layered onto a working Zestimate.
+
+  **Three additive slices (commit order — each ships and earns its keep alone):**
+  - **Slice 1 — mount the operation zone on top (keystone).** Signed-in user with a herd:
+    render the herd-value anchor ABOVE the county results (reuse estimateHerd/buildTrend/
+    buildOutlook + HerdEstimatePanel — already built). Auth-checked layer above the existing
+    public path; do NOT touch middleware or the anonymous `?fips=` flow. This is the
+    Zestimate moment — dashboard becomes "your operation, valued." Lean into "watch this
+    herd" (= Zillow "track this home").
+  - **Slice 2 — Market Read above the value.** v1 = cycle position (NASS) + feedlot-demand
+    corn read (§4, existing drought data re-aimed at feeding states) + curated market-mover
+    news, assembled as dad's risk lean (§3 — a read, never a sell/hold output). The
+    interpretation layer on TOP of the number. The moat.
+  - **Slice 3 — dissolve the breadth toggle into the sequence.** Location zone re-sequences:
+    conditions = one card (6 layers as depth); the feedlot-demand half of weather pulls UP
+    into the Market Read where it belongs; news drops to dead last; Markets/LRP folds into
+    the value's Outlook. Four tabs → one money-sequenced scroll.
+
+  Each slice: own recon, one change per commit, full smoke test, Vercel preview + proof.
+  Preserves public-access + middleware-redirect contract throughout.
 - **Block 3 — Market Read v1 (own-it only)**: the §4 corn/feedlot-demand chain (precip/USDM
   re-aimed at feeding states + corn crop condition + corn board) + curated market-mover news,
   assembled as the first Market Read section. Zero new data acquisition for the core.
