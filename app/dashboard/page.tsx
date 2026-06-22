@@ -46,6 +46,7 @@ import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
 import HerdAnchorLoader from './components/HerdAnchorLoader'
 import MarketReadShell from './components/MarketReadShell'
+import { getLatestCornSettle, type CornResult } from '@/lib/corn-service'
 import type { Lot } from '@/lib/herd'
 
 export const dynamic = 'force-dynamic'
@@ -362,6 +363,13 @@ export default async function DashboardPage({
     }
   }
 
+  // Corn settle for the Market Read Price chip (§4 Leg 3) — fetched ONLY when the Market Read
+  // will actually render (signed-in user with a herd), so the anon / no-herd ?fips= path adds
+  // no query. getLatestCornSettle is a fast service-role SELECT and never throws — none /
+  // data_unavailable keep the chip's honest "warming up" / "temporarily unavailable" state.
+  let corn: CornResult = { status: 'none' }
+  if (herdAnchor) corn = await getLatestCornSettle()
+
   // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
   // for it. getLatestLrp is a fast Supabase SELECT (the RMA fetch is the offline seed,
   // not a request-path call), so a direct await is fine — no Suspense needed. 'MT' is the
@@ -677,7 +685,7 @@ export default async function DashboardPage({
                 Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
                 SAME condition (signed-in user with a herd) so the two move together; anon /
                 no-herd ?fips= sees neither and the public county view below is unchanged. */}
-            {herdAnchor && <MarketReadShell />}
+            {herdAnchor && <MarketReadShell corn={corn} />}
 
             {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
             {herdAnchor && (
