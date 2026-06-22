@@ -6,7 +6,6 @@ import SiteHeader from '@/app/components/SiteHeader'
 import SiteFooter from '@/app/components/SiteFooter'
 import CountySearch from '@/app/components/CountySearch'
 import HomeDroughtMap from '@/app/components/HomeDroughtMap'
-import MarketsNews from '@/app/components/MarketsNews'
 import MarketsComingSoon from '@/app/components/MarketsComingSoon'
 import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
@@ -103,6 +102,10 @@ const TIER_DOT = (tier: number) =>
   tier === 4 ? '#7B2D00' : tier === 3 ? '#C2410C' : tier === 2 ? '#D97706' : tier === 1 ? '#92400E' : '#78716C'
 
 export default async function FrontDoor({ fips }: { fips?: string | null }) {
+  // `fips` is retained in the signature/callers intentionally — Block 2 rebuilds this page and
+  // decides its fate. No homepage consumer remains after the News section was removed (Block 1).
+  void fips
+
   // Sign-in only drives the demand tiles; never throws, never redirects.
   let signedIn = false
   try {
@@ -221,10 +224,6 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
           <section className="mt-20">
             <Heading level={2} className="mb-3">Drought conditions</Heading>
             <HomeDroughtMap />
-          </section>
-
-          <section className="mt-16">
-            <MarketsNews fips={fips} />
           </section>
 
           <div className="mt-16">
