@@ -1,11 +1,9 @@
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase'
-import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import SiteFooter from '@/app/components/SiteFooter'
 import CountySearch from '@/app/components/CountySearch'
-import MarketsComingSoon from '@/app/components/MarketsComingSoon'
 import { Card } from '@/app/components/ui/Card'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
@@ -103,15 +101,6 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
   // `fips` is retained in the signature/callers intentionally — Block 2 rebuilds this page and
   // decides its fate. No homepage consumer remains after the News section was removed (Block 1).
   void fips
-
-  // Sign-in only drives the demand tiles; never throws, never redirects.
-  let signedIn = false
-  try {
-    const supabase = await createClient()
-    signedIn = Boolean((await supabase.auth.getUser()).data.user)
-  } catch {
-    signedIn = false
-  }
 
   const headersList = await headers()
   const visitorRegion = headersList.get('x-vercel-ip-country-region') ?? ''
@@ -217,10 +206,6 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
               </Link>
             </Card>
           </section>
-
-          <div className="mt-16">
-            <MarketsComingSoon signedIn={signedIn} />
-          </div>
         </div>
       </main>
       <SiteFooter />
