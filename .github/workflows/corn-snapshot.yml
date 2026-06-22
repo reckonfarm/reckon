@@ -1,0 +1,46 @@
+name: Corn price snapshot
+
+# Pulls the front-month CBOT corn-futures settle (Yahoo Finance v8 chart, symbol ZC=F) and
+# upserts one row into Supabase (public.corn_price_snapshots, migration 027) — the Price leg
+# of the dashboard's Market Read (§4 Leg 3). The dashboard only READS the latest settle.
+#
+# Runs on GitHub Actions (NOT launchd): unlike RMA — which blocks Azure runner IPs and forced
+# the LRP cron onto a Mac launchd agent — Yahoo's public chart API serves CI egress fine (same
+# as the news / mars / gridmet / prism crons). If Yahoo ever rate-limits CI, fall back to a
+# launchd plist (deploy/com.dryline.lrp-snapshot.plist is the precedent).
+#
+# Idempotent: re-running a day upserts on (symbol, settle_date), never duplicates.
+
+on:
+  schedule:
+    # Weekdays at 22:00 UTC (~16:00 CT / 17:00 ET) — AFTER the CBOT corn settle posts
+    # (pit close 13:20 CT; final settlements post mid-afternoon CT). PK tunes this hour:
+    # push it later (or to next-morning) if a run ever catches a not-yet-final settle.
+    # GitHub cron is UTC (no DST shift). A scheduled workflow only fires on the DEFAULT
+    # branch — this does nothing until merged to main (intended; seed manually until then).
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately / on-demand refresh)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: corn-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + parse + upsert corn settle
+        env:
+          # Script reads SUPABASE_URL || NEXT_PUBLIC_SUPABASE_URL; CI supplies SUPABASE_URL
+          # (the same secret news / mars use). SERVICE_ROLE_KEY for the upsert.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/corn-snapshot.ts
