@@ -44,7 +44,7 @@ import MarketsNews from '@/app/components/MarketsNews'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
-import HerdEstimatePanel from '@/app/herd/HerdEstimatePanel'
+import HerdAnchorLoader from './components/HerdAnchorLoader'
 import type { Lot } from '@/lib/herd'
 
 export const dynamic = 'force-dynamic'
@@ -676,7 +676,7 @@ export default async function DashboardPage({
                 user with a herd. Additive: renders nothing for anon / no-herd / no-home-county
                 (herdAnchor null), leaving the public county view below byte-for-byte unchanged. */}
             {herdAnchor && (
-              <HerdEstimatePanel
+              <HerdAnchorLoader
                 estimate={herdAnchor.estimate}
                 trend={herdAnchor.trend}
                 outlook={herdAnchor.outlook}
