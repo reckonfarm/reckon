@@ -1,0 +1,49 @@
+name: Cattle cycle snapshot
+
+# Pulls US heifers-&-heifer-calves on feed from USDA NASS Quick Stats, computes the YoY %
+# change vs the same quarter a year prior, and upserts one quarterly row into Supabase
+# (public.cattle_cycle_snapshots, migration 030) — the cattle-cycle "master switch" (§2). The
+# dashboard only READS the latest row.
+#
+# Runs on GitHub Actions: NASS Quick Stats serves CI egress fine. Requires the FREE NASS API
+# key (secret NASS_QUICKSTATS_API_KEY) — the same key the crop snapshot uses.
+#
+# CADENCE — the heifer split posts QUARTERLY (Jan/Apr/Jul/Oct 1, released ~6–8 weeks later),
+# NOT monthly. The upsert is idempotent on report_point, so a monthly schedule is harmless —
+# it just re-writes the same latest quarter until a new one posts, catching the new quarter
+# within weeks. PK tunes the day/hour.
+
+on:
+  schedule:
+    # 1st of each month at 22:00 UTC — idempotent re-write of the latest quarter; catches the
+    # new Jan/Apr/Jul/Oct release within weeks of its ~6–8-week-lagged posting. GitHub cron is
+    # UTC (no DST shift). A scheduled workflow only fires on the DEFAULT branch — this does
+    # nothing until merged to main (intended; seed manually via workflow_dispatch until then).
+    - cron: '0 22 1 * *'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately / on-demand refresh)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: cattle-cycle-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + compute YoY + upsert cattle cycle
+        env:
+          # Script reads SUPABASE_URL || NEXT_PUBLIC_SUPABASE_URL; CI supplies SUPABASE_URL
+          # (the same secret news / mars / corn / moisture / crop use). SERVICE_ROLE_KEY for
+          # the upsert. NASS_QUICKSTATS_API_KEY is the free Quick Stats key (shared with crop).
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NASS_QUICKSTATS_API_KEY: ${{ secrets.NASS_QUICKSTATS_API_KEY }}
+        run: npx tsx scripts/cattle-cycle-snapshot.ts
