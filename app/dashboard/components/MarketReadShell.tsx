@@ -3,6 +3,7 @@
 import { Card } from '@/app/components/ui/Card'
 import type { CornResult } from '@/lib/corn-service'
 import type { MoistureResult } from '@/lib/moisture-service'
+import type { CropResult } from '@/lib/crop-service'
 
 // Market Read — the interpretation layer that LEADS the operation zone: it sits ABOVE the
 // herd value (read first, value beneath). This is the §4 feedlot-demand corn read, and per
@@ -72,18 +73,6 @@ function composeLead(corn: CornResult, moisture: MoistureResult): { lead: string
 }
 
 // ─── Chips ─────────────────────────────────────────────────────────────────────────
-// A leg whose data isn't wired yet (Crop): honest "warming up", never fake data.
-function PendingChip({ label, hint }: { label: string; hint: string }) {
-  return (
-    <div className={CHIP}>
-      <p className={CHIP_LABEL}>{label}</p>
-      <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-      <p className={`${CHIP_FOOT} text-muted/55`}>warming up</p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{hint}</p>
-    </div>
-  )
-}
-
 // The Moisture leg — live USDM footprint D1+. COLOR ENCODES MEANING: wetter = good (text-up),
 // drier = bad (text-down); the arrow tracks the raw number (▼ when drought fell). Never 0%.
 function MoistureChip({ moisture }: { moisture: MoistureResult }) {
@@ -116,6 +105,54 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
         )}
       </p>
       <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : 'corn belt · in drought D1+'}</p>
+    </div>
+  )
+}
+
+// The Crop leg — live NASS corn good+excellent %. COLOR ENCODES MEANING (consistent green =
+// supportive-for-calves): a BETTER crop (rising G/E) → more/cheaper feed → text-up ▲; WORSE →
+// text-down ▼. Here arrow AND color agree (unlike Moisture). Distinctive 'off_season' state:
+// out of NASS's Apr–Nov window we show "resumes in spring", never a frozen number / 0%.
+function CropChip({ crop }: { crop: CropResult }) {
+  if (crop.status === 'off_season') {
+    return (
+      <div className={CHIP}>
+        <p className={CHIP_LABEL}>Crop</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-muted/55`}>resumes in spring</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>corn condition</p>
+      </div>
+    )
+  }
+  if (crop.status !== 'ok') {
+    const note = crop.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
+    return (
+      <div className={CHIP}>
+        <p className={CHIP_LABEL}>Crop</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>corn condition</p>
+      </div>
+    )
+  }
+
+  const { gePct, changePts, direction, weekEnding, stale } = crop
+  const pts = changePts != null ? Math.abs(changePts) : null
+  return (
+    <div className={CHIP}>
+      <p className={CHIP_LABEL}>Crop</p>
+      <p className={CHIP_VALUE}>{Math.round(gePct)}%</p>
+      <p className={CHIP_FOOT}>
+        {direction === 'flat' || pts == null ? (
+          <span className="text-muted/60">unchanged</span>
+        ) : (
+          // better ⇒ good ⇒ text-up ▲ (rising G/E); worse ⇒ bad ⇒ text-down ▼. Arrow + color agree.
+          <span className={`font-semibold tabular-nums ${direction === 'better' ? 'text-up' : 'text-down'}`}>
+            {direction === 'better' ? '▲' : '▼'} {pts.toFixed(1)} pts {direction}
+          </span>
+        )}
+      </p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'good+excellent'}</p>
     </div>
   )
 }
@@ -156,7 +193,8 @@ function PriceChip({ corn }: { corn: CornResult }) {
   )
 }
 
-export default function MarketReadShell({ corn, moisture }: { corn: CornResult; moisture: MoistureResult }) {
+export default function MarketReadShell({ corn, moisture, crop }: { corn: CornResult; moisture: MoistureResult; crop: CropResult }) {
+  // composeLead stays TWO-LEG (moisture + price); Crop is chip-only evidence for v1.
   const { lead, composed } = composeLead(corn, moisture)
   return (
     <Card shadow="sm" className="p-6 sm:p-8">
@@ -175,7 +213,7 @@ export default function MarketReadShell({ corn, moisture }: { corn: CornResult; 
       {/* Evidence legs, in read order. Moisture + Price live (Slice 2c / 2b); Crop is a later leg. */}
       <div className="mt-5 grid grid-cols-3 gap-3">
         <MoistureChip moisture={moisture} />
-        <PendingChip label="Crop" hint="corn condition" />
+        <CropChip crop={crop} />
         <PriceChip corn={corn} />
       </div>
 
