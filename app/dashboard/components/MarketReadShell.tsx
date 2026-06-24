@@ -91,7 +91,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
     const note = moisture.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Moisture</p>
+        <p className={CHIP_LABEL}>Feed country</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
         <p className={`${CHIP_FOOT} text-muted/40`}>feeding-region rain vs normal</p>
@@ -103,7 +103,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
   const pts = changePts != null ? Math.abs(changePts) : null
   return (
     <div className={CHIP}>
-      <p className={CHIP_LABEL}>Moisture</p>
+      <p className={CHIP_LABEL}>Feed country</p>
       <p className={CHIP_VALUE}>{Math.round(droughtPct)}%</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || pts == null ? (
@@ -115,7 +115,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
           </span>
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : 'in drought · D1+'}</p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : 'corn belt · in drought D1+'}</p>
     </div>
   )
 }
