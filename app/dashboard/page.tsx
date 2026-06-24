@@ -49,6 +49,7 @@ import MarketReadShell from './components/MarketReadShell'
 import { getLatestCornSettle, type CornResult } from '@/lib/corn-service'
 import { getFeedingRegionMoisture, type MoistureResult } from '@/lib/moisture-service'
 import { getLatestCropCondition, type CropResult } from '@/lib/crop-service'
+import { getCattleCycle, type CycleResult } from '@/lib/cattle-cycle-service'
 import type { Lot } from '@/lib/herd'
 
 export const dynamic = 'force-dynamic'
@@ -372,15 +373,18 @@ export default async function DashboardPage({
   let corn: CornResult = { status: 'none' }
   let moisture: MoistureResult = { status: 'none' }
   let crop: CropResult = { status: 'none' }
+  let cycle: CycleResult = { status: 'none' }
   if (herdAnchor) {
-    const [cornRes, moistureRes, cropRes] = await Promise.all([
+    const [cornRes, moistureRes, cropRes, cycleRes] = await Promise.all([
       getLatestCornSettle(),
       getFeedingRegionMoisture(),
       getLatestCropCondition(),
+      getCattleCycle(),
     ])
     corn = cornRes
     moisture = moistureRes
     crop = cropRes
+    cycle = cycleRes
   }
 
   // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
@@ -698,7 +702,7 @@ export default async function DashboardPage({
                 Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
                 SAME condition (signed-in user with a herd) so the two move together; anon /
                 no-herd ?fips= sees neither and the public county view below is unchanged. */}
-            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} />}
+            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
 
             {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
             {herdAnchor && (
