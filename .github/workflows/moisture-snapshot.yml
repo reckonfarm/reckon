@@ -1,0 +1,45 @@
+name: Moisture snapshot
+
+# Pulls the U.S. Drought Monitor categorical area percentages for the §4 cattle-FEEDING
+# footprint in ONE multi-state call, area-weights D1+ by state land area into a single
+# footprint figure, and upserts one weekly row into Supabase (public.feeding_region_moisture,
+# migration 028) — the Moisture leg of the dashboard's Market Read (§4 Leg 1). The dashboard
+# only READS the latest row.
+#
+# Runs on GitHub Actions: USDM serves CI egress fine (it's already called from Vercel today).
+#
+# WEEKLY cadence — USDM releases a new map every Thursday (~8:30 AM ET; mapDate is the prior
+# Tuesday). Idempotent: re-running a week upserts on map_date, never duplicates.
+
+on:
+  schedule:
+    # Thursdays at 18:00 UTC (~13:00 CT / 14:00 ET) — AFTER the weekly USDM release.
+    # PK tunes the hour if a run ever catches a not-yet-posted map. GitHub cron is UTC (no
+    # DST shift). A scheduled workflow only fires on the DEFAULT branch — this does nothing
+    # until merged to main (intended; seed manually via workflow_dispatch until then).
+    - cron: '0 18 * * 4'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately / on-demand refresh)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: moisture-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + area-weight + upsert footprint moisture
+        env:
+          # Script reads SUPABASE_URL || NEXT_PUBLIC_SUPABASE_URL; CI supplies SUPABASE_URL
+          # (the same secret news / mars / corn use). SERVICE_ROLE_KEY for the upsert.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/moisture-snapshot.ts
