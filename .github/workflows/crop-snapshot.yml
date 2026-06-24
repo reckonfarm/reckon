@@ -1,0 +1,48 @@
+name: Crop condition snapshot
+
+# Pulls US corn CONDITION (% good + % excellent) from USDA NASS Quick Stats, sums G/E for the
+# latest reported week, and upserts one weekly row into Supabase
+# (public.crop_condition_snapshots, migration 029) — the Crop leg of the dashboard's Market
+# Read (§4 Leg 2). The dashboard only READS the latest row.
+#
+# Runs on GitHub Actions: NASS Quick Stats serves CI egress fine. Requires a FREE NASS API key
+# (secret NASS_QUICKSTATS_API_KEY) — get one at quickstats.nass.usda.gov/api.
+#
+# WEEKLY (in season) — NASS Crop Progress releases Mondays ~4pm ET, ~Apr–Nov. Out of season
+# the script lands last November's final week and the READ path surfaces an off-season state.
+# Idempotent: re-running a week upserts on (commodity, geography, week_ending), never dupes.
+
+on:
+  schedule:
+    # Mondays at 22:00 UTC (~17:00 ET / 16:00 CT) — AFTER the NASS Crop Progress release.
+    # PK tunes the hour if a run ever catches a not-yet-posted report. GitHub cron is UTC (no
+    # DST shift). A scheduled workflow only fires on the DEFAULT branch — this does nothing
+    # until merged to main (intended; seed manually via workflow_dispatch until then).
+    - cron: '0 22 * * 1'
+  workflow_dispatch: {}   # manual trigger (used to seed immediately / on-demand refresh)
+
+# Avoid overlapping runs clobbering each other.
+concurrency:
+  group: crop-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + sum G/E + upsert corn condition
+        env:
+          # Script reads SUPABASE_URL || NEXT_PUBLIC_SUPABASE_URL; CI supplies SUPABASE_URL
+          # (the same secret news / mars / corn / moisture use). SERVICE_ROLE_KEY for the
+          # upsert. NASS_QUICKSTATS_API_KEY is the new free Quick Stats key.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NASS_QUICKSTATS_API_KEY: ${{ secrets.NASS_QUICKSTATS_API_KEY }}
+        run: npx tsx scripts/crop-snapshot.ts
