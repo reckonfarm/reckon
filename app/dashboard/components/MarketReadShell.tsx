@@ -4,6 +4,7 @@ import { Card } from '@/app/components/ui/Card'
 import type { CornResult } from '@/lib/corn-service'
 import type { MoistureResult } from '@/lib/moisture-service'
 import type { CropResult } from '@/lib/crop-service'
+import type { CycleResult } from '@/lib/cattle-cycle-service'
 
 // Market Read — the interpretation layer that LEADS the operation zone: it sits ABOVE the
 // herd value (read first, value beneath). This is the §4 feedlot-demand corn read, and per
@@ -157,6 +158,49 @@ function CropChip({ crop }: { crop: CropResult }) {
   )
 }
 
+// The Cattle Cycle leg — live NASS heifers-on-feed YoY (the §2 cycle "master switch"), shown
+// as a phase WORD, not a head count. COLOR ENCODES MEANING: FEWER heifers YoY = herd holding
+// back / rebuilding = tighter future supply = SUPPORTIVE → text-up (green); MORE = still
+// feeding, not retaining = pressure → text-down. Arrow tracks the raw number (▼ when heifers
+// fell); green + word carry the meaning — same inversion as Moisture. Quarterly, so a months-
+// old reading is normal (the service's wide stale window handles that).
+function CycleChip({ cycle }: { cycle: CycleResult }) {
+  if (cycle.status !== 'ok') {
+    const note = cycle.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
+    return (
+      <div className={CHIP}>
+        <p className={CHIP_LABEL}>Cattle cycle</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>heifers on feed</p>
+      </div>
+    )
+  }
+
+  const { yoyPct, direction, reportPoint, stale } = cycle
+  const phase = direction === 'holding_back' ? 'Holding back' : direction === 'still_feeding' ? 'Still feeding' : 'Steady'
+  const abs = yoyPct != null ? Math.abs(yoyPct) : null
+  return (
+    <div className={CHIP}>
+      <p className={CHIP_LABEL}>Cattle cycle</p>
+      <p className="mt-1 font-fraunces text-lg font-semibold leading-tight text-ink">{phase}</p>
+      <p className={CHIP_FOOT}>
+        {abs == null ? (
+          <span className="text-muted/60">no year-ago figure</span>
+        ) : direction === 'steady' ? (
+          <span className="text-muted/60">about even with last year</span>
+        ) : (
+          // holding_back ⇒ supportive ⇒ text-up ▼ (fewer heifers); still_feeding ⇒ text-down ▲.
+          <span className={`font-semibold tabular-nums ${direction === 'holding_back' ? 'text-up' : 'text-down'}`}>
+            {direction === 'holding_back' ? '▼' : '▲'} {abs.toFixed(1)}% {direction === 'holding_back' ? 'fewer' : 'more'} heifers
+          </span>
+        )}
+      </p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>heifers on feed vs a year ago{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
+    </div>
+  )
+}
+
 // The Price leg — live CBOT ZC=F settle. Raw-number direction (up/down), unlike Moisture.
 function PriceChip({ corn }: { corn: CornResult }) {
   if (corn.status !== 'ok') {
@@ -193,8 +237,8 @@ function PriceChip({ corn }: { corn: CornResult }) {
   )
 }
 
-export default function MarketReadShell({ corn, moisture, crop }: { corn: CornResult; moisture: MoistureResult; crop: CropResult }) {
-  // composeLead stays TWO-LEG (moisture + price); Crop is chip-only evidence for v1.
+export default function MarketReadShell({ corn, moisture, crop, cycle }: { corn: CornResult; moisture: MoistureResult; crop: CropResult; cycle: CycleResult }) {
+  // composeLead stays TWO-LEG (moisture + price); Crop and Cycle are chip-only evidence for v1.
   const { lead, composed } = composeLead(corn, moisture)
   return (
     <Card shadow="sm" className="p-6 sm:p-8">
@@ -210,11 +254,13 @@ export default function MarketReadShell({ corn, moisture, crop }: { corn: CornRe
         {!composed && ' Coming online.'}
       </p>
 
-      {/* Evidence legs, in read order. Moisture + Price live (Slice 2c / 2b); Crop is a later leg. */}
-      <div className="mt-5 grid grid-cols-3 gap-3">
+      {/* Evidence legs. Feed signals (Moisture / Crop / Price) + the cattle-cycle master-switch
+          context. Four chips: 2×2 on a phone, one row on sm+ (wraps cleanly at chip width). */}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MoistureChip moisture={moisture} />
         <CropChip crop={crop} />
         <PriceChip corn={corn} />
+        <CycleChip cycle={cycle} />
       </div>
 
       <p className="mt-4 font-dm-sans text-xs leading-relaxed text-muted/55">
