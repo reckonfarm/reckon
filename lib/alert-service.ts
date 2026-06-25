@@ -231,7 +231,7 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
 
     checked++
 
-    if (!elig || elig.maxTier === 0) continue
+    if (!elig || elig.enforcement !== 'officially_eligible') continue
 
     // Dedup: one email per user/county per USDM release date
     const { count } = await db
