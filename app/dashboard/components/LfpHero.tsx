@@ -96,11 +96,12 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
 
   // TRIGGERED / CLIMBING: the real payout schedule. Tiers in effect are forest green; the
   // current tier is marked; tiers not yet in effect are muted. No granular bar (see above).
+  const pending  = eligibility.enforcement === 'pending_obbba'
   const nextTier = maxTier < 6 ? tiers[maxTier] : null  // tiers[] 0-indexed; tiers[maxTier] = tier maxTier+1
   return (
     <div className="space-y-3">
       <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/45">
-        LFP payout schedule
+        {pending ? 'LFP tier ladder (OBBBA — pending FSA)' : 'LFP payout schedule'}
       </p>
       <ol>
         {tiers.map(t => {
@@ -129,7 +130,9 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
         })}
       </ol>
       <p className="font-dm-sans text-sm leading-relaxed text-forest-green/55">
-        Your county has reached Tier {maxTier} — {payments} monthly payment{payments !== 1 ? 's' : ''}. You&apos;re paid at your highest qualifying tier.
+        {pending
+          ? `Your county meets the Tier ${maxTier} threshold under OBBBA's new D2 rule, but FSA hasn't implemented it yet — so it's not officially triggered.`
+          : `Your county has reached Tier ${maxTier} — ${payments} monthly payment${payments !== 1 ? 's' : ''}. You're paid at your highest qualifying tier.`}
         {nextTier
           ? ` Tier ${nextTier.tier} requires ${shortLabel(nextTier.label)} (${nextTier.payments} payment${nextTier.payments !== 1 ? 's' : ''}).`
           : ' This is the highest tier.'}
@@ -148,9 +151,13 @@ function sincePhrase(priorWeek: string, currentWeek: string): string {
   return days <= 8 ? 'since last Thursday' : `since the week of ${fmtAsOf(priorWeek)}`
 }
 
-async function DeltaLine({ fips }: { fips: string }) {
+async function DeltaLine({ fips, official }: { fips: string; official: boolean }) {
   const delta = await getLfpDelta(fips)
   if (!delta) return null   // graceful empty state — render nothing at all
+
+  // No "↑ $X" climb on a non-official county — a money delta would imply a payment that
+  // FSA hasn't recognized yet. Streak / unchanged / tracking_begins are honest in any state.
+  if (!official && delta.kind === 'money') return null
 
   let text: string
   switch (delta.kind) {
@@ -172,11 +179,17 @@ async function DeltaLine({ fips }: { fips: string }) {
 
 export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
   const { maxTier, payments, weeksUntilTier1, currentD2Streak, tiers, dataAsOf } = eligibility
-  const triggered = maxTier >= 1 && payments > 0
+
+  // Three-way FSA-enforcement state. 'pending_obbba' = county meets OBBBA's new D2 threshold
+  // but FSA hasn't loaded it into the 2026 maps, so the hero makes NO dollar / "qualifies" /
+  // "reached" claim (the same principle Commit 3 applied to the banner above). The estimate
+  // stays a TRUE value — we simply don't compute or show it when not officially triggered.
+  const official = eligibility.enforcement === 'officially_eligible'
+  const pending  = eligibility.enforcement === 'pending_obbba'
 
   // County-level / 100-head adult-beef REFERENCE figure — the same basis as the dashboard
-  // banner and the OG card. Never a personalized number.
-  const refEstimate = triggered
+  // banner and the OG card. Never a personalized number. Computed ONLY when official.
+  const refEstimate = official
     ? estimatePayment('beef_adult', 100, payments).cappedEstimate
     : null
 
@@ -204,7 +217,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
 
       {/* b. HERO LINE — largest element by a wide margin, forest green, generous air */}
       <div className="mt-7 sm:mt-8">
-        {triggered ? (
+        {official ? (
           <>
             <p className="font-fraunces text-5xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-6xl">
               ~${Math.round(refEstimate!).toLocaleString()}
@@ -213,6 +226,10 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
               estimated LFP payment
             </p>
           </>
+        ) : pending ? (
+          <p className="max-w-md font-fraunces text-3xl font-semibold leading-tight tracking-tight text-forest-green sm:text-4xl">
+            Meets the new OBBBA D2 threshold — not yet official
+          </p>
         ) : (
           <p className="max-w-md font-fraunces text-3xl font-semibold leading-tight tracking-tight text-forest-green sm:text-4xl">
             {weeksLeft} week{weeksLeft !== 1 ? 's' : ''} of D2 from your first LFP payment
@@ -222,11 +239,13 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
 
       {/* c. Plain-language line — small, gray, money/decision framing under the hero */}
       <p className="mt-4 max-w-xl font-dm-sans text-sm leading-relaxed text-forest-green/60">
-        {triggered
+        {official
           ? `Your county qualifies for ${payments} monthly LFP payment${payments !== 1 ? 's' : ''} — ${tierLabel}. Estimate assumes ~100 head of adult beef cattle; your herd may differ.`
-          : currentD2Streak > 0
-            ? `Your county is in D2 (Severe) drought — ${currentD2Streak} consecutive week${currentD2Streak !== 1 ? 's' : ''} so far. Four consecutive weeks triggers your first LFP payment.`
-            : `Your county isn't in a qualifying drought yet. Four consecutive weeks of D2 (Severe) drought triggers the first LFP payment.`}
+          : pending
+            ? `Your county meets the new OBBBA D2 threshold (4+ consecutive weeks of D2). It's not officially triggered until FSA loads the updated rules into the 2026 maps — so there's no payment estimate yet.`
+            : currentD2Streak > 0
+              ? `Your county is in D2 (Severe) drought — ${currentD2Streak} consecutive week${currentD2Streak !== 1 ? 's' : ''} so far. Four consecutive weeks triggers your first LFP payment.`
+              : `Your county isn't in a qualifying drought yet. Four consecutive weeks of D2 (Severe) drought triggers the first LFP payment.`}
       </p>
 
       {/* d. Progress tracker — the core mechanic (slice 3). Reads engine output only. */}
@@ -235,7 +254,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
         <ProgressTracker eligibility={eligibility} />
         {/* e. Delta — renders nothing until snapshots accumulate (empty state = non-event). */}
         <Suspense fallback={null}>
-          <DeltaLine fips={eligibility.fips} />
+          <DeltaLine fips={eligibility.fips} official={official} />
         </Suspense>
       </div>
 
