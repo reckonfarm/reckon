@@ -69,6 +69,7 @@ export default async function Image({
 
   let dLevel: number | null = null
   let payLabel: string | null = null
+  let enforcement: string | null = null   // LFP FSA-enforcement state; null until the engine runs (D2+)
 
   if (countyWithId) {
     // Get most recent drought row
@@ -95,7 +96,11 @@ export default async function Image({
       const { estimatePayment } = await import('@/lib/lfp-payment')
       const { resolveDefaultGrazingWindow } = await import('@/lib/grazing-window')
       const lfp = await computeLfpEligibility(fips, { grazingPeriod: resolveDefaultGrazingWindow(fips) })
-      if (lfp?.payments && lfp.payments > 0) {
+      enforcement = lfp?.enforcement ?? null
+      // The dollar travels in the link preview ONLY for officially-eligible counties. A
+      // pending_obbba county meets the OBBBA D2 threshold but FSA hasn't loaded it into the
+      // 2026 maps, so no payment figure is shown — same gate as every dashboard surface.
+      if (lfp && lfp.enforcement === 'officially_eligible' && lfp.payments > 0) {
         // County-level / 100-head-beef reference figure — matches the dashboard banner. Never personalized.
         const est = estimatePayment('beef_adult', 100, lfp.payments).cappedEstimate
         payLabel = `$${Math.round(est).toLocaleString()}`
@@ -103,8 +108,14 @@ export default async function Image({
     }
   }
 
-  const triggered = dLevel !== null && dLevel >= 2
+  const official = enforcement === 'officially_eligible'
+  const pending  = enforcement === 'pending_obbba'
   const dLabel = dLevel !== null ? `D${dLevel}` : 'No data'
+
+  // Pending badge tone — matches the dashboard's amber pending banner (amber-100 bg /
+  // amber-800 text); distinct from the alarming `warning` orange used for official triggers.
+  const AMBER_BG   = '#FEF3C7'
+  const AMBER_TEXT = '#92400E'
 
   return new ImageResponse(
     <div
@@ -129,8 +140,8 @@ export default async function Image({
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginTop: '8px' }}>
           <span
             style={{
-              background: triggered ? warning : CREAM,
-              color: triggered ? CREAM : FOREST_GREEN,
+              background: official ? warning : pending ? AMBER_BG : CREAM,
+              color: official ? CREAM : pending ? AMBER_TEXT : FOREST_GREEN,
               fontSize: '32px',
               fontWeight: 700,
               padding: '10px 24px',
@@ -139,12 +150,17 @@ export default async function Image({
           >
             {dLabel}
           </span>
-          {triggered && payLabel && (
+          {official && payLabel && (
             <span style={{ color: CREAM, fontSize: '40px', fontWeight: 700 }}>
               {payLabel} est. payment
             </span>
           )}
-          {!triggered && (
+          {pending && (
+            <span style={{ color: CREAM, fontSize: '32px', fontWeight: 700 }}>
+              Meets new OBBBA D2 threshold — pending FSA
+            </span>
+          )}
+          {!official && !pending && (
             <span style={{ color: CREAM, fontSize: '32px', fontWeight: 400, opacity: 0.7 }}>
               Not triggered
             </span>
