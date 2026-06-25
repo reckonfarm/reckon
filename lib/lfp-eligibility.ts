@@ -58,6 +58,8 @@ export interface LfpEligibilityResult {
   dataAsOf:          string           // latest USDM week_date used in calculation
   disclaimer:        string
   obbbaNote:         string
+  enforcement:       LfpEnforcement   // FSA-enforcement state (see OBBBA_FSA_IMPLEMENTED)
+  d2EightWeek:       boolean | null   // old-rule D2 ≥8 consecutive; null = check failed
 }
 
 // ─── Tier definitions ─────────────────────────────────────────────────────────
@@ -84,6 +86,14 @@ export const LFP_OBBBA_NOTE =
   'Tiers 1 and 2 (D2 triggers) were added by the One Big Beautiful Bill Act (OBBBA), ' +
   'effective for LFP program year 2025 forward. Pre-OBBBA, the D2 category produced no ' +
   'LFP payment. Now: D2 for ≥4 consecutive weeks = 1 payment; D2 for ≥7 of any 8 weeks = 2 payments.'
+
+// FSA has not yet loaded OBBBA D2 thresholds into the 2026 LFP eligibility maps
+// (fsa.usda.gov/resources/programs/livestock-forage-disaster-program-lfp/maps).
+// null = OBBBA D2 not yet FSA-enforceable. Set to the implementation date (YYYY-MM-DD)
+// the day FSA flips the maps — that one change promotes every pending county to official.
+export const OBBBA_FSA_IMPLEMENTED: string | null = null
+
+export type LfpEnforcement = 'officially_eligible' | 'pending_obbba' | 'not_eligible'
 
 // ─── Program year helpers ─────────────────────────────────────────────────────
 
@@ -284,14 +294,22 @@ export async function computeLfpEligibility(
     runsD4_1,   // tier 5 + tier 6: D4 any time; sum gives total non-consecutive D4 weeks
     runsD2_1,   // all D2 runs — used for streak detection only
     tier2,
+    runsD2_8,   // OLD-rule check: D2 ≥8 consecutive — FSA-enforceable today; failure-isolated
   ] = await Promise.all([
     fetchConsecutiveRunsCached(paddedFips, 2, 4, gp.startDate, gp.endDate, releaseKey),
     fetchConsecutiveRunsCached(paddedFips, 3, 1, gp.startDate, gp.endDate, releaseKey),
     fetchConsecutiveRunsCached(paddedFips, 4, 1, gp.startDate, gp.endDate, releaseKey),
     fetchConsecutiveRunsCached(paddedFips, 2, 1, gp.startDate, gp.endDate, releaseKey),
     sevenOfEightWindowCheck(db, county.id as number, gp),
+    // .catch on THIS call only: a failed old-rule check degrades to null (under-claim),
+    // never taking down the other five throw-to-degrade calls.
+    fetchConsecutiveRunsCached(paddedFips, 2, 8, gp.startDate, gp.endDate, releaseKey)
+      .catch(() => null),
   ])
   const asOf = releaseKey
+
+  const d2EightWeek: boolean | null =
+    runsD2_8 === null ? null : runsD2_8.some(r => r.consecutiveWeeks >= 8)
 
   const totalD3Weeks = runsD3_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
   const totalD4Weeks = runsD4_1.reduce((sum, r) => sum + r.consecutiveWeeks, 0)
@@ -305,6 +323,19 @@ export async function computeLfpEligibility(
     runsD4_1.length > 0,   // tier 5: D4 at any time
     totalD4Weeks >= 4,      // tier 6: D4 ≥4 non-consecutive total weeks (NDMC definition)
   ]
+
+  // FSA-enforcement state. D3+ and the old-rule D2 ≥8-week trigger are enforceable on the
+  // 2026 FSA maps today; the OBBBA D2 tiers (1 & 2) are not until OBBBA_FSA_IMPLEMENTED is set.
+  // Safe degrade: if d2EightWeek is null (old-rule call failed) on an OBBBA-D2 county, it lands
+  // in pending_obbba — an under-claim, never a false green. An 8-week county is always also
+  // Tier 1, so no county is ever wrongly dropped to not_eligible by that failure.
+  const d3OrWorse = triggered[2] || triggered[3] || triggered[4] || triggered[5]
+  const obbbaD2   = triggered[0] || triggered[1]
+  const fsaLiveD2 = OBBBA_FSA_IMPLEMENTED !== null && obbbaD2
+  let enforcement: LfpEnforcement
+  if (d2EightWeek === true || d3OrWorse || fsaLiveD2) enforcement = 'officially_eligible'
+  else if (obbbaD2)                                   enforcement = 'pending_obbba'
+  else                                                enforcement = 'not_eligible'
 
   // Maximum tier = highest index that is true
   let maxTier = 0
@@ -342,5 +373,7 @@ export async function computeLfpEligibility(
     dataAsOf:        asOf,
     disclaimer:      LFP_DISCLAIMER,
     obbbaNote:       LFP_OBBBA_NOTE,
+    enforcement,
+    d2EightWeek,
   }
 }
