@@ -60,6 +60,27 @@ function TriggeredBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
   )
 }
 
+// Pending — county meets OBBBA's new D2 threshold (≥4 consecutive weeks) but FSA hasn't
+// loaded the rule into the 2026 eligibility maps, so it is NOT officially triggered. Same
+// D2 severity chip (D2 Severe is true), but NO "triggered", NO payment count, NO dollar.
+function PendingBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
+  const sev = severity(eligibility.maxTier)
+  return (
+    <div className="flex flex-col gap-2">
+      <span
+        className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
+        style={{ backgroundColor: sev.bg, color: sev.text }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sev.dot }} />
+        {sev.label}
+      </span>
+      <p className="font-dm-sans text-sm text-forest-green/70">
+        Meets the new OBBBA D2 threshold — not yet official with FSA.
+      </p>
+    </div>
+  )
+}
+
 // In a D2 run but not yet triggered — real streak + real weeks-to-trigger.
 function BuildingBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
   const streak = eligibility.currentD2Streak
@@ -110,8 +131,10 @@ export default function LfpAlertCard({
         </p>
       ) : (
         <>
-          {eligibility.maxTier >= 1 ? (
+          {eligibility.enforcement === 'officially_eligible' ? (
             <TriggeredBody eligibility={eligibility} />
+          ) : eligibility.enforcement === 'pending_obbba' ? (
+            <PendingBody eligibility={eligibility} />
           ) : eligibility.currentD2Streak > 0 ? (
             <BuildingBody eligibility={eligibility} />
           ) : (
