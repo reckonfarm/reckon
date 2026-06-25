@@ -657,6 +657,11 @@ export default async function DashboardPage({
     ? estimatePayment('beef_adult', 100, lfpResult.payments).cappedEstimate
     : 0
 
+  // FSA-enforcement gate for the DOLLAR-bearing surfaces. The estimate above stays the real
+  // value; this only gates VISIBILITY. A 'pending_obbba' county (D2 qualifies under OBBBA but
+  // FSA hasn't loaded the 2026 maps) shows the amber pending banner and NO dollar figure.
+  const lfpOfficial = !!lfpResult && lfpResult.enforcement === 'officially_eligible'
+
   // D2+ drought flag for hay card context
   const latestInDrought = (latest?.d2 ?? 0) > 0
 
@@ -909,6 +914,7 @@ export default async function DashboardPage({
                 payments={lfpResult.payments}
                 defaultEstimate={bannerDefaultEstimate}
                 grazingEndDate={lfpResult.grazingPeriod.endDate}
+                enforcement={lfpResult.enforcement}
               />
             )}
 
@@ -949,7 +955,7 @@ export default async function DashboardPage({
                       </p>
                     )}
 
-                    {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
+                    {lfpOfficial && bannerDefaultEstimate > 0 && (
                       <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
                         {cashToHayTons != null && hayAvgPrice != null
                           ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
@@ -970,7 +976,7 @@ export default async function DashboardPage({
                       </p>
                     )}
 
-                    {lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 && (
+                    {lfpOfficial && bannerDefaultEstimate > 0 && (
                       <div className="mt-3">
                         <LfpEstimateNote />
                       </div>
@@ -987,12 +993,14 @@ export default async function DashboardPage({
                     preview={
                       lfpUnavailable
                         ? 'Estimate temporarily unavailable'
-                        : lfpResult && lfpResult.maxTier >= 1
+                        : lfpOfficial && lfpResult
                           ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
-                          : 'Not currently triggered'
+                          : lfpResult?.enforcement === 'pending_obbba'
+                            ? 'Meets new OBBBA threshold — pending FSA'
+                            : 'Not currently triggered'
                     }
-                    previewAmount={!lfpUnavailable && lfpResult && lfpResult.maxTier >= 1 && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
-                    highlight={!!(lfpResult && lfpResult.maxTier >= 1)}
+                    previewAmount={lfpOfficial && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
+                    highlight={lfpOfficial}
                     defaultOpen={lfpUnavailable}
                   >
                     {lfpUnavailable ? (
