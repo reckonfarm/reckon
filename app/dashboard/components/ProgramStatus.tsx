@@ -456,6 +456,13 @@ function LivestockPanel({
   const { maxTier, payments, tiers, currentD2Streak, weeksUntilTier1, grazingPeriod, dataAsOf } = eligibility
   const style = TIER_STYLE[maxTier]
 
+  // FSA-enforcement gate — the SAME engine field the sibling surfaces read (TriggeredBanner /
+  // LfpHero / LfpAlertCard). 'pending_obbba' = meets OBBBA's new D2 threshold but FSA hasn't
+  // loaded it into the 2026 maps: no dollar, no "triggered" / sign-up framing. Derived from
+  // THIS panel's eligibility so the prior-year toggle stays honest per that year's result.
+  const official = eligibility.enforcement === 'officially_eligible'
+  const pending  = eligibility.enforcement === 'pending_obbba'
+
   const headCountValid   = Number.isFinite(headCount) && headCount > 0
   const acresVal         = eligibleAcres !== '' ? parseFloat(eligibleAcres) : null
   const acresPerAUVal    = acresPerAU !== '' ? parseFloat(acresPerAU) : null
@@ -481,11 +488,36 @@ function LivestockPanel({
     <div className="space-y-5 p-4 sm:p-6">
 
       {/* ── Status badge ── */}
+      {pending ? (
+        // Pending — meets OBBBA's new D2 threshold but NOT officially triggered. Amber, no
+        // dollar, no "triggered"/sign-up call — same story as the banner/hero/alert siblings.
+        <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+          <p className="font-dm-sans text-xs font-semibold uppercase tracking-wider text-amber-700">
+            {droughtLabel(maxTier)}
+          </p>
+          <p className="mt-1 font-fraunces text-xl font-semibold text-amber-900 sm:text-2xl">
+            Meets the new OBBBA D2 threshold — not yet official
+          </p>
+          <p className="mt-2 font-dm-sans text-sm leading-relaxed text-amber-800">
+            FSA hasn&apos;t loaded the OBBBA rules into the 2026 eligibility maps yet, so this
+            isn&apos;t officially triggered and there&apos;s no payment estimate. Keep your
+            records, and{' '}
+            <a
+              href="https://www.farmers.gov/working-with-us/service-center-locator"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-amber-900 underline hover:text-amber-700"
+            >
+              check with your county FSA office
+            </a>.
+          </p>
+        </div>
+      ) : (
       <div
         className="rounded-xl p-4"
         style={{ backgroundColor: style.bg }}
       >
-        {maxTier > 0 ? (
+        {maxTier > 0 && official ? (
           <div>
             <div className="flex items-center">
               <p
@@ -530,17 +562,20 @@ function LivestockPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* Prominent estimate disclaimer right under the eligibility result — shows
           for both the qualifying and "not yet qualifying" states. */}
       <LfpEstimateNote />
 
-      {maxTier > 0 && (
+      {/* Next-steps + calculator are OFFICIAL-only: the sign-up call-to-action and the payout
+          math would be false claims on a pending_obbba (or any non-official) county. */}
+      {official && maxTier > 0 && (
         <ActionCards year={year} currentYear={new Date().getFullYear()} />
       )}
 
       {/* ── Payment calculator ── */}
-      {maxTier > 0 && (
+      {official && maxTier > 0 && (
         <>
           <div className="space-y-3">
 
@@ -674,7 +709,7 @@ function LivestockPanel({
       {/* ── Tier ladder ── */}
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
-          LFP Tier Ladder — {countyName}
+          LFP Tier Ladder — {countyName}{pending ? ' (OBBBA — pending FSA)' : ''}
         </p>
         <div className="divide-y divide-forest-green/10">
           {tiers.map(tier => (
@@ -965,7 +1000,7 @@ export default function ProgramStatus({
   return (
     <Card shadow="soft" className="overflow-hidden">
 
-      {eligibility && eligibility.maxTier >= 1 && (
+      {eligibility && eligibility.maxTier >= 1 && eligibility.enforcement === 'officially_eligible' && (
         <div className="mb-6 rounded-xl bg-forest-green px-5 py-4 text-cream">
           <p className="font-dm-sans text-xs font-medium text-cream/60 uppercase tracking-wide mb-1">Estimated payment</p>
           <p className="font-fraunces text-3xl font-semibold text-cream">
