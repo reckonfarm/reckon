@@ -53,3 +53,7 @@ next-env.d.ts
 # Python
 __pycache__/
 *.pyc
+
+# QA screenshot harness (auth state + generated PNGs)
+/.qa/.auth/
+/.qa/screenshots/
