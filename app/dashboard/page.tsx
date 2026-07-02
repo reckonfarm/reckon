@@ -703,31 +703,19 @@ export default async function DashboardPage({
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
 
-            {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
-                Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
-                SAME condition (signed-in user with a herd) so the two move together; anon /
-                no-herd ?fips= sees neither and the public county view below is unchanged. */}
-            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-
-            {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
-            {herdAnchor && (
-              <HerdAnchorLoader
-                estimate={herdAnchor.estimate}
-                trend={herdAnchor.trend}
-                outlook={herdAnchor.outlook}
-              />
-            )}
-
-            {/* County heading + actions — shared across both views, above the toggle */}
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2">
-              <div>
-                <Heading level={2}>
-                  {selectedCounty.name}, {selectedCounty.state}
-                </Heading>
-                <p className="text-sm text-forest-green/50 font-dm-sans mt-0.5">
+            {/* ── B1: compact orientation bar — WHICH county, before any money or market
+                   read. One slim row shared across all views: county + FIPS left, the same
+                   Share / Home / Watchlist controls (identical props and handlers) right.
+                   Relocated from below the herd block; CountySelector above is untouched. ── */}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              {/* Semantic h1 (the page's only heading — public county pages are the SEO
+                  surface) at the compact text-lg size; !important beats the level-1 scale. */}
+              <Heading level={1} className="!text-lg !leading-snug">
+                {selectedCounty.name}, {selectedCounty.state}
+                <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
                   FIPS {selectedCounty.fips}
-                </p>
-              </div>
+                </span>
+              </Heading>
               <div className="flex items-center gap-2">
                 <ShareButton
                   fips={selectedCounty.fips}
@@ -745,6 +733,21 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
+                Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
+                SAME condition (signed-in user with a herd) so the two move together; anon /
+                no-herd ?fips= sees neither and the public county view below is unchanged. */}
+            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+
+            {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
+            {herdAnchor && (
+              <HerdAnchorLoader
+                estimate={herdAnchor.estimate}
+                trend={herdAnchor.trend}
+                outlook={herdAnchor.outlook}
+              />
+            )}
 
             {/* LFP status alert — always visible, ON TOP of the insurance card (higher
                 priority). Streamed behind Suspense so the slow USDM eligibility fetch
