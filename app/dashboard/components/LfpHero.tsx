@@ -2,13 +2,20 @@ import { Suspense } from 'react'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { getLfpDelta } from '@/lib/lfp-delta'
+import LfpDisclaimer from '@/app/components/LfpDisclaimer'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
 
-// ─── LFP hero (SLICE 2 — sharp visual pass) ────────────────────────────────────
-// The LFP status at the permanent top of the dashboard. READS ENGINE OUTPUT ONLY
-// (computeLfpEligibility result + estimatePayment) — no tier/week/payment logic
-// reimplemented.
+// ─── LFP hero — THE single contextual LFP card of the drought view ─────────────
+// A1 absorbed the old TriggeredBanner into this card: one hero line per enforcement
+// state (dollar / pending-amber / building-countdown) plus the banner's CTA row
+// (signup-closes date + FSA checklist link when official; FSA-office guidance when
+// pending). READS ENGINE OUTPUT ONLY (computeLfpEligibility result + estimatePayment)
+// — no tier/week/payment logic reimplemented.
+//
+// The "View FSA checklist" link targets #eligibility-math (the accordion wrapper in
+// page.tsx) — a stable anchor. The old #action-cards target only exists while the
+// accordion is OPEN, so scrolling to it was a silent no-op most of the time.
 //
 // Visual hierarchy (consumer-money-app restraint, existing brand):
 //   • The HERO LINE — the dollar figure when triggered, else the D2 countdown — is the
@@ -49,6 +56,17 @@ function fmtAsOf(iso: string): string {
     month: 'short', day: 'numeric', year: 'numeric',
   })
 }
+
+// Long form for the signup-closes date (the old banner's format, kept verbatim).
+function fmtLong(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  })
+}
+
+// "Find your county FSA office" — USDA service-center locator. Shown on the pending
+// CTA row, where the only honest next step is to check with the local office directly.
+const FSA_OFFICE_LOCATOR = 'https://www.farmers.gov/working-with-us/service-center-locator'
 
 // Faithful short form of the engine's own tier label for the schedule rows (display only).
 function shortLabel(label: string): string {
@@ -227,7 +245,8 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
             </p>
           </>
         ) : pending ? (
-          <p className="max-w-md font-fraunces text-3xl font-semibold leading-tight tracking-tight text-forest-green sm:text-4xl">
+          // Pending-amber hero line — the amber grammar every pending surface uses.
+          <p className="max-w-md font-fraunces text-3xl font-semibold leading-tight tracking-tight text-amber-900 sm:text-4xl">
             Meets the new OBBBA D2 threshold — not yet official
           </p>
         ) : (
@@ -248,6 +267,43 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
               : `Your county isn't in a qualifying drought yet. Four consecutive weeks of D2 (Severe) drought triggers the first LFP payment.`}
       </p>
 
+      {/* c2. CTA row — absorbed from the old TriggeredBanner. Official: the triggered
+          claim + signup window + checklist link. Pending: the FSA-office guidance (the
+          checklist itself is official-only in ProgramStatus, so no dead link here). */}
+      {official && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg bg-forest-green/[0.06] px-4 py-3">
+          <div>
+            <p className="font-dm-sans text-sm font-medium text-forest-green">
+              Tier {maxTier} triggered — FSA signup is open now.
+            </p>
+            <p className="mt-0.5 font-dm-sans text-xs text-forest-green/60">
+              Don&apos;t wait — FSA signup closes {fmtLong(eligibility.grazingPeriod.endDate)}.
+            </p>
+          </div>
+          <a
+            href="#eligibility-math"
+            className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
+          >
+            View FSA checklist →
+          </a>
+        </div>
+      )}
+      {pending && (
+        <div className="mt-6 rounded-lg bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+          <p className="font-dm-sans text-sm leading-relaxed text-amber-800">
+            Expected to qualify once FSA updates — keep your records, and{' '}
+            <a
+              href={FSA_OFFICE_LOCATOR}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-amber-900 underline hover:text-amber-700"
+            >
+              check with your county FSA office
+            </a>.
+          </p>
+        </div>
+      )}
+
       {/* d. Progress tracker — the core mechanic (slice 3). Reads engine output only. */}
       {/* e. Delta — placeholder unchanged (filled in slice 4). */}
       <div className="mt-8 space-y-6">
@@ -258,9 +314,12 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
         </Suspense>
       </div>
 
-      {/* f. FSA "estimate only" caveat + as-of — small, gray, recessive (every state) */}
+      {/* f. FSA "estimate only" caveat + full disclaimer + as-of — small, gray, recessive
+          (every state). LfpDisclaimer moved here from the old TriggeredBanner so the
+          drought view keeps the verbatim FSA-final-determination caveat. */}
       <div className="mt-6 space-y-1.5 border-t border-forest-green/[0.08] pt-4">
         <LfpEstimateNote />
+        <LfpDisclaimer />
         <p className="font-dm-sans text-xs text-forest-green/40">
           Drought data as of {fmtAsOf(dataAsOf)}.
         </p>

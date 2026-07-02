@@ -16,7 +16,6 @@ import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestR
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
-import TriggeredBanner from './components/TriggeredBanner'
 import type { County } from './components/CountySelector'
 import { type OfficialMapRecord } from './components/OfficialMap'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
@@ -652,7 +651,8 @@ export default async function DashboardPage({
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
 
-  // Default estimate for the triggered banner (100 head beef_adult)
+  // Default reference estimate (100 head beef_adult) — feeds the hay card's
+  // cash-to-hay line and the eligibility-math accordion preview.
   const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
     ? estimatePayment('beef_adult', 100, lfpResult.payments).cappedEstimate
     : 0
@@ -906,20 +906,11 @@ export default async function DashboardPage({
               }}
             />
 
-            {/* LAYER 1 — The answer */}
-            {lfpResult && lfpResult.maxTier >= 1 && (
-              <TriggeredBanner
-                countyName={selectedCounty.name}
-                maxTier={lfpResult.maxTier}
-                payments={lfpResult.payments}
-                defaultEstimate={bannerDefaultEstimate}
-                grazingEndDate={lfpResult.grazingPeriod.endDate}
-                enforcement={lfpResult.enforcement}
-              />
-            )}
-
-            {/* ── LFP hero — permanent top, always open (slice 1, additive). The detailed
-                   "Eligibility math" accordion (calculator, tier ladder, CCC-853) is untouched below. ── */}
+            {/* ── LFP status — the single contextual LFP card (A1 merged the old
+                   TriggeredBanner into LfpHero): hero line per enforcement state, tracker,
+                   and the signup CTA / pending FSA-office guidance. The detailed
+                   "Eligibility math" accordion (calculator, tier ladder, CCC-853) is
+                   untouched below. ── */}
             {lfpResult && !lfpUnavailable && (
               <LfpHero eligibility={lfpResult} countyName={selectedCounty.name} />
             )}
@@ -985,8 +976,10 @@ export default async function DashboardPage({
 
                 </div>
 
-                {/* LAYER 3 — Deep dive accordions */}
-                <div className="space-y-2 pt-2">
+                {/* LAYER 3 — Deep dive accordions. id = stable scroll target for the
+                    hero's "View FSA checklist" link (the old #action-cards anchor only
+                    exists while the accordion is open). */}
+                <div id="eligibility-math" className="scroll-mt-24 space-y-2 pt-2">
 
                   <DashboardAccordion
                     title="Eligibility math"
