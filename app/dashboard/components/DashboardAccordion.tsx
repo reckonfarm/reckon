@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface DashboardAccordionProps {
   title: string
@@ -9,6 +9,11 @@ interface DashboardAccordionProps {
   children: React.ReactNode
   defaultOpen?: boolean
   highlight?: boolean
+  // Anchor id that should pop this accordion open: when an in-page link navigates to
+  // `#<hashTarget>` (e.g. the LFP hero's "View FSA checklist →"), the browser scrolls
+  // to that anchor natively and this opens the panel so the user never lands on a
+  // closed box. Omit for normal collapsed-only behavior.
+  hashTarget?: string
 }
 
 export default function DashboardAccordion({
@@ -18,8 +23,24 @@ export default function DashboardAccordion({
   children,
   defaultOpen = false,
   highlight = false,
+  hashTarget,
 }: DashboardAccordionProps) {
   const [open, setOpen] = useState(defaultOpen)
+
+  // Open on hash navigation (setState only inside the event callback — the
+  // subscribe-to-external-system pattern). After opening, strip the hash without
+  // scrolling so the SAME link keeps working if the user closes the panel and
+  // clicks again (a lingering identical hash never re-fires hashchange).
+  useEffect(() => {
+    if (!hashTarget) return
+    const onHashChange = () => {
+      if (window.location.hash !== `#${hashTarget}`) return
+      setOpen(true)
+      history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [hashTarget])
 
   return (
     <div className={`rounded-xl overflow-hidden ${highlight ? 'border-2 border-forest-green shadow-[0_0_0_4px_rgba(27,67,50,0.08)]' : 'border border-forest-green/10'}`}>

@@ -983,6 +983,7 @@ export default async function DashboardPage({
 
                   <DashboardAccordion
                     title="Eligibility math"
+                    hashTarget="eligibility-math"
                     preview={
                       lfpUnavailable
                         ? 'Estimate temporarily unavailable'
