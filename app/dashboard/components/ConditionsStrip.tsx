@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useLinkStatus } from 'next/link'
 import type { LocalForecast } from '@/lib/nws'
 import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 
@@ -14,6 +17,11 @@ import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 // NOTHING (no placeholder). The drought reading (a current condition) carries its
 // visible USDM as-of date. The whole row links to the Weather tab using the exact
 // href/scroll pattern of the DroughtCattleToggle segments — no new tab plumbing.
+//
+// Client component for the SAME reason the toggle is one: the Weather view is a heavy
+// dynamic render with no loading.js, so a tap shows a useLinkStatus pending spinner
+// (the toggle's exact SegLabel mechanism) instead of reading as a dead tap while the
+// old view stays on screen.
 
 // Same water-blue as the forecast card's rain % so "chance of rain" reads
 // consistently across surfaces.
@@ -40,6 +48,21 @@ const SEVERITY_SHORT: Record<number, string> = {
 function fmtShort(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Tap feedback — the toggle's SegLabel mechanism: useLinkStatus (inside the Link it
+// tracks) swaps the chevron for a spinner while the Weather view renders server-side.
+// animate-spin is disabled in this project's @theme, so it uses a scoped keyframe.
+function TapStatus() {
+  const { pending } = useLinkStatus()
+  return pending ? (
+    <span
+      aria-hidden
+      className="dl-strip-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent text-forest-green/50"
+    />
+  ) : (
+    <span aria-hidden className="text-forest-green/40">›</span>
+  )
 }
 
 // Today's outlook from the NWS periods the page already fetched: the first calendar
@@ -86,6 +109,7 @@ export default function ConditionsStrip({
       scroll={false}
       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"
     >
+      <style>{`@keyframes dlStripSpin{to{transform:rotate(360deg)}}.dl-strip-spin{animation:dlStripSpin .6s linear infinite}`}</style>
       <span className="inline-flex items-center gap-2">
         {reading && (
           <>
@@ -121,7 +145,7 @@ export default function ConditionsStrip({
             )}
           </>
         )}
-        <span aria-hidden className="text-forest-green/40">›</span>
+        <TapStatus />
       </span>
     </Link>
   )
