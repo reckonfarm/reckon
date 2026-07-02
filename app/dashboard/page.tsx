@@ -29,6 +29,7 @@ import HayNearbyCards, { type NearbyHayCard } from './components/HayNearbyCards'
 import HayMapLoader from './components/HayMapLoader'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import DashboardAccordion from './components/DashboardAccordion'
+import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
@@ -200,6 +201,23 @@ async function LfpAlertAsync({
       countyName={countyName}
     />
   )
+}
+
+// Conditions strip (B2′) — awaits the SAME always-started NWS forecast promise the
+// drought view consumes (computed once, no new fetch) inside a Suspense boundary whose
+// fallback is the chip-only strip (real USDM data, no placeholder), so the weather half
+// streams in without ever blocking the news/page paint.
+async function ConditionsStripAsync({
+  reading,
+  forecastPromise,
+  fips,
+}: {
+  reading: ({ week_date: string } & DroughtReading) | null
+  forecastPromise: Promise<LocalForecast | null>
+  fips: string
+}) {
+  const forecast = await forecastPromise
+  return <ConditionsStrip reading={reading} forecast={forecast} fips={fips} />
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -733,6 +751,22 @@ export default async function DashboardPage({
                 />
               </div>
             </div>
+
+            {/* ── B2′: conditions strip — weather leads on every open, in every tab.
+                   Drought chip (always-awaited `latest`) renders immediately; today's
+                   forecast streams in from the always-started NWS promise (no new
+                   fetch, News stays fast, default tab unchanged). Tapping opens the
+                   Weather tab via the toggle's exact link pattern. Renders nothing
+                   when there's no real data. ── */}
+            <Suspense
+              fallback={<ConditionsStrip reading={latest} forecast={null} fips={selectedCounty.fips} />}
+            >
+              <ConditionsStripAsync
+                reading={latest}
+                forecastPromise={forecastPromise}
+                fips={selectedCounty.fips}
+              />
+            </Suspense>
 
             {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
                 Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
