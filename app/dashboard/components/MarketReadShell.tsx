@@ -6,13 +6,11 @@ import type { MoistureResult } from '@/lib/moisture-service'
 import type { CropResult } from '@/lib/crop-service'
 import type { CycleResult } from '@/lib/cattle-cycle-service'
 
-// Market Read — the interpretation layer that LEADS the operation zone: it sits ABOVE the
-// herd value (read first, value beneath). This is the §4 feedlot-demand corn read, and per
-// §3 it is a READ, never a calculator and never a sell-or-hold call — so the lead line is a
-// sentence, never a number.
-//
-// Slice 2c-B: BOTH the Price (corn ZC=F) and Moisture (USDM footprint D1+) legs are live, so
-// the lead line can finally compose a lean from the two. Crop is still a later leg.
+// Market Read — the §4 feedlot-demand corn read, shown as RAW EVIDENCE ONLY (A2 retired
+// the composed narrative lead: show-don't-preach). Four chips under the bare eyebrow;
+// per §3 it is a READ, never a calculator and never a sell-or-hold call — the
+// footer says so explicitly. The old composeLead() sentence generator was deleted, not
+// hidden, so no lean quietly regenerates later.
 //
 // THE TWO DIRECTION GRAMMARS DIFFER ON PURPOSE:
 //   • Price: raw settle direction — up = text-up, down = text-down (a number moving).
@@ -33,44 +31,6 @@ const CHIP_FOOT = 'mt-1 font-dm-sans text-[11px] leading-tight'
 function fmtShort(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-// ─── The read (lead line) ────────────────────────────────────────────────────────────
-// Composed ONLY when both legs are live AND fresh; otherwise the neutral fallback (one live
-// leg is not a lean). Per §3: a READ of demand pressure, never a sell/hold call, never a
-// number. Calf-demand sentiment: WETTER ground (+1) and a SOFTER corn board (+1, cheaper feed
-// → feedlots can pay up) both SUPPORT calf demand; DRIER (−1) and a FIRMER board (−1) lean on
-// it. Agreement → a confident lean; disagreement → an honest "crossed"; a flat leg → "mixed"
-// or "quiet". Nothing here manufactures confidence the two legs don't jointly support.
-const NEUTRAL_LEAD = 'Reading feeder demand…'
-
-function composeLead(corn: CornResult, moisture: MoistureResult): { lead: string; composed: boolean } {
-  const bothLiveFresh =
-    corn.status === 'ok' && !corn.stale && moisture.status === 'ok' && !moisture.stale
-  if (!bothLiveFresh) return { lead: NEUTRAL_LEAD, composed: false }
-
-  const mSent = moisture.direction === 'wetter' ? 1 : moisture.direction === 'drier' ? -1 : 0
-  const cSent = corn.direction === 'down' ? 1 : corn.direction === 'up' ? -1 : 0 // cheaper corn supports calves
-
-  if (mSent === 1 && cSent === 1) {
-    return { composed: true, lead: 'Feed’s getting cheaper in feeder country — wetter ground and a softer corn board, both support under calf demand.' }
-  }
-  if (mSent === -1 && cSent === -1) {
-    return { composed: true, lead: 'Feed’s getting dearer in feeder country — drier ground and a firmer corn board, both lean on calf demand.' }
-  }
-
-  const mPhrase = moisture.direction === 'wetter' ? 'wetter ground' : moisture.direction === 'drier' ? 'drier ground' : 'steady ground'
-  const cPhrase = corn.direction === 'down' ? 'a softer corn board' : corn.direction === 'up' ? 'a firmer corn board' : 'a steady corn board'
-
-  if (mSent * cSent < 0) {
-    // genuine cross — one leg supports calves, the other leans on them.
-    return { composed: true, lead: `Feed signals are crossed this week — ${mPhrase} but ${cPhrase}.` }
-  }
-  if (mSent === 0 && cSent === 0) {
-    return { composed: true, lead: 'Feed signals are quiet this week — little change in moisture or the corn board.' }
-  }
-  // exactly one leg flat — honest "mixed", no false confidence.
-  return { composed: true, lead: `Feed signals are mixed this week — ${mPhrase} and ${cPhrase}.` }
 }
 
 // ─── Chips ─────────────────────────────────────────────────────────────────────────
@@ -238,21 +198,10 @@ function PriceChip({ corn }: { corn: CornResult }) {
 }
 
 export default function MarketReadShell({ corn, moisture, crop, cycle }: { corn: CornResult; moisture: MoistureResult; crop: CropResult; cycle: CycleResult }) {
-  // composeLead stays TWO-LEG (moisture + price); Crop and Cycle are chip-only evidence for v1.
-  const { lead, composed } = composeLead(corn, moisture)
   return (
     <Card shadow="sm" className="p-6 sm:p-8">
+      {/* Plain, neutral header — eyebrow only; the chips carry the story (A2: show-don't-preach). */}
       <p className={EYEBROW}>Market Read</p>
-
-      {/* The read — a sentence, never a number or a sell/hold call. Composed from the two live
-          legs when both are fresh; neutral fallback otherwise (one live leg is not a lean). */}
-      <p className="mt-2 font-fraunces text-2xl font-semibold leading-snug tracking-tight text-ink/80 sm:text-3xl">
-        {lead}
-      </p>
-      <p className="mt-2 max-w-md font-dm-sans text-sm leading-relaxed text-muted/70">
-        What corn and grass are doing to feedlot demand &mdash; the read behind this week&rsquo;s number.
-        {!composed && ' Coming online.'}
-      </p>
 
       {/* Evidence legs. Feed signals (Moisture / Crop / Price) + the cattle-cycle master-switch
           context. Four chips: 2×2 on a phone, one row on sm+ (wraps cleanly at chip width). */}
