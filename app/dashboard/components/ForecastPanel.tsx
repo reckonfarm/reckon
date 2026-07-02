@@ -146,10 +146,19 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               <div className="text-[11px] font-dm-sans font-semibold leading-tight text-forest-green/70">{d.label}</div>
               <div className="text-[9px] font-dm-sans leading-tight text-forest-green/40">{d.date}</div>
               <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>
-              {/* Hero: % chance of rain — the field a rancher reads first. */}
+              {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
+                  with the value (same RAIN_BLUE, opacity ramps 55%→100% across 0–100%,
+                  heavier weight from 50%) so a 70% reads louder than a 15%. Styling only —
+                  the number itself is untouched; 0% / missing stay the faint gray. */}
               <div
-                className="font-dm-sans text-lg font-bold leading-none"
-                style={{ color: hasRain ? RAIN_BLUE : 'rgba(27,67,50,0.35)' }}
+                className="font-dm-sans text-lg leading-none"
+                style={hasRain
+                  ? {
+                      color: RAIN_BLUE,
+                      opacity: 0.55 + 0.45 * (Math.min(d.precip!, 100) / 100),
+                      fontWeight: d.precip! >= 50 ? 700 : 600,
+                    }
+                  : { color: 'rgba(27,67,50,0.35)', fontWeight: 700 }}
               >
                 {d.precip != null ? `${d.precip}%` : '—'}
               </div>

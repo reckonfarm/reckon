@@ -279,7 +279,8 @@ export default function HerdEstimatePanel({ estimate, trend, outlook }: { estima
     <section className="space-y-5">
       {/* HERO — the one bold number (Fraunces). Honest headline + sub-line when nothing priced. */}
       <div>
-        <p className={EYEBROW}>HerdEstimate</p>
+        {/* Two words so the uppercase eyebrow reads "HERD ESTIMATE", not "HERDESTIMATE". */}
+        <p className={EYEBROW}>Herd estimate</p>
         <p
           className={
             priced
