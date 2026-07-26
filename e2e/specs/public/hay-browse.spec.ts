@@ -1,5 +1,8 @@
 import { test, expect } from '../../fixtures/test'
 import { TEST_COUNTY_QUERY } from '../../fixtures/data'
+import { marketplaceOff, MARKETPLACE_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff, MARKETPLACE_SKIP)
 
 test('hay browse — board, deliver-to picker, delivered framing', async ({ page, shot }) => {
   await page.goto('/hay')

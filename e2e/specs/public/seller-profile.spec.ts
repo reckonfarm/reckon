@@ -1,4 +1,7 @@
 import { test, expect } from '../../fixtures/test'
+import { marketplaceOff, MARKETPLACE_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff, MARKETPLACE_SKIP)
 
 test('seller profile page renders from a listing', async ({ page, shot }) => {
   await page.goto('/hay')

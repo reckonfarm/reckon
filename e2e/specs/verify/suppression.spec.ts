@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { contextOptions, watchPage, assertPageClean, shot } from '../../fixtures/test'
 import { STORAGE, SENTINEL_HAY, TEST_COUNTY_FIPS, TEST_COUNTY_QUERY } from '../../fixtures/data'
+import { marketplaceOff, messagingOff, MESSAGING_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff || messagingOff, MESSAGING_SKIP)
 
 // EMAIL-SUPPRESSION VERIFICATION — must pass before any real posting/close spec.
 //

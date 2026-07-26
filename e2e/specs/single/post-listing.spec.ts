@@ -1,5 +1,8 @@
 import { test, expect } from '../../fixtures/test'
 import { SENTINEL_HAY, TEST_COUNTY_QUERY, TEST_COUNTY_FIPS } from '../../fixtures/data'
+import { marketplaceOff, MARKETPLACE_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff, MARKETPLACE_SKIP)
 
 // All listings use SENTINEL_HAY so the suppressed radar/demand after() hook can
 // never match a real user even if email weren't disabled.
