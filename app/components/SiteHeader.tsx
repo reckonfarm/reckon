@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
+import { flagEnabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
 
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
@@ -77,12 +78,14 @@ export default function SiteHeader({ center }: Props) {
             >
               My Counties
             </Link>
-            <Link
-              href="/hay"
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-            >
-              Hay
-            </Link>
+            {flagEnabled('marketplace') && (
+              <Link
+                href="/hay"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Hay
+              </Link>
+            )}
             {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
                 the dashboard (via '/', which redirects signed-in users to /dashboard);
                 the Drought/Cattle toggle inside reaches cattle. Subtle text emphasis
@@ -113,7 +116,7 @@ export default function SiteHeader({ center }: Props) {
                 )}
               </Link>
             )}
-            {user && (
+            {user && flagEnabled('marketplace') && (
               <Link
                 href="/radar"
                 className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useLinkStatus } from 'next/link'
+import { flagEnabled } from '@/lib/flags'
 
 // Two-way segmented control marking Market News and the Drought dashboard as PEER
 // views of one county. Preserves fips. News is the DEFAULT (bare /dashboard, no view
@@ -61,7 +62,11 @@ export default function DroughtCattleToggle({
   const segments: { key: 'news' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
     { key: 'news',    label: 'News',    href: `/dashboard?fips=${fips}` },
     { key: 'drought', label: 'Weather', href: `/dashboard?fips=${fips}&view=drought` },
-    { key: 'hay',     label: 'Hay',     href: `/dashboard?fips=${fips}&view=hay` },
+    // Hay segment rides the marketplace flag (the dashboard's ?view=hay parse is
+    // gated on the same flag, so a stale deep link falls back to the default view).
+    ...(flagEnabled('marketplace')
+      ? [{ key: 'hay' as const, label: 'Hay', href: `/dashboard?fips=${fips}&view=hay` }]
+      : []),
     { key: 'markets', label: 'Markets', href: `/dashboard?fips=${fips}&view=markets` },
   ]
 

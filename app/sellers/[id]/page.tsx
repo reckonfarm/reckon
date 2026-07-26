@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { flagDisabled } from '@/lib/flags'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { createServiceClient } from '@/lib/supabase'
@@ -86,6 +88,7 @@ function reviewDate(dateStr: string): string {
 export default async function SellerPage(
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) notFound()
   const { id } = await params
   const db = createServiceClient()
 

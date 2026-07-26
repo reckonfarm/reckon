@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import FrontDoor from '@/app/components/FrontDoor'
+import { flagEnabled } from '@/lib/flags'
 
 // The signed-out landing — the acquisition front door (Fraunces hero + county-search hook +
 // the labeled Example HerdEstimate + signup CTA). Signed-in users are redirected by
@@ -13,8 +14,9 @@ export const metadata: Metadata = {
   title: {
     absolute: 'Dryline — Ranch Intelligence for Cattle Country',
   },
-  description:
-    "Cattle-country markets and news, real-time drought conditions, FSA/LFP payment estimates, and a hay marketplace — bringing your operation's markets, money, and conditions together in one place.",
+  description: flagEnabled('marketplace')
+    ? "Cattle-country markets and news, real-time drought conditions, FSA/LFP payment estimates, and a hay marketplace — bringing your operation's markets, money, and conditions together in one place."
+    : "Cattle-country markets and news, real-time drought conditions, and FSA/LFP payment estimates — bringing your operation's markets, money, and conditions together in one place.",
 }
 
 export default async function Home({

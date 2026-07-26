@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
 import { matchNewListing } from '@/lib/hay-radar-service'
 import { routeDemand } from '@/lib/demand-routing-service'
+import { flagDisabled } from '@/lib/flags'
 
 interface CountyRow {
   id:    number
@@ -43,6 +44,7 @@ interface SellerProfile {
 
 // GET /api/hay — all active listings with county info and drought tier
 export async function GET() {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   try {
   const currentUserId = await getAuthUserId()
   const db = createServiceClient()
@@ -147,6 +149,7 @@ export async function GET() {
 
 // POST /api/hay — create a listing (auth required)
 export async function POST(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
@@ -231,6 +234,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/hay — deactivate own listing (auth required)
 export async function DELETE(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 

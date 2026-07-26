@@ -51,6 +51,7 @@ import { getFeedingRegionMoisture, type MoistureResult } from '@/lib/moisture-se
 import { getLatestCropCondition, type CropResult } from '@/lib/crop-service'
 import { getCattleCycle, type CycleResult } from '@/lib/cattle-cycle-service'
 import type { Lot } from '@/lib/herd'
+import { flagEnabled } from '@/lib/flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -267,10 +268,11 @@ export default async function DashboardPage({
 }) {
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the Market News view; Drought is opt-in via &view=drought,
-  // Hay via &view=hay, Markets via &view=markets.
+  // Hay via &view=hay, Markets via &view=markets. With the marketplace flagged off,
+  // ?view=hay (stale deep links, share cards) falls back to the default view.
   const view: 'news' | 'drought' | 'hay' | 'markets' =
     viewParam === 'drought' ? 'drought'
-      : viewParam === 'hay' ? 'hay'
+      : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
         : viewParam === 'markets' ? 'markets'
           : 'news'
   const db = createServiceClient()
@@ -486,12 +488,15 @@ export default async function DashboardPage({
           .catch(() => [])
       })(),
 
-      // Active hay listings — fetched for the nearby + cash-to-hay cards
-      db
-        .from('hay_listings')
-        .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
-        .eq('active', true)
-        .gt('expires_at', new Date().toISOString()),
+      // Active hay listings — fetched for the nearby + cash-to-hay cards.
+      // Marketplace flagged off → skip the query entirely (the card is gated too).
+      flagEnabled('marketplace')
+        ? db
+            .from('hay_listings')
+            .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
+            .eq('active', true)
+            .gt('expires_at', new Date().toISOString())
+        : Promise.resolve({ data: [] }),
     ])
 
     history            = historyRes.data ?? []
@@ -965,7 +970,9 @@ export default async function DashboardPage({
                 {/* LAYER 2 — The why (compact cards, always visible) */}
                 <div className="space-y-3">
 
-                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA */}
+                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA.
+                      Rides the marketplace flag: no listings fetch, no card, no /hay CTA. */}
+                  {flagEnabled('marketplace') && (
                   <Card shadow="none" className="px-5 py-4">
                     <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
                       Hay nearby
@@ -1010,6 +1017,7 @@ export default async function DashboardPage({
                       </div>
                     )}
                   </Card>
+                  )}
 
                 </div>
 

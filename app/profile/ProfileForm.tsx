@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { flagEnabled } from '@/lib/flags'
 
 const INPUT_CLS =
   'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
@@ -194,7 +195,9 @@ export default function ProfileForm() {
           <p className="mt-1 text-right text-xs font-dm-sans text-forest-green/40">{bio.length}/500</p>
         </Field>
 
-        {/* Buyer-demand alerts opt-in */}
+        {/* Buyer-demand alerts opt-in — marketplace feature, rides its flag (the saved
+            preference is untouched; the control just disappears while flagged off). */}
+        {flagEnabled('marketplace') && (
         <div className="rounded-xl border border-forest-green/15 bg-cream/60 px-4 py-3">
           <label className="flex cursor-pointer items-start gap-3">
             <input
@@ -214,6 +217,7 @@ export default function ProfileForm() {
             </span>
           </label>
         </div>
+        )}
 
         {saveError && (
           <p className="text-sm font-dm-sans text-rust">{saveError}</p>

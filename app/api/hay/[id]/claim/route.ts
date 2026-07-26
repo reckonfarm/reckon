@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 // POST /api/hay/[id]/claim — a logged-in buyer claims they purchased this listing.
 // Sets claim_status='pending' and records the claimant for the seller to confirm.
@@ -8,6 +9,7 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })
@@ -53,6 +55,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })

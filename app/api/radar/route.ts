@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 async function getAuthUserId(): Promise<string | null> {
   const supabase = await createClient()
@@ -10,6 +11,7 @@ async function getAuthUserId(): Promise<string | null> {
 
 // GET /api/radar — the user's saved searches + recent matches
 export async function GET() {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
@@ -77,6 +79,7 @@ export async function GET() {
 
 // POST /api/radar — create a saved search
 export async function POST(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
@@ -117,6 +120,7 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/radar — toggle active on one of the user's searches
 export async function PATCH(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
@@ -138,6 +142,7 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE /api/radar — remove one of the user's searches
 export async function DELETE(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 

@@ -1,11 +1,13 @@
 import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 // GET /api/hay/sellers/[userId]/reviews — public seller rating summary
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { userId } = await params
   if (!userId) return Response.json({ error: 'userId is required' }, { status: 400 })
 
