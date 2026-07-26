@@ -206,6 +206,7 @@ export const alerts: VectorLayer = {
 export const radar: RadarLayer = {
   id:              'radar',
   label:           'Radar',
+  inToggle:    false,   // PARKED per North Star v3 §6 (moisture tabs → one page); def/proxy/renderer intact — un-park by deleting this line
   category:        'water',
   type:            'radar',
   endpoint:        '/api/layers/radar',     // frame-list proxy (host + timestamped frames)
@@ -255,6 +256,7 @@ const AHPS_PCT_LEGEND: LegendItem[] = [
 export const ahpsObserved: RasterLayer = {
   id:          'ahps',
   label:       'Observed Rain',
+  inToggle:    false,   // PARKED per North Star v3 §6 (moisture tabs → one page); def/proxy/renderer intact — un-park by deleting this line
   category:    'water',
   type:        'raster',
   service:     'https://mapservices.weather.noaa.gov/raster/rest/services/obs/rfc_qpe/MapServer',
@@ -308,6 +310,7 @@ const QPF_LEGEND: LegendItem[] = [
 export const wpcQpf: RasterLayer = {
   id:          'qpf',
   label:       'Forecast Rain',
+  inToggle:    false,   // PARKED per North Star v3 §6 (moisture tabs → one page); def/proxy/renderer intact — un-park by deleting this line
   category:    'water',
   type:        'raster',
   service:     'https://mapservices.weather.noaa.gov/vector/rest/services/precip/wpc_qpf/MapServer',
@@ -351,6 +354,7 @@ const OUTLOOK_LEGEND: LegendItem[] = [
 export const cpcOutlook: RasterLayer = {
   id:          'outlook',
   label:       'Rain Outlook',
+  inToggle:    false,   // PARKED per North Star v3 §6 (moisture tabs → one page); def/proxy/renderer intact — un-park by deleting this line
   category:    'water',
   type:        'raster',
   service:     `${OUTLOOK_BASE}/cpc_6_10_day_outlk/MapServer`,  // default; each window overrides
@@ -391,6 +395,7 @@ const DROUGHT_OUTLOOK_LEGEND: LegendItem[] = [
 export const cpcDroughtOutlook: RasterLayer = {
   id:          'drought-outlook',
   label:       'Drought Forecast',
+  inToggle:    false,   // PARKED per North Star v3 §6 (moisture tabs → one page); def/proxy/renderer intact — un-park by deleting this line
   category:    'drought',
   type:        'raster',
   service:     DROUGHT_OUTLOOK_SERVICE,      // both windows share it (different layerIds only)
@@ -410,8 +415,10 @@ export const cpcDroughtOutlook: RasterLayer = {
   legend: DROUGHT_OUTLOOK_LEGEND,
 }
 
-// Radar FIRST → LAYERS[0] is the default active tab the map opens on; the vector layers
-// (USDM, alerts), the three precip rasters (observed → forecast → outlook), and the
-// drought outlook follow it. Six toggle tabs (a transitional flat bar — wraps cleanly).
-// alerts is inToggle:false (radar overlay only), so it gets no tab.
+// Order is registry order, NOT the default tab — the map opens on the first layer with
+// inToggle !== false (today: USDM, the only one; RegionalMapClient derives it). After the
+// North Star v3 §6 collapse, radar + the three precip rasters + the drought outlook are
+// PARKED (inToggle:false, defs/proxies intact); alerts was always inToggle:false (radar
+// overlay only). Un-parking a layer = deleting its inToggle line — the toggle grid
+// reappears automatically once 2+ layers are visible.
 export const LAYERS: LayerDefinition[] = [radar, usdm, ahpsObserved, wpcQpf, cpcOutlook, cpcDroughtOutlook, alerts]

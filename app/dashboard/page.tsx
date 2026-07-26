@@ -1080,9 +1080,10 @@ export default async function DashboardPage({
                     ) : null}
                   </DashboardAccordion>
 
-                  {/* The CPC monthly + seasonal drought outlooks now live on the map as the
-                      "Drought Forecast" layer (live cpc_drought_outlk service), so the static
-                      "Forecast" accordion that showed them as images was removed here. */}
+                  {/* The static "Forecast" accordion (CPC outlook images) was removed when
+                      those outlooks became the map's "Drought Forecast" layer; that layer is
+                      now PARKED with the rest of the moisture sprawl (North Star v3 §6,
+                      inToggle:false in layers.ts) — nothing renders here by design. */}
 
                 </div>
 
