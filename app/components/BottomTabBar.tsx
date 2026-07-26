@@ -3,13 +3,16 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { flagDisabled, flagEnabled } from '@/lib/flags'
 
 export default function BottomTabBar() {
   const pathname = usePathname()
   const [unread, setUnread] = useState(0)
 
   // Refresh the messages unread badge on navigation (tolerates signed-out 401).
+  // Messaging flagged off → tab hidden below AND this per-nav fetch never fires.
   useEffect(() => {
+    if (flagDisabled('messaging')) return
     let cancelled = false
     fetch('/api/threads/unread')
       .then(r => r.ok ? r.json() : { count: 0 })
@@ -49,16 +52,20 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    {
-      href: '/messages',
-      label: 'Messages',
-      match: p => p.startsWith('/messages'),
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8A8.38 8.38 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>
-        </svg>
-      ),
-    },
+    // Messages tab rides the messaging flag; the left flank narrows to My herd
+    // while it's off (flex-1 keeps both flanks balanced around the center anchor).
+    ...(flagEnabled('messaging')
+      ? [{
+          href: '/messages',
+          label: 'Messages',
+          match: (p: string) => p.startsWith('/messages'),
+          icon: (active: boolean) => (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8A8.38 8.38 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>
+            </svg>
+          ),
+        }]
+      : []),
   ]
 
   // Hay Radar lives in the top header (SiteHeader), not here — keeping the bottom

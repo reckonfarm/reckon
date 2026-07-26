@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { getOrCreateThread, listThreads } from '@/lib/messaging-service'
+import { flagDisabled } from '@/lib/flags'
 
 async function getAuthUserId(): Promise<string | null> {
   const supabase = await createClient()
@@ -10,6 +11,7 @@ async function getAuthUserId(): Promise<string | null> {
 
 // GET /api/threads — current user's threads (as buyer or seller)
 export async function GET() {
+  if (flagDisabled('messaging')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
   const threads = await listThreads(userId)
@@ -18,6 +20,7 @@ export async function GET() {
 
 // POST /api/threads { listing_id } — open or create a thread for this listing
 export async function POST(request: NextRequest) {
+  if (flagDisabled('messaging')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
