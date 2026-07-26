@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 // GET /api/hay/[id] — single listing with drought tier, seller trust info,
 // and the viewer's relationship to the deal (claim / sold / review state).
@@ -8,6 +9,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })
@@ -214,6 +216,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })

@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { sweepRecentRadar } from '@/lib/hay-radar-service'
 import { sweepRecentDemand } from '@/lib/demand-routing-service'
+import { flagDisabled } from '@/lib/flags'
 
 // Daily safety-net for Hay Radar + Demand Routing (vercel.json: 0 13 * * *).
 // Primary paths are the inline after() hooks in POST /api/hay; these sweeps
@@ -12,6 +13,12 @@ export async function GET(request: NextRequest) {
 
   if (!process.env.CRON_SECRET || authHeader !== expected) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Marketplace flagged off → no radar/demand emails (they'd link into 404'd
+  // listings). 200 so Vercel cron logs a clean skip, not a failure.
+  if (flagDisabled('marketplace')) {
+    return Response.json({ ok: true, skipped: 'marketplace flagged off' })
   }
 
   try {

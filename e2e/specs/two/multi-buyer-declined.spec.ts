@@ -1,6 +1,9 @@
 import { test, expect, type Browser } from '@playwright/test'
 import { contextOptions, watchPage, assertPageClean, shot } from '../../fixtures/test'
 import { STORAGE, SENTINEL_HAY, TEST_COUNTY_QUERY, TEST_COUNTY_FIPS } from '../../fixtures/data'
+import { marketplaceOff, messagingOff, MESSAGING_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff || messagingOff, MESSAGING_SKIP)
 
 async function authed(browser: Browser, storage: string, label: string) {
   const ctx = await browser.newContext(contextOptions({ storageState: storage }))

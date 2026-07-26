@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 // POST /api/hay/[id]/reviews — leave a review for the other party of a
 // completed on-platform deal. Gated to the seller and the confirmed buyer only.
@@ -9,6 +10,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })

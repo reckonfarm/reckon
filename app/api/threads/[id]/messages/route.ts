@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { getThreadMessages, postMessage } from '@/lib/messaging-service'
+import { flagDisabled } from '@/lib/flags'
 
 async function getAuthUserId(): Promise<string | null> {
   const supabase = await createClient()
@@ -13,6 +14,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('messaging')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 
@@ -33,6 +35,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('messaging')) return Response.json({ error: 'Not found' }, { status: 404 })
   const userId = await getAuthUserId()
   if (!userId) return Response.json({ error: 'Not authenticated' }, { status: 401 })
 

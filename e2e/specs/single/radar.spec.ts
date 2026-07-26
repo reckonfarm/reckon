@@ -1,5 +1,8 @@
 import { test, expect } from '../../fixtures/test'
 import { SENTINEL_HAY } from '../../fixtures/data'
+import { marketplaceOff, MARKETPLACE_SKIP } from '../../fixtures/flags'
+
+test.skip(marketplaceOff, MARKETPLACE_SKIP)
 
 test('Hay Radar — save a search (UI) then view + delete on /radar', async ({ page, shot }) => {
   test.setTimeout(90_000)

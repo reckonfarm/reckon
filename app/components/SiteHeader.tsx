@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
+import { flagDisabled, flagEnabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
 
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
@@ -35,7 +36,9 @@ export default function SiteHeader({ center }: Props) {
   }, [])
 
   useEffect(() => {
-    if (!user) { setUnread(0); return }
+    // Messaging flagged off → no badge and, as importantly, no per-nav
+    // /api/threads/unread round-trip for every signed-in user.
+    if (!user || flagDisabled('messaging')) { setUnread(0); return }
     fetch('/api/threads/unread')
       .then(r => r.ok ? r.json() : { count: 0 })
       .then(d => setUnread(typeof d?.count === 'number' ? d.count : 0))
@@ -77,12 +80,14 @@ export default function SiteHeader({ center }: Props) {
             >
               My Counties
             </Link>
-            <Link
-              href="/hay"
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
-            >
-              Hay
-            </Link>
+            {flagEnabled('marketplace') && (
+              <Link
+                href="/hay"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Hay
+              </Link>
+            )}
             {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
                 the dashboard (via '/', which redirects signed-in users to /dashboard);
                 the Drought/Cattle toggle inside reaches cattle. Subtle text emphasis
@@ -101,7 +106,7 @@ export default function SiteHeader({ center }: Props) {
                 My herd
               </Link>
             )}
-            {user && (
+            {user && flagEnabled('messaging') && (
               <Link
                 href="/messages"
                 className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
@@ -113,7 +118,7 @@ export default function SiteHeader({ center }: Props) {
                 )}
               </Link>
             )}
-            {user && (
+            {user && flagEnabled('marketplace') && (
               <Link
                 href="/radar"
                 className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"

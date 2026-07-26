@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 const REASONS = ['spam', 'scam', 'sold', 'inappropriate', 'wrong_info', 'other'] as const
 type Reason = (typeof REASONS)[number]
@@ -20,6 +21,7 @@ async function getOptionalUserId(): Promise<string | null> {
 
 // POST /api/report — report a hay listing. Accepts anonymous or authed reporters.
 export async function POST(request: NextRequest) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const body = await request.json().catch(() => null)
   if (!body || typeof body !== 'object') {
     return Response.json({ error: 'Invalid body' }, { status: 400 })

@@ -40,7 +40,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
-import MarketsNews from '@/app/components/MarketsNews'
+import NewsHookCard from '@/app/components/NewsHookCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -51,6 +51,7 @@ import { getFeedingRegionMoisture, type MoistureResult } from '@/lib/moisture-se
 import { getLatestCropCondition, type CropResult } from '@/lib/crop-service'
 import { getCattleCycle, type CycleResult } from '@/lib/cattle-cycle-service'
 import type { Lot } from '@/lib/herd'
+import { flagEnabled } from '@/lib/flags'
 
 export const dynamic = 'force-dynamic'
 
@@ -266,11 +267,14 @@ export default async function DashboardPage({
   searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string; view?: string }>
 }) {
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
-  // My Operation defaults to the Market News view; Drought is opt-in via &view=drought,
-  // Hay via &view=hay, Markets via &view=markets.
+  // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
+  // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Weather via
+  // &view=drought, Markets via &view=markets. With the marketplace flagged off,
+  // ?view=hay (stale deep links, share cards) falls back to Today.
   const view: 'news' | 'drought' | 'hay' | 'markets' =
     viewParam === 'drought' ? 'drought'
-      : viewParam === 'hay' ? 'hay'
+      : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
         : viewParam === 'markets' ? 'markets'
           : 'news'
   const db = createServiceClient()
@@ -486,12 +490,15 @@ export default async function DashboardPage({
           .catch(() => [])
       })(),
 
-      // Active hay listings — fetched for the nearby + cash-to-hay cards
-      db
-        .from('hay_listings')
-        .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
-        .eq('active', true)
-        .gt('expires_at', new Date().toISOString()),
+      // Active hay listings — fetched for the nearby + cash-to-hay cards.
+      // Marketplace flagged off → skip the query entirely (the card is gated too).
+      flagEnabled('marketplace')
+        ? db
+            .from('hay_listings')
+            .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
+            .eq('active', true)
+            .gt('expires_at', new Date().toISOString())
+        : Promise.resolve({ data: [] }),
     ])
 
     history            = historyRes.data ?? []
@@ -796,11 +803,25 @@ export default async function DashboardPage({
                 a view. Filters to the user's crops when set, else shows all. */}
             <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
 
-            {/* Peer-view toggle — Market News ↔ Drought (same county) */}
+            {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
+            {/* Today (key 'news' — see the parse note above) — the daily-use floor:
+                7-day forecast carousel + the 3-headline news hook. The carousel reuses
+                the SAME already-started forecastPromise the ConditionsStrip streams
+                from (zero new fetches; it also renders in Weather, but only one view
+                renders at a time). The hook is the ENTIRE news surface now — the old
+                full MarketsNews feed is parked (component kept, no longer rendered). */}
             {view === 'news' && (
-              <MarketsNews fips={selectedCounty.fips} />
+              <>
+                <div>
+                  <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+                  <Suspense fallback={<ForecastPanelSkeleton />}>
+                    <ForecastPanelAsync dataPromise={forecastPromise} />
+                  </Suspense>
+                </div>
+                <NewsHookCard fips={selectedCounty.fips} />
+              </>
             )}
 
             {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the
@@ -965,7 +986,9 @@ export default async function DashboardPage({
                 {/* LAYER 2 — The why (compact cards, always visible) */}
                 <div className="space-y-3">
 
-                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA */}
+                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA.
+                      Rides the marketplace flag: no listings fetch, no card, no /hay CTA. */}
+                  {flagEnabled('marketplace') && (
                   <Card shadow="none" className="px-5 py-4">
                     <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
                       Hay nearby
@@ -1010,6 +1033,7 @@ export default async function DashboardPage({
                       </div>
                     )}
                   </Card>
+                  )}
 
                 </div>
 
@@ -1056,9 +1080,10 @@ export default async function DashboardPage({
                     ) : null}
                   </DashboardAccordion>
 
-                  {/* The CPC monthly + seasonal drought outlooks now live on the map as the
-                      "Drought Forecast" layer (live cpc_drought_outlk service), so the static
-                      "Forecast" accordion that showed them as images was removed here. */}
+                  {/* The static "Forecast" accordion (CPC outlook images) was removed when
+                      those outlooks became the map's "Drought Forecast" layer; that layer is
+                      now PARKED with the rest of the moisture sprawl (North Star v3 §6,
+                      inToggle:false in layers.ts) — nothing renders here by design. */}
 
                 </div>
 

@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# …and we opt in for the bare .env: committed flag defaults ONLY, never secrets
+# (secrets live in .env.local / Vercel env, both still ignored).
+!.env
 
 # vercel
 .vercel

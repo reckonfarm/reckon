@@ -15,10 +15,12 @@ function parseEnvFile(path: string): Record<string, string> {
   return out
 }
 
-// Loads ../.env.local (Supabase) + ./.env.e2e (preview URL + bypass) into process.env.
+// Loads ../.env (committed flag defaults) + ../.env.local (Supabase) + ./.env.e2e
+// (preview URL + bypass) into process.env.
 // Idempotent; existing process.env values win (so CI can override).
 export function loadEnv(): void {
   const merged = {
+    ...parseEnvFile(resolve(process.cwd(), '.env')),
     ...parseEnvFile(resolve(process.cwd(), '.env.local')),
     ...parseEnvFile(resolve(process.cwd(), 'e2e/.env.e2e')),
   }

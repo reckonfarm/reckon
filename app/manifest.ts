@@ -1,11 +1,14 @@
 import type { MetadataRoute } from 'next'
+import { flagEnabled } from '@/lib/flags'
 
 // Served at /manifest.webmanifest; Next auto-links it from the document head.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Dryline — Ranch Intelligence for Cattle Country',
     short_name: 'Dryline',
-    description: "Ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace in one place.",
+    description: flagEnabled('marketplace')
+      ? "Ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace in one place."
+      : "Ranch intelligence for cattle country — drought monitoring, LFP payment estimates, and cattle market data in one place.",
     start_url: '/',
     display: 'standalone',
     background_color: '#FDFBF7',

@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
+import { flagDisabled } from '@/lib/flags'
 
 // POST /api/hay/[id]/confirm — the listing owner confirms the hay is still
 // available. Records last_confirmed_at and pushes expires_at out 30 days so
@@ -10,6 +11,7 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (flagDisabled('marketplace')) return Response.json({ error: 'Not found' }, { status: 404 })
   const { id } = await params
   const numId = parseInt(id, 10)
   if (isNaN(numId)) return Response.json({ error: 'Invalid id' }, { status: 400 })

@@ -16,11 +16,11 @@ const ALERTS_LAYER: VectorLayer | null =
   (LAYERS.find((l): l is VectorLayer => l.id === 'alerts' && l.type === 'vector')) ?? null
 
 // ─── Regional map — registry-driven (layer-platform STEP 1) ────────────────────
-// Renders the active layer GENERICALLY from the registry (./layers.ts). Every toggle
-// segment is a map layer from LAYERS (radar, USDM, alerts). The CPC Monthly/Seasonal
-// drought outlooks are national reference IMAGES (not map layers), so they live in the
-// "Forecast" deep-dive accordion on the dashboard, not in this toggle. Adding a registry
-// layer = +1 definition + 1 proxy route, 0 changes here.
+// Renders the active layer GENERICALLY from the registry (./layers.ts). After the North
+// Star v3 §6 collapse only USDM is visible (radar + the precip/outlook rasters are
+// parked via inToggle:false in layers.ts — defs, proxies, and the renderers below all
+// intact), so the toggle grid renders nothing. Un-parking a layer = deleting its
+// inToggle line; adding a registry layer = +1 definition + 1 proxy route, 0 changes here.
 
 const CONUS: [number, number] = [39.5, -98.5]
 // Degraded/error text color — the semantic "warning" role (lib/brand-colors), distinct
@@ -632,16 +632,16 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
 }
 
 export default function RegionalMapClient({ center, countyLabel, fips, runtime = {} }: RegionalMapClientProps) {
-  const [tab, setTab] = useState<string>(LAYERS[0]?.id ?? 'usdm')
+  // Toggle = registry layers flagged for the toggle only. After the North Star v3 §6
+  // collapse that is USDM alone (radar + the precip/outlook rasters are parked with
+  // inToggle:false, same mechanism alerts always used) — so the map opens on the
+  // FIRST VISIBLE layer, not LAYERS[0], and the grid below only renders with 2+ tabs.
+  const tabs = LAYERS.filter(l => l.inToggle !== false).map(l => ({ id: l.id, label: l.label }))
+  const [tab, setTab] = useState<string>(tabs[0]?.id ?? 'usdm')
   const mapCenter = center ?? CONUS
   const mapZoom   = center ? 6 : 4
 
   const activeLayer = LAYERS.find(l => l.id === tab)
-
-  // Toggle = registry layers flagged for the toggle only → Radar + Drought Monitor.
-  // alerts is registered (inToggle:false) but gets NO tab — it renders as the radar
-  // overlay. The CPC outlook images live in the dashboard "Forecast" accordion.
-  const tabs = LAYERS.filter(l => l.inToggle !== false).map(l => ({ id: l.id, label: l.label }))
 
   // alerts' county-dynamic endpoint (runtime ?area=ST) → fed to the radar overlay.
   const alertsEndpoint = ALERTS_LAYER ? (runtime.alerts?.endpoint ?? ALERTS_LAYER.endpoint) : null
@@ -661,25 +661,26 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
         <RasterLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} />
       ) : null}
 
-      {/* 3-column grid → the six tabs land as an even 2×3 (grid items stretch to equal
-          column width, so rows aren't ragged regardless of label length). Row 1: Radar /
-          Drought Monitor / Observed Rain · Row 2: Forecast Rain / Rain Outlook / Drought
-          Forecast — the LAYERS order already maps to this. */}
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-forest-green/5 p-1">
-        {tabs.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-pressed={tab === id}
-            className={`rounded-md px-3 py-1.5 font-dm-sans text-sm font-medium transition-colors ${
-              tab === id ? 'bg-forest-green text-cream' : 'text-forest-green/60 hover:text-forest-green'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Layer toggle grid — only when there's an actual choice (2+ visible layers).
+          With the §6 collapse leaving USDM alone, this renders nothing; un-parking
+          layers in layers.ts brings it back with no changes here. */}
+      {tabs.length > 1 && (
+        <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-forest-green/5 p-1">
+          {tabs.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              aria-pressed={tab === id}
+              className={`rounded-md px-3 py-1.5 font-dm-sans text-sm font-medium transition-colors ${
+                tab === id ? 'bg-forest-green text-cream' : 'text-forest-green/60 hover:text-forest-green'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
         {activeLayer

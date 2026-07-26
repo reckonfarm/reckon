@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { flagDisabled } from '@/lib/flags'
 
 export const metadata: Metadata = {
   title: 'Hay Network',
@@ -7,5 +9,8 @@ export const metadata: Metadata = {
 }
 
 export default function HayLayout({ children }: { children: React.ReactNode }) {
+  // Marketplace flagged off → every /hay/* segment 404s from this one server
+  // layout (the list page below is a client component, so the gate lives here).
+  if (flagDisabled('marketplace')) notFound()
   return <>{children}</>
 }
