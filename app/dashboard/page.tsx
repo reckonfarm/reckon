@@ -40,7 +40,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
-import MarketsNews from '@/app/components/MarketsNews'
+import NewsHookCard from '@/app/components/NewsHookCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -267,9 +267,11 @@ export default async function DashboardPage({
   searchParams: Promise<{ fips?: string; gs?: string; ge?: string; pt?: string; view?: string }>
 }) {
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
-  // My Operation defaults to the Market News view; Drought is opt-in via &view=drought,
-  // Hay via &view=hay, Markets via &view=markets. With the marketplace flagged off,
-  // ?view=hay (stale deep links, share cards) falls back to the default view.
+  // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
+  // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Weather via
+  // &view=drought, Markets via &view=markets. With the marketplace flagged off,
+  // ?view=hay (stale deep links, share cards) falls back to Today.
   const view: 'news' | 'drought' | 'hay' | 'markets' =
     viewParam === 'drought' ? 'drought'
       : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
@@ -801,11 +803,25 @@ export default async function DashboardPage({
                 a view. Filters to the user's crops when set, else shows all. */}
             <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
 
-            {/* Peer-view toggle — Market News ↔ Drought (same county) */}
+            {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
 
+            {/* Today (key 'news' — see the parse note above) — the daily-use floor:
+                7-day forecast carousel + the 3-headline news hook. The carousel reuses
+                the SAME already-started forecastPromise the ConditionsStrip streams
+                from (zero new fetches; it also renders in Weather, but only one view
+                renders at a time). The hook is the ENTIRE news surface now — the old
+                full MarketsNews feed is parked (component kept, no longer rendered). */}
             {view === 'news' && (
-              <MarketsNews fips={selectedCounty.fips} />
+              <>
+                <div>
+                  <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+                  <Suspense fallback={<ForecastPanelSkeleton />}>
+                    <ForecastPanelAsync dataPromise={forecastPromise} />
+                  </Suspense>
+                </div>
+                <NewsHookCard fips={selectedCounty.fips} />
+              </>
             )}
 
             {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the

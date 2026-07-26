@@ -10,7 +10,7 @@ import { Badge } from './ui/Badge'
 // short snippet + link out only — never full text. Regional matches sort to top and
 // carry a "Near you" badge. On-brand loading/empty/error states — never a dead box.
 
-interface NewsItem {
+export interface NewsItem {
   title: string
   link: string
   pubDate: string | null
@@ -22,7 +22,7 @@ interface NewsItem {
   ts: number
 }
 
-interface NewsResponse {
+export interface NewsResponse {
   items: NewsItem[]
   region: string | null
   error?: boolean
@@ -90,7 +90,7 @@ interface RankedItem extends NewsItem {
 
 // Within a tier: substantive (markets/drought) → recency. `regional` is NO LONGER a
 // sort key — it's the TIER PARTITION (local vs national) done in the render body.
-function rankItems(items: NewsItem[]): RankedItem[] {
+export function rankItems(items: NewsItem[]): RankedItem[] {
   return items
     .map(it => {
       const categories = categorize(it)
@@ -110,7 +110,7 @@ function rankItems(items: NewsItem[]): RankedItem[] {
 const LEAD_WINDOW = 4
 const LEAD_MAX_PER_SOURCE = 2
 
-function diversifyLead(items: RankedItem[]): RankedItem[] {
+export function diversifyLead(items: RankedItem[]): RankedItem[] {
   if (items.length <= 1) return items
   const lead: RankedItem[] = []
   const deferred: RankedItem[] = []
@@ -298,7 +298,7 @@ function NewsCard({
 // Compact row for the secondary National tier — lighter than NewsCard (no snippet,
 // smaller title, border-separated) so national visibly recedes beneath the local
 // river. Same headline-only + link-out contract.
-function NewsCardCompact({ item }: { item: NewsItem }) {
+export function NewsCardCompact({ item }: { item: NewsItem }) {
   return (
     <a
       href={item.link}

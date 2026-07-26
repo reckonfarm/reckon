@@ -4,9 +4,9 @@ import Link from 'next/link'
 import { useLinkStatus } from 'next/link'
 import { flagEnabled } from '@/lib/flags'
 
-// Two-way segmented control marking Market News and the Drought dashboard as PEER
-// views of one county. Preserves fips. News is the DEFAULT (bare /dashboard, no view
-// param); Drought is opt-in via &view=drought.
+// Segmented control marking the peer views of one county. Preserves fips. TODAY is
+// the DEFAULT (bare /dashboard, no view param — internal key 'news', see below);
+// Weather is opt-in via &view=drought.
 //
 // Client component so the tapped segment can show a pending spinner via useLinkStatus
 // while the (dynamic, no-loading.js) Drought view renders server-side — so the first
@@ -56,11 +56,12 @@ export default function DroughtCattleToggle({
   // Data-driven so a 3rd/4th view is one array entry (+ widen `active` / the ?view= parse),
   // not a redesign. Each item's href / scroll={false} / aria-current / active=== logic is
   // identical to the previous hardcoded segments — this is structure only.
-  // NOTE: the 'drought' key drives ?view=drought while its label reads "Weather" — the
-  // label↔key mismatch is deliberate (renaming the value would break deep links, the
+  // NOTE: the 'drought' key drives ?view=drought while its label reads "Weather", and
+  // the 'news' key is the default view while its label reads "Today" — the label↔key
+  // mismatches are deliberate (renaming the values would break deep links, the
   // heavy-fetch gate, and the auth redirect).
   const segments: { key: 'news' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
-    { key: 'news',    label: 'News',    href: `/dashboard?fips=${fips}` },
+    { key: 'news',    label: 'Today',   href: `/dashboard?fips=${fips}` },
     { key: 'drought', label: 'Weather', href: `/dashboard?fips=${fips}&view=drought` },
     // Hay segment rides the marketplace flag (the dashboard's ?view=hay parse is
     // gated on the same flag, so a stale deep link falls back to the default view).
