@@ -6,17 +6,18 @@ import type { MoistureResult } from '@/lib/moisture-service'
 import type { CropResult } from '@/lib/crop-service'
 import type { CycleResult } from '@/lib/cattle-cycle-service'
 
-// Market Read — the §4 feedlot-demand corn read, shown as RAW EVIDENCE ONLY (A2 retired
-// the composed narrative lead: show-don't-preach). Four chips under the bare eyebrow;
-// per §3 it is a READ, never a calculator and never a sell-or-hold call — the
-// footer says so explicitly. The old composeLead() sentence generator was deleted, not
-// hidden, so no lean quietly regenerates later.
+// Market Read — the §4 feedlot-demand corn read, shown as RAW EVIDENCE ONLY. A2 retired the
+// composed narrative lead; Block 2 finished the job: PURE METRICS, ZERO PHRASES. Each chip is
+// what the metric IS (label + definition footer), its value, and its trend — no phase words,
+// no editorializing delta words ('wetter'/'better'/'fewer' are gone; arrow + magnitude + unit
+// only), and no card disclaimer (with no read offered there is nothing to disclaim). The old
+// composeLead() sentence generator was deleted, not hidden, so no lean quietly regenerates.
 //
 // THE TWO DIRECTION GRAMMARS DIFFER ON PURPOSE:
 //   • Price: raw settle direction — up = text-up, down = text-down (a number moving).
-//   • Moisture: MEANING, not the raw number — a FALLING drought % means WETTER, which is GOOD
-//     for calf demand, so 'wetter' = text-up (green) even though the number went DOWN. The
-//     arrow tracks the number (▼ when drought fell); the color + word carry the meaning.
+//   • Moisture / Heifers: MEANING, not the raw number — a FALLING drought % (wetter) and
+//     FALLING heifers YoY (herd rebuilding) are both supportive, so ▼ pairs with text-up
+//     (green). The arrow tracks the number; the color alone carries the meaning.
 //
 // Honest throughout: a leg with no data → "warming up"; a read error → "temporarily
 // unavailable"; never a fabricated $0 / 0% / lean.
@@ -41,10 +42,10 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
     const note = moisture.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Feed country</p>
+        <p className={CHIP_LABEL}>Feed-region drought</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>feeding-region rain vs normal</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>16-state feeding area in D1+</p>
       </div>
     )
   }
@@ -53,7 +54,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
   const pts = changePts != null ? Math.abs(changePts) : null
   return (
     <div className={CHIP}>
-      <p className={CHIP_LABEL}>Feed country</p>
+      <p className={CHIP_LABEL}>Feed-region drought</p>
       <p className={CHIP_VALUE}>{Math.round(droughtPct)}%</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || pts == null ? (
@@ -61,11 +62,11 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
         ) : (
           // wetter ⇒ good ⇒ text-up (even though the % fell, ▼); drier ⇒ bad ⇒ text-down (▲).
           <span className={`font-semibold tabular-nums ${direction === 'wetter' ? 'text-up' : 'text-down'}`}>
-            {direction === 'wetter' ? '▼' : '▲'} {pts.toFixed(1)} pts {direction}
+            {direction === 'wetter' ? '▼' : '▲'} {pts.toFixed(1)} pts
           </span>
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : 'corn belt · in drought D1+'}</p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : '16-state feeding area in D1+'}</p>
     </div>
   )
 }
@@ -78,10 +79,10 @@ function CropChip({ crop }: { crop: CropResult }) {
   if (crop.status === 'off_season') {
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Crop</p>
+        <p className={CHIP_LABEL}>Corn condition</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>resumes in spring</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>corn condition</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>US corn good + excellent</p>
       </div>
     )
   }
@@ -89,10 +90,10 @@ function CropChip({ crop }: { crop: CropResult }) {
     const note = crop.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Crop</p>
+        <p className={CHIP_LABEL}>Corn condition</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>corn condition</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>US corn good + excellent</p>
       </div>
     )
   }
@@ -101,7 +102,7 @@ function CropChip({ crop }: { crop: CropResult }) {
   const pts = changePts != null ? Math.abs(changePts) : null
   return (
     <div className={CHIP}>
-      <p className={CHIP_LABEL}>Crop</p>
+      <p className={CHIP_LABEL}>Corn condition</p>
       <p className={CHIP_VALUE}>{Math.round(gePct)}%</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || pts == null ? (
@@ -109,54 +110,57 @@ function CropChip({ crop }: { crop: CropResult }) {
         ) : (
           // better ⇒ good ⇒ text-up ▲ (rising G/E); worse ⇒ bad ⇒ text-down ▼. Arrow + color agree.
           <span className={`font-semibold tabular-nums ${direction === 'better' ? 'text-up' : 'text-down'}`}>
-            {direction === 'better' ? '▲' : '▼'} {pts.toFixed(1)} pts {direction}
+            {direction === 'better' ? '▲' : '▼'} {pts.toFixed(1)} pts
           </span>
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'good+excellent'}</p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'US corn good + excellent'}</p>
     </div>
   )
 }
 
 // The Cattle Cycle leg — live NASS heifers-on-feed YoY (the §2 cycle "master switch"), shown
-// as a phase WORD, not a head count. COLOR ENCODES MEANING: FEWER heifers YoY = herd holding
-// back / rebuilding = tighter future supply = SUPPORTIVE → text-up (green); MORE = still
-// feeding, not retaining = pressure → text-down. Arrow tracks the raw number (▼ when heifers
-// fell); green + word carry the meaning — same inversion as Moisture. Quarterly, so a months-
-// old reading is normal (the service's wide stale window handles that).
+// as the signed YoY NUMBER (Block 2 deleted the phase word — the interpretation was a phrase).
+// COLOR ENCODES MEANING: FEWER heifers YoY = herd holding back / rebuilding = tighter future
+// supply = SUPPORTIVE → text-up (green); MORE = still feeding, not retaining = pressure →
+// text-down. Arrow tracks the raw number (▼ when heifers fell); green alone carries the
+// meaning — same inversion as Moisture. Quarterly, so a months-old reading is normal (the
+// service's wide stale window handles that).
 function CycleChip({ cycle }: { cycle: CycleResult }) {
   if (cycle.status !== 'ok') {
     const note = cycle.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Cattle cycle</p>
+        <p className={CHIP_LABEL}>Heifers on feed</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>heifers on feed</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>US feedlots · vs year ago</p>
       </div>
     )
   }
 
   const { yoyPct, direction, reportPoint, stale } = cycle
-  const phase = direction === 'holding_back' ? 'Holding back' : direction === 'still_feeding' ? 'Still feeding' : 'Steady'
-  const abs = yoyPct != null ? Math.abs(yoyPct) : null
   return (
     <div className={CHIP}>
-      <p className={CHIP_LABEL}>Cattle cycle</p>
-      <p className="mt-1 font-fraunces text-lg font-semibold leading-tight text-ink">{phase}</p>
+      <p className={CHIP_LABEL}>Heifers on feed</p>
+      {yoyPct == null ? (
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
+      ) : (
+        <p className={CHIP_VALUE}>{yoyPct > 0 ? '+' : ''}{yoyPct.toFixed(1)}%</p>
+      )}
       <p className={CHIP_FOOT}>
-        {abs == null ? (
+        {yoyPct == null ? (
           <span className="text-muted/60">no year-ago figure</span>
         ) : direction === 'steady' ? (
-          <span className="text-muted/60">about even with last year</span>
+          <span className="text-muted/60">unchanged</span>
         ) : (
           // holding_back ⇒ supportive ⇒ text-up ▼ (fewer heifers); still_feeding ⇒ text-down ▲.
-          <span className={`font-semibold tabular-nums ${direction === 'holding_back' ? 'text-up' : 'text-down'}`}>
-            {direction === 'holding_back' ? '▼' : '▲'} {abs.toFixed(1)}% {direction === 'holding_back' ? 'fewer' : 'more'} heifers
+          <span className={`font-semibold ${direction === 'holding_back' ? 'text-up' : 'text-down'}`}>
+            {direction === 'holding_back' ? '▼' : '▲'} vs year ago
           </span>
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>heifers on feed vs a year ago{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>US feedlots · quarterly{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
     </div>
   )
 }
@@ -167,10 +171,10 @@ function PriceChip({ corn }: { corn: CornResult }) {
     const note = corn.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
     return (
       <div className={CHIP}>
-        <p className={CHIP_LABEL}>Price</p>
+        <p className={CHIP_LABEL}>Corn</p>
         <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
         <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>corn board</p>
+        <p className={`${CHIP_FOOT} text-muted/40`}>CBOT front month · ¢/bu</p>
       </div>
     )
   }
@@ -179,7 +183,7 @@ function PriceChip({ corn }: { corn: CornResult }) {
   const abs = priorSettle != null ? Math.abs(settlePrice - priorSettle) : null
   return (
     <div className={CHIP}>
-      <p className={CHIP_LABEL}>Price</p>
+      <p className={CHIP_LABEL}>Corn</p>
       <p className={CHIP_VALUE}>{settlePrice.toFixed(2)}&cent;</p>
       {/* reuses HerdEstimatePanel's ▲/▼ + text-up/text-down delta grammar (raw number) */}
       <p className={CHIP_FOOT}>
@@ -192,7 +196,7 @@ function PriceChip({ corn }: { corn: CornResult }) {
           </span>
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(settleDate)}` : 'corn board · ¢/bu'}</p>
+      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(settleDate)}` : 'CBOT front month · ¢/bu'}</p>
     </div>
   )
 }
@@ -204,17 +208,14 @@ export default function MarketReadShell({ corn, moisture, crop, cycle }: { corn:
       <p className={EYEBROW}>Market Read</p>
 
       {/* Evidence legs. Feed signals (Moisture / Crop / Price) + the cattle-cycle master-switch
-          context. Four chips: 2×2 on a phone, one row on sm+ (wraps cleanly at chip width). */}
+          context. Four chips: 2×2 on a phone, one row on sm+ (wraps cleanly at chip width).
+          No disclaimer footer: pure metrics offer no read, so there is nothing to disclaim. */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MoistureChip moisture={moisture} />
         <CropChip crop={crop} />
         <PriceChip corn={corn} />
         <CycleChip cycle={cycle} />
       </div>
-
-      <p className="mt-4 font-dm-sans text-xs leading-relaxed text-muted/55">
-        A read on the market, not a recommendation &mdash; never a sell-or-hold call.
-      </p>
     </Card>
   )
 }
