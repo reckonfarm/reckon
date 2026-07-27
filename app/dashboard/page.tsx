@@ -12,7 +12,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import RegionalMapLoader from './components/RegionalMapLoader'
-import type { OwnPlace } from './components/RegionalMapClient'
+import type { OwnPlace, OwnDevice } from './components/RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
@@ -683,17 +683,23 @@ export default async function DashboardPage({
   // A failed read → error:true so the map's status line says so (never a silent
   // absence); an auth-resolution failure → null (indistinguishable from signed
   // out, and treated as such).
-  let ownGround: { places: OwnPlace[]; error: boolean } | null = null
+  let ownGround: { places: OwnPlace[]; devices: OwnDevice[]; error: boolean } | null = null
   if (selectedCounty && view === 'drought') {
     try {
       const sb = await createClient()
       const { data: { user } } = await sb.auth.getUser()
       if (user) {
-        const { data: placeRows, error: placesErr } = await sb
-          .from('places')
-          .select('id, name, kind, geometry')
-          .order('name', { ascending: true })
-        ownGround = { places: (placeRows ?? []) as OwnPlace[], error: !!placesErr }
+        // Places + PLACED devices in parallel (unplaced devices are honestly
+        // off the map — the Devices tab is the full registry).
+        const [placesRes, devicesRes] = await Promise.all([
+          sb.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
+          sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
+        ])
+        ownGround = {
+          places:  (placesRes.data ?? []) as OwnPlace[],
+          devices: (devicesRes.data ?? []) as OwnDevice[],
+          error:   !!placesRes.error || !!devicesRes.error,
+        }
       }
     } catch {
       ownGround = null

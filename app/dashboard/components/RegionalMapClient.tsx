@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, useMap, CircleMarker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import { LAYERS, type VectorLayer, type RadarLayer, type RasterLayer, type LayerRuntime } from './layers'
 import { timeoutSignal } from '@/lib/external-fetch'
-import { warning, forestGreen, cream } from '@/lib/brand-colors'
+import { warning, forestGreen, cream, rust } from '@/lib/brand-colors'
 
 // alerts stays REGISTERED (its data + LayerRuntime endpoint flow normally) but is NOT a
 // toggle tab (inToggle:false) — it renders only as the radar overlay. Resolve its static
@@ -63,9 +63,21 @@ export interface OwnPlace {
   geometry: unknown  // GeoJSON from places.geometry jsonb — validated before drawing
 }
 
+export interface OwnDevice {
+  id:          string
+  name:        string
+  battery_pct: number | null
+  last_seen:   string | null
+  place_id:    string   // pinned devices only — the fetch excludes unplaced ones
+}
+
 export interface OwnGround {
   places: OwnPlace[]
-  // True when the server-side places read failed — the status line says so
+  // Devices WITH a place_id (S4 2/2) — each pins at its place's anchor point.
+  // Unplaced devices are honestly off the map (the Devices tab is the full
+  // registry); the server fetch never sends them.
+  devices: OwnDevice[]
+  // True when the server-side read failed — the status line says so
   // (never a silent absence for a signed-in user).
   error:  boolean
 }
@@ -261,6 +273,70 @@ export function splitDrawablePlaces(places: OwnPlace[]): { drawable: OwnPlace[];
       PLACE_GEOMETRY_TYPES.has(g.type) && Array.isArray(g.coordinates)
   })
   return { drawable, skipped: places.length - drawable.length }
+}
+
+// Anchor point for a device pin: a Point place pins exactly there; a Polygon /
+// MultiPolygon pins at its bounding-box center (client-side, no PostGIS).
+export function placeAnchor(geometry: unknown): [number, number] | null {
+  const g = geometry as { type?: string; coordinates?: unknown } | null
+  if (!g || typeof g !== 'object' || !Array.isArray(g.coordinates)) return null
+  if (g.type === 'Point') {
+    const [lon, lat] = g.coordinates as number[]
+    return typeof lat === 'number' && typeof lon === 'number' ? [lat, lon] : null
+  }
+  if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+    const pts = (g.type === 'Polygon'
+      ? (g.coordinates as number[][][]).flat()
+      : (g.coordinates as number[][][][]).flat(2)
+    ).filter(p => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number')
+    if (!pts.length) return null
+    const lons = pts.map(p => p[0])
+    const lats = pts.map(p => p[1])
+    return [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2]
+  }
+  return null
+}
+
+// Coarse relative time for the pin popup — 'Never' is the honest word for null.
+function agoLabel(iso: string | null): string {
+  if (!iso) return 'Never'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 60_000) return 'Just now'
+  const min = Math.floor(ms / 60_000)
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} hr ago`
+  const d = Math.floor(hr / 24)
+  return d === 1 ? 'Yesterday' : `${d} days ago`
+}
+
+// Device pins — rust dots (brand accent: hardware, not ground) above the place
+// shapes; popup = the registry glance (name · battery · last-seen). A device on
+// a place whose geometry can't anchor simply doesn't pin (its place is already
+// counted in the status line's partial state).
+function DevicePins({ devices, places }: { devices: OwnDevice[]; places: OwnPlace[] }) {
+  const anchorByPlace = new Map(places.map(p => [p.id, placeAnchor(p.geometry)]))
+  return (
+    <>
+      {devices.map(d => {
+        const anchor = anchorByPlace.get(d.place_id)
+        if (!anchor) return null
+        const battery = d.battery_pct != null ? `${d.battery_pct}%` : '—'
+        return (
+          <CircleMarker
+            key={d.id}
+            center={anchor}
+            radius={4}
+            pathOptions={{ color: cream, weight: 1.5, fillColor: rust, fillOpacity: 1 }}
+          >
+            <Popup>
+              <strong>{d.name}</strong> · {battery} · {agoLabel(d.last_seen)}
+            </Popup>
+          </CircleMarker>
+        )
+      })}
+    </>
+  )
 }
 
 function PlacesOverlay({ places }: { places: OwnPlace[] }) {
@@ -734,6 +810,9 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
               Only the visible (vector/USDM) view carries it in v0 — thread the same
               children into the radar/raster views if a layer ever un-parks. */}
           {drawablePlaces.length > 0 && <PlacesOverlay places={drawablePlaces} />}
+          {drawablePlaces.length > 0 && (ownGround?.devices.length ?? 0) > 0 && (
+            <DevicePins devices={ownGround!.devices} places={drawablePlaces} />
+          )}
         </VectorLayerView>
       ) : activeLayer?.type === 'radar' ? (
         // Animated radar tiles + the alerts overlay (county-dynamic endpoint).
