@@ -41,6 +41,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
+import ActivityFeed, { ActivityFeedSkeleton } from './components/ActivityFeed'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -269,14 +270,16 @@ export default async function DashboardPage({
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
-  // deliberate label↔key mismatch as 'drought'/"Weather"). Weather via
-  // &view=drought, Markets via &view=markets. With the marketplace flagged off,
-  // ?view=hay (stale deep links, share cards) falls back to Today.
-  const view: 'news' | 'drought' | 'hay' | 'markets' =
-    viewParam === 'drought' ? 'drought'
-      : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
-        : viewParam === 'markets' ? 'markets'
-          : 'news'
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Activity via
+  // &view=activity (S3 — the merged ledger feed), Weather via &view=drought,
+  // Markets via &view=markets. With the marketplace flagged off, ?view=hay
+  // (stale deep links, share cards) falls back to Today.
+  const view: 'news' | 'activity' | 'drought' | 'hay' | 'markets' =
+    viewParam === 'activity' ? 'activity'
+      : viewParam === 'drought' ? 'drought'
+        : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
+          : viewParam === 'markets' ? 'markets'
+            : 'news'
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -822,6 +825,16 @@ export default async function DashboardPage({
                 </div>
                 <NewsHookCard fips={selectedCounty.fips} />
               </>
+            )}
+
+            {/* Activity (S3) — the merged ledger feed, streamed behind Suspense so
+                the events query never blocks the shell. Self-contained: resolves
+                its own user (signed-out gets the honest private-ledger gate — the
+                dashboard stays public, the ledger doesn't). */}
+            {view === 'activity' && (
+              <Suspense fallback={<ActivityFeedSkeleton />}>
+                <ActivityFeed />
+              </Suspense>
             )}
 
             {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the
