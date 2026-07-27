@@ -12,6 +12,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import RegionalMapLoader from './components/RegionalMapLoader'
+import type { OwnPlace } from './components/RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
@@ -676,6 +677,29 @@ export default async function DashboardPage({
     }))
   }
 
+  // ── Own ground (S4) — the signed-in user's places for the Weather map overlay.
+  // Fetched only where the map renders (drought view), via the USER-SCOPED SSR
+  // client (third RLS consumer). Signed out → null → the public map is unchanged.
+  // A failed read → error:true so the map's status line says so (never a silent
+  // absence); an auth-resolution failure → null (indistinguishable from signed
+  // out, and treated as such).
+  let ownGround: { places: OwnPlace[]; error: boolean } | null = null
+  if (selectedCounty && view === 'drought') {
+    try {
+      const sb = await createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (user) {
+        const { data: placeRows, error: placesErr } = await sb
+          .from('places')
+          .select('id, name, kind, geometry')
+          .order('name', { ascending: true })
+        ownGround = { places: (placeRows ?? []) as OwnPlace[], error: !!placesErr }
+      }
+    } catch {
+      ownGround = null
+    }
+  }
+
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
 
@@ -975,6 +999,7 @@ export default async function DashboardPage({
                 // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
                 alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
               }}
+              ownGround={ownGround}
             />
 
             {/* ── LFP status — the single contextual LFP card (A1 merged the old
