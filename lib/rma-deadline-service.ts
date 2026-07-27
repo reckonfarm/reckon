@@ -9,7 +9,7 @@ import { createServiceClient } from './supabase'
 // the SERVICE-ROLE client — NOT the SSR/anon client. (Deliberately the OPPOSITE of
 // lib/operation-profile-service.ts, which is user-owned and must run as the user.)
 //
-// HONEST RESULT (mirrors lib/cattle-market-service.ts — discriminated, never fabricate):
+// HONEST RESULT (mirrors lib/lrp-service.ts — discriminated, never fabricate):
 //   • { status: 'ok', deadlines }      → one or more upcoming dates (soonest first).
 //   • { status: 'none' }               → genuine absence: nothing dated today-or-later
 //                                        for this county/crops (e.g. PRF 12/1 already past).
@@ -56,12 +56,40 @@ function precedenceKey(r: DeadlineRow): string {
   return `${r.crop_or_program}|${r.deadline_type}|${r.crop_year}`
 }
 
-// Program-level obligations: state-wide filings EVERY producer must make (e.g. the FSA
-// seeded-acres report and the RMA acreage report), not crop-specific deadlines. Their
+// Program-level obligations: state-wide filings EVERY producer must make (the FSA
+// seeded-acres report, the RMA acreage report, and the LFP application — the disaster
+// program this dashboard exists for), not crop-specific deadlines. Their
 // crop_or_program is a program slug, not a real crop, so they must ALWAYS show — they
 // bypass the producer crop filter below. Without this, a producer who entered their crops
-// would lose these obligations entirely (a program slug matches no crop).
-const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage'])
+// would lose these obligations entirely (a program slug matches no crop). Mirrors
+// PROGRAM_AGENCY in DeadlineCountdownCard.tsx.
+const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage', 'lfp'])
+
+// ─── Quiet-card visibility (Block 2: silence is a feature) ───────────────────────
+//
+// The full deadline card renders only when there is something actionable; otherwise it
+// folds into the collapsed "Program status" row (quiet, never lost). LOUD means:
+//   • data_unavailable — an outage must never masquerade as all-quiet; the card stays
+//     visible with its honest unavailable copy.
+//   • soonest deadline ≤ 45 days out — sales-closing decisions need an agent
+//     conversation; 45 days is the "start thinking" horizon.
+//   • any row's as_of is within the last 7 days — a newly published/changed deadline
+//     surfaces briefly even when far out (stateless "changed" detection).
+// 'none' and far-out deadlines are QUIET.
+export const DEADLINE_LOUD_WINDOW_DAYS = 45
+export const DEADLINE_NEWLY_PUBLISHED_DAYS = 7
+
+export function isDeadlineLoud(result: UpcomingDeadlinesResult): boolean {
+  if (result.status === 'data_unavailable') return true
+  if (result.status === 'none') return false
+  if (result.deadlines[0].daysUntil <= DEADLINE_LOUD_WINDOW_DAYS) return true
+  const today = new Date().toISOString().slice(0, 10)
+  return result.deadlines.some(d => {
+    if (!d.as_of) return false
+    const age = daysBetween(d.as_of, today)
+    return age >= 0 && age <= DEADLINE_NEWLY_PUBLISHED_DAYS
+  })
+}
 
 export async function getUpcomingDeadlines(
   countyFips: string,

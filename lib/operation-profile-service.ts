@@ -18,7 +18,7 @@ import { createClient } from './supabase-server'
 //   and silently defeat them. If you reach for createServiceClient here, that's the bug.
 //
 // HONEST RESULT (mirrors the discriminated, never-fabricate posture of
-// lib/cattle-market-service.ts):
+// lib/lrp-service.ts):
 //   • signed-out / no session          → { status: 'unauthenticated' }
 //   • signed-in, nothing entered yet    → { status: 'empty' }   (row absent, OR a row
 //                                          exists but herd AND crops are both null)

@@ -10,13 +10,15 @@ import {
   type NewsResponse,
 } from '@/app/components/MarketsNews'
 
-// The 3-headline news hook — the ENTIRE news surface after the Boring purge
+// The headline news hook — the ENTIRE news surface after the Boring purge
 // (North Star v3 §6: news demoted from the default view to a hook inside Today).
 // Same /api/news fetch + client-side ranking the old full feed used (imported from
 // MarketsNews, which stays parked, not deleted): local tier first with the
-// diversified lead, then national, top 3 overall. Each headline links OUT to its
-// article — there is deliberately NO "more news" affordance anywhere; Dryline
-// stopped being a reader. Honesty states: loading skeleton ≠ error ≠ empty.
+// diversified lead, then national. 3 headlines by default; "More headlines"
+// expands IN PLACE to the top 10 of the same ranked list (Block 2) — no new fetch,
+// no pagination, no infinite scroll, every headline still links OUT to its article.
+// Dryline is still not a reader; the hook just stopped discarding items it already
+// had. Honesty states: loading skeleton ≠ error ≠ empty.
 
 type State =
   | { phase: 'loading' }
@@ -24,9 +26,13 @@ type State =
   | { phase: 'ready'; items: NewsItem[] }
 
 const HEADLINE_COUNT = 3
+const EXPANDED_COUNT = 10
 
 export default function NewsHookCard({ fips }: { fips?: string | null }) {
   const [state, setState] = useState<State>({ phase: 'loading' })
+  // Expansion survives a county swap on purpose: it's a view preference, not county
+  // state, and the swap already holds the previous list rather than flashing.
+  const [expanded, setExpanded] = useState(false)
 
   // Promise-chain fetch with a cancelled flag (mirrors BottomTabBar's pattern; no
   // synchronous setState in the effect body). Initial state already shows the
@@ -47,12 +53,13 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
           return
         }
         // Same reading order as the old feed's page one: ranked local river (with
-        // the diversified lead) ahead of the national tail — then just the top 3.
+        // the diversified lead) ahead of the national tail. Keep the top 10 —
+        // 3 render collapsed, the rest are the in-place expansion.
         const ranked = rankItems(data.items ?? [])
         const top = [
           ...diversifyLead(ranked.filter(it => it.regional)),
           ...ranked.filter(it => !it.regional),
-        ].slice(0, HEADLINE_COUNT)
+        ].slice(0, EXPANDED_COUNT)
         setState({ phase: 'ready', items: top })
       })
       .catch(() => {
@@ -99,9 +106,18 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'ready' && state.items.length > 0 && (
         <Card shadow="none" className="divide-y divide-forest-green/10 px-5 py-1">
-          {state.items.map(item => (
+          {(expanded ? state.items : state.items.slice(0, HEADLINE_COUNT)).map(item => (
             <NewsCardCompact key={item.link} item={item} />
           ))}
+          {state.items.length > HEADLINE_COUNT && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              className="w-full py-3 text-left font-dm-sans text-xs text-forest-green/50 transition-colors hover:text-forest-green"
+            >
+              {expanded ? 'Fewer headlines ↑' : 'More headlines ↓'}
+            </button>
+          )}
         </Card>
       )}
     </div>

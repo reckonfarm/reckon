@@ -43,7 +43,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   const db = createServiceClient()
-  const { error } = await db.from('profiles').update(update).eq('id', user.id)
+  // UPSERT, not update: the profiles row is created lazily (/api/auth/sync is
+  // fire-and-forget), so it can legitimately be missing here. A plain .update()
+  // matches zero rows and still reports ok — the UI says "Saved" while nothing
+  // persists. Upsert on the primary key closes that silent-data-loss path.
+  const { error } = await db.from('profiles').upsert({ id: user.id, ...update })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

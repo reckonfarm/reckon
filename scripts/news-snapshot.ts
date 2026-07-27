@@ -311,7 +311,7 @@ async function fetchFeed(feed: Feed, matchers: CountyMatcher[]): Promise<{ rows:
   }
 }
 
-// ─── Supabase service-role client (auth pattern cloned from cattle-snapshot.ts) ───
+// ─── Supabase service-role client (auth pattern cloned from lrp-snapshot.ts) ───
 function makeClient(): SupabaseClient {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY

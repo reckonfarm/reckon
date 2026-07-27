@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, useMap, CircleMarker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FeatureCollection } from 'geojson'
 import { LAYERS, type VectorLayer, type RadarLayer, type RasterLayer, type LayerRuntime } from './layers'
 import { timeoutSignal } from '@/lib/external-fetch'
-import { warning } from '@/lib/brand-colors'
+import { warning, forestGreen, cream, rust } from '@/lib/brand-colors'
 
 // alerts stays REGISTERED (its data + LayerRuntime endpoint flow normally) but is NOT a
 // toggle tab (inToggle:false) — it renders only as the radar overlay. Resolve its static
@@ -48,6 +48,38 @@ export interface RegionalMapClientProps {
   fips?:       string
   // Per-layer, county-dynamic extras keyed by layer id (e.g. USDM's static-image fallback).
   runtime?:    Record<string, LayerRuntime>
+  // The signed-in user's OWN GROUND (S4): places from the ranch ledger, fetched
+  // server-side via the user-scoped SSR client and threaded in as props. Absent
+  // (undefined/null) = signed out or not fetched → the public map is unchanged.
+  // Not a registry layer on purpose: the registry is for chooseable DATA layers;
+  // places are the user's ground, present whenever they exist.
+  ownGround?:  OwnGround | null
+}
+
+export interface OwnPlace {
+  id:       string
+  name:     string
+  kind:     string   // 'field' | 'tank' | 'stackyard' | …
+  geometry: unknown  // GeoJSON from places.geometry jsonb — validated before drawing
+}
+
+export interface OwnDevice {
+  id:          string
+  name:        string
+  battery_pct: number | null
+  last_seen:   string | null
+  place_id:    string   // pinned devices only — the fetch excludes unplaced ones
+}
+
+export interface OwnGround {
+  places: OwnPlace[]
+  // Devices WITH a place_id (S4 2/2) — each pins at its place's anchor point.
+  // Unplaced devices are honestly off the map (the Devices tab is the full
+  // registry); the server fetch never sends them.
+  devices: OwnDevice[]
+  // True when the server-side read failed — the status line says so
+  // (never a silent absence for a signed-in user).
+  error:  boolean
 }
 
 type Status = 'loading' | 'ok' | 'empty' | 'error'
@@ -224,16 +256,133 @@ function VectorOverlay({ layer, geo, styleOverride }: {
   )
 }
 
+// ─── Own-ground overlay (S4) — the user's places, drawn ABOVE the data layer ───
+// Rendered as an ADDITIONAL child of the active view's MapContainer, so the USDM
+// layer beneath is untouched (coexistence, not replacement). Defensive by
+// design: a malformed geometry never crashes the map — that place is skipped
+// AND counted, and the status line under the map says so.
+
+const PLACE_GEOMETRY_TYPES = new Set(['Point', 'Polygon', 'MultiPolygon'])
+
+// Splits places into drawable (valid GeoJSON of a supported type) vs skipped.
+// Shared by the overlay (what to draw) and the status line (what to admit).
+export function splitDrawablePlaces(places: OwnPlace[]): { drawable: OwnPlace[]; skipped: number } {
+  const drawable = places.filter(p => {
+    const g = p.geometry as { type?: unknown; coordinates?: unknown } | null
+    return !!g && typeof g === 'object' && typeof g.type === 'string' &&
+      PLACE_GEOMETRY_TYPES.has(g.type) && Array.isArray(g.coordinates)
+  })
+  return { drawable, skipped: places.length - drawable.length }
+}
+
+// Anchor point for a device pin: a Point place pins exactly there; a Polygon /
+// MultiPolygon pins at its bounding-box center (client-side, no PostGIS).
+export function placeAnchor(geometry: unknown): [number, number] | null {
+  const g = geometry as { type?: string; coordinates?: unknown } | null
+  if (!g || typeof g !== 'object' || !Array.isArray(g.coordinates)) return null
+  if (g.type === 'Point') {
+    const [lon, lat] = g.coordinates as number[]
+    return typeof lat === 'number' && typeof lon === 'number' ? [lat, lon] : null
+  }
+  if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+    const pts = (g.type === 'Polygon'
+      ? (g.coordinates as number[][][]).flat()
+      : (g.coordinates as number[][][][]).flat(2)
+    ).filter(p => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number')
+    if (!pts.length) return null
+    const lons = pts.map(p => p[0])
+    const lats = pts.map(p => p[1])
+    return [(Math.min(...lats) + Math.max(...lats)) / 2, (Math.min(...lons) + Math.max(...lons)) / 2]
+  }
+  return null
+}
+
+// Coarse relative time for the pin popup — 'Never' is the honest word for null.
+function agoLabel(iso: string | null): string {
+  if (!iso) return 'Never'
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 60_000) return 'Just now'
+  const min = Math.floor(ms / 60_000)
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} hr ago`
+  const d = Math.floor(hr / 24)
+  return d === 1 ? 'Yesterday' : `${d} days ago`
+}
+
+// Device pins — rust dots (brand accent: hardware, not ground) above the place
+// shapes; popup = the registry glance (name · battery · last-seen). A device on
+// a place whose geometry can't anchor simply doesn't pin (its place is already
+// counted in the status line's partial state).
+function DevicePins({ devices, places }: { devices: OwnDevice[]; places: OwnPlace[] }) {
+  const anchorByPlace = new Map(places.map(p => [p.id, placeAnchor(p.geometry)]))
+  return (
+    <>
+      {devices.map(d => {
+        const anchor = anchorByPlace.get(d.place_id)
+        if (!anchor) return null
+        const battery = d.battery_pct != null ? `${d.battery_pct}%` : '—'
+        return (
+          <CircleMarker
+            key={d.id}
+            center={anchor}
+            radius={4}
+            pathOptions={{ color: cream, weight: 1.5, fillColor: rust, fillOpacity: 1 }}
+          >
+            <Popup>
+              <strong>{d.name}</strong> · {battery} · {agoLabel(d.last_seen)}
+            </Popup>
+          </CircleMarker>
+        )
+      })}
+    </>
+  )
+}
+
+function PlacesOverlay({ places }: { places: OwnPlace[] }) {
+  // One FeatureCollection over the drawable places; keyed by the id list so a
+  // changed set remounts and Leaflet redraws (the VectorOverlay convention).
+  const geo = useMemo<FeatureCollection>(() => ({
+    type: 'FeatureCollection',
+    features: places.map(p => ({
+      type: 'Feature' as const,
+      properties: { name: p.name, kind: p.kind },
+      geometry: p.geometry as FeatureCollection['features'][number]['geometry'],
+    })),
+  }), [places])
+
+  return (
+    <GeoJSON
+      key={places.map(p => p.id).join(',')}
+      data={geo}
+      // Field polygons: forest-green outline + light fill — deliberately distinct
+      // from every USDM hex so ground never reads as drought class.
+      style={{ color: forestGreen, weight: 2, fillColor: forestGreen, fillOpacity: 0.12 }}
+      // Tank/stackyard points: small solid forest-green dot with a cream ring.
+      pointToLayer={(_f, latlng) =>
+        L.circleMarker(latlng, { radius: 6, color: cream, weight: 2, fillColor: forestGreen, fillOpacity: 1 })}
+      onEachFeature={(f, layer) => {
+        const p = (f.properties ?? {}) as { name?: string; kind?: string }
+        const name = escapeHtml(p.name ?? 'Place')
+        const kind = p.kind ? ` · ${escapeHtml(p.kind)}` : ''
+        layer.bindPopup(`<strong>${name}</strong>${kind}`)
+      }}
+    />
+  )
+}
+
 // Generic VECTOR layer view — its OWN MapContainer (Drought Monitor). Fetches via the
 // shared hook, draws via the shared overlay; behaviour is identical to before the
 // extraction (same condition, same key on the GeoJSON via the keyed overlay, same style).
-function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFips }: {
+function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFips, children }: {
   layer:        VectorLayer
   runtime?:     LayerRuntime
   center:       [number, number]
   zoom:         number
   countyLabel:  string
   selectedFips?: string
+  // Extra map children drawn above the data layer (S4: the own-ground overlay).
+  children?:    React.ReactNode
 }) {
   // County-dynamic endpoint (e.g. alerts ?area=ST) is injected via runtime; layers
   // without one (USDM) fall back to their static registry endpoint, unchanged.
@@ -281,6 +430,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
           // data so Leaflet redraws, exactly as the inline GeoJSON key did before extraction.
           <VectorOverlay key={asOfMs ?? layer.id} layer={layer} geo={geo} />
         )}
+        {children}
       </MapContainer>
       <LegendCard layer={layer} status={status} asOf={asOf} count={geo?.features.length ?? 0} />
     </div>
@@ -631,7 +781,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
   )
 }
 
-export default function RegionalMapClient({ center, countyLabel, fips, runtime = {} }: RegionalMapClientProps) {
+export default function RegionalMapClient({ center, countyLabel, fips, runtime = {}, ownGround }: RegionalMapClientProps) {
   // Toggle = registry layers flagged for the toggle only. After the North Star v3 §6
   // collapse that is USDM alone (radar + the precip/outlook rasters are parked with
   // inToggle:false, same mechanism alerts always used) — so the map opens on the
@@ -646,13 +796,24 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
   // alerts' county-dynamic endpoint (runtime ?area=ST) → fed to the radar overlay.
   const alertsEndpoint = ALERTS_LAYER ? (runtime.alerts?.endpoint ?? ALERTS_LAYER.endpoint) : null
 
+  // Own ground (S4): drawable vs skipped, shared by the overlay and the status line.
+  const { drawable: drawablePlaces, skipped: placesSkipped } = splitDrawablePlaces(ownGround?.places ?? [])
+
   return (
     <div>
       {activeLayer?.type === 'vector' ? (
         // Key by the resolved endpoint (county-dynamic for alerts) so the view REMOUNTS
         // fresh on a layer OR county change — geo/status re-init per layer from the
         // per-endpoint cache, so no prior layer's/county's geometry can bleed through.
-        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips} />
+        <VectorLayerView key={runtime[activeLayer.id]?.endpoint ?? activeLayer.id} layer={activeLayer} runtime={runtime[activeLayer.id]} center={mapCenter} zoom={mapZoom} countyLabel={countyLabel} selectedFips={fips}>
+          {/* Own ground rides ABOVE the data layer; absent for signed-out (no prop).
+              Only the visible (vector/USDM) view carries it in v0 — thread the same
+              children into the radar/raster views if a layer ever un-parks. */}
+          {drawablePlaces.length > 0 && <PlacesOverlay places={drawablePlaces} />}
+          {drawablePlaces.length > 0 && (ownGround?.devices.length ?? 0) > 0 && (
+            <DevicePins devices={ownGround!.devices} places={drawablePlaces} />
+          )}
+        </VectorLayerView>
       ) : activeLayer?.type === 'radar' ? (
         // Animated radar tiles + the alerts overlay (county-dynamic endpoint).
         <RadarLayerView key={activeLayer.id} layer={activeLayer} center={mapCenter} zoom={mapZoom} selectedFips={fips} alertsEndpoint={alertsEndpoint} />
@@ -687,6 +848,25 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
           ? `Interactive ${activeLayer.attribution}, centered on your county. Base map © OpenStreetMap.`
           : ''}
       </p>
+
+      {/* Own-ground status line — ONLY speaks when something needs saying (error /
+          empty / partial). A healthy map stays quiet; signed-out (no ownGround)
+          says nothing at all. */}
+      {ownGround && ownGround.error && (
+        <p className="mt-1 font-dm-sans text-xs" style={{ color: warning }}>
+          Your places are temporarily unavailable.
+        </p>
+      )}
+      {ownGround && !ownGround.error && ownGround.places.length === 0 && (
+        <p className="mt-1 font-dm-sans text-xs text-forest-green/45">
+          No places yet — your fields and tanks will draw here.
+        </p>
+      )}
+      {ownGround && !ownGround.error && ownGround.places.length > 0 && placesSkipped > 0 && (
+        <p className="mt-1 font-dm-sans text-xs text-forest-green/45">
+          {drawablePlaces.length} of {ownGround.places.length} places shown — {placesSkipped} {placesSkipped === 1 ? 'has' : 'have'} no drawn boundary yet.
+        </p>
+      )}
     </div>
   )
 }

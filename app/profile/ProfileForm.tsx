@@ -90,6 +90,10 @@ export default function ProfileForm() {
       }
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+    } catch {
+      // A dropped connection previously fell through the try/finally with NO
+      // message — the button just re-enabled. Say what happened.
+      setSaveError('Could not save — check your connection and try again.')
     } finally {
       setSaving(false)
     }

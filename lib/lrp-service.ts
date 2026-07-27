@@ -6,7 +6,7 @@ import { createServiceClient } from './supabase'
 //
 // Reads public.lrp_price_snapshots (migration 022) for the dashboard's Markets card.
 // PUBLIC reference data (RLS-on-with-no-policies), so it reads with the SERVICE-ROLE
-// client — NOT the SSR/anon client. (Same posture as lib/cattle-market-service.ts and
+// client — NOT the SSR/anon client. (Same posture as lib/lrp-service.ts and
 // lib/rma-deadline-service.ts; the OPPOSITE of operation-profile, which is user-owned.)
 //
 // The RMA LRP report is fetched + parsed OFF the request path by scripts/lrp-snapshot.ts

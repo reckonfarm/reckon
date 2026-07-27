@@ -6,6 +6,7 @@ import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import { flagEnabled } from '@/lib/flags'
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -19,26 +20,29 @@ const dmSans = DM_Sans({
   variable: "--font-dm-sans",
 });
 
+// One flag-gated description for all three metadata surfaces (default, OG, Twitter) —
+// mirrors app/page.tsx and app/manifest.ts so no surface can advertise a flagged-off feature.
+const siteDescription = flagEnabled('marketplace')
+  ? "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place."
+  : "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, and cattle market data, bringing your operation's conditions, markets, and money together in one place."
+
 export const metadata: Metadata = {
   title: {
     default: 'Dryline — Ranch Intelligence for Cattle Country',
     template: '%s — Dryline',
   },
-  description:
-    "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
+  description: siteDescription,
   openGraph: {
     type: 'website',
     siteName: 'Dryline',
     title: 'Dryline — Ranch Intelligence for Cattle Country',
-    description:
-      "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
+    description: siteDescription,
     images: [{ url: '/og-image.svg', width: 1200, height: 630, alt: 'Dryline' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Dryline — Ranch Intelligence for Cattle Country',
-    description:
-      "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place.",
+    description: siteDescription,
   },
   // /favicon.ico is provided by the app/favicon.ico file convention (auto-linked).
   // These add the PNG + SVG variants and the iOS home-screen icon.

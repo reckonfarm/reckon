@@ -8,17 +8,11 @@ import FrontDoor from '@/app/components/FrontDoor'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Markets (preview)',
-  description: 'Cattle-country news and markets — preview surface.',
+  title: 'Homepage (preview)',
+  description: 'Homepage preview surface.',
   robots: { index: false, follow: false },
 }
 
-export default async function MarketsPreviewPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ fips?: string }>
-}) {
-  const { fips: fipsParam } = await searchParams
-  const fips = fipsParam || null
-  return <FrontDoor fips={fips} />
+export default async function MarketsPreviewPage() {
+  return <FrontDoor />
 }

@@ -12,6 +12,7 @@ import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 import RegionalMapLoader from './components/RegionalMapLoader'
+import type { OwnPlace, OwnDevice } from './components/RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
 import ProgramStatus from './components/ProgramStatus'
@@ -31,16 +32,22 @@ import type { MapListing } from '@/app/hay/map/HayMapClient'
 import DashboardAccordion from './components/DashboardAccordion'
 import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
-import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
+import { getUpcomingDeadlines, isDeadlineLoud, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
-import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
+import ProgramStatusRow, { deadlineQuietPreview, LFP_QUIET_PREVIEW } from './components/ProgramStatusRow'
+import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from './components/LfpAlertCard'
 import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
 import LrpMarketsCard from './components/LrpMarketsCard'
+import LocalAuctionCard from './components/LocalAuctionCard'
+import NationalBeefCard from './components/NationalBeefCard'
+import { getLocalAuctionRead, type LocalAuctionResult } from '@/lib/local-auction-service'
+import { getNationalBeef, type NationalBeefResult } from '@/lib/national-beef-service'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
+import ActivityFeed, { ActivityFeedSkeleton } from './components/ActivityFeed'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -195,12 +202,59 @@ async function LfpAlertAsync({
   countyName: string
 }) {
   const res = await dataPromise
+  const eligibility = res.ok ? res.result : null
+  const unavailable = !res.ok
+  // Quiet (the clean no-trigger state) renders NOTHING here — the Program status row
+  // below (ProgramStatusRowAsync, same promise) carries the line instead. Everything
+  // else — triggered / pending / building / unavailable — stays loud in this slot.
+  if (!isLfpLoud(unavailable, eligibility)) return null
   return (
     <LfpAlertCard
-      eligibility={res.ok ? res.result : null}
-      unavailable={!res.ok}
+      eligibility={eligibility}
+      unavailable={unavailable}
       countyName={countyName}
     />
+  )
+}
+
+// The quiet home's assembler — awaits the SAME lfpPromise (computed once, shared with
+// the alert slot and the Weather view) to learn whether LFP is quiet, then renders ONE
+// collapsed Program status row for everything quiet: the LFP no-trigger line and/or
+// far-out deadlines (quietDeadline is null when the deadline card is loud above).
+// Everything loud ⇒ renders nothing at all — a fully loud dashboard has no quiet row.
+async function ProgramStatusRowAsync({
+  dataPromise,
+  countyName,
+  quietDeadline,
+}: {
+  dataPromise: Promise<LfpFetchOutcome>
+  countyName: string
+  quietDeadline: UpcomingDeadlinesResult | null
+}) {
+  const res = await dataPromise
+  const eligibility = res.ok ? res.result : null
+  const unavailable = !res.ok
+  const lfpQuiet = !isLfpLoud(unavailable, eligibility)
+
+  const segments: string[] = []
+  if (lfpQuiet) segments.push(LFP_QUIET_PREVIEW)
+  if (quietDeadline) segments.push(deadlineQuietPreview(quietDeadline))
+  if (segments.length === 0) return null
+
+  return (
+    <ProgramStatusRow preview={segments.join(' — ')}>
+      {lfpQuiet && (
+        <LfpAlertCard
+          eligibility={eligibility}
+          unavailable={unavailable}
+          countyName={countyName}
+          embedded
+        />
+      )}
+      {quietDeadline && (
+        <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
+      )}
+    </ProgramStatusRow>
   )
 }
 
@@ -269,14 +323,16 @@ export default async function DashboardPage({
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
-  // deliberate label↔key mismatch as 'drought'/"Weather"). Weather via
-  // &view=drought, Markets via &view=markets. With the marketplace flagged off,
-  // ?view=hay (stale deep links, share cards) falls back to Today.
-  const view: 'news' | 'drought' | 'hay' | 'markets' =
-    viewParam === 'drought' ? 'drought'
-      : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
-        : viewParam === 'markets' ? 'markets'
-          : 'news'
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Activity via
+  // &view=activity (S3 — the merged ledger feed), Weather via &view=drought,
+  // Markets via &view=markets. With the marketplace flagged off, ?view=hay
+  // (stale deep links, share cards) falls back to Today.
+  const view: 'news' | 'activity' | 'drought' | 'hay' | 'markets' =
+    viewParam === 'activity' ? 'activity'
+      : viewParam === 'drought' ? 'drought'
+        : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
+          : viewParam === 'markets' ? 'markets'
+            : 'news'
   const db = createServiceClient()
 
   // ── National view data (always fetched) ─────────────────────────────────────
@@ -414,8 +470,20 @@ export default async function DashboardPage({
   // seeded national-index snapshot; the card frames it as the CME national floor, never a
   // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
   let lrpResult: LrpResult = { status: 'none' }
+  // Local auction + national beef (Block 2) — same gating and same character as LRP:
+  // pure Supabase SELECTs (the external fetches live in the snapshot crons, never the
+  // request path), fetched concurrently, each degrading to its own honest state.
+  let localAuction: LocalAuctionResult = { status: 'no_coverage' }
+  let nationalBeef: NationalBeefResult = { status: 'none' }
   if (selectedCounty && view === 'markets') {
-    lrpResult = await getLatestLrp('MT')
+    const [lrpRes, localRes, nationalRes] = await Promise.all([
+      getLatestLrp('MT'),
+      getLocalAuctionRead(selectedCounty.fips),
+      getNationalBeef(),
+    ])
+    lrpResult = lrpRes
+    localAuction = localRes
+    nationalBeef = nationalRes
   }
 
   // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
@@ -673,6 +741,35 @@ export default async function DashboardPage({
     }))
   }
 
+  // ── Own ground (S4) — the signed-in user's places for the Weather map overlay.
+  // Fetched only where the map renders (drought view), via the USER-SCOPED SSR
+  // client (third RLS consumer). Signed out → null → the public map is unchanged.
+  // A failed read → error:true so the map's status line says so (never a silent
+  // absence); an auth-resolution failure → null (indistinguishable from signed
+  // out, and treated as such).
+  let ownGround: { places: OwnPlace[]; devices: OwnDevice[]; error: boolean } | null = null
+  if (selectedCounty && view === 'drought') {
+    try {
+      const sb = await createClient()
+      const { data: { user } } = await sb.auth.getUser()
+      if (user) {
+        // Places + PLACED devices in parallel (unplaced devices are honestly
+        // off the map — the Devices tab is the full registry).
+        const [placesRes, devicesRes] = await Promise.all([
+          sb.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
+          sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
+        ])
+        ownGround = {
+          places:  (placesRes.data ?? []) as OwnPlace[],
+          devices: (devicesRes.data ?? []) as OwnDevice[],
+          error:   !!placesRes.error || !!devicesRes.error,
+        }
+      }
+    } catch {
+      ownGround = null
+    }
+  }
+
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
 
@@ -790,18 +887,39 @@ export default async function DashboardPage({
               />
             )}
 
-            {/* LFP status alert — always visible, ON TOP of the insurance card (higher
-                priority). Streamed behind Suspense so the slow USDM eligibility fetch
-                never blocks the page/news paint; a failure degrades to the honest
-                "unavailable" state. Renders in all three views, persistent across the toggle. */}
+            {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
+                building a D2 streak / data unavailable (an outage must speak — see
+                isLfpLoud). The clean no-trigger state renders nothing here and joins
+                the Program status row below instead. Streamed behind Suspense so the
+                slow USDM eligibility fetch never blocks the page/news paint; renders
+                in every view, persistent across the toggle, above the deadline card
+                (higher priority). */}
             <Suspense fallback={<LfpAlertSkeleton />}>
               <LfpAlertAsync dataPromise={lfpPromise} countyName={selectedCounty.name} />
             </Suspense>
 
-            {/* Insurance deadline countdown — always visible, above the view toggle.
-                Serves all producers (farmers + ranchers), so it is never gated behind
-                a view. Filters to the user's crops when set, else shows all. */}
-            <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+            {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
+                newly published row, or data_unavailable); quiet (none / far out) folds
+                into the Program status row below. Never gated behind a view; filters
+                to the user's crops when set, else shows all. */}
+            {isDeadlineLoud(deadlineResult) && (
+              <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+            )}
+
+            {/* Program status — the quiet home (Block 2). ONE collapsed row for
+                whatever is quiet (LFP no-trigger line and/or far-out deadlines), full
+                cards one tap away. Its own Suspense slot BELOW the loud cards, fed by
+                the SAME lfpPromise, because LFP quietness is only known after the USDM
+                fetch resolves; quiet content is by definition non-urgent, so the late
+                paint costs nothing (null fallback — a quiet row has no skeleton).
+                Renders nothing when everything above is loud. */}
+            <Suspense fallback={null}>
+              <ProgramStatusRowAsync
+                dataPromise={lfpPromise}
+                countyName={selectedCounty.name}
+                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+              />
+            </Suspense>
 
             {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
@@ -824,10 +942,26 @@ export default async function DashboardPage({
               </>
             )}
 
-            {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the
-                always-visible LFP + deadline band above the toggle is untouched. */}
+            {/* Activity (S3) — the merged ledger feed, streamed behind Suspense so
+                the events query never blocks the shell. Self-contained: resolves
+                its own user (signed-out gets the honest private-ledger gate — the
+                dashboard stays public, the ledger doesn't). */}
+            {view === 'activity' && (
+              <Suspense fallback={<ActivityFeedSkeleton />}>
+                <ActivityFeed />
+              </Suspense>
+            )}
+
+            {/* Markets view (Block 2) — three boring stacked cards, most-local first:
+                the nearest barn's latest sale, the two national benchmarks, and the
+                LRP price floor. All pure Supabase reads (crons own the external
+                fetches); each card carries its own honest states + as-of. */}
             {view === 'markets' && (
-              <LrpMarketsCard result={lrpResult} />
+              <>
+                <LocalAuctionCard result={localAuction} />
+                <NationalBeefCard result={nationalBeef} />
+                <LrpMarketsCard result={lrpResult} />
+              </>
             )}
 
             {/* Hay view — placeholder only. Nearest-4 pins/cards + the hay map land in
@@ -945,24 +1079,36 @@ export default async function DashboardPage({
 
             {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
 
-            {/* Regional conditions map — the lead canvas of the Weather view. Client-only
-                (ssr:false) with its own "Loading map…" skeleton, so it never blocks the
-                view's server paint; same drought-view props, already computed above. */}
-            <RegionalMapLoader
-              fips={selectedCounty.fips}
-              center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
-              countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-              runtime={{
-                usdm: {
-                  fallbackImage: {
-                    url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
-                    sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+            {/* Regional conditions map — COLLAPSED BY DEFAULT (Block 2): a 400px canvas
+                everyone has already scrolled is reference material, not a daily signal;
+                the LatestReadingCard above carries the current category + 3-year ribbon.
+                Collapsed, the ssr:false map client NEVER mounts (DashboardAccordion
+                renders children only when open), so the Leaflet payload is spent on
+                demand — restoring the collapsed-accordion economy the loader was
+                originally built for. The USDM week stays visible in the preview so
+                freshness is never hidden behind the fold (data-derived, never today's
+                date). Own-ground places/device pins draw when expanded, unchanged. */}
+            <DashboardAccordion
+              title="Regional map"
+              preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
+            >
+              <RegionalMapLoader
+                fips={selectedCounty.fips}
+                center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
+                countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+                runtime={{
+                  usdm: {
+                    fallbackImage: {
+                      url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
+                      sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+                    },
                   },
-                },
-                // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
-                alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
-              }}
-            />
+                  // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
+                  alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
+                }}
+                ownGround={ownGround}
+              />
+            </DashboardAccordion>
 
             {/* ── LFP status — the single contextual LFP card (A1 merged the old
                    TriggeredBanner into LfpHero): hero line per enforcement state, tracker,

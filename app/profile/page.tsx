@@ -7,7 +7,7 @@ import ProfileForm from './ProfileForm'
 export default async function ProfilePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
+  if (!user) redirect('/signin?next=/profile')
 
   return (
     <>

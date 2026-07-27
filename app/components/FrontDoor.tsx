@@ -94,14 +94,13 @@ function fmtShort(iso: string | null): string {
 
 const CHIP_LIMIT = 4
 
+// The REAL USDM ramp (globals.css @theme) — the chip dots speak the same color language
+// as every drought surface in the app, not a lookalike palette. tier is 1–4 (the chip
+// query requires d1 > 0), so d1 is the floor, not a fallback for "no drought".
 const TIER_DOT = (tier: number) =>
-  tier === 4 ? '#7B2D00' : tier === 3 ? '#C2410C' : tier === 2 ? '#D97706' : tier === 1 ? '#92400E' : '#78716C'
+  tier === 4 ? 'var(--color-usdm-d4)' : tier === 3 ? 'var(--color-usdm-d3)' : tier === 2 ? 'var(--color-usdm-d2)' : 'var(--color-usdm-d1)'
 
-export default async function FrontDoor({ fips }: { fips?: string | null }) {
-  // `fips` is retained in the signature/callers intentionally — Block 2 rebuilds this page and
-  // decides its fate. No homepage consumer remains after the News section was removed (Block 1).
-  void fips
-
+export default async function FrontDoor() {
   const headersList = await headers()
   const visitorRegion = headersList.get('x-vercel-ip-country-region') ?? ''
   const visitorState = visitorRegion.length === 2 ? visitorRegion : ''
@@ -120,8 +119,6 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
 
   return (
     <>
-      <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossOrigin="anonymous" />
-      <link rel="preconnect" href="https://b.tile.openstreetmap.org" crossOrigin="anonymous" />
       <SiteHeader />
       <main className="min-h-screen bg-cream">
         <div className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
@@ -158,6 +155,27 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
                 ))}
               </div>
             )}
+          </section>
+
+          {/* ── What Dryline is — the two engines in three plain lines (North Star v3).
+                 No icons, no cards, deliberately undersold: bold claim + quiet detail.
+                 Line 3 says "every reading kept", not "decisions logged" — the ledger
+                 renders hand-logged events but has no decision-logging UI yet. ── */}
+          <section className="mx-auto mt-16 max-w-xl">
+            <ul className="space-y-4 font-dm-sans text-sm leading-relaxed text-muted/70 sm:text-base">
+              <li>
+                <span className="font-semibold text-ink">This week&rsquo;s drought, and what FSA owes you</span>
+                {' '}&mdash; county status, LFP tier, estimated payment. Free, no account.
+              </li>
+              <li>
+                <span className="font-semibold text-ink">Your herd, valued at this week&rsquo;s auction</span>
+                {' '}&mdash; real Montana barn prices, an LRP floor under every lot.
+              </li>
+              <li>
+                <span className="font-semibold text-ink">Your operation&rsquo;s ledger</span>
+                {' '}&mdash; counties watched, sensors checked in, every reading kept.
+              </li>
+            </ul>
           </section>
 
           {/* ── The payoff — ONE labeled Example HerdEstimate (real Billings prices) ─────── */}
@@ -198,8 +216,11 @@ export default async function FrontDoor({ fips }: { fips?: string | null }) {
                 is in Montana today and expanding.
               </p>
 
+              {/* mode=signup opens the form in create-account mode once commit 8 wires the
+                  param; until then it lands on sign-in with the Create-one link — accepted
+                  interim. */}
               <Link
-                href="/signin"
+                href="/signin?mode=signup"
                 className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-6 font-dm-sans text-sm font-semibold text-cream transition-colors hover:bg-forest-green/90"
               >
                 Sign up to value your herd →

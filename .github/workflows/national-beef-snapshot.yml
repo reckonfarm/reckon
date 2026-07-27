@@ -1,0 +1,42 @@
+name: National beef snapshot
+
+# Pulls the two national benchmark reports — 5 Area Weekly Weighted Average fed cattle
+# (USDA Datamart 2477 / LM_CT150, keyless) and Oklahoma National Stockyards feeder
+# cattle (marsapi 1280, the country's benchmark feeder auction) — and upserts metric
+# rows into Supabase (public.national_beef_snapshots), the Markets view's national card.
+#
+# Both publish MONDAY (5-Area weekly + OKC's Monday sale); the Tue run catches them and
+# the Sat run is the corrections pass (the script re-fetches a trailing 35-day window,
+# so USDA's post-publication corrections re-write their week's rows). Idempotent
+# upserts on (report_slug, metric, week_ending) — extra runs never duplicate.
+#
+# NOTE: a scheduled workflow only fires on the DEFAULT branch — this does nothing until
+# merged to main (intended; we seed manually until then).
+
+on:
+  schedule:
+    - cron: '0 5 * * 2'   # Tue 05:00 UTC — catches Monday's 5-Area publish + OKC sale
+    - cron: '0 5 * * 6'   # Sat 05:00 UTC — corrections pass over the trailing window
+  workflow_dispatch: {}   # manual trigger (on-demand refresh once on the default branch)
+
+concurrency:
+  group: national-beef-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Fetch + parse + upsert national beef snapshots
+        env:
+          AMS_MARS_API_KEY: ${{ secrets.AMS_MARS_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/national-beef-snapshot.ts

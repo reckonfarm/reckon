@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
@@ -18,7 +18,34 @@ const LINK_CLS =
 // Shown only when explicitly enabled, so we can ship password without Google.
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'
 
-export default function SignInForm() {
+const RESEND_SECONDS = 30
+
+// Map the handful of common raw Supabase auth errors to plain language with a next
+// step. UNKNOWN errors pass through untouched — we never hide real information behind
+// a generic message. (Kept as substring checks: Supabase's strings are stable enough
+// to match but not versioned enough to trust exactly.)
+function friendlyError(message: string, ctx: 'signin' | 'signup' | 'otp'): string {
+  const m = message.toLowerCase()
+  if (m.includes('invalid login credentials'))
+    return "That email and password don't match — try again, or email yourself a code instead."
+  if (m.includes('already registered'))
+    return 'An account with this email already exists — sign in instead.'
+  if (m.includes('rate limit'))
+    return 'Too many attempts — wait a minute, then try again.'
+  if (ctx === 'otp' && (m.includes('expired') || m.includes('invalid')))
+    return 'That code is wrong or expired — check the newest email, or resend the code.'
+  return message
+}
+
+export default function SignInForm({
+  next,
+  initialMode,
+}: {
+  // Post-auth landing — validated server-side in page.tsx (internal path or /watchlist).
+  next: string
+  // 'signup' opens straight in create-account mode (the FrontDoor CTA path).
+  initialMode: 'signin' | 'signup'
+}) {
   const router = useRouter()
 
   // Top-level method. Password is the primary path; OTP is the fallback.
@@ -31,15 +58,29 @@ export default function SignInForm() {
 
   // Password mode
   const [password, setPassword]       = useState('')
-  const [pwMode, setPwMode]           = useState<'signin' | 'signup'>('signin')
+  const [pwMode, setPwMode]           = useState<'signin' | 'signup'>(initialMode)
   const [signupSent, setSignupSent]   = useState(false)
 
-  // OTP mode (unchanged behaviour)
+  // OTP mode
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [code, setCode] = useState('')
+  // Resend countdown — armed each time a code is sent; setState happens inside the
+  // timer CALLBACK (subscribe-to-external-system), never the effect body.
+  const [resendIn, setResendIn] = useState(0)
+  useEffect(() => {
+    if (step !== 'code' || resendIn <= 0) return
+    const t = setTimeout(() => setResendIn(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [step, resendIn])
 
   function resetMessages() {
     setError(null)
+  }
+
+  // Clear a stale error the moment the user edits a field — a red message must never
+  // sit under the form describing an attempt they've already moved past.
+  function clearErrorOnEdit() {
+    if (error) setError(null)
   }
 
   // ---- Password ----------------------------------------------------------
@@ -51,10 +92,10 @@ export default function SignInForm() {
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setLoading(false)
-    if (error) { setError(error.message); return }
+    if (error) { setError(friendlyError(error.message, 'signin')); return }
     trackEvent('signin_completed')
     await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-    router.replace('/watchlist')
+    router.replace(next)
   }
 
   async function signUpPassword(e: React.FormEvent) {
@@ -67,17 +108,17 @@ export default function SignInForm() {
       password,
       options: {
         // Used only when "Confirm email" is ON: link returns to the existing
-        // callback page, which verifies the token_hash and lands on /watchlist.
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/watchlist`,
+        // callback page, which verifies the token_hash and lands on `next`.
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
     setLoading(false)
-    if (error) { setError(error.message); return }
+    if (error) { setError(friendlyError(error.message, 'signup')); return }
     // Confirm email OFF → a session is returned immediately.
     if (data.session) {
       trackEvent('signup_completed')
       await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-      router.replace('/watchlist')
+      router.replace(next)
       return
     }
     // Confirm email ON → no session yet; user must click the email link.
@@ -91,17 +132,17 @@ export default function SignInForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/oauth?next=/watchlist`,
+        redirectTo: `${window.location.origin}/auth/oauth?next=${encodeURIComponent(next)}`,
       },
     })
     // On success the browser is redirected to Google, so we only land here on error.
     if (error) { setError(error.message); setLoading(false) }
   }
 
-  // ---- OTP (unchanged) ---------------------------------------------------
+  // ---- OTP ---------------------------------------------------------------
 
-  async function sendCode(e: React.FormEvent) {
-    e.preventDefault()
+  // Shared by the send-code form submit AND the resend link on the code screen.
+  async function requestCode(): Promise<boolean> {
     setLoading(true)
     setError(null)
     const supabase = createClient()
@@ -110,7 +151,19 @@ export default function SignInForm() {
       options: { shouldCreateUser: true },
     })
     setLoading(false)
-    if (error) { setError(error.message) } else { setStep('code') }
+    if (error) { setError(friendlyError(error.message, 'otp')); return false }
+    setResendIn(RESEND_SECONDS)
+    return true
+  }
+
+  async function sendCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (await requestCode()) setStep('code')
+  }
+
+  async function resendCode() {
+    setCode('')
+    await requestCode()
   }
 
   async function verifyCode(e: React.FormEvent) {
@@ -124,10 +177,10 @@ export default function SignInForm() {
       type: 'email',
     })
     setLoading(false)
-    if (error) { setError(error.message); return }
+    if (error) { setError(friendlyError(error.message, 'otp')); return }
     trackEvent('signin_completed')
     await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-    router.replace('/watchlist')
+    router.replace(next)
   }
 
   // ---- OTP views (unchanged behaviour) -----------------------------------
@@ -152,8 +205,9 @@ export default function SignInForm() {
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={6}
+              autoComplete="one-time-code"
               value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); clearErrorOnEdit() }}
               placeholder="123456"
               required
               autoFocus
@@ -165,12 +219,23 @@ export default function SignInForm() {
             {loading ? 'Verifying…' : 'Sign in'}
           </button>
         </form>
-        <button
-          onClick={() => { setStep('email'); setCode(''); setError(null) }}
-          className={`mt-4 inline-block ${LINK_CLS}`}
-        >
-          ← Use a different email
-        </button>
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            onClick={() => { setStep('email'); setCode(''); setError(null) }}
+            className={LINK_CLS}
+          >
+            ← Use a different email
+          </button>
+          {resendIn > 0 ? (
+            <span className="font-dm-sans text-sm text-forest-green/40 tabular-nums">
+              Resend in {resendIn}s
+            </span>
+          ) : (
+            <button onClick={resendCode} disabled={loading} className={LINK_CLS}>
+              Resend code
+            </button>
+          )}
+        </div>
       </div>
     )
   }
@@ -188,8 +253,9 @@ export default function SignInForm() {
           <input
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={e => { setEmail(e.target.value); clearErrorOnEdit() }}
             placeholder="you@example.com"
+            autoComplete="email"
             required
             autoFocus
             className={INPUT_CLS}
@@ -283,7 +349,7 @@ export default function SignInForm() {
         <input
           type="email"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={e => { setEmail(e.target.value); clearErrorOnEdit() }}
           placeholder="you@example.com"
           autoComplete="email"
           required
@@ -293,7 +359,7 @@ export default function SignInForm() {
         <input
           type="password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={e => { setPassword(e.target.value); clearErrorOnEdit() }}
           placeholder="Password"
           autoComplete={isSignup ? 'new-password' : 'current-password'}
           required
