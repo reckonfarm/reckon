@@ -36,6 +36,9 @@ interface FeedEvent {
 interface Rendered {
   title: string
   detail: string | null
+  // Optional source-line override for events whose origin isn't a device OR a
+  // human hand (e.g. alerts Dryline itself wrote into the ledger).
+  source?: string
 }
 
 // 'tank_level' → 'Tank level'
@@ -73,6 +76,21 @@ const RENDERERS: Record<string, EventRenderer> = {
       return { title: `Water at ${Math.round(lvl)}%`, detail: null }
     }
     return fallbackRender(e)
+  },
+  // Alerts Dryline wrote into the ledger (lib/alert-service, S3 2/2).
+  alert: e => {
+    const p = e.payload
+    if (p.kind === 'lfp_drought_alert' && typeof p.county_name === 'string' && typeof p.tier === 'number') {
+      const payments = typeof p.payments === 'number' ? p.payments : null
+      return {
+        title: `LFP alert — ${p.county_name} County at Tier ${p.tier}`,
+        detail: payments != null
+          ? `${payments} payment${payments === 1 ? '' : 's'} · USDM week of ${p.week_date}`
+          : null,
+        source: 'Dryline alert',
+      }
+    }
+    return { ...fallbackRender(e), source: 'Dryline alert' }
   },
 }
 
@@ -184,7 +202,7 @@ export default async function ActivityFeed() {
                   </p>
                 )}
                 <p className="mt-0.5 font-dm-sans text-xs text-forest-green/45">
-                  {sourceLine(e)}
+                  {r.source ?? sourceLine(e)}
                 </p>
               </div>
               <p className="shrink-0 font-dm-sans text-xs text-forest-green/50">

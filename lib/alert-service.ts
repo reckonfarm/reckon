@@ -264,6 +264,32 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
         tier:      elig.maxTier,
       })
 
+      // Alerts-become-events (S3): the same alert lands in the ranch ledger, so
+      // the Activity feed stays SINGLE-SOURCE (events) — never a table merge.
+      // device_id null (no emitter); dedup_key makes a re-run of the same week
+      // ledger-idempotent. A failed ledger write must never block the alert
+      // loop — the email already went; surface it in the cron result instead.
+      const { error: ledgerErr } = await db.from('events').insert({
+        user_id:   userId,
+        device_id: null,
+        type:      'alert',
+        ts:        new Date().toISOString(),
+        payload: {
+          kind:        'lfp_drought_alert',
+          county_fips: county.fips,
+          county_name: elig.countyName,
+          state:       elig.state,
+          tier:        elig.maxTier,
+          payments:    elig.payments,
+          week_date:   weekDate,
+        },
+        schema_version: 1,
+        dedup_key: `alert:lfp:${county.fips}:${weekDate}`,
+      })
+      if (ledgerErr && ledgerErr.code !== '23505') {
+        errors.push(`ledger ${county.fips} → ${userId}: ${ledgerErr.message}`)
+      }
+
       sent++
     } catch (err) {
       errors.push(
