@@ -15,6 +15,7 @@ const TYPE_LABELS: Record<string, string> = {
   acreage_reporting:    'acreage reporting',
   production_reporting: 'production reporting',
   premium_billing:      'premium billing',
+  application:          'application',
 }
 const CROP_LABELS: Record<string, string> = {
   spring_wheat:     'spring wheat',
@@ -25,6 +26,7 @@ const CROP_LABELS: Record<string, string> = {
   // Program-level obligations (not real crops) — clean labels for the agency filings.
   fsa_acreage:      'seeded-acres report',
   rma_acreage:      'crop insurance acreage report',
+  lfp:              'LFP application (prior grazing year)',
 }
 
 // Program-level rows (state-wide filings every producer makes) read with the AGENCY up
@@ -34,6 +36,7 @@ const CROP_LABELS: Record<string, string> = {
 const PROGRAM_AGENCY: Record<string, string> = {
   fsa_acreage: 'FSA',
   rma_acreage: 'RMA',
+  lfp:         'FSA',
 }
 function agencyOf(cropOrProgram: string): string | null {
   return PROGRAM_AGENCY[cropOrProgram] ?? null
@@ -125,9 +128,11 @@ export default function DeadlineCountdownCard({
 }) {
   const body = (
     <>
+      {/* "USDA programs", not "Crop insurance": the table carries the LFP application —
+          an FSA disaster-program deadline, not insurance — alongside the RMA dates. */}
       <div className="mb-3">
-        <p className={EYEBROW}>Crop insurance</p>
-        <Heading level={5} className="mt-1">Insurance deadlines</Heading>
+        <p className={EYEBROW}>USDA programs</p>
+        <Heading level={5} className="mt-1">Program deadlines</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (
@@ -139,7 +144,7 @@ export default function DeadlineCountdownCard({
       {result.status === 'none' && (
         <>
           <p className="font-fraunces text-base font-semibold leading-snug text-forest-green/50 sm:text-lg">
-            No upcoming insurance deadlines listed for {countyLabel(countyName)}.
+            No upcoming USDA program deadlines listed for {countyLabel(countyName)}.
           </p>
           <FreshnessLine asOf={null} />
         </>

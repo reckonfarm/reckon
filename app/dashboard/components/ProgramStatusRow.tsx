@@ -17,13 +17,14 @@ function fmtDate(iso: string): string {
 
 // Preview line for a QUIET deadline result. Only quiet states reach here (loud results
 // render the full card; data_unavailable is always loud), so this covers ok-but-far and
-// none — both stated factually, with the real next date when one exists.
+// none — both stated factually, with the real next date when one exists. "USDA", not
+// "insurance": the table carries the LFP application alongside the RMA dates.
 export function deadlineQuietPreview(result: UpcomingDeadlinesResult): string {
   if (result.status === 'ok') {
     const d = result.deadlines[0]
-    return `Next insurance deadline ${fmtDate(d.deadline_date)} · ${d.daysUntil} days`
+    return `Next USDA deadline ${fmtDate(d.deadline_date)} · ${d.daysUntil} days`
   }
-  return 'No upcoming insurance deadlines listed'
+  return 'No upcoming USDA program deadlines listed'
 }
 
 export default function ProgramStatusRow({

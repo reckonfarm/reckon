@@ -56,12 +56,14 @@ function precedenceKey(r: DeadlineRow): string {
   return `${r.crop_or_program}|${r.deadline_type}|${r.crop_year}`
 }
 
-// Program-level obligations: state-wide filings EVERY producer must make (e.g. the FSA
-// seeded-acres report and the RMA acreage report), not crop-specific deadlines. Their
+// Program-level obligations: state-wide filings EVERY producer must make (the FSA
+// seeded-acres report, the RMA acreage report, and the LFP application — the disaster
+// program this dashboard exists for), not crop-specific deadlines. Their
 // crop_or_program is a program slug, not a real crop, so they must ALWAYS show — they
 // bypass the producer crop filter below. Without this, a producer who entered their crops
-// would lose these obligations entirely (a program slug matches no crop).
-const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage'])
+// would lose these obligations entirely (a program slug matches no crop). Mirrors
+// PROGRAM_AGENCY in DeadlineCountdownCard.tsx.
+const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage', 'lfp'])
 
 // ─── Quiet-card visibility (Block 2: silence is a feature) ───────────────────────
 //
