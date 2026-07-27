@@ -63,6 +63,32 @@ function precedenceKey(r: DeadlineRow): string {
 // would lose these obligations entirely (a program slug matches no crop).
 const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage'])
 
+// ─── Quiet-card visibility (Block 2: silence is a feature) ───────────────────────
+//
+// The full deadline card renders only when there is something actionable; otherwise it
+// folds into the collapsed "Program status" row (quiet, never lost). LOUD means:
+//   • data_unavailable — an outage must never masquerade as all-quiet; the card stays
+//     visible with its honest unavailable copy.
+//   • soonest deadline ≤ 45 days out — sales-closing decisions need an agent
+//     conversation; 45 days is the "start thinking" horizon.
+//   • any row's as_of is within the last 7 days — a newly published/changed deadline
+//     surfaces briefly even when far out (stateless "changed" detection).
+// 'none' and far-out deadlines are QUIET.
+export const DEADLINE_LOUD_WINDOW_DAYS = 45
+export const DEADLINE_NEWLY_PUBLISHED_DAYS = 7
+
+export function isDeadlineLoud(result: UpcomingDeadlinesResult): boolean {
+  if (result.status === 'data_unavailable') return true
+  if (result.status === 'none') return false
+  if (result.deadlines[0].daysUntil <= DEADLINE_LOUD_WINDOW_DAYS) return true
+  const today = new Date().toISOString().slice(0, 10)
+  return result.deadlines.some(d => {
+    if (!d.as_of) return false
+    const age = daysBetween(d.as_of, today)
+    return age >= 0 && age <= DEADLINE_NEWLY_PUBLISHED_DAYS
+  })
+}
+
 export async function getUpcomingDeadlines(
   countyFips: string,
   crops?: string[] | null,

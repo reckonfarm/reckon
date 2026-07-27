@@ -111,15 +111,20 @@ function Hero({ d }: { d: UpcomingDeadline }) {
   )
 }
 
+// `embedded` renders the same content without the outer Card chrome — used when the
+// card lives inside the collapsed "Program status" row (Block 2 quiet home), whose
+// accordion panel already provides the border and padding.
 export default function DeadlineCountdownCard({
   result,
   countyName,
+  embedded = false,
 }: {
   result: UpcomingDeadlinesResult
   countyName: string
+  embedded?: boolean
 }) {
-  return (
-    <Card shadow="soft" className="p-4 sm:p-6">
+  const body = (
+    <>
       <div className="mb-3">
         <p className={EYEBROW}>Crop insurance</p>
         <Heading level={5} className="mt-1">Insurance deadlines</Heading>
@@ -162,6 +167,8 @@ export default function DeadlineCountdownCard({
           <FreshnessLine asOf={result.deadlines[0].as_of} />
         </>
       )}
-    </Card>
+    </>
   )
+  if (embedded) return <div>{body}</div>
+  return <Card shadow="soft" className="p-4 sm:p-6">{body}</Card>
 }

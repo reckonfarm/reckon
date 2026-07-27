@@ -32,8 +32,9 @@ import type { MapListing } from '@/app/hay/map/HayMapClient'
 import DashboardAccordion from './components/DashboardAccordion'
 import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
-import { getUpcomingDeadlines, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
+import { getUpcomingDeadlines, isDeadlineLoud, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
+import ProgramStatusRow, { deadlineQuietPreview } from './components/ProgramStatusRow'
 import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
 import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
 import LrpMarketsCard from './components/LrpMarketsCard'
@@ -831,10 +832,19 @@ export default async function DashboardPage({
               <LfpAlertAsync dataPromise={lfpPromise} countyName={selectedCounty.name} />
             </Suspense>
 
-            {/* Insurance deadline countdown — always visible, above the view toggle.
-                Serves all producers (farmers + ranchers), so it is never gated behind
-                a view. Filters to the user's crops when set, else shows all. */}
-            <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+            {/* Insurance deadline countdown — quiet-by-default (Block 2). LOUD (soonest
+                deadline ≤45 days, newly published row, or data_unavailable) renders the
+                full card exactly as before; QUIET (none, or everything far out) folds it
+                into the collapsed "Program status" row in the same slot — one honest
+                data-driven line, full card one tap away. Never gated behind a view;
+                filters to the user's crops when set, else shows all. */}
+            {isDeadlineLoud(deadlineResult) ? (
+              <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+            ) : (
+              <ProgramStatusRow preview={deadlineQuietPreview(deadlineResult)}>
+                <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} embedded />
+              </ProgramStatusRow>
+            )}
 
             {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
