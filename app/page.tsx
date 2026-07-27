@@ -19,12 +19,10 @@ export const metadata: Metadata = {
     : "Cattle-country markets and news, real-time drought conditions, and FSA/LFP payment estimates — bringing your operation's markets, money, and conditions together in one place.",
 }
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ fips?: string }>
-}) {
-  const { fips: fipsParam } = await searchParams
-  const fips = fipsParam || null
-  return <FrontDoor fips={fips} />
+// Note: /?fips=… is still a meaningful URL — middleware.ts skips its signed-in redirect
+// when the param is present so share links keep working — but the page itself no longer
+// reads it (the homepage's last fips consumer was removed in Block 1; prop dropped in
+// Block 2).
+export default async function Home() {
+  return <FrontDoor />
 }

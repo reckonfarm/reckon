@@ -89,15 +89,17 @@ export default function SiteHeader({ center }: Props) {
               </Link>
             )}
             {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
-                the dashboard (via '/', which redirects signed-in users to /dashboard);
-                the Drought/Cattle toggle inside reaches cattle. Subtle text emphasis
-                (full color + medium weight) marks it as the primary item. */}
-            <Link
-              href="/"
-              className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
-            >
-              My Operation
-            </Link>
+                the dashboard (via '/', which middleware-redirects signed-in users to
+                /dashboard). SIGNED-IN ONLY (Block 2): for a signed-out visitor '/' is
+                the page they're already on — the link was a self-referencing loop. */}
+            {user && (
+              <Link
+                href="/"
+                className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
+              >
+                My Operation
+              </Link>
+            )}
             {user && (
               <Link
                 href="/herd"
