@@ -8,7 +8,7 @@ export default async function RadarPage() {
   if (flagDisabled('marketplace')) notFound()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
+  if (!user) redirect('/signin?next=/radar')
 
   return <RadarClient />
 }

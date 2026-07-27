@@ -49,7 +49,7 @@ function lastSeenLabel(iso: string | null): string {
 export default async function DevicesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin')
+  if (!user) redirect('/signin?next=/devices')
 
   // RLS scopes this to the signed-in user; `places(name)` embeds through the
   // place_id FK (also owner-scoped by places' own policies).
