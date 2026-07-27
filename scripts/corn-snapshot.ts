@@ -74,7 +74,7 @@ async function main() {
 
   // supabase-js eagerly resolves a WebSocket constructor for realtime and throws on Node ≤20.
   // We only do a REST upsert (no channels), so a never-instantiated transport short-circuits
-  // that. (Pattern from scripts/lrp-snapshot.ts / cattle-snapshot.ts.)
+  // that. (Pattern from scripts/lrp-snapshot.ts.)
   type RealtimeOpts = NonNullable<NonNullable<Parameters<typeof createClient>[2]>['realtime']>
   class NoopWebSocket { constructor() { throw new Error('realtime is disabled in corn-snapshot') } }
   const db = createClient(url, key, {

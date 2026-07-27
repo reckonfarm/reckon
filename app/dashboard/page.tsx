@@ -38,6 +38,10 @@ import ProgramStatusRow, { deadlineQuietPreview, LFP_QUIET_PREVIEW } from './com
 import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from './components/LfpAlertCard'
 import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
 import LrpMarketsCard from './components/LrpMarketsCard'
+import LocalAuctionCard from './components/LocalAuctionCard'
+import NationalBeefCard from './components/NationalBeefCard'
+import { getLocalAuctionRead, type LocalAuctionResult } from '@/lib/local-auction-service'
+import { getNationalBeef, type NationalBeefResult } from '@/lib/national-beef-service'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
@@ -466,8 +470,20 @@ export default async function DashboardPage({
   // seeded national-index snapshot; the card frames it as the CME national floor, never a
   // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
   let lrpResult: LrpResult = { status: 'none' }
+  // Local auction + national beef (Block 2) — same gating and same character as LRP:
+  // pure Supabase SELECTs (the external fetches live in the snapshot crons, never the
+  // request path), fetched concurrently, each degrading to its own honest state.
+  let localAuction: LocalAuctionResult = { status: 'no_coverage' }
+  let nationalBeef: NationalBeefResult = { status: 'none' }
   if (selectedCounty && view === 'markets') {
-    lrpResult = await getLatestLrp('MT')
+    const [lrpRes, localRes, nationalRes] = await Promise.all([
+      getLatestLrp('MT'),
+      getLocalAuctionRead(selectedCounty.fips),
+      getNationalBeef(),
+    ])
+    lrpResult = lrpRes
+    localAuction = localRes
+    nationalBeef = nationalRes
   }
 
   // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
@@ -936,10 +952,16 @@ export default async function DashboardPage({
               </Suspense>
             )}
 
-            {/* Markets view — USDA RMA LRP coverage-price floor. Additive 4th view; the
-                always-visible LFP + deadline band above the toggle is untouched. */}
+            {/* Markets view (Block 2) — three boring stacked cards, most-local first:
+                the nearest barn's latest sale, the two national benchmarks, and the
+                LRP price floor. All pure Supabase reads (crons own the external
+                fetches); each card carries its own honest states + as-of. */}
             {view === 'markets' && (
-              <LrpMarketsCard result={lrpResult} />
+              <>
+                <LocalAuctionCard result={localAuction} />
+                <NationalBeefCard result={nationalBeef} />
+                <LrpMarketsCard result={lrpResult} />
+              </>
             )}
 
             {/* Hay view — placeholder only. Nearest-4 pins/cards + the hay map land in

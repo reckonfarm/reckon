@@ -9,7 +9,7 @@ import { createServiceClient } from './supabase'
 // the SERVICE-ROLE client — NOT the SSR/anon client. (Deliberately the OPPOSITE of
 // lib/operation-profile-service.ts, which is user-owned and must run as the user.)
 //
-// HONEST RESULT (mirrors lib/cattle-market-service.ts — discriminated, never fabricate):
+// HONEST RESULT (mirrors lib/lrp-service.ts — discriminated, never fabricate):
 //   • { status: 'ok', deadlines }      → one or more upcoming dates (soonest first).
 //   • { status: 'none' }               → genuine absence: nothing dated today-or-later
 //                                        for this county/crops (e.g. PRF 12/1 already past).

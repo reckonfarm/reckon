@@ -4,7 +4,7 @@
 // and Actual Ending Values" and UPSERTS one headline snapshot into Supabase
 // (public.lrp_price_snapshots, migration 022). PUBLIC reference data, so it writes with
 // the SERVICE-ROLE client — never the SSR/anon client. Run OFF the Vercel request path
-// (locally, residential IP), exactly like scripts/cattle-snapshot.ts: the dashboard
+// (locally, residential IP), exactly like scripts/mars-snapshot.ts: the dashboard
 // only READS the snapshot, it never fetches RMA.
 //
 // The RMA report is a 3-step ASP.NET-Core antiforgery POST wizard (proven in recon):
@@ -241,7 +241,7 @@ async function main() {
 
   // supabase-js eagerly resolves a WebSocket constructor for realtime and throws on
   // Node ≤20. We only do a REST upsert (no channels), so a never-instantiated transport
-  // short-circuits that. (No 'ws' dependency.) — pattern from scripts/cattle-snapshot.ts.
+  // short-circuits that. (No 'ws' dependency.) — pattern from scripts/lrp-snapshot.ts.
   type RealtimeOpts = NonNullable<NonNullable<Parameters<typeof createClient>[2]>['realtime']>
   class NoopWebSocket { constructor() { throw new Error('realtime is disabled in lrp-snapshot') } }
   const db = createClient(url, key, {
