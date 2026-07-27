@@ -52,8 +52,27 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    // Messages tab rides the messaging flag; the left flank narrows to My herd
-    // while it's off (flex-1 keeps both flanks balanced around the center anchor).
+    // Devices holds the slot Messages vacated (S2) — restores the 2/2 flank
+    // balance with zero net nav growth, and it's one of the four forever-tabs
+    // anyway. Antenna/signal glyph, hand-drawn to match the inline-SVG stroke
+    // style of the other tabs (no icon lib).
+    {
+      href: '/devices',
+      label: 'Devices',
+      match: (p: string) => p.startsWith('/devices'),
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 13v8"/>
+          <circle cx="12" cy="11" r="2"/>
+          <path d="M8.5 7.5a5 5 0 0 0 0 7"/>
+          <path d="M15.5 7.5a5 5 0 0 1 0 7"/>
+          <path d="M5.7 4.7a9 9 0 0 0 0 12.6"/>
+          <path d="M18.3 4.7a9 9 0 0 1 0 12.6"/>
+        </svg>
+      ),
+    },
+    // Messages tab rides the messaging flag; while it's off Devices above keeps
+    // the left flank at two (flex-1 balances the flanks around the center anchor).
     ...(flagEnabled('messaging')
       ? [{
           href: '/messages',

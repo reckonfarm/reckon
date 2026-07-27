@@ -106,6 +106,16 @@ export default function SiteHeader({ center }: Props) {
                 My herd
               </Link>
             )}
+            {/* Devices — the registry (S2), in the signed-in cluster where
+                Messages sat before its flag-off. */}
+            {user && (
+              <Link
+                href="/devices"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Devices
+              </Link>
+            )}
             {user && flagEnabled('messaging') && (
               <Link
                 href="/messages"
