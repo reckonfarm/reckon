@@ -34,8 +34,8 @@ import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, isDeadlineLoud, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
-import ProgramStatusRow, { deadlineQuietPreview } from './components/ProgramStatusRow'
-import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
+import ProgramStatusRow, { deadlineQuietPreview, LFP_QUIET_PREVIEW } from './components/ProgramStatusRow'
+import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from './components/LfpAlertCard'
 import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
 import LrpMarketsCard from './components/LrpMarketsCard'
 import { Card } from '@/app/components/ui/Card'
@@ -198,12 +198,59 @@ async function LfpAlertAsync({
   countyName: string
 }) {
   const res = await dataPromise
+  const eligibility = res.ok ? res.result : null
+  const unavailable = !res.ok
+  // Quiet (the clean no-trigger state) renders NOTHING here — the Program status row
+  // below (ProgramStatusRowAsync, same promise) carries the line instead. Everything
+  // else — triggered / pending / building / unavailable — stays loud in this slot.
+  if (!isLfpLoud(unavailable, eligibility)) return null
   return (
     <LfpAlertCard
-      eligibility={res.ok ? res.result : null}
-      unavailable={!res.ok}
+      eligibility={eligibility}
+      unavailable={unavailable}
       countyName={countyName}
     />
+  )
+}
+
+// The quiet home's assembler — awaits the SAME lfpPromise (computed once, shared with
+// the alert slot and the Weather view) to learn whether LFP is quiet, then renders ONE
+// collapsed Program status row for everything quiet: the LFP no-trigger line and/or
+// far-out deadlines (quietDeadline is null when the deadline card is loud above).
+// Everything loud ⇒ renders nothing at all — a fully loud dashboard has no quiet row.
+async function ProgramStatusRowAsync({
+  dataPromise,
+  countyName,
+  quietDeadline,
+}: {
+  dataPromise: Promise<LfpFetchOutcome>
+  countyName: string
+  quietDeadline: UpcomingDeadlinesResult | null
+}) {
+  const res = await dataPromise
+  const eligibility = res.ok ? res.result : null
+  const unavailable = !res.ok
+  const lfpQuiet = !isLfpLoud(unavailable, eligibility)
+
+  const segments: string[] = []
+  if (lfpQuiet) segments.push(LFP_QUIET_PREVIEW)
+  if (quietDeadline) segments.push(deadlineQuietPreview(quietDeadline))
+  if (segments.length === 0) return null
+
+  return (
+    <ProgramStatusRow preview={segments.join(' — ')}>
+      {lfpQuiet && (
+        <LfpAlertCard
+          eligibility={eligibility}
+          unavailable={unavailable}
+          countyName={countyName}
+          embedded
+        />
+      )}
+      {quietDeadline && (
+        <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
+      )}
+    </ProgramStatusRow>
   )
 }
 
@@ -824,27 +871,39 @@ export default async function DashboardPage({
               />
             )}
 
-            {/* LFP status alert — always visible, ON TOP of the insurance card (higher
-                priority). Streamed behind Suspense so the slow USDM eligibility fetch
-                never blocks the page/news paint; a failure degrades to the honest
-                "unavailable" state. Renders in all three views, persistent across the toggle. */}
+            {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
+                building a D2 streak / data unavailable (an outage must speak — see
+                isLfpLoud). The clean no-trigger state renders nothing here and joins
+                the Program status row below instead. Streamed behind Suspense so the
+                slow USDM eligibility fetch never blocks the page/news paint; renders
+                in every view, persistent across the toggle, above the deadline card
+                (higher priority). */}
             <Suspense fallback={<LfpAlertSkeleton />}>
               <LfpAlertAsync dataPromise={lfpPromise} countyName={selectedCounty.name} />
             </Suspense>
 
-            {/* Insurance deadline countdown — quiet-by-default (Block 2). LOUD (soonest
-                deadline ≤45 days, newly published row, or data_unavailable) renders the
-                full card exactly as before; QUIET (none, or everything far out) folds it
-                into the collapsed "Program status" row in the same slot — one honest
-                data-driven line, full card one tap away. Never gated behind a view;
-                filters to the user's crops when set, else shows all. */}
-            {isDeadlineLoud(deadlineResult) ? (
+            {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
+                newly published row, or data_unavailable); quiet (none / far out) folds
+                into the Program status row below. Never gated behind a view; filters
+                to the user's crops when set, else shows all. */}
+            {isDeadlineLoud(deadlineResult) && (
               <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
-            ) : (
-              <ProgramStatusRow preview={deadlineQuietPreview(deadlineResult)}>
-                <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} embedded />
-              </ProgramStatusRow>
             )}
+
+            {/* Program status — the quiet home (Block 2). ONE collapsed row for
+                whatever is quiet (LFP no-trigger line and/or far-out deadlines), full
+                cards one tap away. Its own Suspense slot BELOW the loud cards, fed by
+                the SAME lfpPromise, because LFP quietness is only known after the USDM
+                fetch resolves; quiet content is by definition non-urgent, so the late
+                paint costs nothing (null fallback — a quiet row has no skeleton).
+                Renders nothing when everything above is loud. */}
+            <Suspense fallback={null}>
+              <ProgramStatusRowAsync
+                dataPromise={lfpPromise}
+                countyName={selectedCounty.name}
+                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+              />
+            </Suspense>
 
             {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
             <DroughtCattleToggle fips={selectedCounty.fips} active={view} />

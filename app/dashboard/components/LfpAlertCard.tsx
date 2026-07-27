@@ -108,17 +108,40 @@ export function LfpAlertSkeleton() {
   )
 }
 
+// ─── Quiet-card visibility (Block 2: silence is a feature) ─────────────────────────
+// LOUD = anything a rancher should see without tapping: officially triggered,
+// pending-OBBBA, mid-D2-streak (building), or UNAVAILABLE — if silence means
+// all-is-well, a failed USDM fetch must speak, not go quiet; otherwise a triggered
+// county with a dead fetch reads as healthy. QUIET = only the clean "no D2+ trigger"
+// state, which folds into the Program status row. Mirrors the render branches below.
+export function isLfpLoud(
+  unavailable: boolean,
+  eligibility: LfpEligibilityResult | null,
+): boolean {
+  if (unavailable || !eligibility) return true
+  return (
+    eligibility.enforcement === 'officially_eligible' ||
+    eligibility.enforcement === 'pending_obbba' ||
+    eligibility.currentD2Streak > 0
+  )
+}
+
+// `embedded` renders the same content without the outer Card chrome — used when the
+// card lives inside the collapsed "Program status" row (quiet home), whose accordion
+// panel already provides the border and padding. Mirrors DeadlineCountdownCard.
 export default function LfpAlertCard({
   eligibility,
   unavailable,
   countyName,
+  embedded = false,
 }: {
   eligibility: LfpEligibilityResult | null
   unavailable: boolean
   countyName:  string
+  embedded?:   boolean
 }) {
-  return (
-    <Card shadow="soft" className="p-4 sm:p-6">
+  const body = (
+    <>
       <div className="mb-3">
         <p className={EYEBROW}>Drought / LFP</p>
         <Heading level={5} className="mt-1">LFP status</Heading>
@@ -145,6 +168,8 @@ export default function LfpAlertCard({
           <FreshnessLine asOf={eligibility.dataAsOf} />
         </>
       )}
-    </Card>
+    </>
   )
+  if (embedded) return <div>{body}</div>
+  return <Card shadow="soft" className="p-4 sm:p-6">{body}</Card>
 }

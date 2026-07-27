@@ -15,6 +15,12 @@ function fmtDate(iso: string): string {
     : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Preview line for a QUIET LFP result. Only the clean no-trigger state is ever quiet
+// (triggered / pending / building / unavailable are all loud — see isLfpLoud in
+// LfpAlertCard.tsx), so one factual constant covers it; the expanded card names the
+// county and carries the USDM as-of line.
+export const LFP_QUIET_PREVIEW = 'LFP: no D2+ trigger'
+
 // Preview line for a QUIET deadline result. Only quiet states reach here (loud results
 // render the full card; data_unavailable is always loud), so this covers ok-but-far and
 // none — both stated factually, with the real next date when one exists. "USDA", not
