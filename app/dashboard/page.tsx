@@ -1057,25 +1057,36 @@ export default async function DashboardPage({
 
             {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
 
-            {/* Regional conditions map — the lead canvas of the Weather view. Client-only
-                (ssr:false) with its own "Loading map…" skeleton, so it never blocks the
-                view's server paint; same drought-view props, already computed above. */}
-            <RegionalMapLoader
-              fips={selectedCounty.fips}
-              center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
-              countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-              runtime={{
-                usdm: {
-                  fallbackImage: {
-                    url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
-                    sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+            {/* Regional conditions map — COLLAPSED BY DEFAULT (Block 2): a 400px canvas
+                everyone has already scrolled is reference material, not a daily signal;
+                the LatestReadingCard above carries the current category + 3-year ribbon.
+                Collapsed, the ssr:false map client NEVER mounts (DashboardAccordion
+                renders children only when open), so the Leaflet payload is spent on
+                demand — restoring the collapsed-accordion economy the loader was
+                originally built for. The USDM week stays visible in the preview so
+                freshness is never hidden behind the fold (data-derived, never today's
+                date). Own-ground places/device pins draw when expanded, unchanged. */}
+            <DashboardAccordion
+              title="Regional map"
+              preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
+            >
+              <RegionalMapLoader
+                fips={selectedCounty.fips}
+                center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
+                countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+                runtime={{
+                  usdm: {
+                    fallbackImage: {
+                      url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
+                      sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+                    },
                   },
-                },
-                // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
-                alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
-              }}
-              ownGround={ownGround}
-            />
+                  // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
+                  alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
+                }}
+                ownGround={ownGround}
+              />
+            </DashboardAccordion>
 
             {/* ── LFP status — the single contextual LFP card (A1 merged the old
                    TriggeredBanner into LfpHero): hero line per enforcement state, tracker,
