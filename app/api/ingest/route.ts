@@ -175,10 +175,10 @@ export async function POST(request: NextRequest) {
       ? b.dedup_key.trim()
       : `${hardware_id}:${ts}`
 
-  // Map hardware → registered device (supplies user_id + device_id).
+  // Map hardware → registered device (supplies user_id, ranch_id + device_id).
   const { data: device, error: deviceErr } = await db
     .from('devices')
-    .select('id, user_id')
+    .select('id, user_id, ranch_id')
     .eq('hardware_id', hardware_id)
     .maybeSingle()
   if (deviceErr) {
@@ -195,6 +195,10 @@ export async function POST(request: NextRequest) {
     .from('events')
     .insert({
       user_id: device.user_id,
+      // 034 transition: ranch scope rides the device row exactly like user_id.
+      // ranch_id is nullable by design — an unstamped device inserts null,
+      // never rejects; NOT NULL enforcement belongs to the tightening pass.
+      ranch_id: device.ranch_id,
       device_id: device.id,
       type,
       ts,
@@ -293,7 +297,7 @@ async function handleBatch(
   // The Scout being reported for — same LOUD 404 rule as the single path.
   const { data: device, error: deviceErr } = await db
     .from('devices')
-    .select('id, user_id')
+    .select('id, user_id, ranch_id')
     .eq('hardware_id', hardware_id)
     .maybeSingle()
   if (deviceErr) {
@@ -326,6 +330,7 @@ async function handleBatch(
     const hasFix = rec.fixType >= 2
     const { error: insertErr } = await db.from('events').insert({
       user_id: device.user_id,
+      ranch_id: device.ranch_id, // same null-safe inheritance as the single path
       device_id: device.id,
       type,
       ts,
