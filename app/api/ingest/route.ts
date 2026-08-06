@@ -54,9 +54,13 @@ import { createServiceClient } from '@/lib/supabase'
 //     type:              string   required — 'bump' (the firmware's own word)
 //     courier_device_id: string   required — the phone that hauled the batch;
 //                                 must match the token's device when token-authed
-//     records: [                  required, 1..64 (one Scout NVS queue max)
+//     records: [                  required, 1..64 (one courier upload batch)
 //       { seq, unixTime, lat, lon, fixType, sats, peak_mg }   all numbers;
 //         lat/lon are RAW 1e-7 degrees — the ledger converts, the courier never does
+//       + width (optional number)  Scout firmware v0.3.0's impact-width
+//         feature; absent from events synced off older firmware, so its
+//         absence is legal forever. Stored typed (035) AND verbatim in
+//         payload; plays NO part in dedupe.
 //     ]
 //   }
 // Per record: dedup_key = `${hardware_id}:${seq}` — the idempotency guarantee
@@ -79,7 +83,7 @@ import { createServiceClient } from '@/lib/supabase'
 //    courier retries the batch whole — idempotency makes that free.)
 
 const MAX_BODY_BYTES = 32 * 1024
-const MAX_BATCH_RECORDS = 64 // one full Scout queue; the courier chunks anything bigger
+const MAX_BATCH_RECORDS = 64 // one courier upload batch; the courier chunks the (4096-deep) Scout queue into these
 
 // GPS epochs before 2020 don't exist for this hardware — t below this means
 // "never had a fix", not a reading from the past.
@@ -233,9 +237,10 @@ export async function POST(request: NextRequest) {
 // ─── The batch path (courier sync sweeps) — see BATCH CONTRACT above ──────────
 
 // A record's numeric fields, all required — the courier always sends the full
-// shape; anything missing is a courier bug and fails the batch loud.
+// shape; anything missing is a courier bug and fails the batch loud. width is
+// the one exception: pre-v0.3.0 events legitimately never had one.
 const RECORD_FIELDS = ['seq', 'unixTime', 'lat', 'lon', 'fixType', 'sats', 'peak_mg'] as const
-type BatchRecord = Record<(typeof RECORD_FIELDS)[number], number>
+type BatchRecord = Record<(typeof RECORD_FIELDS)[number], number> & { width?: number }
 
 async function handleBatch(
   db: ReturnType<typeof createServiceClient>,
@@ -291,6 +296,17 @@ async function handleBatch(
         { status: 400 },
       )
     }
+    // width: optional (pre-v0.3.0 firmware), but if present it must be a real
+    // number — a mangled width is a courier bug, same loud-batch-400 rule.
+    if (
+      rec.width !== undefined &&
+      (typeof rec.width !== 'number' || !Number.isFinite(rec.width))
+    ) {
+      return Response.json(
+        { error: `records[${i}].width must be a number when present` },
+        { status: 400 },
+      )
+    }
     records.push(rec as unknown as BatchRecord)
   }
 
@@ -336,6 +352,7 @@ async function handleBatch(
       ts,
       lat: hasFix ? rec.lat / 1e7 : null,
       lng: hasFix ? rec.lon / 1e7 : null,
+      width: typeof rec.width === 'number' ? rec.width : null,
       payload,
       schema_version: 1,
       dedup_key: `${hardware_id}:${rec.seq}`,
