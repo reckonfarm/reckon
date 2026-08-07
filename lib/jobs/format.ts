@@ -13,6 +13,12 @@ export function fmtDay(iso: string, style: 'short' | 'long' = 'short'): string {
   })
 }
 
+// Ranch-day grouping key — 'en-CA' formats YYYY-MM-DD, so keys are stable and
+// sortable, and the day boundary is midnight in Denver, not on the server.
+export function dayKey(when: string | number): string {
+  return new Date(when).toLocaleDateString('en-CA', { timeZone: RANCH_TZ })
+}
+
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', {
     timeZone: RANCH_TZ, hour: 'numeric', minute: '2-digit',

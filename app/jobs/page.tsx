@@ -7,7 +7,7 @@ import { Card } from '@/app/components/ui/Card'
 import AutoRefresh from './AutoRefresh'
 import InProgressBadge from './InProgressBadge'
 import { isMinorJob, isInProgress } from '@/lib/jobs/display'
-import { fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
+import { dayKey, fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
 // One card per derived job: when, how long, how many impacts, and — always —
@@ -61,6 +61,19 @@ export default async function JobsPage({
   const hiddenCount = jobs.filter(j => isMinorJob(j) && !isInProgress(j, now)).length
   const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j) || isInProgress(j, now))
 
+  // Group by ranch day (input is started_at desc, so days come out newest
+  // first). An empty "Today" section still renders when older jobs exist —
+  // on a work morning the page should read as watching, not as done.
+  const todayKey = dayKey(now)
+  const groups: { key: string; jobs: JobListRow[] }[] = []
+  for (const j of visible) {
+    const k = dayKey(j.started_at)
+    const last = groups[groups.length - 1]
+    if (last && last.key === k) last.jobs.push(j)
+    else groups.push({ key: k, jobs: [j] })
+  }
+  const showEmptyToday = visible.length > 0 && groups[0]?.key !== todayKey
+
   return (
     <div className="min-h-screen bg-cream">
       <SiteHeader />
@@ -71,7 +84,7 @@ export default async function JobsPage({
           Work sessions, read straight off the machine. Nobody wrote anything down.
         </p>
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 space-y-5">
           {error && (
             <Card shadow="none" className="px-5 py-6 text-center">
               <p className="font-dm-sans text-sm text-forest-green/55">
@@ -90,50 +103,68 @@ export default async function JobsPage({
             </Card>
           )}
 
-          {visible.map(j => {
-            const covPct = Math.round(j.coverage * 100)
-            const lowCoverage = j.coverage < 0.9
-            const live = isInProgress(j, now)
-            return (
-              <Link key={j.id} href={`/jobs/${j.id}`} className="block">
-                <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-2 truncate font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                        {fmtDay(j.started_at)}
-                        {live && <InProgressBadge />}
-                      </p>
-                      <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
-                        {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
-                        <span className="text-forest-green/25"> · </span>
-                        {j.devices?.name ?? 'Unknown device'}
-                        {j.multi_field && (
-                          <>
-                            <span className="text-forest-green/25"> · </span>
-                            <span className="font-semibold text-warning">Multi-field</span>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
-                        {fmtDuration(j.duration_s)}
-                      </p>
-                      <p className={`mt-0.5 font-dm-sans text-xs tabular-nums ${lowCoverage ? 'font-semibold text-warning' : 'text-forest-green/50'}`}>
-                        {covPct}% coverage
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-2 font-dm-sans text-xs tabular-nums text-forest-green/50">
-                    {plural(j.event_count, 'impact')} recorded
-                    {j.evicted_count > 0 && (
-                      <> · {j.evicted_count.toLocaleString()} lost before sync</>
-                    )}
-                  </p>
-                </Card>
-              </Link>
-            )
-          })}
+          {showEmptyToday && (
+            <section>
+              <h2 className="px-1 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
+                Today
+              </h2>
+              <p className="mt-2 px-1 pb-1 font-dm-sans text-sm text-forest-green/45">
+                No sessions yet today.
+              </p>
+            </section>
+          )}
+
+          {groups.map(g => (
+            <section key={g.key}>
+              <h2 className="px-1 pt-2 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
+                {g.key === todayKey ? 'Today' : fmtDay(g.jobs[0].started_at)}
+              </h2>
+              <div className="mt-2 space-y-3">
+                {g.jobs.map(j => {
+                  const covPct = Math.round(j.coverage * 100)
+                  const lowCoverage = j.coverage < 0.9
+                  const live = isInProgress(j, now)
+                  return (
+                    <Link key={j.id} href={`/jobs/${j.id}`} className="block">
+                      <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 truncate font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                              {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
+                              {live && <InProgressBadge />}
+                            </p>
+                            <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
+                              {j.devices?.name ?? 'Unknown device'}
+                              {j.multi_field && (
+                                <>
+                                  <span className="text-forest-green/25"> · </span>
+                                  <span className="font-semibold text-warning">Multi-field</span>
+                                </>
+                              )}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
+                              {fmtDuration(j.duration_s)}
+                            </p>
+                            <p className={`mt-0.5 font-dm-sans text-xs tabular-nums ${lowCoverage ? 'font-semibold text-warning' : 'text-forest-green/50'}`}>
+                              {covPct}% coverage
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-2 font-dm-sans text-xs tabular-nums text-forest-green/50">
+                          {plural(j.event_count, 'impact')} recorded
+                          {j.evicted_count > 0 && (
+                            <> · {j.evicted_count.toLocaleString()} lost before sync</>
+                          )}
+                        </p>
+                      </Card>
+                    </Link>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
 
           {!error && hiddenCount > 0 && (
             <div className="pt-1 text-center">
