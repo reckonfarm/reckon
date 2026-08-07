@@ -6,6 +6,8 @@ import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
 import JobMapLoader from './JobMapLoader'
 import AutoRefresh from '../AutoRefresh'
+import InProgressBadge from '../InProgressBadge'
+import { isInProgress } from '@/lib/jobs/display'
 import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import type { TrackPoint, JobPause } from '@/lib/jobs/derive'
 
@@ -65,6 +67,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const covPct = Math.round(job.coverage * 100)
   const lowCoverage = job.coverage < 0.9
+  const live = isInProgress(job)
 
   return (
     <div className="min-h-screen bg-cream">
@@ -75,7 +78,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           ← All jobs
         </Link>
 
-        <Heading level={1} className="mt-2 !text-2xl sm:!text-3xl">{fmtDay(job.started_at, 'long')}</Heading>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Heading level={1} className="!text-2xl sm:!text-3xl">{fmtDay(job.started_at, 'long')}</Heading>
+          {live && <InProgressBadge />}
+        </div>
         <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
           {fmtTime(job.started_at)} – {fmtTime(job.ended_at)} MT
           <span className="text-forest-green/25"> · </span>

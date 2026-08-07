@@ -1,6 +1,7 @@
 'use client'
 
-import { MapContainer, TileLayer, CircleMarker, Polyline, Popup } from 'react-leaflet'
+import { useEffect, useRef, useState } from 'react'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen } from '@/lib/brand-colors'
 import type { JobMapProps } from './JobMapLoader'
@@ -14,6 +15,43 @@ import type { JobMapProps } from './JobMapLoader'
 // Impact size = color + radius (sequential rust ramp, light→dark; dataviz
 // method: magnitude gets ONE hue). Color alone never carries it — bigger hits
 // get bigger markers, and every marker has a popup with the numbers.
+//
+// Basemap: Esri World Imagery by default — a rancher reads their own ground
+// from the air — with an OSM street fallback (also the lighter option on one
+// bar of 3G). Track styling follows the basemap: white-with-dark-casing over
+// imagery (forest green vanishes on irrigated ground), forest green on street.
+// The choice lives in the URL (?base=street; satellite is the unmarked
+// default) via history.replaceState — no router round-trip, and it composes
+// with whatever other params the page carries.
+//
+// Live follow: while the view is untouched we re-fit to the track as it grows;
+// the moment the user pans or zooms, follow stops — the map is read one-handed
+// in a moving tractor and must never yank. A Recenter button re-arms it.
+
+type Basemap = 'satellite' | 'street'
+
+const BASEMAPS: Record<Basemap, {
+  url: string
+  attribution: string
+  maxNativeZoom: number
+  maxZoom: number
+}> = {
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution:
+      'Imagery &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    // Rural imagery thins out past ~z17 — overzoom native tiles instead of
+    // serving gray.
+    maxNativeZoom: 17,
+    maxZoom: 19,
+  },
+  street: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxNativeZoom: 19,
+    maxZoom: 19,
+  },
+}
 
 const MG_BUCKETS = [
   { min: 6000, color: '#5C2013', radius: 7, label: '≥ 6 g' },
@@ -29,13 +67,77 @@ function bucketFor(mg: number | null) {
 }
 
 const GAP_GRAY = '#6B7280'
+const CASING_DARK = '#111827'
+
+// Per-basemap track styling. White over imagery reads on almost any aerial
+// ground; the casing keeps it visible over snow, gravel, and bale rows. Gap
+// dashes get no casing — a solid casing under a dash reads as a solid line.
+const TRACK_STYLE: Record<Basemap, {
+  path: string
+  casing: string | null
+  gap: string
+}> = {
+  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF' },
+  street:    { path: forestGreen, casing: null, gap: GAP_GRAY },
+}
 
 const fmtTime = (t: number) =>
   new Date(t * 1000).toLocaleTimeString('en-US', {
     timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit',
   })
 
-function Legend() {
+type Bounds = [[number, number], [number, number]]
+
+function readBasemapFromUrl(): Basemap {
+  if (typeof window === 'undefined') return 'satellite'
+  return new URLSearchParams(window.location.search).get('base') === 'street'
+    ? 'street'
+    : 'satellite'
+}
+
+// Re-fit while following; disarm follow on any user pan/zoom. Programmatic
+// fits also fire zoomstart, so a short-lived flag separates our own moves from
+// the user's (with a timeout fallback in case an identical-view fit never
+// fires moveend). Bounds travel as a value key ("minLat,minLng,maxLat,maxLng")
+// — a refresh that changes object identity but not the bbox never re-fits.
+function FollowController({ boundsKey, following, onUserMove }: {
+  boundsKey: string
+  following: boolean
+  onUserMove: () => void
+}) {
+  const map = useMap()
+  const programmatic = useRef(false)
+
+  useEffect(() => {
+    if (!following) return
+    const [minLat, minLng, maxLat, maxLng] = boundsKey.split(',').map(Number)
+    programmatic.current = true
+    map.fitBounds([[minLat, minLng], [maxLat, maxLng]], { padding: [30, 30] })
+    const t = setTimeout(() => { programmatic.current = false }, 600)
+    return () => clearTimeout(t)
+  }, [map, following, boundsKey])
+
+  useMapEvents({
+    dragstart() { onUserMove() },
+    zoomstart() { if (!programmatic.current) onUserMove() },
+    moveend() { programmatic.current = false },
+  })
+  return null
+}
+
+function Legend({ basemap }: { basemap: Basemap }) {
+  const style = TRACK_STYLE[basemap]
+  const onImagery = basemap === 'satellite'
+  // On satellite the line samples sit on a small dark chip — white-on-white
+  // would show nothing.
+  const chip = (line: React.CSSProperties) => (
+    <span
+      className="flex items-center justify-center rounded-sm"
+      style={{ width: 22, height: 10, background: onImagery ? '#4B5563' : 'transparent' }}
+    >
+      <span style={{ width: 18, ...line }} />
+    </span>
+  )
   return (
     <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 12 }}>
       <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
@@ -53,11 +155,11 @@ function Legend() {
         ))}
         <div className="mt-2 border-t border-gray-100 pt-1.5">
           <div className="flex items-center gap-2">
-            <span style={{ width: 18, borderTop: `3px solid ${forestGreen}` }} />
+            {chip({ borderTop: `3px solid ${style.path}` })}
             <span className="font-dm-sans text-[11px] text-forest-green/70">recorded path</span>
           </div>
           <div className="mt-1 flex items-center gap-2">
-            <span style={{ width: 18, borderTop: `2px dashed ${GAP_GRAY}` }} />
+            {chip({ borderTop: `2px dashed ${style.gap}` })}
             <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
           </div>
         </div>
@@ -67,6 +169,18 @@ function Legend() {
 }
 
 export default function JobMapClient({ track, bbox }: JobMapProps) {
+  const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
+  const [following, setFollowing] = useState(true)
+
+  const pickBasemap = (b: Basemap) => {
+    setBasemap(b)
+    const params = new URLSearchParams(window.location.search)
+    if (b === 'satellite') params.delete('base')
+    else params.set('base', b)
+    const qs = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
+  }
+
   // Split the track into solid runs and dashed gap connectors.
   const solidRuns: [number, number][][] = []
   const gapHops: [number, number][][] = []
@@ -81,12 +195,16 @@ export default function JobMapClient({ track, bbox }: JobMapProps) {
   })
   if (run.length >= 2) solidRuns.push(run)
 
-  const bounds: [[number, number], [number, number]] = bbox
+  const bounds: Bounds = bbox
     ? [[bbox.minLat, bbox.minLng], [bbox.maxLat, bbox.maxLng]]
     : [[track[0].lat, track[0].lng], [track[track.length - 1].lat, track[track.length - 1].lng]]
+  const boundsKey = bounds.flat().join(',')
+
+  const style = TRACK_STYLE[basemap]
+  const tiles = BASEMAPS[basemap]
 
   return (
-    <div className="overflow-hidden rounded-xl border border-forest-green/10">
+    <div className="relative overflow-hidden rounded-xl border border-forest-green/10">
       <MapContainer
         bounds={bounds}
         boundsOptions={{ padding: [30, 30] }}
@@ -95,22 +213,38 @@ export default function JobMapClient({ track, bbox }: JobMapProps) {
         scrollWheelZoom={false}
       >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          key={basemap}
+          url={tiles.url}
+          attribution={tiles.attribution}
+          maxNativeZoom={tiles.maxNativeZoom}
+          maxZoom={tiles.maxZoom}
         />
 
+        <FollowController
+          boundsKey={boundsKey}
+          following={following}
+          onUserMove={() => setFollowing(false)}
+        />
+
+        {style.casing && solidRuns.map((r, i) => (
+          <Polyline
+            key={`casing-${i}`}
+            positions={r}
+            pathOptions={{ color: style.casing!, weight: 5.5, opacity: 0.6 }}
+          />
+        ))}
         {gapHops.map((hop, i) => (
           <Polyline
             key={`gap-${i}`}
             positions={hop}
-            pathOptions={{ color: GAP_GRAY, weight: 2, opacity: 0.6, dashArray: '2 8' }}
+            pathOptions={{ color: style.gap, weight: 2, opacity: basemap === 'satellite' ? 0.85 : 0.6, dashArray: '2 8' }}
           />
         ))}
         {solidRuns.map((r, i) => (
           <Polyline
             key={`run-${i}`}
             positions={r}
-            pathOptions={{ color: forestGreen, weight: 3, opacity: 0.8 }}
+            pathOptions={{ color: style.path, weight: 3, opacity: basemap === 'satellite' ? 0.95 : 0.8 }}
           />
         ))}
 
@@ -137,8 +271,35 @@ export default function JobMapClient({ track, bbox }: JobMapProps) {
           )
         })}
 
-        <Legend />
+        <Legend basemap={basemap} />
       </MapContainer>
+
+      {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
+          the panes, so taps never fight the map's own event capture. */}
+      <div className="absolute right-3 top-3 z-[1000] flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-xs font-semibold shadow-sm">
+        {(['satellite', 'street'] as const).map(b => (
+          <button
+            key={b}
+            type="button"
+            onClick={() => pickBasemap(b)}
+            className={`px-3 py-2 capitalize transition-colors ${
+              basemap === b ? 'bg-forest-green text-white' : 'text-forest-green/70 hover:text-forest-green'
+            }`}
+          >
+            {b}
+          </button>
+        ))}
+      </div>
+
+      {!following && (
+        <button
+          type="button"
+          onClick={() => setFollowing(true)}
+          className="absolute bottom-6 left-3 z-[1000] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 font-dm-sans text-xs font-semibold text-forest-green shadow-sm hover:bg-white"
+        >
+          ⌖ Recenter
+        </button>
+      )}
     </div>
   )
 }
