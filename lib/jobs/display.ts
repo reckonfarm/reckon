@@ -35,6 +35,8 @@ export function isMinorJob(job: { duration_s: number; event_count: number }): bo
 
 export const IN_PROGRESS_WINDOW_MS = 10 * 60 * 1000
 
-export function isInProgress(job: { ended_at: string }, nowMs: number): boolean {
+// nowMs defaults here (same pattern as lib/barn-geo.ts) so render code never
+// calls Date.now() directly — react-hooks/purity keeps component bodies clean.
+export function isInProgress(job: { ended_at: string }, nowMs: number = Date.now()): boolean {
   return nowMs - Date.parse(job.ended_at) < IN_PROGRESS_WINDOW_MS
 }

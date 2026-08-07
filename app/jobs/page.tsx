@@ -7,7 +7,7 @@ import { Card } from '@/app/components/ui/Card'
 import AutoRefresh from './AutoRefresh'
 import InProgressBadge from './InProgressBadge'
 import { isMinorJob, isInProgress } from '@/lib/jobs/display'
-import { dayKey, fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
+import { dayKey, todayKey, fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
 // One card per derived job: when, how long, how many impacts, and — always —
@@ -54,17 +54,16 @@ export default async function JobsPage({
     .limit(100)
 
   const jobs = (data ?? []) as unknown as JobListRow[]
-  const now = Date.now()
   // In-progress jobs are exempt from the minor floor: a live job's first
   // minutes are short and sparse by definition, and hiding the one session
   // someone is actively watching would be the worst possible miss.
-  const hiddenCount = jobs.filter(j => isMinorJob(j) && !isInProgress(j, now)).length
-  const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j) || isInProgress(j, now))
+  const hiddenCount = jobs.filter(j => isMinorJob(j) && !isInProgress(j)).length
+  const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j) || isInProgress(j))
 
   // Group by ranch day (input is started_at desc, so days come out newest
   // first). An empty "Today" section still renders when older jobs exist —
   // on a work morning the page should read as watching, not as done.
-  const todayKey = dayKey(now)
+  const today = todayKey()
   const groups: { key: string; jobs: JobListRow[] }[] = []
   for (const j of visible) {
     const k = dayKey(j.started_at)
@@ -72,7 +71,7 @@ export default async function JobsPage({
     if (last && last.key === k) last.jobs.push(j)
     else groups.push({ key: k, jobs: [j] })
   }
-  const showEmptyToday = visible.length > 0 && groups[0]?.key !== todayKey
+  const showEmptyToday = visible.length > 0 && groups[0]?.key !== today
 
   return (
     <div className="min-h-screen bg-cream">
@@ -117,13 +116,13 @@ export default async function JobsPage({
           {groups.map(g => (
             <section key={g.key}>
               <h2 className="px-1 pt-2 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
-                {g.key === todayKey ? 'Today' : fmtDay(g.jobs[0].started_at)}
+                {g.key === today ? 'Today' : fmtDay(g.jobs[0].started_at)}
               </h2>
               <div className="mt-2 space-y-3">
                 {g.jobs.map(j => {
                   const covPct = Math.round(j.coverage * 100)
                   const lowCoverage = j.coverage < 0.9
-                  const live = isInProgress(j, now)
+                  const live = isInProgress(j)
                   return (
                     <Link key={j.id} href={`/jobs/${j.id}`} className="block">
                       <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">

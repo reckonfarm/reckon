@@ -67,7 +67,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const covPct = Math.round(job.coverage * 100)
   const lowCoverage = job.coverage < 0.9
-  const live = isInProgress(job, Date.now())
+  const live = isInProgress(job)
 
   return (
     <div className="min-h-screen bg-cream">
