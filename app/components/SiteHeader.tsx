@@ -108,6 +108,15 @@ export default function SiteHeader({ center }: Props) {
                 My herd
               </Link>
             )}
+            {/* Jobs — the work-session ledger, the Scout's payoff surface. */}
+            {user && (
+              <Link
+                href="/jobs"
+                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              >
+                Jobs
+              </Link>
+            )}
             {/* Devices — the registry (S2), in the signed-in cluster where
                 Messages sat before its flag-off. */}
             {user && (

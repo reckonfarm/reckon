@@ -52,10 +52,25 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    // Devices holds the slot Messages vacated (S2) — restores the 2/2 flank
-    // balance with zero net nav growth, and it's one of the four forever-tabs
-    // anyway. Antenna/signal glyph, hand-drawn to match the inline-SVG stroke
-    // style of the other tabs (no icon lib).
+    // Jobs — the work-session ledger. Breaks the 2/2 flank balance to 3/2 on
+    // purpose: this is the Scout's payoff surface and the page a rancher opens
+    // from the cab, so it earns a tab over symmetry. Route glyph (track between
+    // two endpoints), hand-drawn to match the inline-SVG stroke style.
+    {
+      href: '/jobs',
+      label: 'Jobs',
+      match: (p: string) => p.startsWith('/jobs'),
+      icon: (active: boolean) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="6" cy="19" r="2.5"/>
+          <circle cx="18" cy="5" r="2.5"/>
+          <path d="M8.5 19h8a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7h7"/>
+        </svg>
+      ),
+    },
+    // Devices holds the slot Messages vacated (S2). Antenna/signal glyph,
+    // hand-drawn to match the inline-SVG stroke style of the other tabs (no
+    // icon lib).
     {
       href: '/devices',
       label: 'Devices',

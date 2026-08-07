@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/hay-radar",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/derive-jobs",
+      "schedule": "*/3 * * * *"
     }
   ]
 }

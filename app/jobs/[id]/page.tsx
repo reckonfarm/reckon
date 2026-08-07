@@ -5,6 +5,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
 import JobMapLoader from './JobMapLoader'
+import AutoRefresh from '../AutoRefresh'
+import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import type { TrackPoint, JobPause } from '@/lib/jobs/derive'
 
 // ─── /jobs/[id] — one work session: the numbers, the pauses, the map ───────────
@@ -33,23 +35,6 @@ interface JobRow {
   deriver_version: string
   derived_at: string
   devices: { name: string } | null
-}
-
-const MT = 'America/Denver'
-
-const fmtDay = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', {
-    timeZone: MT, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  })
-
-const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString('en-US', { timeZone: MT, hour: 'numeric', minute: '2-digit' })
-
-function fmtDuration(s: number): string {
-  const h = Math.floor(s / 3600)
-  const m = Math.round((s % 3600) / 60)
-  if (h === 0) return `${m} min`
-  return `${h} h ${m} m`
 }
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
@@ -84,12 +69,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   return (
     <div className="min-h-screen bg-cream">
       <SiteHeader />
-      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <AutoRefresh />
+      <main className="mx-auto max-w-3xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
         <Link href="/jobs" className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green">
           ← All jobs
         </Link>
 
-        <Heading level={1} className="mt-2 !text-2xl sm:!text-3xl">{fmtDay(job.started_at)}</Heading>
+        <Heading level={1} className="mt-2 !text-2xl sm:!text-3xl">{fmtDay(job.started_at, 'long')}</Heading>
         <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
           {fmtTime(job.started_at)} – {fmtTime(job.ended_at)} MT
           <span className="text-forest-green/25"> · </span>
@@ -148,7 +134,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   {' · '}
                   {p.kind === 'observed'
                     ? `stopped ${Math.round(p.durationS / 60)} min`
-                    : `stopped ~${Math.round(p.durationS / 60)} min (estimated — ${p.missing.toLocaleString()} events were lost around this stop, so the exact timing is uncertain)`}
+                    : `stopped ~${Math.round(p.durationS / 60)} min (estimated — ${plural(p.missing, 'event')} ${p.missing === 1 ? 'was' : 'were'} lost around this stop, so the exact timing is uncertain)`}
                 </li>
               ))}
             </ul>
@@ -156,7 +142,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         )}
 
         <p className="mt-6 font-dm-sans text-xs text-forest-green/40">
-          Derived {new Date(job.derived_at).toLocaleDateString('en-US', { timeZone: MT, month: 'short', day: 'numeric', year: 'numeric' })}
+          Derived {new Date(job.derived_at).toLocaleDateString('en-US', { timeZone: RANCH_TZ, month: 'short', day: 'numeric', year: 'numeric' })}
           {' · '}{job.deriver_version}
           {' · '}rebuilt from raw events any time the derivation improves
         </p>

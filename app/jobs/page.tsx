@@ -4,12 +4,19 @@ import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
+import AutoRefresh from './AutoRefresh'
+import { isMinorJob } from '@/lib/jobs/display'
+import { fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
 // One card per derived job: when, how long, how many impacts, and — always —
 // coverage. The seq counter tells us how many events the device generated, so
 // a day where the queue ate 66% of them says so on its face. A low-coverage
 // job must never look complete; that number is the product being honest.
+//
+// Minor sessions (short OR sparse — lib/jobs/display.ts) hide from the default
+// list behind ?all=1. DISPLAY ONLY: the deriver emits them regardless, and
+// the toggle says how many are hidden so nothing silently disappears.
 // Auth-gated like /devices; reads via the user-scoped SSR client so the jobs
 // RLS policy (036) is exercised, not bypassed.
 
@@ -27,28 +34,14 @@ interface JobListRow {
   devices: { name: string } | null
 }
 
-const MT = 'America/Denver'
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ all?: string }>
+}) {
+  const { all } = await searchParams
+  const showAll = all === '1'
 
-function fmtDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    timeZone: MT, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-  })
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', {
-    timeZone: MT, hour: 'numeric', minute: '2-digit',
-  })
-}
-
-function fmtDuration(s: number): string {
-  const h = Math.floor(s / 3600)
-  const m = Math.round((s % 3600) / 60)
-  if (h === 0) return `${m} min`
-  return `${h} h ${m} m`
-}
-
-export default async function JobsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/jobs')
@@ -60,11 +53,14 @@ export default async function JobsPage() {
     .limit(100)
 
   const jobs = (data ?? []) as unknown as JobListRow[]
+  const minorCount = jobs.filter(isMinorJob).length
+  const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j))
 
   return (
     <div className="min-h-screen bg-cream">
       <SiteHeader />
-      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <AutoRefresh />
+      <main className="mx-auto max-w-2xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
         <Heading level={1} className="!text-2xl sm:!text-3xl">Jobs</Heading>
         <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
           Work sessions, read straight off the machine. Nobody wrote anything down.
@@ -79,15 +75,17 @@ export default async function JobsPage() {
             </Card>
           )}
 
-          {!error && jobs.length === 0 && (
+          {!error && visible.length === 0 && (
             <Card shadow="none" className="px-5 py-8 text-center">
               <p className="font-dm-sans text-sm text-forest-green/55">
-                No jobs yet. Put a Scout on a machine and go to work.
+                {jobs.length === 0
+                  ? 'No jobs yet. Put a Scout on a machine and go to work.'
+                  : 'Only minor sessions so far — show all below.'}
               </p>
             </Card>
           )}
 
-          {jobs.map(j => {
+          {visible.map(j => {
             const covPct = Math.round(j.coverage * 100)
             const lowCoverage = j.coverage < 0.9
             return (
@@ -120,7 +118,7 @@ export default async function JobsPage() {
                     </div>
                   </div>
                   <p className="mt-2 font-dm-sans text-xs tabular-nums text-forest-green/50">
-                    {j.event_count.toLocaleString()} impacts recorded
+                    {plural(j.event_count, 'impact')} recorded
                     {j.evicted_count > 0 && (
                       <> · {j.evicted_count.toLocaleString()} lost before sync</>
                     )}
@@ -129,6 +127,19 @@ export default async function JobsPage() {
               </Link>
             )
           })}
+
+          {!error && minorCount > 0 && (
+            <div className="pt-1 text-center">
+              <Link
+                href={showAll ? '/jobs' : '/jobs?all=1'}
+                className="inline-block rounded-lg px-4 py-2 font-dm-sans text-sm text-forest-green/60 hover:text-forest-green"
+              >
+                {showAll
+                  ? 'Hide minor sessions'
+                  : `Show all sessions (${plural(minorCount, 'minor session')} hidden)`}
+              </Link>
+            </div>
+          )}
         </div>
       </main>
     </div>
