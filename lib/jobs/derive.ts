@@ -19,7 +19,7 @@
 // Any change to logic or thresholds = bump DERIVER_VERSION and re-derive;
 // jobs are a rebuildable artifact, never source data.
 
-export const DERIVER_VERSION = 'jobs-v1.0.0'
+export const DERIVER_VERSION = 'jobs-v1.1.0'
 
 export const DERIVE_CONFIG = {
   // ts_source='server' means the ledger stamped receipt time, not event time —
@@ -30,8 +30,14 @@ export const DERIVE_CONFIG = {
   // measured median: 3 s ≈ 20 events/min of sustained cutting).
   defaultCadenceS: 3,
   cadenceMaxSampleGapS: 30, // seq-adjacent pairs slower than this don't vote on cadence
-  // Gap classification
-  quietBoundaryS: 30 * 60, // genuine quiet (or excess) this long ends the job
+  // Gap classification.
+  // 18 min sits in the valley of the Aug 5 pause distribution: observed quiets
+  // were 3.2, 5.8, 9.9, 11.8 — then 20.1, 24.2, 27.5 min. Nothing landed
+  // between 11.8 and 20.1, so the boundary goes in the valley instead of being
+  // guessed. PROVISIONAL — one machine, one labeled day; revisit when baler
+  // data and a second machine exist (v1.0.0 used 30 min, which fused the
+  // pre-cutting positioning period into the cutting session).
+  quietBoundaryS: 18 * 60, // genuine quiet (or excess) this long ends the job
   observedPauseMinS: 3 * 60, // shorter observed quiet is just work rhythm
   inferredPauseMinS: 3 * 60, // excess below this is cadence noise (±1–2 min closes clean)
   // Track drawing: a hop is 'solid' ONLY when seq-adjacent and quick — anything
