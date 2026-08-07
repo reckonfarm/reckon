@@ -5,7 +5,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
 import AutoRefresh from './AutoRefresh'
-import { isMinorJob } from '@/lib/jobs/display'
+import InProgressBadge from './InProgressBadge'
+import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
@@ -53,8 +54,12 @@ export default async function JobsPage({
     .limit(100)
 
   const jobs = (data ?? []) as unknown as JobListRow[]
-  const minorCount = jobs.filter(isMinorJob).length
-  const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j))
+  const now = Date.now()
+  // In-progress jobs are exempt from the minor floor: a live job's first
+  // minutes are short and sparse by definition, and hiding the one session
+  // someone is actively watching would be the worst possible miss.
+  const hiddenCount = jobs.filter(j => isMinorJob(j) && !isInProgress(j, now)).length
+  const visible = showAll ? jobs : jobs.filter(j => !isMinorJob(j) || isInProgress(j, now))
 
   return (
     <div className="min-h-screen bg-cream">
@@ -88,13 +93,15 @@ export default async function JobsPage({
           {visible.map(j => {
             const covPct = Math.round(j.coverage * 100)
             const lowCoverage = j.coverage < 0.9
+            const live = isInProgress(j, now)
             return (
               <Link key={j.id} href={`/jobs/${j.id}`} className="block">
                 <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-fraunces text-base font-semibold text-forest-green sm:text-lg">
+                      <p className="flex items-center gap-2 truncate font-fraunces text-base font-semibold text-forest-green sm:text-lg">
                         {fmtDay(j.started_at)}
+                        {live && <InProgressBadge />}
                       </p>
                       <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
                         {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
@@ -128,7 +135,7 @@ export default async function JobsPage({
             )
           })}
 
-          {!error && minorCount > 0 && (
+          {!error && hiddenCount > 0 && (
             <div className="pt-1 text-center">
               <Link
                 href={showAll ? '/jobs' : '/jobs?all=1'}
@@ -136,7 +143,7 @@ export default async function JobsPage({
               >
                 {showAll
                   ? 'Hide minor sessions'
-                  : `Show all sessions (${plural(minorCount, 'minor session')} hidden)`}
+                  : `Show all sessions (${plural(hiddenCount, 'minor session')} hidden)`}
               </Link>
             </div>
           )}
