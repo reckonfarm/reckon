@@ -7,6 +7,7 @@ import { Card } from '@/app/components/ui/Card'
 import JobMapLoader from './JobMapLoader'
 import AutoRefresh from '../AutoRefresh'
 import InProgressBadge from '../InProgressBadge'
+import AnnotationControls from './AnnotationControls'
 import { isInProgress } from '@/lib/jobs/display'
 import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import type { TrackPoint, JobPause } from '@/lib/jobs/derive'
@@ -65,6 +66,16 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (error || !data) notFound()
   const job = data as unknown as JobRow
 
+  // Annotation is a separate query on purpose — no FK to jobs (037), user
+  // intent survives every re-derivation.
+  const { data: annotation } = await supabase
+    .from('job_annotations')
+    .select('name, dismissed_at')
+    .eq('job_id', id)
+    .maybeSingle()
+  const name = annotation?.name ?? null
+  const dismissed = annotation?.dismissed_at != null
+
   const covPct = Math.round(job.coverage * 100)
   const lowCoverage = job.coverage < 0.9
   const live = isInProgress(job)
@@ -79,10 +90,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         </Link>
 
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Heading level={1} className="!text-2xl sm:!text-3xl">{fmtDay(job.started_at, 'long')}</Heading>
+          <Heading level={1} className="!text-2xl sm:!text-3xl">
+            {name ?? fmtDay(job.started_at, 'long')}
+          </Heading>
           {live && <InProgressBadge />}
+          {dismissed && (
+            <span className="rounded-full bg-forest-green/10 px-2.5 py-1 font-dm-sans text-[11px] font-semibold uppercase tracking-wide text-forest-green/60">
+              Dismissed
+            </span>
+          )}
         </div>
         <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
+          {name && (
+            <>
+              {fmtDay(job.started_at)}
+              <span className="text-forest-green/25"> · </span>
+            </>
+          )}
           {fmtTime(job.started_at)} – {fmtTime(job.ended_at)} MT
           <span className="text-forest-green/25"> · </span>
           {job.devices?.name ?? 'Unknown device'}
@@ -146,6 +170,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </ul>
           </Card>
         )}
+
+        <AnnotationControls jobId={job.id} name={name} dismissed={dismissed} />
 
         <p className="mt-6 font-dm-sans text-xs text-forest-green/40">
           Derived {new Date(job.derived_at).toLocaleDateString('en-US', { timeZone: RANCH_TZ, month: 'short', day: 'numeric', year: 'numeric' })}
