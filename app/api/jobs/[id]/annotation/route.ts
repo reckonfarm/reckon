@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase-server'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// PATCH /api/jobs/[id]/annotation — { name?: string | null, dismissed?: boolean }
+// PATCH /api/jobs/[id]/annotation —
+//   { name?: string | null, machine?: string | null, dismissed?: boolean }
 //
 // Annotations live in job_annotations (037), keyed by the stable job id —
 // never in jobs, which the deriver rewrites wholesale. The user verb is
@@ -35,6 +36,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'name must be a string or null' }, { status: 400 })
     }
     update.name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) || null : null
+  }
+  if ('machine' in body) {
+    if (body.machine !== null && typeof body.machine !== 'string') {
+      return NextResponse.json({ error: 'machine must be a string or null' }, { status: 400 })
+    }
+    // Lowercased by convention ('baler', 'swather', …) — detection queries
+    // compare exact values, and case must never be why a label doesn't match.
+    update.machine =
+      typeof body.machine === 'string' ? body.machine.trim().toLowerCase().slice(0, 40) || null : null
   }
   if ('dismissed' in body) {
     if (typeof body.dismissed !== 'boolean') {

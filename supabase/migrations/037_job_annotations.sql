@@ -19,6 +19,15 @@
 --
 -- name is a stopgap: once field boundaries exist, place will supply most of
 -- the name. Don't grow this table into a form.
+--
+-- machine is the ONE exception to "don't grow": it is user intent the
+-- detection layer reads (which detector's results to trust for a job), and it
+-- must live outside the derived artifact for exactly the same reason name
+-- does. The system proposes ("32 gate slams — was this baling?"), the user
+-- confirms; detection itself never waits on the label. Free text by
+-- convention ('baler' | 'swather' | 'rake' | …), not an enum — a new machine
+-- must never require a migration. An orphaned label (job id churn) degrades
+-- loudly in the UI as machine-unknown, never silently.
 -- ============================================================
 
 create table public.job_annotations (
@@ -27,6 +36,7 @@ create table public.job_annotations (
   ranch_id     uuid references public.ranches(id),
 
   name         text,               -- optional label ("Baling"); null = unnamed
+  machine      text,               -- confirmed machine kind ('baler' …); null = unconfirmed
   dismissed_at timestamptz,        -- non-null = hidden from the default list; null = visible
 
   created_at   timestamptz not null default now(),
