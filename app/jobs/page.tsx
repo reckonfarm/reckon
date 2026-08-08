@@ -10,6 +10,8 @@ import DeviceLiveness from './DeviceLiveness'
 import RestoreButton from './RestoreButton'
 import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fetchAnnotations } from '@/lib/jobs/annotations'
+import { fetchRunsForJobs } from '@/lib/detections/queries'
+import { BALE_MACHINE } from '@/lib/detections/detect-bales'
 import { dayKey, todayKey, fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
@@ -65,6 +67,19 @@ export default async function JobsPage({
   // user intent.
   const annotations = await fetchAnnotations(supabase, jobs.map(j => j.id))
   const isDismissed = (j: JobListRow) => annotations.get(j.id)?.dismissed_at != null
+
+  // Detection runs, same no-FK merge shape. On the list a bale count speaks
+  // only when it exists: confirmed jobs say "N bales", unconfirmed detected
+  // jobs pose the question the detail page answers.
+  const detectionRuns = await fetchRunsForJobs(supabase, jobs.map(j => j.id))
+  const baleLine = (j: JobListRow): string | null => {
+    const run = detectionRuns.get(j.id)?.find(r => r.detector === 'bale')
+    if (run?.outcome !== 'detected') return null
+    const machine = annotations.get(j.id)?.machine ?? null
+    if (machine === BALE_MACHINE) return plural(run.detection_count, 'bale')
+    if (machine == null) return `${plural(run.detection_count, 'gate slam')} — baling?`
+    return null // labeled as another machine: the label wins on the list
+  }
 
   // Liveness: real devices only (bench convention: 'bench-' prefix stays out
   // of rancher-facing surfaces).
@@ -195,6 +210,12 @@ export default async function JobsPage({
                         </div>
                         <p className="mt-2 font-dm-sans text-xs tabular-nums text-forest-green/50">
                           {plural(j.event_count, 'impact')} recorded
+                          {baleLine(j) && (
+                            <>
+                              {' · '}
+                              <span className="font-semibold text-forest-green/80">{baleLine(j)}</span>
+                            </>
+                          )}
                           {j.evicted_count > 0 && (
                             <> · {j.evicted_count.toLocaleString()} lost before sync</>
                           )}
