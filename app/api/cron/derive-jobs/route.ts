@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { createServiceClient } from '@/lib/supabase'
 import { runDerivation } from '@/lib/jobs/run-derivation'
+import { runDetections } from '@/lib/detections/run-detection'
 
 // ─── /api/cron/derive-jobs — live jobs ─────────────────────────────────────────
 // Fires every 3 minutes (vercel.json) so a session in progress grows on the
@@ -30,6 +31,27 @@ export async function GET(request: NextRequest) {
   try {
     const db = createServiceClient()
     const { devices, deriverVersion } = await runDerivation(db, { write: true })
+
+    // Detection follows derivation in the same tick, but fails SOFT: a
+    // detection error (e.g. 038 not yet applied) must never take down job
+    // derivation — the layers are independently re-runnable on purpose.
+    let detection: Record<string, unknown>
+    try {
+      const { devices: detDevices, detectorVersions } = await runDetections(db, { write: true })
+      detection = {
+        ok: true,
+        detector_versions: detectorVersions,
+        devices: detDevices.map(d => ({
+          hardware_id: d.hardwareId,
+          skipped: d.skipped,
+          runs: d.wrote?.runs ?? 0,
+          detections: d.wrote?.detections ?? 0,
+        })),
+      }
+    } catch (e) {
+      detection = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+
     return Response.json({
       ok: true,
       deriver_version: deriverVersion,
@@ -39,6 +61,7 @@ export async function GET(request: NextRequest) {
         jobs: d.wrote,
         events_in_scope: d.result ? d.rawRows - d.excluded - d.unparseable : 0,
       })),
+      detection,
     })
   } catch (e) {
     return Response.json(

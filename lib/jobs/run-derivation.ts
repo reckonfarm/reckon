@@ -60,7 +60,10 @@ export function stableJobId(hardwareId: string, seqStart: number): string {
 
 const PAGE = 1000
 
-async function fetchAllEvents(db: SupabaseClient, deviceId: string): Promise<EventRow[]> {
+// Exported for the detection runner (lib/detections/run-detection.ts), which
+// reads the same raw stream a second time — deliberately NOT threaded through
+// derivation, so the two layers stay independently re-runnable.
+export async function fetchAllEvents(db: SupabaseClient, deviceId: string): Promise<EventRow[]> {
   const rows: EventRow[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db
@@ -76,7 +79,7 @@ async function fetchAllEvents(db: SupabaseClient, deviceId: string): Promise<Eve
   }
 }
 
-function toInput(
+export function toInput(
   rows: EventRow[],
   hardwareId: string
 ): { events: RawEventInput[]; excluded: number; unparseable: number } {
