@@ -13,9 +13,19 @@ const JobMapClient = dynamic(() => import('./JobMapClient'), {
   ),
 })
 
+export interface BalePin {
+  lat: number
+  lng: number
+  ts: string
+  confidence: number
+}
+
 export interface JobMapProps {
   track: TrackPoint[]
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null
+  // Detected bale positions (slam fixes, truck-length accurate). Only passed
+  // when the session is unlabeled or confirmed as a baler.
+  bales?: BalePin[]
 }
 
 export default function JobMapLoader(props: JobMapProps) {

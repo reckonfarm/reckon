@@ -125,7 +125,17 @@ function FollowController({ boundsKey, following, onUserMove }: {
   return null
 }
 
-function Legend({ basemap }: { basemap: Basemap }) {
+// Bale pins: cream fill + dark ring reads on both basemaps (white track line
+// already owns "path"; the pin must not be confusable with an impact dot).
+// Weaker-evidence bales render hollow — the map never flattens confidence.
+const BALE_STYLE = {
+  fill: '#FDFBF7',
+  ring: CASING_DARK,
+  radius: 8,
+  strongMin: 0.7,
+} as const
+
+function Legend({ basemap, hasBales }: { basemap: Basemap; hasBales: boolean }) {
   const style = TRACK_STYLE[basemap]
   const onImagery = basemap === 'satellite'
   // On satellite the line samples sit on a small dark chip — white-on-white
@@ -162,13 +172,24 @@ function Legend({ basemap }: { basemap: Basemap }) {
             {chip({ borderTop: `2px dashed ${style.gap}` })}
             <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
           </div>
+          {hasBales && (
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                style={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: BALE_STYLE.fill, border: `2.5px solid ${BALE_STYLE.ring}`,
+                }}
+              />
+              <span className="font-dm-sans text-[11px] text-forest-green/70">bale</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-export default function JobMapClient({ track, bbox }: JobMapProps) {
+export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
   const [following, setFollowing] = useState(true)
 
@@ -271,7 +292,33 @@ export default function JobMapClient({ track, bbox }: JobMapProps) {
           )
         })}
 
-        <Legend basemap={basemap} />
+        {(bales ?? []).map((b, i) => {
+          const strong = b.confidence >= BALE_STYLE.strongMin
+          return (
+            <CircleMarker
+              key={`bale-${i}`}
+              center={[b.lat, b.lng]}
+              radius={BALE_STYLE.radius}
+              pathOptions={{
+                color: BALE_STYLE.ring,
+                weight: 2.5,
+                fillColor: BALE_STYLE.fill,
+                fillOpacity: strong ? 0.95 : 0.45,
+              }}
+            >
+              <Popup>
+                <div className="font-dm-sans text-xs">
+                  <p className="font-semibold">Bale · {fmtTime(Date.parse(b.ts) / 1000)} MT</p>
+                  <p className="mt-0.5 text-gray-500">
+                    {strong ? 'clear detection' : 'weaker evidence'} · confidence {Math.round(b.confidence * 100)}%
+                  </p>
+                </div>
+              </Popup>
+            </CircleMarker>
+          )
+        })}
+
+        <Legend basemap={basemap} hasBales={(bales ?? []).length > 0} />
       </MapContainer>
 
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
