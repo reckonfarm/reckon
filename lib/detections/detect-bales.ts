@@ -28,7 +28,7 @@
 // are a rebuildable artifact, never source data.
 
 export const BALE_DETECTOR = 'bale'
-export const BALE_DETECTOR_VERSION = 'bale-v1.0.0'
+export const BALE_DETECTOR_VERSION = 'bale-v1.1.0'
 // The machine kind (job_annotations.machine) whose confirmation this
 // detector's results belong to.
 export const BALE_MACHINE = 'baler'
@@ -56,7 +56,15 @@ export const BALE_CONFIG = {
   maxIntervalDispersion: 0.6,
   // ── Per-detection evidence (Aug 8 observed; confidence only, never gates) ──
   precursorWindowS: 20, // eject thunk precedes the slam by ~7 s
-  precursorMaxM: 30, //    …and lands within meters (machine is stationary)
+  // Eject and gate-close land within a few metres of each other on ANY cycle,
+  // fast or slow — a spatial invariant of the machine, not a timing one (the
+  // operator sometimes brakes hard to wrap on thick feed; elapsed time is not
+  // reliable, proximity is). Aug 8 ground truth: real precursor→slam distance
+  // ran 0.7–10.0 m (median 4.5 m); the one 26.6 m "precursor" was a road bump
+  // at transport speed feeding the cattle-guard false positive. 12 m = max
+  // real pair + GPS-scatter headroom (~3.7 m/fix), and a machine at transport
+  // speed covers it in ~5 s — too fast to fake a wrap-eject-close.
+  precursorMaxM: 12,
   companionWindowS: 30, // any neighbor event this close marks stationarity
   slamWidthMin: 7, //      width axis: slams ran 7–14, everything else 1–6
   // ── Marginal admission (the 5,877 mg case) ──
