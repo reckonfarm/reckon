@@ -42,6 +42,12 @@ export const BALE_DETECTOR_VERSION = 'bale-v1.1.0'
 // The machine kind (job_annotations.machine) whose confirmation this
 // detector's results belong to.
 export const BALE_MACHINE = 'baler'
+// Below this confidence a detection is presented as "unverified — go look":
+// a distinct map pin and a counted call-out on the job page. One shared
+// threshold so the map and the words can never disagree. (The operator
+// ground-checks these after a field day — the cattle-guard false positive
+// was caught by eye, and the map must say WHICH pins want that look.)
+export const BALE_VERIFY_BELOW = 0.7
 
 export const BALE_CONFIG = {
   // ── Evidence floors ──
