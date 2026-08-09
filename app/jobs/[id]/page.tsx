@@ -13,7 +13,8 @@ import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { computeFieldBoundary } from '@/lib/jobs/boundary'
 import { computeSweep } from '@/lib/jobs/sweep'
-import { fmtAcres, fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
+import { computeEta } from '@/lib/jobs/eta'
+import { fmtAcres, fmtDay, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
@@ -114,6 +115,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
   const boundaryOk = boundary?.status === 'ok'
   const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
+  // ETA is derived from the same two numbers as the percent and rides the same
+  // guards; its own pause/window/sanity checks decide null. Display-only.
+  const etaMinutes = sweep != null ? computeEta(job.track, boundary!).minutes : null
   // "Mapping the field…" is only for a LIVE machine that hasn't tied off (or
   // corroborated) its outside rounds yet — unverified is the honest state
   // between lap 1 closing and lap 2 confirming it. A finished job with no
@@ -267,6 +271,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <p className="font-fraunces text-2xl font-semibold text-forest-green">
               About {sweep.percentCut}% cut
             </p>
+            {etaMinutes != null && (
+              <p className="mt-0.5 font-fraunces text-lg font-semibold text-forest-green/80">
+                About {fmtEtaMin(etaMinutes)} left
+              </p>
+            )}
             <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
               Of about {fmtAcres(boundary!.acres!)} acres inside the traced boundary.
               Approximate by nature — the GPS wanders about as far as the header is wide.

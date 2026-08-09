@@ -48,6 +48,15 @@ export function fmtAcres(acres: number): string {
   return acres < 10 ? acres.toFixed(1) : String(Math.round(acres))
 }
 
+// ETA speaks the same coarse dialect as percent-cut: 5-minute steps, hours
+// split out past sixty. The caller supplies "about … left" framing.
+export function fmtEtaMin(min: number): string {
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
 // "1 impact", "1,187 impacts" — count and noun agree, always.
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`

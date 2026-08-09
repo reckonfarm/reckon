@@ -20,6 +20,7 @@ loadEnvConfig(process.cwd())
 import { createClient } from '@supabase/supabase-js'
 import { computeFieldBoundary, convexHullAreaM2, ACRE_M2 } from '../lib/jobs/boundary'
 import { computeSweep } from '../lib/jobs/sweep'
+import { computeEta } from '../lib/jobs/eta'
 import type { TrackPoint } from '../lib/jobs/derive'
 
 const hwFlag = process.argv.indexOf('--hardware')
@@ -83,6 +84,14 @@ async function run() {
       console.log(
         `    sweep  ${sweep.percentCut}% cut (raw ${(sweep.rawFraction * 100).toFixed(1)}%)` +
           ` · swept-inside ${ac(sweep.sweptInsideM2)} ac of ${ac(sweep.boundaryInsideM2)} ac`
+      )
+      // As-if-live ETA: pretend "now" is just after the last impact, so the
+      // rate window can be exercised on finished jobs. In the UI the pause
+      // check hides ETA the moment a machine goes quiet.
+      const lastMs = track[track.length - 1].t * 1000 + 1000
+      const eta = computeEta(track, b, lastMs)
+      console.log(
+        `    eta   ${eta.minutes != null ? `~${eta.minutes} min left` : 'hidden'} (as-if-live, rate window ${18} min working)`
       )
     }
   }
