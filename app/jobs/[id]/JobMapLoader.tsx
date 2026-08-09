@@ -26,6 +26,9 @@ export interface JobMapProps {
   // Detected bale positions (slam fixes, truck-length accurate). Only passed
   // when the session is unlabeled or confirmed as a baler.
   bales?: BalePin[]
+  // The field boundary (lib/jobs/boundary.ts) — only passed when its status
+  // is 'ok'; a guard-failed boundary is never drawn.
+  boundary?: { lat: number; lng: number }[] | null
 }
 
 export default function JobMapLoader(props: JobMapProps) {

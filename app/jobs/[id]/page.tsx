@@ -11,7 +11,8 @@ import AnnotationControls from './AnnotationControls'
 import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
-import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
+import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { fmtAcres, fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
@@ -106,6 +107,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const covPct = Math.round(job.coverage * 100)
   const lowCoverage = job.coverage < 0.9
   const live = isInProgress(job)
+
+  // Field boundary — computed at read time, per job, nothing stored. The
+  // number has to be proven on real field days before anything persists.
+  const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
+  const boundaryOk = boundary?.status === 'ok'
 
   return (
     <div className="min-h-screen bg-cream">
@@ -241,7 +247,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {job.track.length >= 2 ? (
           <div className="mt-5">
-            <JobMapLoader track={job.track} bbox={job.bbox} bales={balePins} />
+            <JobMapLoader
+              track={job.track}
+              bbox={job.bbox}
+              bales={balePins}
+              boundary={boundaryOk ? boundary!.polygon : null}
+            />
+            {boundaryOk && (
+              <p className="mt-2 font-dm-sans text-sm text-forest-green/70">
+                Field boundary: about{' '}
+                <span className="font-semibold tabular-nums text-forest-green">
+                  {fmtAcres(boundary!.acres!)} acres
+                </span>
+                {' '}— traced from the outside rounds.
+                {actualAcres != null && (
+                  <> You call it <span className="font-semibold tabular-nums">{actualAcres}</span>.</>
+                )}
+              </p>
+            )}
             <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
               {balePins.length > 0
                 ? 'Each pin is a detected bale, where it dropped. Tap Track to see the machine’s path underneath.'

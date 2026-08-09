@@ -41,6 +41,13 @@ export function fmtDuration(s: number): string {
   return `${h} h ${m} m`
 }
 
+// Acreage is approximate by nature (GPS scatter vs a ~5 m header), so it is
+// always SPOKEN approximately: one decimal under 10 acres, whole above. The
+// precise value exists only in the CLI report, never in the UI.
+export function fmtAcres(acres: number): string {
+  return acres < 10 ? acres.toFixed(1) : String(Math.round(acres))
+}
+
 // "1 impact", "1,187 impacts" — count and noun agree, always.
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen } from '@/lib/brand-colors'
 import type { JobMapProps } from './JobMapLoader'
@@ -76,9 +76,13 @@ const TRACK_STYLE: Record<Basemap, {
   path: string
   casing: string | null
   gap: string
+  // Field boundary ring: heavier dash rhythm than the thin '2 8' gap dash so
+  // the two never read as the same idea (gap = missing data; boundary = the
+  // field's edge, traced from the outside rounds).
+  boundary: string
 }> = {
-  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF' },
-  street:    { path: forestGreen, casing: null, gap: GAP_GRAY },
+  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7' },
+  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen },
 }
 
 const fmtTime = (t: number) =>
@@ -146,7 +150,12 @@ const BALE_STYLE = {
   strongMin: 0.7,
 } as const
 
-function Legend({ basemap, hasBales, showTrack }: { basemap: Basemap; hasBales: boolean; showTrack: boolean }) {
+function Legend({ basemap, hasBales, showTrack, hasBoundary }: {
+  basemap: Basemap
+  hasBales: boolean
+  showTrack: boolean
+  hasBoundary: boolean
+}) {
   const style = TRACK_STYLE[basemap]
   const onImagery = basemap === 'satellite'
   // On satellite the line samples sit on a small dark chip — white-on-white
@@ -192,6 +201,12 @@ function Legend({ basemap, hasBales, showTrack }: { basemap: Basemap; hasBales: 
               </div>
             </>
           )}
+          {hasBoundary && (
+            <div className={`flex items-center gap-2 ${showTrack ? 'mt-1' : ''}`}>
+              {chip({ borderTop: `3.5px dashed ${style.boundary}` })}
+              <span className="font-dm-sans text-[11px] text-forest-green/70">field boundary</span>
+            </div>
+          )}
           {hasBales && (
             <div className="mt-1 flex items-center gap-2">
               <span
@@ -209,7 +224,7 @@ function Legend({ basemap, hasBales, showTrack }: { basemap: Basemap; hasBales: 
   )
 }
 
-export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
+export default function JobMapClient({ track, bbox, bales, boundary }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
   const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(hasBales))
@@ -279,6 +294,21 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
           following={following}
           onUserMove={() => setFollowing(false)}
         />
+
+        {/* Boundary sits UNDER the track — at the outermost lap they overlap,
+            and the crisp per-impact story must stay on top. */}
+        {(boundary ?? []).length >= 3 && (
+          <Polygon
+            positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
+            pathOptions={{
+              color: style.boundary,
+              weight: 3.5,
+              opacity: 0.9,
+              dashArray: '10 6',
+              fillOpacity: 0,
+            }}
+          />
+        )}
 
         {showTrack && style.casing && solidRuns.map((r, i) => (
           <Polyline
@@ -351,7 +381,12 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
           )
         })}
 
-        <Legend basemap={basemap} hasBales={hasBales} showTrack={showTrack} />
+        <Legend
+          basemap={basemap}
+          hasBales={hasBales}
+          showTrack={showTrack}
+          hasBoundary={(boundary ?? []).length >= 3}
+        />
       </MapContainer>
 
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
