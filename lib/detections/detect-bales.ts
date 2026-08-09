@@ -18,8 +18,13 @@
 //     5–7 g tail; both must come out no_signature.
 //   * Every Aug 8 constant (precursor window, refractory, width split) enters
 //     as EVIDENCE that moves confidence — never as a hard gate on a clear
-//     slam. The only physics-derived floor is the refractory: a wrap-eject-
-//     close cycle cannot complete twice in under ~45 s on any round baler.
+//     slam. TWO floors are physics, not fit, and those do gate: the
+//     refractory (a wrap-eject-close cycle cannot complete twice in under
+//     ~45 s on any round baler) and the stationary eject (eject-to-close
+//     happens with the machine parked on every cycle, fast or slow — a slam
+//     whose own eject window proves motion is a road strike, not a bale).
+//     Ground-truthed 2026-08-09: PK drove to both false pins — the cattle
+//     guard and a between-fields bump — and neither was a bale.
 //   * EVIDENCE IS TRI-STATE (audit of 2026-08-09, the cattle-guard false
 //     positive): ABSENCE IS NOT NEGATIVE. A 'yes' or 'no' is earned only when
 //     there was something to consult — an event in the window with a
@@ -83,6 +88,20 @@ export const BALE_CONFIG = {
   precursorMaxM: 12,
   companionWindowS: 30, // a near neighbor this close BEFORE the anchor marks stationarity
   slamWidthMin: 7, //      width axis: slams ran 7–14, everything else 1–6
+  // ── The stationary-eject gate (physics floor #2, beside the refractory) ──
+  // Eject-to-close is stationary on EVERY cycle: thick-feed hard braking
+  // happens before the wrap, so by the time the eject window opens the
+  // machine is parked. Every sub-cut event inside the eject window
+  // (precursorWindowS) must therefore sit near the slam; one measurable
+  // event farther than this says the machine was MOVING through "eject" —
+  // a road/transport strike, not a gate close. Aug 8 ground truth (both
+  // false pins driven to and checked): real in-window displacement ran
+  // 0.7–14.6 m (pair GPS scatter σ≈5 m); the cattle-guard hit measured
+  // 26.6 m and the between-fields bump 28.9 m. 20 m splits the populations
+  // with ≥1σ margin each side — ~4σ beyond what a parked machine can show.
+  // An empty or unmeasurable window ABSTAINS: the gate never fires on
+  // silence (absence ≠ negative), so a lone quiet slam is untouched.
+  ejectDriftMaxM: 20,
   // ── Marginal admission (the 5,877 mg case) ──
   // Below the cut but within reach of it, an event may still be a bale — IF
   // independent evidence agrees and NONE disagrees. It records at low
@@ -149,6 +168,7 @@ export interface BaleRunMetrics {
   intervalDispersion: number | null
   refractoryViolationShare: number | null
   hiWidthMedian: number | null // null when the job pre-dates width firmware
+  gatedMoving: number | null // candidates rejected by the stationary-eject gate (full slams + marginals)
   failedChecks: string[] // why the verdict is what it is
 }
 
@@ -218,6 +238,7 @@ export function detectBales(
     intervalDispersion: null,
     refractoryViolationShare: null,
     hiWidthMedian: null,
+    gatedMoving: null,
     failedChecks: [],
   }
   const done = (outcome: BaleRunResult['outcome'], detections: BaleDetection[] = []): BaleRunResult => ({
@@ -323,6 +344,31 @@ export function detectBales(
   const hiMedianMg = median(slams.map(s => s.mg))!
   const bySeqIdx = new Map(ordered.map((e, i) => [e.seq, i]))
 
+  // The stationary-eject gate. False only when the eject window PROVES
+  // motion: a sub-cut event within precursorWindowS before the candidate,
+  // with fixes on both sides, measuring > ejectDriftMaxM away. Silence and
+  // missing fixes abstain — the gate needs a measurement to fire. It vets
+  // individual candidates only; the day-level signature tests above run on
+  // the ungated slam set on purpose, so a negative-control day (rake,
+  // swather) keeps its true character and can never be gated INTO looking
+  // like a baler.
+  const stationaryThroughEject = (cand: BaleEventInput): boolean => {
+    if (cand.lat == null || cand.lng == null) return true
+    const idx = bySeqIdx.get(cand.seq)!
+    for (let i = idx - 1; i >= 0; i--) {
+      const e = ordered[i]
+      const dt = cand.t - e.t
+      if (dt > cfg.precursorWindowS) break
+      if (e.mg >= cut) continue
+      if (e.lat == null || e.lng == null) continue
+      if (distM(e.lat, e.lng, cand.lat, cand.lng) > cfg.ejectDriftMaxM) return false
+    }
+    return true
+  }
+
+  const accepted = merged.filter(({ slam }) => stationaryThroughEject(slam))
+  metrics.gatedMoving = merged.length - accepted.length
+
   // Both companion checks return a vote, not a boolean. 'yes' = a candidate
   // measured near; 'no' = candidates fired and every measurable one was FAR
   // (a moving machine's road bumps — genuinely contrary); 'abstain' = nothing
@@ -372,7 +418,7 @@ export function detectBales(
 
   const toSource = (e: BaleEventInput): SourceEvent => ({ id: e.id, seq: e.seq, mg: e.mg, w: e.w })
 
-  const detections: BaleDetection[] = merged.map(({ slam, echoes }) => {
+  const detections: BaleDetection[] = accepted.map(({ slam, echoes }) => {
     const { precursor, vote: precursorVote } = findPrecursor(slam)
     const width: BaleDetection['evidence']['width'] =
       slam.w == null ? 'unknown' : slam.w >= cfg.slamWidthMin ? 'wide' : 'narrow'
@@ -405,9 +451,10 @@ export function detectBales(
   for (const e of ordered) {
     if (e.mg >= cut || e.mg < marginalFloor) continue
     // Slot: between two accepted slams, filling an anomalously long gap,
-    // a refractory away from both.
-    const prev = [...merged].reverse().find(m => m.slam.t < e.t)
-    const next = merged.find(m => m.slam.t > e.t)
+    // a refractory away from both. Accepted means gate-passed — a rejected
+    // road strike must not anchor anyone else's rhythm.
+    const prev = [...accepted].reverse().find(m => m.slam.t < e.t)
+    const next = accepted.find(m => m.slam.t > e.t)
     const rhythmSlot =
       prev != null &&
       next != null &&
@@ -420,6 +467,14 @@ export function detectBales(
     const votes: EvidenceVote[] = [widthVote, precursorVote, rhythmSlot ? 'yes' : 'no', stationary]
     if (votes.some(v => v === 'no')) continue
     if (votes.filter(v => v === 'yes').length < cfg.marginalMinYes) continue
+    // The physics gate vets marginals exactly like full slams — a below-cut
+    // road bump with a busy eject window is the between-fields false
+    // positive's whole disguise. It runs after the votes so gatedMoving
+    // counts only candidates the gate ALONE rejected.
+    if (!stationaryThroughEject(e)) {
+      metrics.gatedMoving = (metrics.gatedMoving ?? 0) + 1
+      continue
+    }
     detections.push({
       anchorSeq: e.seq,
       ts: new Date(e.t * 1000).toISOString(),

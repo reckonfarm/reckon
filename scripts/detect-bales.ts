@@ -65,7 +65,8 @@ async function run() {
           (m.medianIntervalS != null ? `  medIv=${m.medianIntervalS}s` : '') +
           (m.intervalDispersion != null ? `  disp=${m.intervalDispersion}` : '') +
           (m.refractoryViolationShare != null ? `  refrViol=${m.refractoryViolationShare}` : '') +
-          (m.hiWidthMedian != null ? `  hiW=${m.hiWidthMedian}` : '')
+          (m.hiWidthMedian != null ? `  hiW=${m.hiWidthMedian}` : '') +
+          (m.gatedMoving != null && m.gatedMoving > 0 ? `  gatedMoving=${m.gatedMoving}` : '')
       )
       if (m.failedChecks.length > 0) console.log(`      failed: ${m.failedChecks.join('; ')}`)
     }
