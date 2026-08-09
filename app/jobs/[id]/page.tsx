@@ -8,6 +8,7 @@ import JobMapLoader from './JobMapLoader'
 import AutoRefresh from '../AutoRefresh'
 import InProgressBadge from '../InProgressBadge'
 import AnnotationControls from './AnnotationControls'
+import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
@@ -74,12 +75,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // intent survives every re-derivation.
   const { data: annotation } = await supabase
     .from('job_annotations')
-    .select('name, machine, dismissed_at')
+    .select('name, machine, dismissed_at, actual_bale_count, actual_acres')
     .eq('job_id', id)
     .maybeSingle()
   const name = annotation?.name ?? null
   const machine = (annotation?.machine as string | null) ?? null
   const dismissed = annotation?.dismissed_at != null
+  const actualBaleCount = (annotation?.actual_bale_count as number | null) ?? null
+  const actualAcres = (annotation?.actual_acres as number | null) ?? null
 
   // Detections — same two-query, no-FK shape as annotations. baleRun may be
   // undefined either because detection hasn't run or because 038 isn't
@@ -190,6 +193,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 ledger — the true count may be higher than what survived.
               </p>
             )}
+            {/* Ground truth vs detector — stated side by side, never blended.
+                The detector's number stays the detector's number. */}
+            {isBaler && actualBaleCount != null && (
+              <p className="mt-2 font-dm-sans text-xs text-forest-green/70">
+                You counted <span className="font-semibold tabular-nums">{actualBaleCount.toLocaleString()}</span>
+                {' — '}the detector found <span className="font-semibold tabular-nums">{detections.length}</span>
+                {actualBaleCount === detections.length
+                  ? '. Dead on.'
+                  : ` (${detections.length > actualBaleCount ? '+' : ''}${detections.length - actualBaleCount}).`}
+              </p>
+            )}
             <MachineConfirm
               jobId={job.id}
               name={name}
@@ -222,6 +236,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <MachineConfirm jobId={job.id} name={name} machine={machine} proposedCount={null} />
           </Card>
         )}
+
+        <ActualsCard jobId={job.id} actualBaleCount={actualBaleCount} actualAcres={actualAcres} />
 
         {job.track.length >= 2 ? (
           <div className="mt-5">

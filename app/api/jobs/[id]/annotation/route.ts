@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 // PATCH /api/jobs/[id]/annotation —
-//   { name?: string | null, machine?: string | null, dismissed?: boolean }
+//   { name?: string | null, machine?: string | null, dismissed?: boolean,
+//     actual_bale_count?: number | null, actual_acres?: number | null }
 //
 // Annotations live in job_annotations (037), keyed by the stable job id —
 // never in jobs, which the deriver rewrites wholesale. The user verb is
@@ -51,6 +52,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'dismissed must be a boolean' }, { status: 400 })
     }
     update.dismissed_at = body.dismissed ? new Date().toISOString() : null
+  }
+  // Actuals (039) — operator-reported ground truth. Null clears ("not
+  // reported"), never zero-fills; bounds mirror the column CHECKs so a typo'd
+  // 34000 bounces here with a message instead of as a constraint error.
+  if ('actual_bale_count' in body) {
+    const v = body.actual_bale_count
+    if (v !== null && (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 10000)) {
+      return NextResponse.json({ error: 'actual_bale_count must be a whole number 0–10000, or null' }, { status: 400 })
+    }
+    update.actual_bale_count = v
+  }
+  if ('actual_acres' in body) {
+    const v = body.actual_acres
+    if (v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 10000)) {
+      return NextResponse.json({ error: 'actual_acres must be a number 0–10000, or null' }, { status: 400 })
+    }
+    update.actual_acres = v === null ? null : Math.round(v * 10) / 10
   }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
