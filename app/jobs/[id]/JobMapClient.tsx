@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen } from '@/lib/brand-colors'
+import { BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
+import { sweepRuns } from '@/lib/jobs/sweep'
 import type { JobMapProps } from './JobMapLoader'
 
 // ─── The job map — draw exactly what the ledger holds, nothing more ────────────
@@ -80,9 +82,13 @@ const TRACK_STYLE: Record<Basemap, {
   // the two never read as the same idea (gap = missing data; boundary = the
   // field's edge, traced from the outside rounds).
   boundary: string
+  // The swept swath — a header-width translucent ribbon. Light over imagery
+  // (cut ground reads lighter from the air), brand green on the street map.
+  sweep: string
+  sweepOpacity: number
 }> = {
-  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7' },
-  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen },
+  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7', sweep: '#FFFFFF', sweepOpacity: 0.3 },
+  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen, sweep: forestGreen, sweepOpacity: 0.18 },
 }
 
 const fmtTime = (t: number) =>
@@ -140,6 +146,35 @@ function FollowController({ boundsKey, following, onUserMove }: {
   return null
 }
 
+// The swath — the machine's cutting runs drawn at TRUE header width, so the
+// fill IS the swept area the percent describes. Leaflet polyline weight is in
+// pixels, so the weight re-derives from zoom on every zoomend: weight =
+// header-width metres ÷ metres-per-pixel at the map's latitude.
+function SwathLayer({ runs, centerLat, color, opacity }: {
+  runs: [number, number][][]
+  centerLat: number
+  color: string
+  opacity: number
+}) {
+  const map = useMap()
+  const [zoom, setZoom] = useState(() => map.getZoom())
+  useMapEvents({ zoomend() { setZoom(map.getZoom()) } })
+  const mPerPx = (156543.03392 * Math.cos((centerLat * Math.PI) / 180)) / 2 ** zoom
+  const weight = Math.max(2, BOUNDARY_CONFIG.headerWidthM / mPerPx)
+  return (
+    <>
+      {runs.map((r, i) => (
+        <Polyline
+          key={`swath-${i}`}
+          positions={r}
+          interactive={false}
+          pathOptions={{ color, weight, opacity, lineCap: 'round', lineJoin: 'round' }}
+        />
+      ))}
+    </>
+  )
+}
+
 // Bale pins: cream fill + dark ring reads on both basemaps (white track line
 // already owns "path"; the pin must not be confusable with an impact dot).
 // Weaker-evidence bales render hollow — the map never flattens confidence.
@@ -150,11 +185,12 @@ const BALE_STYLE = {
   strongMin: 0.7,
 } as const
 
-function Legend({ basemap, hasBales, showTrack, hasBoundary }: {
+function Legend({ basemap, hasBales, showTrack, hasBoundary, hasSweep }: {
   basemap: Basemap
   hasBales: boolean
   showTrack: boolean
   hasBoundary: boolean
+  hasSweep: boolean
 }) {
   const style = TRACK_STYLE[basemap]
   const onImagery = basemap === 'satellite'
@@ -207,6 +243,12 @@ function Legend({ basemap, hasBales, showTrack, hasBoundary }: {
               <span className="font-dm-sans text-[11px] text-forest-green/70">field boundary</span>
             </div>
           )}
+          {hasSweep && (
+            <div className="mt-1 flex items-center gap-2">
+              {chip({ borderTop: `7px solid ${style.sweep}`, opacity: style.sweepOpacity + 0.25 })}
+              <span className="font-dm-sans text-[11px] text-forest-green/70">cut so far</span>
+            </div>
+          )}
           {hasBales && (
             <div className="mt-1 flex items-center gap-2">
               <span
@@ -224,8 +266,11 @@ function Legend({ basemap, hasBales, showTrack, hasBoundary }: {
   )
 }
 
-export default function JobMapClient({ track, bbox, bales, boundary }: JobMapProps) {
+export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
+  const swathRuns: [number, number][][] = sweepFill
+    ? sweepRuns(track).map(run => run.map(p => [p.lat, p.lng] as [number, number]))
+    : []
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
   const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(hasBales))
   const [following, setFollowing] = useState(true)
@@ -295,8 +340,16 @@ export default function JobMapClient({ track, bbox, bales, boundary }: JobMapPro
           onUserMove={() => setFollowing(false)}
         />
 
-        {/* Boundary sits UNDER the track — at the outermost lap they overlap,
-            and the crisp per-impact story must stay on top. */}
+        {/* Paint order tells the story bottom-up: swath fill (what's been
+            cut), then boundary ring, then the track and its impacts on top. */}
+        {swathRuns.length > 0 && (
+          <SwathLayer
+            runs={swathRuns}
+            centerLat={bounds[0][0]}
+            color={style.sweep}
+            opacity={style.sweepOpacity}
+          />
+        )}
         {(boundary ?? []).length >= 3 && (
           <Polygon
             positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
@@ -386,6 +439,7 @@ export default function JobMapClient({ track, bbox, bales, boundary }: JobMapPro
           hasBales={hasBales}
           showTrack={showTrack}
           hasBoundary={(boundary ?? []).length >= 3}
+          hasSweep={swathRuns.length > 0}
         />
       </MapContainer>
 

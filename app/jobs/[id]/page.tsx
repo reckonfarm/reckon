@@ -12,6 +12,7 @@ import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { computeSweep } from '@/lib/jobs/sweep'
 import { fmtAcres, fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
@@ -108,10 +109,19 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const lowCoverage = job.coverage < 0.9
   const live = isInProgress(job)
 
-  // Field boundary — computed at read time, per job, nothing stored. The
-  // number has to be proven on real field days before anything persists.
+  // Field boundary + sweep — computed at read time, per job, nothing stored.
+  // The numbers have to be proven on real field days before anything persists.
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
   const boundaryOk = boundary?.status === 'ok'
+  const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
+  // "Mapping the field…" is only for a LIVE machine that hasn't tied off (or
+  // corroborated) its outside rounds yet — unverified is the honest state
+  // between lap 1 closing and lap 2 confirming it. A finished job with no
+  // boundary just shows its track, and a mosaic day (unexplained/multi-field)
+  // claims nothing at all.
+  const mapping =
+    live && !boundaryOk && boundary != null &&
+    (boundary.status === 'no_loop' || boundary.status === 'too_few_points' || boundary.status === 'unverified')
 
   return (
     <div className="min-h-screen bg-cream">
@@ -159,7 +169,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <Stat label="Working time" value={fmtDuration(job.duration_s)} />
             <Stat label="Impacts recorded" value={job.event_count.toLocaleString()} />
             <Stat label="Lost before sync" value={job.evicted_count.toLocaleString()} />
-            <Stat label="Coverage" value={`${covPct}%`} warn={lowCoverage} />
+            {/* "Data received", never "coverage" — that word is banned on these
+                pages now that a field-percent lives here too. Two numbers, two
+                names, two faces. */}
+            <Stat label="Data received" value={`${covPct}%`} warn={lowCoverage} />
           </div>
           {lowCoverage && (
             <p className="mt-3 font-dm-sans text-xs text-warning">
@@ -245,6 +258,33 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         <ActualsCard jobId={job.id} actualBaleCount={actualBaleCount} actualAcres={actualAcres} />
 
+        {/* Field cut — the OTHER number on this page, and it must never be
+            confusable with data received (the honesty stat above). Different
+            word, different face, different home: serif, brand green, on the
+            map card, always coarse. */}
+        {sweep != null && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-fraunces text-2xl font-semibold text-forest-green">
+              About {sweep.percentCut}% cut
+            </p>
+            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+              Of about {fmtAcres(boundary!.acres!)} acres inside the traced boundary.
+              Approximate by nature — the GPS wanders about as far as the header is wide.
+            </p>
+          </Card>
+        )}
+        {mapping && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-fraunces text-2xl font-semibold text-forest-green/70">
+              Mapping the field…
+            </p>
+            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+              The boundary draws itself as the outside rounds tie off. Percent cut
+              starts once the loop closes and a second pass confirms it.
+            </p>
+          </Card>
+        )}
+
         {job.track.length >= 2 ? (
           <div className="mt-5">
             <JobMapLoader
@@ -252,6 +292,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               bbox={job.bbox}
               bales={balePins}
               boundary={boundaryOk ? boundary!.polygon : null}
+              sweepFill={sweep != null}
             />
             {boundaryOk && (
               <p className="mt-2 font-dm-sans text-sm text-forest-green/70">

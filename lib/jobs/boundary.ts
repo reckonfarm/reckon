@@ -78,15 +78,30 @@ export interface BoundaryResult {
   explainShare: number | null
 }
 
-interface XY {
+// Shared flat-earth helpers — exported for lib/jobs/sweep.ts (and anything
+// else that measures the same ground), so the projection can never drift
+// between the boundary and the sweep that is judged against it.
+export interface Pt {
   x: number
   y: number
+}
+
+export function meanLat(points: { lat: number }[]): number {
+  return points.reduce((s, p) => s + p.lat, 0) / points.length
+}
+
+export function projectXY(points: { lat: number; lng: number }[], lat0: number): Pt[] {
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  return points.map(p => ({ x: p.lng * mPerLng, y: p.lat * M_PER_LAT }))
+}
+
+interface XY extends Pt {
   seq: number
   idx: number // index into the ORIGINAL track array
 }
 
 function project(track: TrackPoint[]): XY[] {
-  const lat0 = track.reduce((s, p) => s + p.lat, 0) / track.length
+  const lat0 = meanLat(track)
   const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
   return track.map((p, idx) => ({ x: p.lng * mPerLng, y: p.lat * M_PER_LAT, seq: p.seq, idx }))
 }
@@ -111,7 +126,7 @@ function ringPerimeter(pts: XY[]): number {
   return s
 }
 
-function pointInPolygon(p: { x: number; y: number }, ring: XY[]): boolean {
+export function pointInPolygon(p: Pt, ring: Pt[]): boolean {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const a = ring[i]
@@ -123,7 +138,7 @@ function pointInPolygon(p: { x: number; y: number }, ring: XY[]): boolean {
   return inside
 }
 
-function distToSegment(p: { x: number; y: number }, a: XY, b: XY): number {
+export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x
   const dy = b.y - a.y
   const len2 = dx * dx + dy * dy
@@ -131,7 +146,7 @@ function distToSegment(p: { x: number; y: number }, a: XY, b: XY): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
-function distToRing(p: { x: number; y: number }, ring: XY[]): number {
+function distToRing(p: Pt, ring: Pt[]): number {
   let min = Infinity
   for (let i = 0; i < ring.length; i++) {
     const d = distToSegment(p, ring[i], ring[(i + 1) % ring.length])

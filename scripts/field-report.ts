@@ -19,6 +19,7 @@ loadEnvConfig(process.cwd())
 
 import { createClient } from '@supabase/supabase-js'
 import { computeFieldBoundary, convexHullAreaM2, ACRE_M2 } from '../lib/jobs/boundary'
+import { computeSweep } from '../lib/jobs/sweep'
 import type { TrackPoint } from '../lib/jobs/derive'
 
 const hwFlag = process.argv.indexOf('--hardware')
@@ -76,6 +77,14 @@ async function run() {
       )
     }
     console.log(`    hull  ${ac(hullM2)} ac (sanity — swallows concavities and roads)`)
+
+    const sweep = computeSweep(track, b)
+    if (sweep != null) {
+      console.log(
+        `    sweep  ${sweep.percentCut}% cut (raw ${(sweep.rawFraction * 100).toFixed(1)}%)` +
+          ` · swept-inside ${ac(sweep.sweptInsideM2)} ac of ${ac(sweep.boundaryInsideM2)} ac`
+      )
+    }
   }
   console.log('\n(read-only: nothing written)')
 }
