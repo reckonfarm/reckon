@@ -20,6 +20,16 @@
 //     as EVIDENCE that moves confidence — never as a hard gate on a clear
 //     slam. The only physics-derived floor is the refractory: a wrap-eject-
 //     close cycle cannot complete twice in under ~45 s on any round baler.
+//   * EVIDENCE IS TRI-STATE (audit of 2026-08-09, the cattle-guard false
+//     positive): ABSENCE IS NOT NEGATIVE. A 'yes' or 'no' is earned only when
+//     there was something to consult — an event in the window with a
+//     measurable distance. An empty or unjudgeable window ABSTAINS: it never
+//     lowers confidence and never counts against admission. A clean, quiet
+//     cycle — only the slam registers — must not score worse than a noisy
+//     one. Every future detector keeps this distinction.
+//   * Stationarity testifies only from the APPROACH side. Pulling away
+//     right after the gate close is normal operator behavior (observed
+//     within 30 s of real Aug 8 closes); motion after the slam says nothing.
 //   * Confidence is explained: every detection stores the named evidence
 //     behind its number. The marginal slam records visibly weaker.
 //
@@ -65,13 +75,17 @@ export const BALE_CONFIG = {
   // real pair + GPS-scatter headroom (~3.7 m/fix), and a machine at transport
   // speed covers it in ~5 s — too fast to fake a wrap-eject-close.
   precursorMaxM: 12,
-  companionWindowS: 30, // any neighbor event this close marks stationarity
+  companionWindowS: 30, // a near neighbor this close BEFORE the anchor marks stationarity
   slamWidthMin: 7, //      width axis: slams ran 7–14, everything else 1–6
   // ── Marginal admission (the 5,877 mg case) ──
   // Below the cut but within reach of it, an event may still be a bale — IF
-  // enough independent evidence agrees. It records at low confidence.
+  // independent evidence agrees and NONE disagrees. It records at low
+  // confidence.
   marginalFloorRatio: 0.7, // candidate band: [cut × ratio, cut)
-  marginalMinEvidence: 3, //  of: width, precursor, rhythm slot, stationarity
+  // Affirmative votes required from {width, precursor, rhythm slot,
+  // stationarity}. A contrary vote disqualifies outright; abstentions count
+  // for neither side — a quiet cycle is judged only on what could vote.
+  marginalMinYes: 2,
   rhythmGapRatio: 1.5, //     a marginal must fill an anomalously long gap
 } as const
 
@@ -92,6 +106,10 @@ interface SourceEvent {
   w: number | null
 }
 
+// 'yes' and 'no' are measured verdicts; 'abstain' means the question could
+// not be asked — nothing fired in the window, or no fix to measure against.
+export type EvidenceVote = 'yes' | 'no' | 'abstain'
+
 export interface BaleDetection {
   anchorSeq: number
   ts: string
@@ -106,10 +124,10 @@ export interface BaleDetection {
   evidence: {
     marginal: boolean // admitted from below the cut
     ampMargin: number // 0..1, depth above the cut toward the hi-mode median
-    width: 'wide' | 'narrow' | 'unknown'
-    precursor: boolean
-    rhythm: boolean // ≥ refractory from the nearest other detection
-    stationary: boolean
+    width: 'wide' | 'narrow' | 'unknown' // unknown = abstain (pre-width firmware)
+    precursor: EvidenceVote
+    rhythm: boolean // ≥ refractory from the nearest other detection (the clock never abstains)
+    stationary: EvidenceVote
   }
 }
 
@@ -299,34 +317,57 @@ export function detectBales(
   const hiMedianMg = median(slams.map(s => s.mg))!
   const bySeqIdx = new Map(ordered.map((e, i) => [e.seq, i]))
 
-  const findPrecursor = (slam: BaleEventInput): BaleEventInput | null => {
+  // Both companion checks return a vote, not a boolean. 'yes' = a candidate
+  // measured near; 'no' = candidates fired and every measurable one was FAR
+  // (a moving machine's road bumps — genuinely contrary); 'abstain' = nothing
+  // fired in the window, or a candidate's distance couldn't be measured.
+  const findPrecursor = (
+    slam: BaleEventInput
+  ): { precursor: BaleEventInput | null; vote: EvidenceVote } => {
     const idx = bySeqIdx.get(slam.seq)!
+    let sawUnjudgeable = false
+    let sawFar = false
     for (let i = idx - 1; i >= 0; i--) {
       const e = ordered[i]
       const dt = slam.t - e.t
       if (dt > cfg.precursorWindowS) break
       if (e.mg >= cut) continue // another slam is not a precursor
-      const near =
-        e.lat == null || e.lng == null || slam.lat == null || slam.lng == null
-          ? true // no fix on one side — distance abstains
-          : distM(e.lat, e.lng, slam.lat, slam.lng) <= cfg.precursorMaxM
-      if (near) return e
+      if (e.lat == null || e.lng == null || slam.lat == null || slam.lng == null) {
+        sawUnjudgeable = true
+        continue
+      }
+      if (distM(e.lat, e.lng, slam.lat, slam.lng) <= cfg.precursorMaxM)
+        return { precursor: e, vote: 'yes' }
+      sawFar = true
     }
-    return null
+    if (sawUnjudgeable) return { precursor: null, vote: 'abstain' }
+    return { precursor: null, vote: sawFar ? 'no' : 'abstain' }
   }
 
-  const hasCompanion = (ev: BaleEventInput): boolean =>
-    ordered.some(e => {
-      if (e.seq === ev.seq) return false
-      if (Math.abs(e.t - ev.t) > cfg.companionWindowS) return false
-      if (e.lat == null || e.lng == null || ev.lat == null || ev.lng == null) return true
-      return distM(e.lat, e.lng, ev.lat, ev.lng) <= cfg.precursorMaxM
-    })
+  // Approach side only: a wrap-eject-close needs the machine stopped BEFORE
+  // the slam; pulling away right after it is normal and says nothing.
+  const stationarityVote = (ev: BaleEventInput): EvidenceVote => {
+    let sawUnjudgeable = false
+    let sawFar = false
+    for (const e of ordered) {
+      if (e.seq === ev.seq) continue
+      const dt = ev.t - e.t
+      if (dt <= 0 || dt > cfg.companionWindowS) continue
+      if (e.lat == null || e.lng == null || ev.lat == null || ev.lng == null) {
+        sawUnjudgeable = true
+        continue
+      }
+      if (distM(e.lat, e.lng, ev.lat, ev.lng) <= cfg.precursorMaxM) return 'yes'
+      sawFar = true
+    }
+    if (sawUnjudgeable) return 'abstain'
+    return sawFar ? 'no' : 'abstain'
+  }
 
   const toSource = (e: BaleEventInput): SourceEvent => ({ id: e.id, seq: e.seq, mg: e.mg, w: e.w })
 
   const detections: BaleDetection[] = merged.map(({ slam, echoes }) => {
-    const precursor = findPrecursor(slam)
+    const { precursor, vote: precursorVote } = findPrecursor(slam)
     const width: BaleDetection['evidence']['width'] =
       slam.w == null ? 'unknown' : slam.w >= cfg.slamWidthMin ? 'wide' : 'narrow'
     const ampMargin = Math.max(0, Math.min(1, (slam.mg - cut) / Math.max(1, hiMedianMg - cut)))
@@ -341,15 +382,18 @@ export function detectBales(
         marginal: false,
         ampMargin: Number(ampMargin.toFixed(2)),
         width,
-        precursor: precursor != null,
+        precursor: precursorVote,
         rhythm: false,
-        stationary: hasCompanion(slam),
+        stationary: stationarityVote(slam),
       },
     }
   })
 
-  // ── Marginal admission: below the cut, enough independent evidence agrees ──
-  // (the 5,877 mg bale on Aug 8 — recorded, at visibly lower confidence)
+  // ── Marginal admission: below the cut, independent evidence agrees and
+  // none disagrees (the 5,877 mg bale on Aug 8 — recorded, at visibly lower
+  // confidence). Votes, not booleans: a contrary vote disqualifies, an
+  // abstention is silent. A quiet cycle whose companion evidence had nothing
+  // to consult is judged on width + rhythm alone — absence ≠ negative.
   const marginalFloor = cut * cfg.marginalFloorRatio
   const medIv = metrics.medianIntervalS ?? Infinity
   for (const e of ordered) {
@@ -364,11 +408,12 @@ export function detectBales(
       next.slam.t - prev.slam.t >= cfg.rhythmGapRatio * medIv &&
       e.t - prev.slam.t >= cfg.minRefractoryS &&
       next.slam.t - e.t >= cfg.minRefractoryS
-    const precursor = findPrecursor(e)
-    const widthWide = e.w != null && e.w >= cfg.slamWidthMin
-    const stationary = hasCompanion(e)
-    const score = [widthWide, precursor != null, rhythmSlot, stationary].filter(Boolean).length
-    if (score < cfg.marginalMinEvidence) continue
+    const { precursor, vote: precursorVote } = findPrecursor(e)
+    const widthVote: EvidenceVote = e.w == null ? 'abstain' : e.w >= cfg.slamWidthMin ? 'yes' : 'no'
+    const stationary = stationarityVote(e)
+    const votes: EvidenceVote[] = [widthVote, precursorVote, rhythmSlot ? 'yes' : 'no', stationary]
+    if (votes.some(v => v === 'no')) continue
+    if (votes.filter(v => v === 'yes').length < cfg.marginalMinYes) continue
     detections.push({
       anchorSeq: e.seq,
       ts: new Date(e.t * 1000).toISOString(),
@@ -379,8 +424,8 @@ export function detectBales(
       evidence: {
         marginal: true,
         ampMargin: 0,
-        width: e.w == null ? 'unknown' : widthWide ? 'wide' : 'narrow',
-        precursor: precursor != null,
+        width: e.w == null ? 'unknown' : widthVote === 'yes' ? 'wide' : 'narrow',
+        precursor: precursorVote,
         rhythm: rhythmSlot,
         stationary,
       },
@@ -398,11 +443,15 @@ export function detectBales(
 
     // Confidence = base by admission path + named evidence. Weights are
     // display calibration, not truth: the honest part is the stored breakdown.
+    // Tri-state votes move it symmetrically — a measured 'no' subtracts what
+    // a measured 'yes' adds; an abstention moves nothing.
     let c = d.evidence.marginal ? 0.3 : 0.55
     c += 0.15 * d.evidence.ampMargin
     if (d.evidence.width === 'wide') c += 0.1
     if (d.evidence.width === 'narrow') c -= 0.1 // high-mg narrow = rock-strike shaped
-    if (d.evidence.precursor) c += 0.1
+    if (d.evidence.precursor === 'yes') c += 0.1
+    if (d.evidence.precursor === 'no') c -= 0.1 // eject window fired, measurably elsewhere
+    if (d.evidence.stationary === 'no') c -= 0.1 // machine measurably moving on approach
     if (d.evidence.rhythm) c += 0.05
     d.confidence = Number(Math.max(0.15, Math.min(0.98, c)).toFixed(2))
   })
