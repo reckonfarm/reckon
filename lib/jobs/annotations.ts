@@ -11,6 +11,9 @@ export interface JobAnnotation {
   name: string | null
   machine: string | null
   dismissed_at: string | null
+  // Ground truth (039), operator-reported. Null = not reported, never zero.
+  actual_bale_count: number | null
+  actual_acres: number | null
 }
 
 export async function fetchAnnotations(
@@ -20,7 +23,7 @@ export async function fetchAnnotations(
   if (jobIds.length === 0) return new Map()
   const { data } = await supabase
     .from('job_annotations')
-    .select('job_id, name, machine, dismissed_at')
+    .select('job_id, name, machine, dismissed_at, actual_bale_count, actual_acres')
     .in('job_id', jobIds)
   return new Map((data ?? []).map(a => [a.job_id, a as JobAnnotation]))
 }

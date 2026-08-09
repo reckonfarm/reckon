@@ -199,11 +199,13 @@ export default async function JobsPage({
                             <p className="font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
                               {fmtDuration(j.duration_s)}
                             </p>
-                            {/* Coverage is spoken only when it's a problem — near-100%
-                                days say nothing (silence = normal). */}
+                            {/* Data received is spoken only when it's a problem —
+                                near-100% days say nothing (silence = normal). Named
+                                "data received", never "coverage": field percent-cut
+                                owns the coverage-shaped idea on the detail page. */}
                             {lowCoverage && (
                               <p className="mt-0.5 font-dm-sans text-xs font-semibold tabular-nums text-warning">
-                                {covPct}% coverage
+                                {covPct}% data received
                               </p>
                             )}
                           </div>

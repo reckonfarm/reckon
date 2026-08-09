@@ -8,9 +8,13 @@ import JobMapLoader from './JobMapLoader'
 import AutoRefresh from '../AutoRefresh'
 import InProgressBadge from '../InProgressBadge'
 import AnnotationControls from './AnnotationControls'
+import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
-import { fmtDay, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
+import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { computeSweep } from '@/lib/jobs/sweep'
+import { computeEta } from '@/lib/jobs/eta'
+import { fmtAcres, fmtDay, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
@@ -74,12 +78,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // intent survives every re-derivation.
   const { data: annotation } = await supabase
     .from('job_annotations')
-    .select('name, machine, dismissed_at')
+    .select('name, machine, dismissed_at, actual_bale_count, actual_acres')
     .eq('job_id', id)
     .maybeSingle()
   const name = annotation?.name ?? null
   const machine = (annotation?.machine as string | null) ?? null
   const dismissed = annotation?.dismissed_at != null
+  const actualBaleCount = (annotation?.actual_bale_count as number | null) ?? null
+  const actualAcres = (annotation?.actual_acres as number | null) ?? null
 
   // Detections — same two-query, no-FK shape as annotations. baleRun may be
   // undefined either because detection hasn't run or because 038 isn't
@@ -103,6 +109,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const covPct = Math.round(job.coverage * 100)
   const lowCoverage = job.coverage < 0.9
   const live = isInProgress(job)
+
+  // Field boundary + sweep — computed at read time, per job, nothing stored.
+  // The numbers have to be proven on real field days before anything persists.
+  const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
+  const boundaryOk = boundary?.status === 'ok'
+  const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
+  // ETA is derived from the same two numbers as the percent and rides the same
+  // guards; its own pause/window/sanity checks decide null. Display-only.
+  const etaMinutes = sweep != null ? computeEta(job.track, boundary!).minutes : null
+  // "Mapping the field…" is only for a LIVE machine that hasn't tied off (or
+  // corroborated) its outside rounds yet — unverified is the honest state
+  // between lap 1 closing and lap 2 confirming it. A finished job with no
+  // boundary just shows its track, and a mosaic day (unexplained/multi-field)
+  // claims nothing at all.
+  const mapping =
+    live && !boundaryOk && boundary != null &&
+    (boundary.status === 'no_loop' || boundary.status === 'too_few_points' || boundary.status === 'unverified')
 
   return (
     <div className="min-h-screen bg-cream">
@@ -150,7 +173,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <Stat label="Working time" value={fmtDuration(job.duration_s)} />
             <Stat label="Impacts recorded" value={job.event_count.toLocaleString()} />
             <Stat label="Lost before sync" value={job.evicted_count.toLocaleString()} />
-            <Stat label="Coverage" value={`${covPct}%`} warn={lowCoverage} />
+            {/* "Data received", never "coverage" — that word is banned on these
+                pages now that a field-percent lives here too. Two numbers, two
+                names, two faces. */}
+            <Stat label="Data received" value={`${covPct}%`} warn={lowCoverage} />
           </div>
           {lowCoverage && (
             <p className="mt-3 font-dm-sans text-xs text-warning">
@@ -190,6 +216,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 ledger — the true count may be higher than what survived.
               </p>
             )}
+            {/* Ground truth vs detector — stated side by side, never blended.
+                The detector's number stays the detector's number. */}
+            {isBaler && actualBaleCount != null && (
+              <p className="mt-2 font-dm-sans text-xs text-forest-green/70">
+                You counted <span className="font-semibold tabular-nums">{actualBaleCount.toLocaleString()}</span>
+                {' — '}the detector found <span className="font-semibold tabular-nums">{detections.length}</span>
+                {actualBaleCount === detections.length
+                  ? '. Dead on.'
+                  : ` (${detections.length > actualBaleCount ? '+' : ''}${detections.length - actualBaleCount}).`}
+              </p>
+            )}
             <MachineConfirm
               jobId={job.id}
               name={name}
@@ -223,12 +260,65 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </Card>
         )}
 
+        <ActualsCard jobId={job.id} actualBaleCount={actualBaleCount} actualAcres={actualAcres} />
+
+        {/* Field cut — the OTHER number on this page, and it must never be
+            confusable with data received (the honesty stat above). Different
+            word, different face, different home: serif, brand green, on the
+            map card, always coarse. */}
+        {sweep != null && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-fraunces text-2xl font-semibold text-forest-green">
+              About {sweep.percentCut}% cut
+            </p>
+            {etaMinutes != null && (
+              <p className="mt-0.5 font-fraunces text-lg font-semibold text-forest-green/80">
+                About {fmtEtaMin(etaMinutes)} left
+              </p>
+            )}
+            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+              Of about {fmtAcres(boundary!.acres!)} acres inside the traced boundary.
+              Approximate by nature — the GPS wanders about as far as the header is wide.
+            </p>
+          </Card>
+        )}
+        {mapping && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-fraunces text-2xl font-semibold text-forest-green/70">
+              Mapping the field…
+            </p>
+            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+              The boundary draws itself as the outside rounds tie off. Percent cut
+              starts once the loop closes and a second pass confirms it.
+            </p>
+          </Card>
+        )}
+
         {job.track.length >= 2 ? (
           <div className="mt-5">
-            <JobMapLoader track={job.track} bbox={job.bbox} bales={balePins} />
+            <JobMapLoader
+              track={job.track}
+              bbox={job.bbox}
+              bales={balePins}
+              boundary={boundaryOk ? boundary!.polygon : null}
+              sweepFill={sweep != null}
+            />
+            {boundaryOk && (
+              <p className="mt-2 font-dm-sans text-sm text-forest-green/70">
+                Field boundary: about{' '}
+                <span className="font-semibold tabular-nums text-forest-green">
+                  {fmtAcres(boundary!.acres!)} acres
+                </span>
+                {' '}— traced from the outside rounds.
+                {actualAcres != null && (
+                  <> You call it <span className="font-semibold tabular-nums">{actualAcres}</span>.</>
+                )}
+              </p>
+            )}
             <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
-              Solid line: consecutive recorded impacts. Dashed: a gap — lost events or
-              silence — where the actual path was not observed.
+              {balePins.length > 0
+                ? 'Each pin is a detected bale, where it dropped. Tap Track to see the machine’s path underneath.'
+                : 'Solid line: consecutive recorded impacts. Dashed: a gap — lost events or silence — where the actual path was not observed.'}
             </p>
           </div>
         ) : (
