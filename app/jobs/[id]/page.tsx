@@ -243,8 +243,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           <div className="mt-5">
             <JobMapLoader track={job.track} bbox={job.bbox} bales={balePins} />
             <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
-              Solid line: consecutive recorded impacts. Dashed: a gap — lost events or
-              silence — where the actual path was not observed.
+              {balePins.length > 0
+                ? 'Each pin is a detected bale, where it dropped. Tap Track to see the machine’s path underneath.'
+                : 'Solid line: consecutive recorded impacts. Dashed: a gap — lost events or silence — where the actual path was not observed.'}
             </p>
           </div>
         ) : (

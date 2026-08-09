@@ -95,6 +95,17 @@ function readBasemapFromUrl(): Basemap {
     : 'satellite'
 }
 
+// Once a job has bale detections, the bales ARE the story — pins render alone
+// by default and the raw impact track goes behind a toggle (?track=1, same
+// URL-state pattern as ?base=). Jobs without detections keep the track: it is
+// the only thing there is to see. Bales never get connecting lines — they are
+// a scatter on the ground, not a path the machine drove.
+function readShowTrackFromUrl(hasBales: boolean): boolean {
+  if (!hasBales) return true
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('track') === '1'
+}
+
 // Re-fit while following; disarm follow on any user pan/zoom. Programmatic
 // fits also fire zoomstart, so a short-lived flag separates our own moves from
 // the user's (with a timeout fallback in case an identical-view fit never
@@ -135,7 +146,7 @@ const BALE_STYLE = {
   strongMin: 0.7,
 } as const
 
-function Legend({ basemap, hasBales }: { basemap: Basemap; hasBales: boolean }) {
+function Legend({ basemap, hasBales, showTrack }: { basemap: Basemap; hasBales: boolean; showTrack: boolean }) {
   const style = TRACK_STYLE[basemap]
   const onImagery = basemap === 'satellite'
   // On satellite the line samples sit on a small dark chip — white-on-white
@@ -151,27 +162,36 @@ function Legend({ basemap, hasBales }: { basemap: Basemap; hasBales: boolean }) 
   return (
     <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 12 }}>
       <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
-        <p className="font-dm-sans text-[11px] font-semibold text-forest-green">Impact strength</p>
-        {MG_BUCKETS.map(b => (
-          <div key={b.label} className="mt-1 flex items-center gap-2">
-            <span
-              style={{
-                width: b.radius * 2, height: b.radius * 2, background: b.color,
-                borderRadius: '50%', border: '1.5px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
-              }}
-            />
-            <span className="font-dm-sans text-[11px] text-forest-green/70">{b.label}</span>
-          </div>
-        ))}
-        <div className="mt-2 border-t border-gray-100 pt-1.5">
-          <div className="flex items-center gap-2">
-            {chip({ borderTop: `3px solid ${style.path}` })}
-            <span className="font-dm-sans text-[11px] text-forest-green/70">recorded path</span>
-          </div>
-          <div className="mt-1 flex items-center gap-2">
-            {chip({ borderTop: `2px dashed ${style.gap}` })}
-            <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
-          </div>
+        {/* The legend explains only what is on the map right now. */}
+        {showTrack && (
+          <>
+            <p className="font-dm-sans text-[11px] font-semibold text-forest-green">Impact strength</p>
+            {MG_BUCKETS.map(b => (
+              <div key={b.label} className="mt-1 flex items-center gap-2">
+                <span
+                  style={{
+                    width: b.radius * 2, height: b.radius * 2, background: b.color,
+                    borderRadius: '50%', border: '1.5px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
+                  }}
+                />
+                <span className="font-dm-sans text-[11px] text-forest-green/70">{b.label}</span>
+              </div>
+            ))}
+          </>
+        )}
+        <div className={showTrack ? 'mt-2 border-t border-gray-100 pt-1.5' : ''}>
+          {showTrack && (
+            <>
+              <div className="flex items-center gap-2">
+                {chip({ borderTop: `3px solid ${style.path}` })}
+                <span className="font-dm-sans text-[11px] text-forest-green/70">recorded path</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                {chip({ borderTop: `2px dashed ${style.gap}` })}
+                <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
+              </div>
+            </>
+          )}
           {hasBales && (
             <div className="mt-1 flex items-center gap-2">
               <span
@@ -190,7 +210,9 @@ function Legend({ basemap, hasBales }: { basemap: Basemap; hasBales: boolean }) 
 }
 
 export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
+  const hasBales = (bales ?? []).length > 0
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
+  const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(hasBales))
   const [following, setFollowing] = useState(true)
 
   const pickBasemap = (b: Basemap) => {
@@ -198,6 +220,17 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
     const params = new URLSearchParams(window.location.search)
     if (b === 'satellite') params.delete('base')
     else params.set('base', b)
+    const qs = params.toString()
+    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
+  }
+
+  const toggleTrack = () => {
+    const next = !showTrack
+    setShowTrack(next)
+    const params = new URLSearchParams(window.location.search)
+    // The param only means anything on a detections job (default hidden).
+    if (next) params.set('track', '1')
+    else params.delete('track')
     const qs = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
   }
@@ -247,21 +280,21 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
           onUserMove={() => setFollowing(false)}
         />
 
-        {style.casing && solidRuns.map((r, i) => (
+        {showTrack && style.casing && solidRuns.map((r, i) => (
           <Polyline
             key={`casing-${i}`}
             positions={r}
             pathOptions={{ color: style.casing!, weight: 5.5, opacity: 0.6 }}
           />
         ))}
-        {gapHops.map((hop, i) => (
+        {showTrack && gapHops.map((hop, i) => (
           <Polyline
             key={`gap-${i}`}
             positions={hop}
             pathOptions={{ color: style.gap, weight: 2, opacity: basemap === 'satellite' ? 0.85 : 0.6, dashArray: '2 8' }}
           />
         ))}
-        {solidRuns.map((r, i) => (
+        {showTrack && solidRuns.map((r, i) => (
           <Polyline
             key={`run-${i}`}
             positions={r}
@@ -269,7 +302,7 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
           />
         ))}
 
-        {track.map(p => {
+        {showTrack && track.map(p => {
           const b = bucketFor(p.mg)
           return (
             <CircleMarker
@@ -318,24 +351,37 @@ export default function JobMapClient({ track, bbox, bales }: JobMapProps) {
           )
         })}
 
-        <Legend basemap={basemap} hasBales={(bales ?? []).length > 0} />
+        <Legend basemap={basemap} hasBales={hasBales} showTrack={showTrack} />
       </MapContainer>
 
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
           the panes, so taps never fight the map's own event capture. */}
-      <div className="absolute right-3 top-3 z-[1000] flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-xs font-semibold shadow-sm">
-        {(['satellite', 'street'] as const).map(b => (
+      <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
+        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-xs font-semibold shadow-sm">
+          {(['satellite', 'street'] as const).map(b => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => pickBasemap(b)}
+              className={`px-3 py-2 capitalize transition-colors ${
+                basemap === b ? 'bg-forest-green text-white' : 'text-forest-green/70 hover:text-forest-green'
+              }`}
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+        {hasBales && (
           <button
-            key={b}
             type="button"
-            onClick={() => pickBasemap(b)}
-            className={`px-3 py-2 capitalize transition-colors ${
-              basemap === b ? 'bg-forest-green text-white' : 'text-forest-green/70 hover:text-forest-green'
+            onClick={toggleTrack}
+            className={`rounded-lg border border-gray-200 px-3 py-2 font-dm-sans text-xs font-semibold shadow-sm transition-colors ${
+              showTrack ? 'bg-forest-green text-white' : 'bg-white/95 text-forest-green/70 hover:text-forest-green'
             }`}
           >
-            {b}
+            Track
           </button>
-        ))}
+        )}
       </div>
 
       {!following && (
