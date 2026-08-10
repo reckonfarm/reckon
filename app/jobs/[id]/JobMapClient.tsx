@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Rectangle, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen, warning } from '@/lib/brand-colors'
 import { BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
@@ -62,21 +62,27 @@ const GAP_GRAY = '#6B7280'
 const CASING_DARK = '#111827'
 
 // Per-basemap styling. White over imagery reads on almost any aerial ground;
-// the casing keeps the line visible over snow, gravel, and bale rows. Gap
-// dashes get no casing — a solid casing under a dash reads as a solid line.
-// The boundary's heavy dash rhythm is distinct from the thin '2 8' gap dash:
-// gap = missing data, boundary = the field's edge. Cut cells fill light over
-// imagery (cut ground reads lighter from the air), brand green on street.
+// the casing keeps lines visible over snow, gravel, and bale rows. Gap dashes
+// get no casing — a solid casing under a dash reads as a solid line.
+//
+// The boundary is SOLID: it is a tied closed loop with no gaps by definition,
+// and dashing it read as false uncertainty. The fill is one flat translucent
+// color — harvest gold over imagery, because grey-green over green ground was
+// mush: cut ground has to read at a glance, on a phone, in sunlight, and gold
+// against green imagery is both high-contrast and what windrowed ground
+// actually looks like from the air. Brand green carries it on the pale
+// street map.
 const MAP_STYLE: Record<Basemap, {
   path: string
   casing: string | null
   gap: string
   boundary: string
-  cut: string
-  cutOpacity: number
+  boundaryCasing: string | null
+  fill: string
+  fillOpacity: number
 }> = {
-  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7', cut: '#FFFFFF', cutOpacity: 0.35 },
-  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen, cut: forestGreen, cutOpacity: 0.22 },
+  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7', boundaryCasing: CASING_DARK, fill: '#FFD166', fillOpacity: 0.5 },
+  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen, boundaryCasing: null, fill: forestGreen, fillOpacity: 0.25 },
 }
 
 const fmtTime = (t: number) =>
@@ -195,7 +201,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
   )
 }
 
-export default function JobMapClient({ track, bbox, mode, bales, boundary, cells }: JobMapProps) {
+export default function JobMapClient({ track, bbox, mode, bales, boundary, fill }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
   const hasUnverified = (bales ?? []).some(b => b.confidence < BALE_VERIFY_BELOW)
   // Track defaults ON only when it IS the story: mapping/plain with no pins.
@@ -272,25 +278,38 @@ export default function JobMapClient({ track, bbox, mode, bales, boundary, cells
 
         {/* Paint order tells the story bottom-up: cut ground, then the field
             edge, then (only when asked for) the track, then pins on top. */}
-        {(cells ?? []).map((c, i) => (
-          <Rectangle
+        {(fill ?? []).map((poly, i) => (
+          <Polygon
             key={`cut-${i}`}
-            bounds={[[c.minLat, c.minLng], [c.maxLat, c.maxLng]]}
+            positions={[
+              poly.outer.map(p => [p.lat, p.lng] as [number, number]),
+              ...poly.holes.map(h => h.map(p => [p.lat, p.lng] as [number, number])),
+            ]}
             interactive={false}
-            pathOptions={{ stroke: false, fillColor: style.cut, fillOpacity: style.cutOpacity }}
+            pathOptions={{
+              color: style.fill,
+              weight: 1.5,
+              opacity: 0.65,
+              fillColor: style.fill,
+              fillOpacity: style.fillOpacity,
+            }}
           />
         ))}
         {(boundary ?? []).length >= 3 && (
-          <Polygon
-            positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
-            pathOptions={{
-              color: style.boundary,
-              weight: 3.5,
-              opacity: 0.9,
-              dashArray: '10 6',
-              fillOpacity: 0,
-            }}
-          />
+          <>
+            {style.boundaryCasing && (
+              <Polygon
+                positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
+                interactive={false}
+                pathOptions={{ color: style.boundaryCasing, weight: 6, opacity: 0.5, fillOpacity: 0 }}
+              />
+            )}
+            <Polygon
+              positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
+              interactive={false}
+              pathOptions={{ color: style.boundary, weight: 3, opacity: 0.95, fillOpacity: 0 }}
+            />
+          </>
         )}
 
         {showTrack && style.casing && solidRuns.map((r, i) => (
