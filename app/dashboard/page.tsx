@@ -47,7 +47,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
-import ActivityFeed, { ActivityFeedSkeleton } from './components/ActivityFeed'
+import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -323,12 +323,13 @@ export default async function DashboardPage({
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
-  // deliberate label↔key mismatch as 'drought'/"Weather"). Activity via
-  // &view=activity (S3 — the merged ledger feed), Weather via &view=drought,
-  // Markets via &view=markets. With the marketplace flagged off, ?view=hay
-  // (stale deep links, share cards) falls back to Today.
-  const view: 'news' | 'activity' | 'drought' | 'hay' | 'markets' =
-    viewParam === 'activity' ? 'activity'
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Jobs via &view=jobs
+  // (replaced Activity 2026-08-09 — stale ?view=activity deep links parse here
+  // too, its successor view), Weather via &view=drought, Markets via
+  // &view=markets. With the marketplace flagged off, ?view=hay (stale deep
+  // links, share cards) falls back to Today.
+  const view: 'news' | 'jobs' | 'drought' | 'hay' | 'markets' =
+    viewParam === 'jobs' || viewParam === 'activity' ? 'jobs'
       : viewParam === 'drought' ? 'drought'
         : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
           : viewParam === 'markets' ? 'markets'
@@ -942,13 +943,14 @@ export default async function DashboardPage({
               </>
             )}
 
-            {/* Activity (S3) — the merged ledger feed, streamed behind Suspense so
-                the events query never blocks the shell. Self-contained: resolves
-                its own user (signed-out gets the honest private-ledger gate — the
+            {/* Jobs — derived work sessions, the view that replaced Activity
+                (raw-event feed, parked). Streamed behind Suspense so the jobs
+                query never blocks the shell. Self-contained: resolves its own
+                user (signed-out gets the honest private-ledger gate — the
                 dashboard stays public, the ledger doesn't). */}
-            {view === 'activity' && (
-              <Suspense fallback={<ActivityFeedSkeleton />}>
-                <ActivityFeed />
+            {view === 'jobs' && (
+              <Suspense fallback={<JobsViewSkeleton />}>
+                <JobsView />
               </Suspense>
             )}
 
