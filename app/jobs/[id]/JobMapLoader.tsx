@@ -20,18 +20,28 @@ export interface BalePin {
   confidence: number
 }
 
+// The map's three faces (the page decides which, from the boundary grade):
+//   mapping — no qualified boundary yet, machine may be tracing one: the
+//             track IS the show. Clean line, small uniform dots.
+//   working — boundary qualified: field outline + swept cells lighting up.
+//             The track is diagnostics now, behind a toggle, default OFF.
+//   plain   — finished job with no boundary story: the track, plainly.
+// Baling jobs stay pins-first regardless (bales prop drives that).
+export type JobMapMode = 'mapping' | 'working' | 'plain'
+
 export interface JobMapProps {
   track: TrackPoint[]
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null
+  mode: JobMapMode
   // Detected bale positions (slam fixes, truck-length accurate). Only passed
   // when the session is unlabeled or confirmed as a baler.
   bales?: BalePin[]
-  // The field boundary (lib/jobs/boundary.ts) — only passed when its status
-  // is 'ok'; a guard-failed boundary is never drawn.
+  // The field boundary ring — only passed when the boundary qualified
+  // (confirmed or estimate); below the gates it is never drawn.
   boundary?: { lat: number; lng: number }[] | null
-  // Paint the swept swath (header-width translucent fill under the track).
-  // Only true when a boundary exists — the fill is the percent, made visible.
-  sweepFill?: boolean
+  // Row-merged swept-cell rectangles from the sweep raster (working mode) —
+  // the fill on screen and the percent beside it are literally these cells.
+  cells?: { minLat: number; minLng: number; maxLat: number; maxLng: number }[]
 }
 
 export default function JobMapLoader(props: JobMapProps) {

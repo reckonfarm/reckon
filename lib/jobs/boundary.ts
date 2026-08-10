@@ -13,18 +13,29 @@ import type { TrackPoint } from './derive'
 // Closure is FIRST-return per start point, which is also what prevents a
 // two-lap track from winding up double the field's area.
 //
-// Two guards keep the loop honest, because Aug 5 proved the failure mode: a
-// session that hops between nearby patches produces a large meander that
+// One hard guard and one GRADE keep the loop honest. Aug 5 proved the failure
+// mode: a session hopping between nearby patches produces a meander that
 // eventually returns near itself, and multi_field stays false (the deriver's
 // 400 m cluster rule never fires on patches 50–100 m apart).
 //
-//   1. Two-pass verification: the operator's own habit is the check. Outside
-//      rounds mean a second concentric lap runs just inside the first, so a
-//      real boundary has track support a few header-widths inside most of its
-//      perimeter. A meander doesn't.
-//   2. Explain share: the boundary must account for the track. If a big share
-//      of the job's points lie outside the loop (plus margin), the loop is a
-//      chapter, not the story — no boundary, no acreage, no percent.
+//   GATE — explain share: the boundary must account for the track. If a big
+//   share of the job's points lie outside the loop (plus margin), the loop is
+//   a chapter, not the story — no boundary, no acreage, no percent. This is
+//   what kills the Aug 5 meander (37%), and it runs BEFORE the grade below:
+//   the Aug 10 diagnosis caught the original order returning 'unverified' for
+//   loops that had never been explain-checked, which would have let a mosaic
+//   claim an "unconfirmed estimate" it hadn't earned.
+//
+//   GRADE — two-pass verification: the operator's own habit is the check.
+//   Outside rounds mean a second concentric lap runs just inside the first,
+//   so a corroborated boundary has track support a few header-widths inside
+//   most of its perimeter. Fill rows count too — they run alongside whichever
+//   edges the work has reached, so a one-round field self-confirms as the
+//   fill progresses (Aug 10: south edge 100%, north 0%, share 41.5% and
+//   climbing when the operator stopped). Short corroboration is honesty about
+//   ACCUMULATION, not doubt about the tie — so it grades 'estimate' rather
+//   than gating: same numbers, stated caveat. The operator must never have to
+//   change how they cut to make the software speak.
 //
 // Area is buffered outward by half the header: the track is where the MACHINE
 // went; the cut extends half a header past it on each side. Buffered area =
@@ -50,15 +61,20 @@ export const BOUNDARY_CONFIG = {
 } as const
 
 export const ACRE_M2 = 4046.8564224
-const M_PER_LAT = 111_132
+export const M_PER_LAT = 111_132
 
 export type BoundaryStatus =
-  | 'ok'
+  | 'confirmed' // tied + explained + second-pass corroborated: full numbers
+  | 'estimate' // tied + explained, corroboration still short: numbers + caveat
   | 'multi_field' // deriver flag — never compute across a road
   | 'too_few_points'
   | 'no_loop' // outside rounds not tied off yet (or never)
-  | 'unverified' // a loop tied, but no second pass corroborates it
-  | 'unexplained' // a loop tied, but most of the track lives outside it
+  | 'unexplained' // a loop tied, but most of the track lives outside it — silence
+
+// The two grades that may show numbers. Everything below them is silence.
+export function boundaryQualified(status: BoundaryStatus): boolean {
+  return status === 'confirmed' || status === 'estimate'
+}
 
 export interface BoundaryResult {
   status: BoundaryStatus
@@ -76,6 +92,16 @@ export interface BoundaryResult {
   secondPassShare: number | null
   /** Share of all track points inside the boundary (+ margin). */
   explainShare: number | null
+  /**
+   * Mean gap between the boundary lap and a second concentric lap inside it,
+   * when one exists — the operator's real effective cut width, and the number
+   * that eventually settles the buffer question (raw vs buffered vs onX).
+   * BIASED LOW by GPS scatter: noise on both rings shrinks the mean gap
+   * (synthetic two-lap field reads 4.41 m against a true 4.9 m header), so
+   * this is EVIDENCE THAT ACCUMULATES ACROSS FIELDS, never a per-field ruler.
+   * Recorded for the CLI, never displayed.
+   */
+  loopSpacingM: number | null
 }
 
 // Shared flat-earth helpers — exported for lib/jobs/sweep.ts (and anything
@@ -146,7 +172,7 @@ export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
-function distToRing(p: Pt, ring: Pt[]): number {
+export function distToRing(p: Pt, ring: Pt[]): number {
   let min = Infinity
   for (let i = 0; i < ring.length; i++) {
     const d = distToSegment(p, ring[i], ring[(i + 1) % ring.length])
@@ -185,7 +211,7 @@ export function computeFieldBoundary(
   const empty: Omit<BoundaryResult, 'status'> = {
     polygon: null, areaM2: null, acres: null, rawAreaM2: null, perimeterM: null,
     closureDistM: null, loopSeqStart: null, loopSeqEnd: null,
-    secondPassShare: null, explainShare: null,
+    secondPassShare: null, explainShare: null, loopSpacingM: null,
   }
 
   if (multiField) return { status: 'multi_field', ...empty }
@@ -202,8 +228,12 @@ export function computeFieldBoundary(
   const eps2 = cfg.closureEpsM ** 2
   const leave2 = cfg.leaveMinM ** 2
 
-  // First spatial return per anchor; largest tied loop wins.
-  let best: { area: number; i: number; j: number; closure: number } | null = null
+  // First spatial return per anchor; largest tied loop wins. Every tied loop
+  // above the area floor is kept as a candidate — the second-largest DISTINCT
+  // lap is where loop-to-loop spacing (effective cut width) comes from.
+  type Cand = { area: number; i: number; j: number; closure: number }
+  const candidates: Cand[] = []
+  let best: Cand | null = null
   for (let i = 0; i < pts.length - cfg.minLoopPoints; i++) {
     const anchor = pts[i]
     let left = false
@@ -219,8 +249,10 @@ export function computeFieldBoundary(
         if (j - i >= cfg.minLoopPoints) {
           const loop = pts.slice(i, j + 1)
           const area = shoelaceAbs(loop)
-          if (area >= cfg.minLoopAreaM2 && (best == null || area > best.area)) {
-            best = { area, i, j, closure: Math.sqrt(dd) }
+          if (area >= cfg.minLoopAreaM2) {
+            const cand = { area, i, j, closure: Math.sqrt(dd) }
+            candidates.push(cand)
+            if (best == null || area > best.area) best = cand
           }
         }
         break // first return only — a later, larger "return" would be winding
@@ -260,6 +292,30 @@ export function computeFieldBoundary(
   }
   const explainShare = explained / all.length
 
+  // Loop-to-loop spacing: the largest candidate lap that is a DISTINCT pass
+  // (index span disjoint from the boundary lap's), materially smaller, and
+  // sitting inside the boundary ring. Its mean gap to the boundary is the
+  // operator's real effective cut width. One round → null, honestly.
+  let loopSpacingM: number | null = null
+  const inner = candidates
+    .filter(c => (c.i >= best.j || c.j <= best.i) && c.area >= 0.3 * best.area && c.area <= 0.97 * best.area)
+    .sort((a, b) => b.area - a.area)
+    .slice(0, 3)
+  for (const c of inner) {
+    const cRing = pts.slice(c.i, c.j + 1)
+    let insideCount = 0
+    let distSum = 0
+    for (const v of cRing) {
+      if (pointInPolygon(v, ring)) insideCount++
+      distSum += distToRing(v, ring)
+    }
+    const meanDist = distSum / cRing.length
+    if (insideCount / cRing.length >= 0.7 && meanDist >= 1.5 && meanDist <= cfg.secondPassBandM) {
+      loopSpacingM = meanDist
+      break
+    }
+  }
+
   const rawAreaM2 = best.area
   const perimeterM = ringPerimeter(ring)
   const r = cfg.headerWidthM / 2
@@ -276,9 +332,13 @@ export function computeFieldBoundary(
     loopSeqEnd: ring[ring.length - 1].seq,
     secondPassShare,
     explainShare,
+    loopSpacingM,
   }
 
-  if (secondPassShare < cfg.secondPassMinShare) return { status: 'unverified', ...result }
+  // ORDER MATTERS: explain-share is the hard gate and runs first — a loop
+  // that doesn't describe the job must never surface, not even as an
+  // estimate. Second-pass corroboration is a GRADE on loops that passed it.
   if (explainShare < cfg.explainMinShare) return { status: 'unexplained', ...result }
-  return { status: 'ok', ...result }
+  if (secondPassShare < cfg.secondPassMinShare) return { status: 'estimate', ...result }
+  return { status: 'confirmed', ...result }
 }

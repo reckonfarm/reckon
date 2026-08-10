@@ -11,10 +11,10 @@ import AnnotationControls from './AnnotationControls'
 import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
-import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { computeFieldBoundary, boundaryQualified, ACRE_M2 } from '@/lib/jobs/boundary'
 import { computeSweep } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
-import { fmtAcres, fmtDay, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
+import { fmtAcres, fmtDay, fmtDoneAt, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE, BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
@@ -45,17 +45,6 @@ interface JobRow {
   deriver_version: string
   derived_at: string
   devices: { name: string } | null
-}
-
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div>
-      <p className={`font-dm-sans text-lg font-semibold tabular-nums sm:text-xl ${warn ? 'text-warning' : 'text-forest-green'}`}>
-        {value}
-      </p>
-      <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">{label}</p>
-    </div>
-  )
 }
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
@@ -110,21 +99,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const live = isInProgress(job)
 
   // Field boundary + sweep — computed at read time, per job, nothing stored.
-  // The numbers have to be proven on real field days before anything persists.
+  // Grades, not gates: 'confirmed' and 'estimate' both speak (estimate with
+  // its caveat on screen); below the gates, silence. ETA rides both grades —
+  // remaining ÷ rate come from the same buffered sweep, so a buffer error
+  // cancels there exactly as it does in the percentage.
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
-  const boundaryOk = boundary?.status === 'ok'
-  const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
-  // ETA is derived from the same two numbers as the percent and rides the same
-  // guards; its own pause/window/sanity checks decide null. Display-only.
+  const qualified = boundary != null && boundaryQualified(boundary.status)
+  const isEstimate = boundary?.status === 'estimate'
+  const sweep = qualified ? computeSweep(job.track, boundary!, undefined, true) : null
   const etaMinutes = sweep != null ? computeEta(job.track, boundary!).minutes : null
-  // "Mapping the field…" is only for a LIVE machine that hasn't tied off (or
-  // corroborated) its outside rounds yet — unverified is the honest state
-  // between lap 1 closing and lap 2 confirming it. A finished job with no
-  // boundary just shows its track, and a mosaic day (unexplained/multi-field)
-  // claims nothing at all.
+  const cutAcres = sweep != null ? sweep.sweptInsideM2 / ACRE_M2 : null
+  const fieldAcres = sweep != null ? sweep.boundaryInsideM2 / ACRE_M2 : null
+  // "Mapping the field…" is only for a LIVE machine that hasn't tied off its
+  // outside rounds yet. A finished job with no boundary just shows its track,
+  // and a mosaic day (unexplained/multi-field) claims nothing at all.
   const mapping =
-    live && !boundaryOk && boundary != null &&
-    (boundary.status === 'no_loop' || boundary.status === 'too_few_points' || boundary.status === 'unverified')
+    live && !qualified && boundary != null &&
+    (boundary.status === 'no_loop' || boundary.status === 'too_few_points')
 
   return (
     <div className="min-h-screen bg-cream">
@@ -166,30 +157,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </p>
           </Card>
         )}
-
-        <Card shadow="none" className="mt-5 px-5 py-4">
-          {/* Two stats a rancher acts on. Impact and eviction counts are
-              engineering-facing and left the grid — but "lost before sync"
-              returns in prose the moment Data received dips under 100%, where
-              it stops being noise and becomes the explanation (the same rule
-              that renamed Coverage: a number only appears where it means
-              something). */}
-          <div className="grid grid-cols-2 gap-4">
-            <Stat label="Working time" value={fmtDuration(job.duration_s)} />
-            {/* "Data received", never "coverage" — that word is banned on these
-                pages now that a field-percent lives here too. Two numbers, two
-                names, two faces. */}
-            <Stat label="Data received" value={`${covPct}%`} warn={lowCoverage} />
-          </div>
-          {job.evicted_count > 0 && (
-            <p className={`mt-3 font-dm-sans text-xs ${lowCoverage ? 'text-warning' : 'text-forest-green/60'}`}>
-              The device generated {(job.event_count + job.evicted_count).toLocaleString()} events
-              (seq {job.seq_start}–{job.seq_end}) but only {job.event_count.toLocaleString()} reached
-              the ledger before the on-device queue overwrote the rest. Times and totals
-              below are built from what survived.
-            </p>
-          )}
-        </Card>
 
         {/* The bale count — a derived fact with provenance. The system
             proposes, the operator confirms; a label that contradicts the
@@ -264,36 +231,44 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </Card>
         )}
 
-        <ActualsCard jobId={job.id} actualBaleCount={actualBaleCount} actualAcres={actualAcres} />
-
-        {/* Field cut — the OTHER number on this page, and it must never be
-            confusable with data received (the honesty stat above). Different
-            word, different face, different home: serif, brand green, on the
-            map card, always coarse. */}
+        {/* THE headline card — the one question this page answers: how far
+            along is this field. In progress leads with the percent; complete
+            leads with what came off. "Cut" never "coverage" — data received
+            (the honesty stat) lives in quiet prose below the map. */}
         {sweep != null && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-2xl font-semibold text-forest-green">
-              About {sweep.percentCut}% cut
+            <p className="font-fraunces text-3xl font-semibold text-forest-green">
+              {live
+                ? `About ${sweep.percentCut}% cut`
+                : `About ${fmtAcres(cutAcres!)} acres cut`}
             </p>
-            {etaMinutes != null && (
-              <p className="mt-0.5 font-fraunces text-lg font-semibold text-forest-green/80">
-                About {fmtEtaMin(etaMinutes)} left
+            {live && etaMinutes != null && (
+              <p className="mt-0.5 font-fraunces text-xl font-semibold text-forest-green/80">
+                About {fmtEtaMin(etaMinutes)} left · done ~{fmtDoneAt(etaMinutes)}
               </p>
             )}
-            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-              Of about {fmtAcres(boundary!.acres!)} acres inside the traced boundary.
-              Approximate by nature — the GPS wanders about as far as the header is wide.
+            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+              {live
+                ? <>{fmtAcres(cutAcres!)} of about {fmtAcres(fieldAcres!)} acres</>
+                : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
+              {actualAcres != null && <> · you call the field {actualAcres}</>}
             </p>
+            {isEstimate && (
+              <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+                Boundary unconfirmed — one pass around; a second round (or finishing
+                the field) confirms it.
+              </p>
+            )}
           </Card>
         )}
         {mapping && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-2xl font-semibold text-forest-green/70">
+            <p className="font-fraunces text-3xl font-semibold text-forest-green/70">
               Mapping the field…
             </p>
-            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/55">
               The boundary draws itself as the outside rounds tie off. Percent cut
-              starts once the loop closes and a second pass confirms it.
+              starts once the loop closes.
             </p>
           </Card>
         )}
@@ -303,35 +278,49 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <JobMapLoader
               track={job.track}
               bbox={job.bbox}
+              mode={sweep != null ? 'working' : mapping ? 'mapping' : 'plain'}
               bales={balePins}
-              boundary={boundaryOk ? boundary!.polygon : null}
-              sweepFill={sweep != null}
+              boundary={qualified ? boundary!.polygon : null}
+              cells={sweep?.cells}
             />
-            {boundaryOk && (
-              <p className="mt-2 font-dm-sans text-sm text-forest-green/70">
-                Field boundary: about{' '}
-                <span className="font-semibold tabular-nums text-forest-green">
-                  {fmtAcres(boundary!.acres!)} acres
-                </span>
-                {' '}— traced from the outside rounds.
-                {actualAcres != null && (
-                  <> You call it <span className="font-semibold tabular-nums">{actualAcres}</span>.</>
-                )}
-              </p>
-            )}
             <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
               {balePins.length > 0
                 ? 'Each pin is a detected bale, where it dropped. Tap Track to see the machine’s path underneath.'
-                : 'Solid line: consecutive recorded impacts. Dashed: a gap — lost events or silence — where the actual path was not observed.'}
+                : sweep != null
+                  ? 'The outline is the field edge, traced from your outside rounds. Tinted ground is cut.'
+                  : 'The line is where the machine worked. Dashed stretches are gaps in the data.'}
             </p>
+            {/* The honesty numbers, demoted to a quiet line — loud only when
+                something was actually lost. "Data received", never "coverage":
+                that word would collide with the field percent above. */}
+            <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+              {fmtDuration(job.duration_s)} working
+              <span className="text-forest-green/25"> · </span>
+              <span className={lowCoverage ? 'font-semibold text-warning' : ''}>{covPct}% data received</span>
+            </p>
+            {job.evicted_count > 0 && (
+              <p className={`mt-1 font-dm-sans text-xs ${lowCoverage ? 'text-warning' : 'text-forest-green/50'}`}>
+                The device generated {(job.event_count + job.evicted_count).toLocaleString()} events
+                (seq {job.seq_start}–{job.seq_end}) but only {job.event_count.toLocaleString()} reached
+                the ledger before the on-device queue overwrote the rest. Everything here
+                is built from what survived.
+              </p>
+            )}
           </div>
         ) : (
           <Card shadow="none" className="mt-5 px-5 py-8 text-center">
             <p className="font-dm-sans text-sm text-forest-green/55">
               No GPS positions in this job — the device had no satellite fix.
             </p>
+            <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+              {fmtDuration(job.duration_s)} working
+              <span className="text-forest-green/25"> · </span>
+              <span className={lowCoverage ? 'font-semibold text-warning' : ''}>{covPct}% data received</span>
+            </p>
           </Card>
         )}
+
+        <ActualsCard jobId={job.id} actualBaleCount={actualBaleCount} actualAcres={actualAcres} />
 
         {/* The Stops card was removed 2026-08-09 (engineering-facing) — but the
             pause DATA is untouched: the deriver still emits jobs.pauses and the

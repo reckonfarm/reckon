@@ -57,6 +57,20 @@ export function fmtEtaMin(min: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`
 }
 
+// The finish time, as a clock — "done ~3:40". For someone deciding whether to
+// push through or come in, the clock answers the real question (before dark?
+// before the rain?) better than a countdown. Rounded to :05, ranch time,
+// no am/pm — nobody wonders which side of noon their own afternoon is on.
+// Date.now() defaults here, not in render bodies (react-hooks/purity; same
+// pattern as todayKey and isInProgress).
+export function fmtDoneAt(etaMin: number, nowMs: number = Date.now()): string {
+  const step = 5 * 60 * 1000
+  const doneMs = Math.round((nowMs + etaMin * 60 * 1000) / step) * step
+  return new Date(doneMs).toLocaleTimeString('en-US', {
+    timeZone: RANCH_TZ, hour: 'numeric', minute: '2-digit',
+  }).replace(/\s?[AP]M$/i, '')
+}
+
 // "1 impact", "1,187 impacts" — count and noun agree, always.
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`

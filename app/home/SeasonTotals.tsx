@@ -14,9 +14,12 @@ import type { TrackPoint } from '@/lib/jobs/derive'
 // number keeps the honesty rules of the page it came from:
 //   * Bales count only from CONFIRMED baler jobs (machine label = baler) —
 //     unconfirmed gate-slam detections stay a question, never a total.
-//   * Acres sum only jobs whose boundary verified ('ok'), and the label says
-//     so out loud: "measured on N fields". A field the boundary couldn't
-//     prove contributes hours, never acres.
+//   * Acres sum only CONFIRMED boundaries — deliberately stricter than the
+//     job page, which shows an estimate grade with its caveat on screen. A
+//     total has no room for a caveat: summing estimates would be a confident
+//     claim built on qualified ones. A field the boundary couldn't confirm
+//     contributes hours, never acres; the label says so out loud
+//     ("measured on N fields").
 //   * Hours are working time (the deriver's duration), every included job.
 // A stat with nothing behind it doesn't render as a zero — it doesn't render.
 // Per-job boundary recompute is fine at today's job counts; if this ever gets
@@ -62,7 +65,7 @@ export default async function SeasonTotals() {
     }
     if (j.track.length >= 2) {
       const boundary = computeFieldBoundary(j.track, j.multi_field)
-      if (boundary.status === 'ok' && boundary.acres != null) {
+      if (boundary.status === 'confirmed' && boundary.acres != null) {
         acres += boundary.acres
         fields++
       }
