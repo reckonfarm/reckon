@@ -146,11 +146,19 @@ async function run() {
             ` (${ac(render.fillRenderedM2)} vs ${ac(render.fillRasterM2)} ac)` +
             ` · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%`
         )
+        console.log(
+          `    render  area-match offset ${render.offsetAppliedM.toFixed(2)} m` +
+            ` (flag at ${RENDER_CONFIG.offsetMaxM} m ≈ half the GPS scatter)` +
+            ` · ${render.holesSuppressed} false hole${render.holesSuppressed === 1 ? '' : 's'} filled (physics floor ${RENDER_CONFIG.holeMinM2} m²)`
+        )
         if (render.boundaryDivergence > RENDER_CONFIG.divergenceCap) {
           failures.push(`seq ${j.seq_start}: rendered boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
         }
         if (render.fillDivergence > RENDER_CONFIG.divergenceCap) {
           failures.push(`seq ${j.seq_start}: rendered fill ${(render.fillDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
+        }
+        if (render.offsetAppliedM > RENDER_CONFIG.offsetMaxM) {
+          failures.push(`seq ${j.seq_start}: area-match offset ${render.offsetAppliedM.toFixed(2)} m exceeds ${RENDER_CONFIG.offsetMaxM} m — the outline is being visibly distorted to hit the number`)
         }
       }
     }

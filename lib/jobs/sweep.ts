@@ -14,6 +14,7 @@ import {
 import {
   RENDER_CONFIG,
   morphClose,
+  morphOpen,
   offsetRing,
   ringPerimeter,
   signedArea,
@@ -193,6 +194,11 @@ export interface SweepRender {
   fillRenderedM2: number
   fillRasterM2: number
   fillDivergence: number
+  /** The area-matching shrink actually applied, meters. Capped by
+   *  RENDER_CONFIG.offsetMaxM in the CLI — visible distortion fails loudly. */
+  offsetAppliedM: number
+  /** Interior holes filled by the physics floor (narrower than a header). */
+  holesSuppressed: number
 }
 
 export function computeSweepRender(
@@ -222,12 +228,26 @@ export function computeSweepRender(
   const closed = new Uint8Array(g.cols * g.rows)
   for (let k = 0; k < closed.length; k++) closed[k] = closedRaw[k] && g.inside[k] ? 1 : 0
 
-  // Trace, drop speckles (under ~4 cells — sensor dust, not ground), smooth,
-  // and keep holes: the uncut middle is the story.
+  // Obstacle physics, width leg: open the HOLE region so any unfilled feature
+  // narrower than ~2 header widths — isolated pocket or narrow notch hanging
+  // off the real uncut middle — renders as cut. A real obstacle is wider than
+  // the header; these are scatter.
+  const holeMask = new Uint8Array(g.cols * g.rows)
+  for (let k = 0; k < holeMask.length; k++) holeMask[k] = g.inside[k] && !closed[k] ? 1 : 0
+  const holesOpened = morphOpen({ ...g, mask: holeMask }, RENDER_CONFIG.holeOpenRadiusCells)
+  for (let k = 0; k < closed.length; k++) closed[k] = g.inside[k] && !holesOpened[k] ? 1 : 0
+
+  // Trace, drop speckles (under ~4 cells — sensor dust, not ground), smooth.
+  // Holes survive only above the physics floor (RENDER_CONFIG.holeMinM2): a
+  // real obstacle must be wider than the header, so an interior pocket
+  // smaller than that is scatter, not ground that was driven around. The
+  // uncut middle — the story — is orders of magnitude above the floor and
+  // shrinks below it only when the field is essentially done.
   const MIN_RING_M2 = 25
   const rings = traceMask(g, closed).filter(r => Math.abs(r.area) >= MIN_RING_M2)
   const outers = rings.filter(r => r.area > 0)
-  const holes = rings.filter(r => r.area < 0)
+  const holes = rings.filter(r => r.area < 0 && Math.abs(r.area) >= RENDER_CONFIG.holeMinM2)
+  const holesSuppressed = rings.filter(r => r.area < 0 && Math.abs(r.area) < RENDER_CONFIG.holeMinM2).length
 
   const smoothOuters = outers.map(o => smoothRing(o.ring))
   const smoothHoles: { ring: Pt[]; ownerIdx: number }[] = []
@@ -244,12 +264,16 @@ export function computeSweepRender(
     os.reduce((s, o) => s + Math.abs(signedArea(o)), 0) -
     hs.reduce((s, h) => s + Math.abs(signedArea(h)), 0)
 
-  // Area matching (render-geometry.ts header): the close bridged real gaps —
-  // hand the gained area back with one uniform sub-metre offset (outers
-  // shrink, holes grow) so the complete-looking picture carries the raster's
-  // area. First-order step; a second pass would be overkill under the cap.
+  // Area matching (render-geometry.ts header): the close bridged real gaps
+  // and the physics floor filled false holes — hand the gained area back with
+  // one uniform sub-metre offset (outers shrink, holes grow) so the
+  // complete-looking picture carries the raster's area. First-order step; a
+  // second pass would be overkill under the cap. The applied distance is
+  // reported and capped (offsetMaxM): a correction big enough to visibly
+  // distort the outline must fail loudly, never apply silently.
   let finalOuters = smoothOuters
   let finalHoles = smoothHoles.map(h => h.ring)
+  let offsetAppliedM = 0
   const excess = areaOf(finalOuters, finalHoles) - fillRasterM2
   const totalPerim =
     finalOuters.reduce((s, o) => s + ringPerimeter(o), 0) +
@@ -259,6 +283,7 @@ export function computeSweepRender(
     const shrink = excess > 0 // too big → shrink fill; too small → grow it
     finalOuters = finalOuters.map(o => offsetRing(o, d, shrink))
     finalHoles = finalHoles.map(h => offsetRing(h, d, !shrink))
+    offsetAppliedM = d
   }
 
   let fillRenderedM2 = 0
@@ -280,5 +305,7 @@ export function computeSweepRender(
     fillRenderedM2,
     fillRasterM2,
     fillDivergence: fillRasterM2 > 0 ? Math.abs(fillRenderedM2 - fillRasterM2) / fillRasterM2 : 0,
+    offsetAppliedM,
+    holesSuppressed,
   }
 }

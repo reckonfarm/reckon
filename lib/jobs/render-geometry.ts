@@ -25,6 +25,21 @@ export const RENDER_CONFIG = {
   chaikinIterations: 2,
   closeRadiusCells: 1, // dilate+erode by one 2.5 m cell: pinholes and pass gaps
   divergenceCap: 0.05, // rendered area may sit at most this far from the raster
+  // A real obstacle must be WIDER THAN THE HEADER — anything narrower gets cut
+  // over or around within a single pass and never leaves a hole. Physics, not
+  // a tuned constant: ~2 header widths minimum. Enforced as a WIDTH rule —
+  // morphological opening of the hole region (erode then dilate) erases any
+  // hole feature narrower than ~2×radius, whether it's an isolated pocket OR
+  // a narrow notch hanging off the genuine uncut middle (an area floor alone
+  // can't reach those). Holes that survive are ground the operator genuinely
+  // drove around — a tree, a well vent, a rock pile.
+  holeOpenRadiusCells: 2, // 2 × 2.5 m cells each way ⇒ features under ~10 m die
+  holeMinM2: 200, // and the area proxy (~0.05 ac) mops up surviving slivers
+  // The area-matching offset must stay invisible: if the shrink needed to
+  // absorb close-gain + suppressed holes ever approaches the GPS scatter, the
+  // outline is being visibly distorted to hit the number — fail loudly (CLI)
+  // instead of silently applying it.
+  offsetMaxM: 1.8, // ≈ half the 3.7 m scatter
 } as const
 
 export interface MaskGrid {
@@ -44,6 +59,17 @@ export function morphClose(grid: MaskGrid, radiusCells: number): Uint8Array {
   let cur = grid.mask
   for (let pass = 0; pass < radiusCells; pass++) cur = dilate8(cur, cols, rows)
   for (let pass = 0; pass < radiusCells; pass++) cur = erode8(cur, cols, rows)
+  return cur
+}
+
+// Erode then dilate = morphological open: features of the mask narrower than
+// ~2×radius disappear; wide bodies keep their shape. Applied to the HOLE
+// region, this is the width leg of the obstacle physics rule.
+export function morphOpen(grid: MaskGrid, radiusCells: number): Uint8Array {
+  const { cols, rows } = grid
+  let cur = grid.mask
+  for (let pass = 0; pass < radiusCells; pass++) cur = erode8(cur, cols, rows)
+  for (let pass = 0; pass < radiusCells; pass++) cur = dilate8(cur, cols, rows)
   return cur
 }
 
