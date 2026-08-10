@@ -34,7 +34,7 @@ export default function DroughtCattleToggle({
   active,
 }: {
   fips: string
-  active: 'news' | 'activity' | 'drought' | 'hay' | 'markets'
+  active: 'news' | 'jobs' | 'drought' | 'hay' | 'markets'
 }) {
   const seg = (href: string, label: string, isActive: boolean) => (
     <Link
@@ -60,11 +60,13 @@ export default function DroughtCattleToggle({
   // the 'news' key is the default view while its label reads "Today" — the label↔key
   // mismatches are deliberate (renaming the values would break deep links, the
   // heavy-fetch gate, and the auth redirect).
-  const segments: { key: 'news' | 'activity' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
+  const segments: { key: 'news' | 'jobs' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
     { key: 'news',     label: 'Today',    href: `/dashboard?fips=${fips}` },
-    // Activity — the merged ledger feed (S3). Second position: the ranch's own
-    // record beats the outside world's on the home surface.
-    { key: 'activity', label: 'Activity', href: `/dashboard?fips=${fips}&view=activity` },
+    // Jobs — derived work sessions (replaced Activity 2026-08-09; the raw-event
+    // feed was a debug view, jobs are the product). Second position holds: the
+    // ranch's own record beats the outside world's on the home surface. Stale
+    // ?view=activity deep links parse to this view on the dashboard side.
+    { key: 'jobs', label: 'Jobs', href: `/dashboard?fips=${fips}&view=jobs` },
     { key: 'drought',  label: 'Weather',  href: `/dashboard?fips=${fips}&view=drought` },
     // Hay segment rides the marketplace flag (the dashboard's ?view=hay parse is
     // gated on the same flag, so a stale deep link falls back to the default view).

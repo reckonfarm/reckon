@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 
 // ─── Activity — the merged ledger feed, v0 (S3) ────────────────────────────────
+// PARKED 2026-08-09 (jobs-forward): no longer rendered — the Jobs view
+// (JobsView.tsx) replaced the Activity segment; a flat list of raw events is a
+// debug view, and derived work sessions are the product. Kept per the
+// MarketsNews precedent: component intact, zero render sites, so the renderer
+// registry below survives for whenever a ledger feed earns a surface again.
 // ONE feed over the events table (S1): hardware readings, decisions, alerts —
 // newest first. Self-contained async server component: resolves the user via
 // the USER-SCOPED SSR client and reads through RLS (second consumer of 031's

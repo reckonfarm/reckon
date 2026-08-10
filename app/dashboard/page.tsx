@@ -47,7 +47,8 @@ import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
-import ActivityFeed, { ActivityFeedSkeleton } from './components/ActivityFeed'
+import JobsView, { JobsViewSkeleton } from './components/JobsView'
+import { LiveJobCard, TodayJobs } from './components/RanchNow'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -323,12 +324,13 @@ export default async function DashboardPage({
   const { fips, gs, ge, pt, view: viewParam } = await searchParams
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
-  // deliberate label↔key mismatch as 'drought'/"Weather"). Activity via
-  // &view=activity (S3 — the merged ledger feed), Weather via &view=drought,
-  // Markets via &view=markets. With the marketplace flagged off, ?view=hay
-  // (stale deep links, share cards) falls back to Today.
-  const view: 'news' | 'activity' | 'drought' | 'hay' | 'markets' =
-    viewParam === 'activity' ? 'activity'
+  // deliberate label↔key mismatch as 'drought'/"Weather"). Jobs via &view=jobs
+  // (replaced Activity 2026-08-09 — stale ?view=activity deep links parse here
+  // too, its successor view), Weather via &view=drought, Markets via
+  // &view=markets. With the marketplace flagged off, ?view=hay (stale deep
+  // links, share cards) falls back to Today.
+  const view: 'news' | 'jobs' | 'drought' | 'hay' | 'markets' =
+    viewParam === 'jobs' || viewParam === 'activity' ? 'jobs'
       : viewParam === 'drought' ? 'drought'
         : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
           : viewParam === 'markets' ? 'markets'
@@ -872,13 +874,21 @@ export default async function DashboardPage({
               />
             </Suspense>
 
-            {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
-                Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
-                SAME condition (signed-in user with a herd) so the two move together; anon /
-                no-herd ?fips= sees neither and the public county view below is unchanged. */}
-            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+            {/* A machine working RIGHT NOW — loud, in every view, carrying the
+                headline number for the job type (bale count / percent cut + ETA).
+                Null when nothing runs and for signed-out visitors (RLS returns
+                nothing): the always-on stack stays "the ranch right now or money
+                that demands action". */}
+            <Suspense fallback={null}>
+              <LiveJobCard />
+            </Suspense>
 
-            {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
+            {/* Herd-value anchor (Slice 1). Market Read used to sit above it in
+                this always-on stack; it moved to the top of the Markets view
+                (2026-08-09) under the rule that finally named the layout: the
+                always-on stack is either THE RANCH RIGHT NOW or MONEY THAT
+                DEMANDS ACTION — weekly-to-quarterly national context is
+                neither. The anchor stays: it's the operation's own number. */}
             {herdAnchor && (
               <HerdAnchorLoader
                 estimate={herdAnchor.estimate}
@@ -932,6 +942,12 @@ export default async function DashboardPage({
                 full MarketsNews feed is parked (component kept, no longer rendered). */}
             {view === 'news' && (
               <>
+                {/* Today's completed sessions — quiet, gone at midnight ranch
+                    time (at breakfast the slate is clean; history lives in the
+                    Jobs view). The live card above already carries in-progress. */}
+                <Suspense fallback={null}>
+                  <TodayJobs />
+                </Suspense>
                 <div>
                   <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
                   <Suspense fallback={<ForecastPanelSkeleton />}>
@@ -942,13 +958,14 @@ export default async function DashboardPage({
               </>
             )}
 
-            {/* Activity (S3) — the merged ledger feed, streamed behind Suspense so
-                the events query never blocks the shell. Self-contained: resolves
-                its own user (signed-out gets the honest private-ledger gate — the
+            {/* Jobs — derived work sessions, the view that replaced Activity
+                (raw-event feed, parked). Streamed behind Suspense so the jobs
+                query never blocks the shell. Self-contained: resolves its own
+                user (signed-out gets the honest private-ledger gate — the
                 dashboard stays public, the ledger doesn't). */}
-            {view === 'activity' && (
-              <Suspense fallback={<ActivityFeedSkeleton />}>
-                <ActivityFeed />
+            {view === 'jobs' && (
+              <Suspense fallback={<JobsViewSkeleton />}>
+                <JobsView />
               </Suspense>
             )}
 
@@ -958,6 +975,11 @@ export default async function DashboardPage({
                 fetches); each card carries its own honest states + as-of. */}
             {view === 'markets' && (
               <>
+                {/* Market Read leads the view its chips belong to — the missing
+                    header for the cards below. Gate unchanged in the move
+                    (signed-in with a herd): relocation only, nobody's
+                    visibility changed. */}
+                {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
                 <LocalAuctionCard result={localAuction} />
                 <NationalBeefCard result={nationalBeef} />
                 <LrpMarketsCard result={lrpResult} />

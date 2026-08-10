@@ -142,18 +142,21 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
         </div>
       )}
 
+      {/* A real button, not a footnote — this control went unfound as a
+          low-contrast text link. Bottom of the page is still the right home
+          for a hide-this action, but it has to look like an action. */}
       {!dismissed && (
-        <div className="mt-3 border-t border-forest-green/10 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-forest-green/10 pt-3">
           <button
             type="button"
             disabled={busy}
             onClick={() => run({ dismissed: true })}
-            className="font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green disabled:opacity-50"
+            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
           >
             Dismiss this session
           </button>
-          <span className="ml-2 font-dm-sans text-xs text-forest-green/40">
-            — hides it from the list; find it again under “Show all sessions”.
+          <span className="font-dm-sans text-xs text-forest-green/40">
+            Hides it from the list; find it again under “Show all sessions”.
           </span>
         </div>
       )}
