@@ -883,13 +883,12 @@ export default async function DashboardPage({
               <LiveJobCard />
             </Suspense>
 
-            {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
-                Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
-                SAME condition (signed-in user with a herd) so the two move together; anon /
-                no-herd ?fips= sees neither and the public county view below is unchanged. */}
-            {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-
-            {/* Herd-value anchor (Slice 1) — the number the read sits above. */}
+            {/* Herd-value anchor (Slice 1). Market Read used to sit above it in
+                this always-on stack; it moved to the top of the Markets view
+                (2026-08-09) under the rule that finally named the layout: the
+                always-on stack is either THE RANCH RIGHT NOW or MONEY THAT
+                DEMANDS ACTION — weekly-to-quarterly national context is
+                neither. The anchor stays: it's the operation's own number. */}
             {herdAnchor && (
               <HerdAnchorLoader
                 estimate={herdAnchor.estimate}
@@ -976,6 +975,11 @@ export default async function DashboardPage({
                 fetches); each card carries its own honest states + as-of. */}
             {view === 'markets' && (
               <>
+                {/* Market Read leads the view its chips belong to — the missing
+                    header for the cards below. Gate unchanged in the move
+                    (signed-in with a herd): relocation only, nobody's
+                    visibility changed. */}
+                {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
                 <LocalAuctionCard result={localAuction} />
                 <NationalBeefCard result={nationalBeef} />
                 <LrpMarketsCard result={lrpResult} />
