@@ -129,13 +129,11 @@ export default function BottomTabBar() {
     },
   ]
 
-  // "My Operation" is the home-base anchor: the rancher's personal drought picture,
-  // with the Drought/Cattle toggle living inside it. Routes straight to /dashboard
-  // (bare /dashboard middleware-redirects a signed-in user to their home county).
-  // The default landing at '/' is now the Markets surface, a separate destination —
-  // so this anchor stays lit across the dashboard peer views (/dashboard, /cattle,
-  // cattle reached from there via the toggle) but NOT on '/'.
-  const opActive = pathname.startsWith('/dashboard') || pathname.startsWith('/cattle')
+  // "My Operation" is the home-base anchor — /home, the ranch home (2026-08-09
+  // repositioning: live job, today's sessions, season totals, herd value, then
+  // county context). The county tool at /dashboard is a destination reached FROM
+  // home, so it no longer lights this anchor.
+  const opActive = pathname.startsWith('/home')
 
   const renderTab = (tab: Tab) => {
     const active = tab.match(pathname)
@@ -173,7 +171,7 @@ export default function BottomTabBar() {
 
         {/* Raised, prominent center anchor — "My Operation" (home base) */}
         <Link
-          href="/dashboard"
+          href="/home"
           aria-label="My Operation"
           aria-current={opActive ? 'page' : undefined}
           className="absolute left-1/2 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"

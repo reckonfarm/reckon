@@ -89,8 +89,8 @@ export default function SiteHeader({ center }: Props) {
               </Link>
             )}
             {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
-                the dashboard (via '/', which middleware-redirects signed-in users to
-                /dashboard). SIGNED-IN ONLY (Block 2): for a signed-out visitor '/' is
+                the ranch home (via '/', which middleware-redirects signed-in users to
+                /home). SIGNED-IN ONLY (Block 2): for a signed-out visitor '/' is
                 the page they're already on — the link was a self-referencing loop. */}
             {user && (
               <Link
