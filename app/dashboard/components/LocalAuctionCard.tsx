@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult } from '@/lib/local-auction-service'
+import { marketDelta } from '@/lib/market-direction'
 
 // Local auction — the nearest reporting barn's latest sale, steers by weight band
 // (index spec: Medium & Large 1, Per Cwt), receipts, and week-over-week deltas.
@@ -71,9 +72,16 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
                 <span className="shrink-0 tabular-nums">
                   <span className="font-semibold text-ink">${b.avgPrice.toFixed(2)}</span>
                   {b.wowPct != null && b.wowPct !== 0 && (
-                    <span className={`ml-2 text-xs font-semibold ${b.wowPct > 0 ? 'text-up' : 'text-down'}`}>
-                      {b.wowPct > 0 ? '▲' : '▼'} {Math.abs(b.wowPct).toFixed(1)}%
-                    </span>
+                    // Calf price up is good for the seller — arrow and color agree
+                    // (lib/market-direction.ts: the rule holds even where it's invisible).
+                    (() => {
+                      const d = marketDelta(b.wowPct! > 0, true)
+                      return (
+                        <span className={`ml-2 text-xs font-semibold ${d.cls}`}>
+                          {d.arrow} {Math.abs(b.wowPct!).toFixed(1)}%
+                        </span>
+                      )
+                    })()
                   )}
                   <span className="ml-2 text-xs text-forest-green/40">{fmtInt(b.head)} head</span>
                 </span>

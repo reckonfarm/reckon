@@ -91,6 +91,9 @@ function Stub({ line }: { line: string }) {
 // ─── Trend ───────────────────────────────────────────────────────────────────────────────
 // Restrained — this is data, not a hero: DM Sans, tabular-price, up/down tokens. Volume + spread
 // are LIVE; herd-value + price Δ render their honest "building" line until history accrues.
+// Delta coloring here follows the app-wide rule (lib/market-direction.ts): arrow = direction,
+// color = good/bad for a cow-calf operator. Herd value and cattle prices up are good, so raw
+// direction and meaning coincide — these local helpers already satisfy the rule.
 
 function DeltaUSD({ abs }: { abs: number }) {
   if (abs === 0) return <span className="font-medium text-muted/70">unchanged</span>

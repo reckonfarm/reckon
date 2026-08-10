@@ -5,6 +5,7 @@ import type { CornResult } from '@/lib/corn-service'
 import type { MoistureResult } from '@/lib/moisture-service'
 import type { CropResult } from '@/lib/crop-service'
 import type { CycleResult } from '@/lib/cattle-cycle-service'
+import { marketDelta } from '@/lib/market-direction'
 
 // Market Read — the §4 feedlot-demand corn read, shown as RAW EVIDENCE ONLY. A2 retired the
 // composed narrative lead; Block 2 finished the job: PURE METRICS, ZERO PHRASES. Each chip is
@@ -13,11 +14,12 @@ import type { CycleResult } from '@/lib/cattle-cycle-service'
 // only), and no card disclaimer (with no read offered there is nothing to disclaim). The old
 // composeLead() sentence generator was deleted, not hidden, so no lean quietly regenerates.
 //
-// THE TWO DIRECTION GRAMMARS DIFFER ON PURPOSE:
-//   • Price: raw settle direction — up = text-up, down = text-down (a number moving).
-//   • Moisture / Heifers: MEANING, not the raw number — a FALLING drought % (wetter) and
-//     FALLING heifers YoY (herd rebuilding) are both supportive, so ▼ pairs with text-up
-//     (green). The arrow tracks the number; the color alone carries the meaning.
+// ONE DIRECTION GRAMMAR, EVERYWHERE (lib/market-direction.ts): the arrow shows which way
+// the number moved; the color shows whether that move is good or bad for a cow-calf
+// operator. This replaced the old two-grammar scheme where the corn PRICE colored by raw
+// settle direction and rendered feed cost spikes green — corn up now reads red, because
+// feedlots bidding against expensive feed pay less for calves. Every chip routes through
+// marketDelta() so none can drift back to raw-number coloring.
 //
 // Honest throughout: a leg with no data → "warming up"; a read error → "temporarily
 // unavailable"; never a fabricated $0 / 0% / lean.
@@ -60,10 +62,15 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
         {direction === 'flat' || pts == null ? (
           <span className="text-muted/60">unchanged</span>
         ) : (
-          // wetter ⇒ good ⇒ text-up (even though the % fell, ▼); drier ⇒ bad ⇒ text-down (▲).
-          <span className={`font-semibold tabular-nums ${direction === 'wetter' ? 'text-up' : 'text-down'}`}>
-            {direction === 'wetter' ? '▼' : '▲'} {pts.toFixed(1)} pts
-          </span>
+          // Drought footprint rising = drier feeding area = bad → ▲ red.
+          (() => {
+            const d = marketDelta(direction === 'drier', false)
+            return (
+              <span className={`font-semibold tabular-nums ${d.cls}`}>
+                {d.arrow} {pts.toFixed(1)} pts
+              </span>
+            )
+          })()
         )}
       </p>
       <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : '16-state feeding area in D1+'}</p>
@@ -108,10 +115,15 @@ function CropChip({ crop }: { crop: CropResult }) {
         {direction === 'flat' || pts == null ? (
           <span className="text-muted/60">unchanged</span>
         ) : (
-          // better ⇒ good ⇒ text-up ▲ (rising G/E); worse ⇒ bad ⇒ text-down ▼. Arrow + color agree.
-          <span className={`font-semibold tabular-nums ${direction === 'better' ? 'text-up' : 'text-down'}`}>
-            {direction === 'better' ? '▲' : '▼'} {pts.toFixed(1)} pts
-          </span>
+          // A better crop = more/cheaper feed = good → ▲ green (arrow and color agree here).
+          (() => {
+            const d = marketDelta(direction === 'better', true)
+            return (
+              <span className={`font-semibold tabular-nums ${d.cls}`}>
+                {d.arrow} {pts.toFixed(1)} pts
+              </span>
+            )
+          })()
         )}
       </p>
       <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'US corn good + excellent'}</p>
@@ -154,10 +166,15 @@ function CycleChip({ cycle }: { cycle: CycleResult }) {
         ) : direction === 'steady' ? (
           <span className="text-muted/60">unchanged</span>
         ) : (
-          // holding_back ⇒ supportive ⇒ text-up ▼ (fewer heifers); still_feeding ⇒ text-down ▲.
-          <span className={`font-semibold ${direction === 'holding_back' ? 'text-up' : 'text-down'}`}>
-            {direction === 'holding_back' ? '▼' : '▲'} vs year ago
-          </span>
+          // More heifers on feed = herd still liquidating = bad → ▲ red; fewer = rebuilding → ▼ green.
+          (() => {
+            const d = marketDelta(direction === 'still_feeding', false)
+            return (
+              <span className={`font-semibold ${d.cls}`}>
+                {d.arrow} vs year ago
+              </span>
+            )
+          })()
         )}
       </p>
       <p className={`${CHIP_FOOT} text-muted/40`}>US feedlots · quarterly{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
@@ -165,7 +182,8 @@ function CycleChip({ cycle }: { cycle: CycleResult }) {
   )
 }
 
-// The Price leg — live CBOT ZC=F settle. Raw-number direction (up/down), unlike Moisture.
+// The Price leg — live CBOT ZC=F settle. THE CHIP THE RULE WAS NAMED FOR: corn up is feed
+// cost rising, so ▲ pairs with red — the one place raw-number coloring used to lie.
 function PriceChip({ corn }: { corn: CornResult }) {
   if (corn.status !== 'ok') {
     const note = corn.status === 'data_unavailable' ? 'temporarily unavailable' : 'warming up'
@@ -185,15 +203,19 @@ function PriceChip({ corn }: { corn: CornResult }) {
     <div className={CHIP}>
       <p className={CHIP_LABEL}>Corn</p>
       <p className={CHIP_VALUE}>{settlePrice.toFixed(2)}&cent;</p>
-      {/* reuses HerdEstimatePanel's ▲/▼ + text-up/text-down delta grammar (raw number) */}
       <p className={CHIP_FOOT}>
         {direction === 'flat' || abs == null ? (
           <span className="text-muted/60">unchanged</span>
         ) : (
-          <span className={`font-semibold tabular-nums ${direction === 'up' ? 'text-up' : 'text-down'}`}>
-            {direction === 'up' ? '▲' : '▼'} {abs.toFixed(2)}
-            {changePct != null && ` (${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%)`}
-          </span>
+          (() => {
+            const d = marketDelta(direction === 'up', false)
+            return (
+              <span className={`font-semibold tabular-nums ${d.cls}`}>
+                {d.arrow} {abs.toFixed(2)}
+                {changePct != null && ` (${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%)`}
+              </span>
+            )
+          })()
         )}
       </p>
       <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(settleDate)}` : 'CBOT front month · ¢/bu'}</p>

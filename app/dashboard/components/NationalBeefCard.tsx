@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { NationalBeefResult, NationalMetricRead } from '@/lib/national-beef-service'
+import { marketDelta } from '@/lib/market-direction'
 
 // National beef — the two benchmark reads a cow-calf operator anchors on: what fed
 // cattle brought (5-Area weekly weighted average, the LMR benchmark) and what feeder
@@ -35,9 +36,16 @@ function MetricLine({ label, read }: { label: string; read: NationalMetricRead |
       <span className="shrink-0 tabular-nums">
         <span className="font-semibold text-ink">${read.value.toFixed(2)}</span>
         {read.changePct != null && read.changePct !== 0 && (
-          <span className={`ml-2 text-xs font-semibold ${read.changePct > 0 ? 'text-up' : 'text-down'}`}>
-            {read.changePct > 0 ? '▲' : '▼'} {Math.abs(read.changePct).toFixed(1)}%
-          </span>
+          // Cattle benchmarks up = good for the seller — arrow and color agree
+          // (lib/market-direction.ts: the rule holds even where it's invisible).
+          (() => {
+            const d = marketDelta(read.changePct! > 0, true)
+            return (
+              <span className={`ml-2 text-xs font-semibold ${d.cls}`}>
+                {d.arrow} {Math.abs(read.changePct!).toFixed(1)}%
+              </span>
+            )
+          })()
         )}
       </span>
     </li>
