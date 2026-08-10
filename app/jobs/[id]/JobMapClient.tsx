@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { forestGreen } from '@/lib/brand-colors'
+import { forestGreen, warning } from '@/lib/brand-colors'
 import { BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
+import { BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import { sweepRuns } from '@/lib/jobs/sweep'
 import type { JobMapProps } from './JobMapLoader'
 
@@ -177,17 +178,21 @@ function SwathLayer({ runs, centerLat, color, opacity }: {
 
 // Bale pins: cream fill + dark ring reads on both basemaps (white track line
 // already owns "path"; the pin must not be confusable with an impact dot).
-// Weaker-evidence bales render hollow — the map never flattens confidence.
+// Below BALE_VERIFY_BELOW the pin switches to the unverified style — dashed
+// warning ring on a thin fill. "Unverified — go look" is an instruction, not
+// a shade: the operator ground-checks after a field day, and the map must say
+// WHICH pins want that look, not just that some number counted weaker.
 const BALE_STYLE = {
   fill: '#FDFBF7',
   ring: CASING_DARK,
+  unverifiedRing: warning,
   radius: 8,
-  strongMin: 0.7,
 } as const
 
-function Legend({ basemap, hasBales, showTrack, hasBoundary, hasSweep }: {
+function Legend({ basemap, hasBales, hasUnverified, showTrack, hasBoundary, hasSweep }: {
   basemap: Basemap
   hasBales: boolean
+  hasUnverified: boolean
   showTrack: boolean
   hasBoundary: boolean
   hasSweep: boolean
@@ -260,6 +265,17 @@ function Legend({ basemap, hasBales, showTrack, hasBoundary, hasSweep }: {
               <span className="font-dm-sans text-[11px] text-forest-green/70">bale</span>
             </div>
           )}
+          {hasUnverified && (
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                style={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: 'transparent', border: `2.5px dashed ${BALE_STYLE.unverifiedRing}`,
+                }}
+              />
+              <span className="font-dm-sans text-[11px] text-forest-green/70">unverified — go look</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -268,6 +284,7 @@ function Legend({ basemap, hasBales, showTrack, hasBoundary, hasSweep }: {
 
 export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
+  const hasUnverified = (bales ?? []).some(b => b.confidence < BALE_VERIFY_BELOW)
   const swathRuns: [number, number][][] = sweepFill
     ? sweepRuns(track).map(run => run.map(p => [p.lat, p.lng] as [number, number]))
     : []
@@ -409,24 +426,25 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
         })}
 
         {(bales ?? []).map((b, i) => {
-          const strong = b.confidence >= BALE_STYLE.strongMin
+          const verified = b.confidence >= BALE_VERIFY_BELOW
           return (
             <CircleMarker
               key={`bale-${i}`}
               center={[b.lat, b.lng]}
               radius={BALE_STYLE.radius}
               pathOptions={{
-                color: BALE_STYLE.ring,
-                weight: 2.5,
+                color: verified ? BALE_STYLE.ring : BALE_STYLE.unverifiedRing,
+                weight: verified ? 2.5 : 3,
+                dashArray: verified ? undefined : '4 4',
                 fillColor: BALE_STYLE.fill,
-                fillOpacity: strong ? 0.95 : 0.45,
+                fillOpacity: verified ? 0.95 : 0.45,
               }}
             >
               <Popup>
                 <div className="font-dm-sans text-xs">
                   <p className="font-semibold">Bale · {fmtTime(Date.parse(b.ts) / 1000)} MT</p>
                   <p className="mt-0.5 text-gray-500">
-                    {strong ? 'clear detection' : 'weaker evidence'} · confidence {Math.round(b.confidence * 100)}%
+                    {verified ? 'clear detection' : 'unverified — go look'} · confidence {Math.round(b.confidence * 100)}%
                   </p>
                 </div>
               </Popup>
@@ -437,6 +455,7 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
         <Legend
           basemap={basemap}
           hasBales={hasBales}
+          hasUnverified={hasUnverified}
           showTrack={showTrack}
           hasBoundary={(boundary ?? []).length >= 3}
           hasSweep={swathRuns.length > 0}

@@ -17,7 +17,7 @@ import { computeEta } from '@/lib/jobs/eta'
 import { fmtAcres, fmtDay, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
-import { BALE_MACHINE } from '@/lib/detections/detect-bales'
+import { BALE_MACHINE, BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import type { TrackPoint, JobPause } from '@/lib/jobs/derive'
 
 // ─── /jobs/[id] — one work session: the numbers, the pauses, the map ───────────
@@ -98,7 +98,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const machineLabel = machine == null
     ? null
     : MACHINE_SUGGESTIONS.find(m => m.value === machine)?.label ?? machine
-  const weakCount = detections.filter(d => d.confidence < 0.7).length
+  const weakCount = detections.filter(d => d.confidence < BALE_VERIFY_BELOW).length
   // Pins go on the map only while the label doesn't contradict the detector.
   const balePins = (machine == null || isBaler)
     ? detections
@@ -205,7 +205,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
             <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
               {weakCount > 0 && (
-                <>{weakCount} of them counted on weaker evidence.{' '}</>
+                <>{weakCount} of them unverified — dashed {weakCount === 1 ? 'pin' : 'pins'} on
+                the map, worth a look on the ground.{' '}</>
               )}
               Counted from tailgate closes — threshold found in this session&apos;s own data
               ({baleRun.metrics.cut?.toLocaleString()} mg).
