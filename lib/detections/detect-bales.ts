@@ -101,6 +101,17 @@ export const BALE_CONFIG = {
   // with ≥1σ margin each side — ~4σ beyond what a parked machine can show.
   // An empty or unmeasurable window ABSTAINS: the gate never fires on
   // silence (absence ≠ negative), so a lone quiet slam is untouched.
+  //
+  // Two rejected alternatives, so nobody re-walks into them:
+  //   * A nearest-precursor-to-slam cap alone CANNOT do this job — the
+  //     between-fields false positive's nearest sub-cut neighbor measured
+  //     7.2 m (looks parked); only the whole window exposes its 28.9 m bump
+  //     9 s out. "Nothing in the window may be far" is the rule, not "the
+  //     precursor must be near".
+  //   * A 10–12 m cap would shoot a real bale — seq 11143 carries a
+  //     legitimate 14.6 m in-window companion (scatter tail on a parked
+  //     pair). The cap must clear 14.6 and stay under 26.6; 20 m is the
+  //     middle of that gap, not a tuned number.
   ejectDriftMaxM: 20,
   // ── Marginal admission (the 5,877 mg case) ──
   // Below the cut but within reach of it, an event may still be a bale — IF
