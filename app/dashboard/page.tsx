@@ -48,6 +48,7 @@ import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
 import JobsView, { JobsViewSkeleton } from './components/JobsView'
+import { LiveJobCard, TodayJobs } from './components/RanchNow'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -873,6 +874,15 @@ export default async function DashboardPage({
               />
             </Suspense>
 
+            {/* A machine working RIGHT NOW — loud, in every view, carrying the
+                headline number for the job type (bale count / percent cut + ETA).
+                Null when nothing runs and for signed-out visitors (RLS returns
+                nothing): the always-on stack stays "the ranch right now or money
+                that demands action". */}
+            <Suspense fallback={null}>
+              <LiveJobCard />
+            </Suspense>
+
             {/* Operation zone (Block 2) — the read leads, the value sits beneath it.
                 Market Read (Slice 2a, shell only) renders ABOVE the herd anchor, gated on the
                 SAME condition (signed-in user with a herd) so the two move together; anon /
@@ -933,6 +943,12 @@ export default async function DashboardPage({
                 full MarketsNews feed is parked (component kept, no longer rendered). */}
             {view === 'news' && (
               <>
+                {/* Today's completed sessions — quiet, gone at midnight ranch
+                    time (at breakfast the slate is clean; history lives in the
+                    Jobs view). The live card above already carries in-progress. */}
+                <Suspense fallback={null}>
+                  <TodayJobs />
+                </Suspense>
                 <div>
                   <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
                   <Suspense fallback={<ForecastPanelSkeleton />}>
