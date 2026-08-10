@@ -6,10 +6,10 @@ import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
-import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { computeFieldBoundary, boundaryQualified } from '@/lib/jobs/boundary'
 import { computeSweep } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
-import { dayKey, todayKey, fmtEtaMin, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
+import { dayKey, todayKey, fmtDoneAt, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
 
 // ─── The ranch, right now — live and today's jobs on the home surface ──────────
@@ -59,15 +59,19 @@ async function headlineFor(
   }
   // No bale story — try the field-cut story. The track fetch is deferred to
   // here so a baling day never pays for the jsonb column it won't use.
+  // Grades mirror the job page (never more confident than the detail): the
+  // estimate grade speaks its caveat and drops the ETA — a finish time built
+  // on an unconfirmed boundary is not a glanceable promise.
   const { data } = await supabase.from('jobs').select('track').eq('id', job.id).maybeSingle()
   const track = (data?.track ?? []) as TrackPoint[]
   if (track.length >= 2) {
     const boundary = computeFieldBoundary(track, job.multi_field)
-    if (boundary.status === 'confirmed') {
+    if (boundaryQualified(boundary.status)) {
       const sweep = computeSweep(track, boundary)
       if (sweep != null) {
+        if (boundary.status === 'estimate') return `About ${sweep.percentCut}% cut · unconfirmed boundary`
         const eta = computeEta(track, boundary).minutes
-        return `About ${sweep.percentCut}% cut${eta != null ? ` · about ${fmtEtaMin(eta)} left` : ''}`
+        return `About ${sweep.percentCut}% cut${eta != null ? ` · done ~${fmtDoneAt(eta)}` : ''}`
       }
     }
   }
