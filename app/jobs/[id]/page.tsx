@@ -12,7 +12,7 @@ import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { computeFieldBoundary, boundaryQualified, ACRE_M2 } from '@/lib/jobs/boundary'
-import { computeSweep } from '@/lib/jobs/sweep'
+import { computeSweep, computeSweepRender } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { fmtAcres, fmtDay, fmtDoneAt, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
@@ -106,7 +106,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
   const qualified = boundary != null && boundaryQualified(boundary.status)
   const isEstimate = boundary?.status === 'estimate'
-  const sweep = qualified ? computeSweep(job.track, boundary!, undefined, true) : null
+  const sweep = qualified ? computeSweep(job.track, boundary!) : null
+  // The picture, separately from the numbers: smoothed field edge + closed,
+  // smoothed fill, both traced from the same raster masks the numbers count.
+  // The divergence guard (CLI) holds the two within a few percent.
+  const render = sweep != null ? computeSweepRender(job.track, boundary!) : null
   const etaMinutes = sweep != null ? computeEta(job.track, boundary!).minutes : null
   const cutAcres = sweep != null ? sweep.sweptInsideM2 / ACRE_M2 : null
   const fieldAcres = sweep != null ? sweep.boundaryInsideM2 / ACRE_M2 : null
@@ -280,8 +284,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               bbox={job.bbox}
               mode={sweep != null ? 'working' : mapping ? 'mapping' : 'plain'}
               bales={balePins}
-              boundary={qualified ? boundary!.polygon : null}
-              cells={sweep?.cells}
+              boundary={render?.boundaryRing ?? null}
+              fill={render?.fill}
             />
             <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
               {balePins.length > 0

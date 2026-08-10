@@ -11,19 +11,24 @@ import {
   type BoundaryResult,
   type Pt,
 } from './boundary'
+import {
+  RENDER_CONFIG,
+  morphClose,
+  offsetRing,
+  ringPerimeter,
+  signedArea,
+  smoothRing,
+  traceMask,
+  type MaskGrid,
+} from './render-geometry'
 
 // ─── Swept area — how much of the field the machine has actually covered ───────
 //
 // Rasterized, on purpose: mark every ~2.5 m grid cell within half a header of
-// the track, count the marked cells inside the boundary, divide by the cells
-// inside the boundary. Overlapping passes mark the same cell once, and cutting
-// outside the loop falls out of the numerator by construction — the two
-// classic ways a naive length×width sweep overshoots.
-//
-// Only plausible CUTTING hops sweep: consecutive points within maxSweepHopM.
-// That is deliberately distance-based, not link-based — an evicted block mid-
-// row leaves a short 'gap' hop that was still real cutting, while a transit
-// hop between patches is long and must not paint a swath across the field.
+// the track, count the marked cells inside the buffered field, divide by the
+// cells inside the buffered field. Overlapping passes mark the same cell once,
+// and cutting outside the loop falls out of the numerator by construction —
+// the two classic ways a naive length×width sweep overshoots.
 //
 // SAME BUFFER ON BOTH SIDES of the ratio, deliberately: the denominator is
 // the boundary interior EXTENDED by the same half-header the swath sweeps
@@ -31,6 +36,11 @@ import {
 // buffer error largely cancels in the percentage. The percent stays honest
 // while the absolute acreage question (raw 2.29 vs buffered 2.55 vs the
 // operator's 2.3) is still settling — consistency beats precision.
+//
+// THE RENDERING IS A SEPARATE CONCERN (computeSweepRender): the data is exact
+// and chunky; the map is not. The picture is traced from these same masks,
+// closed and smoothed into cartography, and held against the raster by the
+// divergence guard (render-geometry.ts). Numbers never come from the picture.
 //
 // The result is approximate by design (GPS scatter ~3.7 m against a 4.9 m
 // header) and is therefore only ever SPOKEN coarsely: nearest 5%, capped at
@@ -53,27 +63,21 @@ export interface SweepResult {
   /** Field size — the boundary interior plus the same half-header buffer. */
   boundaryInsideM2: number
   rawFraction: number
-  /**
-   * Row-merged rectangles of the swept cells, for the map's WORKING mode —
-   * the fill on screen and the percent beside it are literally these cells.
-   * Only populated when requested via withCells.
-   */
-  cells?: { minLat: number; minLng: number; maxLat: number; maxLng: number }[]
 }
 
-/**
- * Swept share of the boundary. endIdx limits the track to [0..endIdx] — the
- * ETA math uses it to ask "how much had swept as of a while ago". Returns null
- * unless the boundary qualified (confirmed or estimate): below the gates,
- * no percentage exists. withCells additionally returns the row-merged swept
- * rectangles for rendering.
- */
-export function computeSweep(
+interface SweepGrids extends MaskGrid {
+  mPerLng: number
+  inside: Uint8Array
+  swept: Uint8Array
+  boundaryCells: number
+  sweptInside: number
+}
+
+function buildSweepGrids(
   track: TrackPoint[],
   boundary: BoundaryResult,
   endIdx?: number,
-  withCells = false,
-): SweepResult | null {
+): SweepGrids | null {
   if (!boundaryQualified(boundary.status) || boundary.polygon == null) return null
   const pts = endIdx != null ? track.slice(0, endIdx + 1) : track
   if (pts.length < 2) return null
@@ -81,22 +85,23 @@ export function computeSweep(
   // One projection for everything — anchored on the FULL track's mean latitude
   // so a prefix sweep and the full sweep measure the same ground.
   const lat0 = meanLat(track)
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
   const ring = projectXY(boundary.polygon, lat0)
   const xy = projectXY(pts, lat0)
 
   const cell = SWEEP_CONFIG.cellM
   const r = BOUNDARY_CONFIG.headerWidthM / 2
-  const minX = Math.min(...ring.map(p => p.x)) - r
-  const maxX = Math.max(...ring.map(p => p.x)) + r
-  const minY = Math.min(...ring.map(p => p.y)) - r
-  const maxY = Math.max(...ring.map(p => p.y)) + r
+  const minX = Math.min(...ring.map(p => p.x)) - r - cell
+  const maxX = Math.max(...ring.map(p => p.x)) + r + cell
+  const minY = Math.min(...ring.map(p => p.y)) - r - cell
+  const maxY = Math.max(...ring.map(p => p.y)) + r + cell
   const cols = Math.max(1, Math.ceil((maxX - minX) / cell))
   const rows = Math.max(1, Math.ceil((maxY - minY) / cell))
 
   // Which cells are inside the FIELD — the ring interior plus the same
-  // half-header buffer the swath sweeps with (see header: one ruler for both
-  // sides of the ratio). Cell centers; a 2.5 m quantization error at the edge
-  // is far below the GPS scatter already priced in.
+  // half-header buffer the swath sweeps with (one ruler for both sides of the
+  // ratio). Cell centers; a 2.5 m quantization error at the edge is far below
+  // the GPS scatter already priced in.
   const inside = new Uint8Array(cols * rows)
   let boundaryCells = 0
   for (let cy = 0; cy < rows; cy++) {
@@ -110,7 +115,10 @@ export function computeSweep(
   }
   if (boundaryCells === 0) return null
 
-  // Paint the swath: cells within half a header of any cutting hop.
+  // Paint the swath: cells within half a header of any cutting hop. Hops are
+  // distance-limited, not link-limited — an evicted block mid-row leaves a
+  // short 'gap' hop that was still real cutting, while a transit hop is long
+  // and must not paint a swath across the field.
   const swept = new Uint8Array(cols * rows)
   const maxHop2 = SWEEP_CONFIG.maxSweepHopM ** 2
   for (let i = 1; i < xy.length; i++) {
@@ -136,38 +144,141 @@ export function computeSweep(
   let sweptInside = 0
   for (let k = 0; k < swept.length; k++) if (swept[k] && inside[k]) sweptInside++
 
-  // Row-merge swept∩inside cells into horizontal strips — a few hundred
-  // rectangles instead of thousands of cells, and still exactly the raster.
-  let cells: SweepResult['cells']
-  if (withCells) {
-    const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
-    cells = []
-    for (let cy = 0; cy < rows; cy++) {
-      let runStart = -1
-      for (let cx = 0; cx <= cols; cx++) {
-        const on = cx < cols && swept[cy * cols + cx] === 1 && inside[cy * cols + cx] === 1
-        if (on && runStart === -1) runStart = cx
-        if (!on && runStart !== -1) {
-          cells.push({
-            minLng: (minX + runStart * cell) / mPerLng,
-            maxLng: (minX + cx * cell) / mPerLng,
-            minLat: (minY + cy * cell) / M_PER_LAT,
-            maxLat: (minY + (cy + 1) * cell) / M_PER_LAT,
-          })
-          runStart = -1
-        }
-      }
-    }
-  }
+  return { cols, rows, cellM: cell, minX, minY, mask: inside, mPerLng, inside, swept, boundaryCells, sweptInside }
+}
 
-  const cellArea = cell * cell
-  const rawFraction = sweptInside / boundaryCells
+/**
+ * Swept share of the boundary. endIdx limits the track to [0..endIdx] — the
+ * ETA math uses it to ask "how much had swept as of a while ago". Returns null
+ * unless the boundary qualified (confirmed or estimate): below the gates,
+ * no percentage exists.
+ */
+export function computeSweep(
+  track: TrackPoint[],
+  boundary: BoundaryResult,
+  endIdx?: number,
+): SweepResult | null {
+  const g = buildSweepGrids(track, boundary, endIdx)
+  if (g == null) return null
+  const cellArea = g.cellM * g.cellM
+  const rawFraction = g.sweptInside / g.boundaryCells
   const stepped = Math.round((rawFraction * 100) / SWEEP_CONFIG.percentStep) * SWEEP_CONFIG.percentStep
   return {
     percentCut: Math.max(0, Math.min(100, stepped)),
-    sweptInsideM2: sweptInside * cellArea,
-    boundaryInsideM2: boundaryCells * cellArea,
+    sweptInsideM2: g.sweptInside * cellArea,
+    boundaryInsideM2: g.boundaryCells * cellArea,
     rawFraction,
-    ...(cells != null ? { cells } : {}),
+  }
+}
+
+// ─── The picture — cartography traced from the exact masks above ───────────────
+
+export interface RenderedPolygon {
+  outer: { lat: number; lng: number }[]
+  holes: { lat: number; lng: number }[][]
+}
+
+export interface SweepRender {
+  /** The drawn field edge — the BUFFERED field mask's contour, smoothed. This
+   *  is the same region the field-size number counts, so the line and the
+   *  acreage agree by construction (the old centerline ring under-drew the
+   *  claimed field by half a header all the way around). */
+  boundaryRing: { lat: number; lng: number }[]
+  /** Cut ground: closed (dilate+erode), traced, smoothed, holes kept. Clipped
+   *  to the field mask at the raster stage — it cannot spill outside. */
+  fill: RenderedPolygon[]
+  boundaryRenderedM2: number
+  boundaryRasterM2: number
+  boundaryDivergence: number
+  fillRenderedM2: number
+  fillRasterM2: number
+  fillDivergence: number
+}
+
+export function computeSweepRender(
+  track: TrackPoint[],
+  boundary: BoundaryResult,
+): SweepRender | null {
+  const g = buildSweepGrids(track, boundary)
+  if (g == null) return null
+  const cellArea = g.cellM * g.cellM
+  const toLatLng = (p: Pt) => ({ lat: p.y / M_PER_LAT, lng: p.x / g.mPerLng })
+
+  // The field edge: trace the buffered field mask, keep its largest outer
+  // ring (the mask is a polygon interior plus a buffer — simply connected).
+  const fieldRings = traceMask(g, g.inside).filter(r => r.area > 0)
+  if (fieldRings.length === 0) return null
+  fieldRings.sort((a, b) => b.area - a.area)
+  const boundarySmooth = smoothRing(fieldRings[0].ring)
+  const boundaryRenderedM2 = Math.abs(signedArea(boundarySmooth))
+  const boundaryRasterM2 = g.boundaryCells * cellArea
+
+  // Cut ground: swept ∧ inside, then the morphological close that turns
+  // spotty into complete (pinholes, pass gaps), re-clipped to the field so
+  // dilation can never leak past the edge.
+  const fill = new Uint8Array(g.cols * g.rows)
+  for (let k = 0; k < fill.length; k++) fill[k] = g.swept[k] && g.inside[k] ? 1 : 0
+  const closedRaw = morphClose({ ...g, mask: fill }, RENDER_CONFIG.closeRadiusCells)
+  const closed = new Uint8Array(g.cols * g.rows)
+  for (let k = 0; k < closed.length; k++) closed[k] = closedRaw[k] && g.inside[k] ? 1 : 0
+
+  // Trace, drop speckles (under ~4 cells — sensor dust, not ground), smooth,
+  // and keep holes: the uncut middle is the story.
+  const MIN_RING_M2 = 25
+  const rings = traceMask(g, closed).filter(r => Math.abs(r.area) >= MIN_RING_M2)
+  const outers = rings.filter(r => r.area > 0)
+  const holes = rings.filter(r => r.area < 0)
+
+  const smoothOuters = outers.map(o => smoothRing(o.ring))
+  const smoothHoles: { ring: Pt[]; ownerIdx: number }[] = []
+  for (const h of holes) {
+    // A hole belongs to the outer that contains it.
+    const probe = h.ring[0]
+    const ownerIdx = outers.findIndex(o => pointInPolygon(probe, o.ring))
+    if (ownerIdx === -1) continue
+    smoothHoles.push({ ring: smoothRing(h.ring), ownerIdx })
+  }
+
+  const fillRasterM2 = g.sweptInside * cellArea
+  const areaOf = (os: Pt[][], hs: Pt[][]) =>
+    os.reduce((s, o) => s + Math.abs(signedArea(o)), 0) -
+    hs.reduce((s, h) => s + Math.abs(signedArea(h)), 0)
+
+  // Area matching (render-geometry.ts header): the close bridged real gaps —
+  // hand the gained area back with one uniform sub-metre offset (outers
+  // shrink, holes grow) so the complete-looking picture carries the raster's
+  // area. First-order step; a second pass would be overkill under the cap.
+  let finalOuters = smoothOuters
+  let finalHoles = smoothHoles.map(h => h.ring)
+  const excess = areaOf(finalOuters, finalHoles) - fillRasterM2
+  const totalPerim =
+    finalOuters.reduce((s, o) => s + ringPerimeter(o), 0) +
+    finalHoles.reduce((s, h) => s + ringPerimeter(h), 0)
+  if (totalPerim > 0 && Math.abs(excess) / Math.max(fillRasterM2, 1) > 0.02) {
+    const d = Math.abs(excess) / totalPerim
+    const shrink = excess > 0 // too big → shrink fill; too small → grow it
+    finalOuters = finalOuters.map(o => offsetRing(o, d, shrink))
+    finalHoles = finalHoles.map(h => offsetRing(h, d, !shrink))
+  }
+
+  let fillRenderedM2 = 0
+  const polys: RenderedPolygon[] = finalOuters.map(o => {
+    fillRenderedM2 += Math.abs(signedArea(o))
+    return { outer: o.map(toLatLng), holes: [] }
+  })
+  finalHoles.forEach((h, i) => {
+    fillRenderedM2 -= Math.abs(signedArea(h))
+    polys[smoothHoles[i].ownerIdx].holes.push(h.map(toLatLng))
+  })
+
+  return {
+    boundaryRing: boundarySmooth.map(toLatLng),
+    fill: polys,
+    boundaryRenderedM2,
+    boundaryRasterM2,
+    boundaryDivergence: Math.abs(boundaryRenderedM2 - boundaryRasterM2) / boundaryRasterM2,
+    fillRenderedM2,
+    fillRasterM2,
+    fillDivergence: fillRasterM2 > 0 ? Math.abs(fillRenderedM2 - fillRasterM2) / fillRasterM2 : 0,
   }
 }

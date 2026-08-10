@@ -36,12 +36,14 @@ export interface JobMapProps {
   // Detected bale positions (slam fixes, truck-length accurate). Only passed
   // when the session is unlabeled or confirmed as a baler.
   bales?: BalePin[]
-  // The field boundary ring — only passed when the boundary qualified
-  // (confirmed or estimate); below the gates it is never drawn.
+  // The drawn field edge — the buffered field mask's smoothed contour
+  // (lib/jobs/sweep.ts computeSweepRender). Only passed when the boundary
+  // qualified; below the gates it is never drawn.
   boundary?: { lat: number; lng: number }[] | null
-  // Row-merged swept-cell rectangles from the sweep raster (working mode) —
-  // the fill on screen and the percent beside it are literally these cells.
-  cells?: { minLat: number; minLng: number; maxLat: number; maxLng: number }[]
+  // Cut ground: closed + smoothed polygons (holes = the uncut middle),
+  // clipped to the field at the raster stage. Cartography, not data — the
+  // numbers come from the raster and the divergence guard keeps these honest.
+  fill?: { outer: { lat: number; lng: number }[]; holes: { lat: number; lng: number }[][] }[]
 }
 
 export default function JobMapLoader(props: JobMapProps) {

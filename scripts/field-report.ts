@@ -23,7 +23,8 @@ loadEnvConfig(process.cwd())
 
 import { createClient } from '@supabase/supabase-js'
 import { computeFieldBoundary, convexHullAreaM2, boundaryQualified, ACRE_M2 } from '../lib/jobs/boundary'
-import { computeSweep } from '../lib/jobs/sweep'
+import { computeSweep, computeSweepRender } from '../lib/jobs/sweep'
+import { RENDER_CONFIG } from '../lib/jobs/render-geometry'
 import { computeEta } from '../lib/jobs/eta'
 import { isInProgress } from '../lib/jobs/display'
 import type { TrackPoint } from '../lib/jobs/derive'
@@ -132,6 +133,26 @@ async function run() {
       const lastMs = track[track.length - 1].t * 1000 + 1000
       const eta = computeEta(track, b, lastMs)
       console.log(`    eta   ${eta.minutes != null ? `~${eta.minutes} min left` : 'hidden'} (as-if-live)`)
+
+      // The picture held against the number: rendered polygon areas must sit
+      // within RENDER_CONFIG.divergenceCap of their raster sources, or the
+      // smoothing is lying and this build fails.
+      const render = computeSweepRender(track, b)
+      if (render != null) {
+        console.log(
+          `    render  boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off raster` +
+            ` (${ac(render.boundaryRenderedM2)} vs ${ac(render.boundaryRasterM2)} ac)` +
+            ` · fill ${(render.fillDivergence * 100).toFixed(1)}% off raster` +
+            ` (${ac(render.fillRenderedM2)} vs ${ac(render.fillRasterM2)} ac)` +
+            ` · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%`
+        )
+        if (render.boundaryDivergence > RENDER_CONFIG.divergenceCap) {
+          failures.push(`seq ${j.seq_start}: rendered boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
+        }
+        if (render.fillDivergence > RENDER_CONFIG.divergenceCap) {
+          failures.push(`seq ${j.seq_start}: rendered fill ${(render.fillDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
+        }
+      }
     }
 
     // Regression assertions
