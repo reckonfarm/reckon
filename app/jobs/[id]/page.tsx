@@ -113,7 +113,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // The numbers have to be proven on real field days before anything persists.
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
   const boundaryOk = boundary?.status === 'confirmed'
-  const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
+  const sweep = boundaryOk ? computeSweep(job.track, boundary!, undefined, true) : null
   // ETA is derived from the same two numbers as the percent and rides the same
   // guards; its own pause/window/sanity checks decide null. Display-only.
   const etaMinutes = sweep != null ? computeEta(job.track, boundary!).minutes : null
@@ -303,9 +303,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <JobMapLoader
               track={job.track}
               bbox={job.bbox}
+              mode={sweep != null ? 'working' : mapping ? 'mapping' : 'plain'}
               bales={balePins}
               boundary={boundaryOk ? boundary!.polygon : null}
-              sweepFill={sweep != null}
+              cells={sweep?.cells}
             />
             {boundaryOk && (
               <p className="mt-2 font-dm-sans text-sm text-forest-green/70">

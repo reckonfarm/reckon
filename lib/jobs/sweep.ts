@@ -61,27 +61,6 @@ export interface SweepResult {
   cells?: { minLat: number; minLng: number; maxLat: number; maxLng: number }[]
 }
 
-// The cutting segments of a track, split wherever a hop is too long to be
-// cutting. Shared by the raster below and by the map's swath rendering, so the
-// fill on screen and the percent beside it can never disagree about what swept.
-export function sweepRuns(track: TrackPoint[]): TrackPoint[][] {
-  if (track.length === 0) return []
-  const lat0 = meanLat(track)
-  const xy = projectXY(track, lat0)
-  const runs: TrackPoint[][] = []
-  let run: TrackPoint[] = [track[0]]
-  for (let i = 1; i < track.length; i++) {
-    const hop = Math.hypot(xy[i].x - xy[i - 1].x, xy[i].y - xy[i - 1].y)
-    if (hop > SWEEP_CONFIG.maxSweepHopM) {
-      if (run.length >= 2) runs.push(run)
-      run = []
-    }
-    run.push(track[i])
-  }
-  if (run.length >= 2) runs.push(run)
-  return runs
-}
-
 /**
  * Swept share of the boundary. endIdx limits the track to [0..endIdx] — the
  * ETA math uses it to ask "how much had swept as of a while ago". Returns null

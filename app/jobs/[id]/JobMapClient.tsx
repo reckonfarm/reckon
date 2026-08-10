@@ -1,31 +1,33 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Rectangle, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen, warning } from '@/lib/brand-colors'
-import { BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
 import { BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
-import { sweepRuns } from '@/lib/jobs/sweep'
 import type { JobMapProps } from './JobMapLoader'
 
-// ─── The job map — draw exactly what the ledger holds, nothing more ────────────
-// Track points in seq order; SOLID segments only between seq-adjacent recorded
-// impacts (link==='solid', decided by the deriver), DASHED connectors across
-// every discontinuity — evicted events, silence, or lost fix. A dashed hop
-// reads as "the machine got from A to B; we did not watch it happen."
+// ─── The job map — a product view with a diagnostic behind a toggle ────────────
+// Which field, and how much of it is done. That is the whole question this map
+// answers, and it answers it differently by mode (JobMapLoader):
 //
-// Impact size = color + radius (sequential rust ramp, light→dark; dataviz
-// method: magnitude gets ONE hue). Color alone never carries it — bigger hits
-// get bigger markers, and every marker has a popup with the numbers.
+//   MAPPING — the track draws itself while the outside rounds tie off. The
+//   line is the story; impact dots are small, uniform, single-color. Nobody
+//   reading this map needs g-forces.
+//   WORKING — a qualified boundary exists. The outline plus swept cells
+//   lighting up; the unfilled interior is the shrinking uncut area. Track,
+//   dots, and their legend disappear entirely — behind the Track toggle,
+//   default OFF (?track=1, same URL-state pattern as ?base=).
+//   PLAIN — a finished job with no field story: the track, plainly.
+//
+// Baling jobs stay pins-first: pins render alone by default and Track reveals
+// the path. Bales never get connecting lines — they are a scatter on the
+// ground, not a path the machine drove.
 //
 // Basemap: Esri World Imagery by default — a rancher reads their own ground
 // from the air — with an OSM street fallback (also the lighter option on one
-// bar of 3G). Track styling follows the basemap: white-with-dark-casing over
-// imagery (forest green vanishes on irrigated ground), forest green on street.
-// The choice lives in the URL (?base=street; satellite is the unmarked
-// default) via history.replaceState — no router round-trip, and it composes
-// with whatever other params the page carries.
+// bar of 3G). Styling follows the basemap; the choice lives in the URL
+// (?base=street; satellite is the unmarked default) via history.replaceState.
 //
 // Live follow: while the view is untouched we re-fit to the track as it grows;
 // the moment the user pans or zooms, follow stops — the map is read one-handed
@@ -56,40 +58,25 @@ const BASEMAPS: Record<Basemap, {
   },
 }
 
-const MG_BUCKETS = [
-  { min: 6000, color: '#5C2013', radius: 7, label: '≥ 6 g' },
-  { min: 4000, color: '#8B3A2B', radius: 6, label: '4–6 g' },
-  { min: 3000, color: '#B4664A', radius: 5, label: '3–4 g' },
-  { min: 2500, color: '#D28E6E', radius: 4, label: '2.5–3 g' },
-  { min: 0,    color: '#EAB8A2', radius: 3, label: '< 2.5 g' },
-] as const
-
-function bucketFor(mg: number | null) {
-  if (mg == null) return MG_BUCKETS[MG_BUCKETS.length - 1]
-  return MG_BUCKETS.find(b => mg >= b.min) ?? MG_BUCKETS[MG_BUCKETS.length - 1]
-}
-
 const GAP_GRAY = '#6B7280'
 const CASING_DARK = '#111827'
 
-// Per-basemap track styling. White over imagery reads on almost any aerial
-// ground; the casing keeps it visible over snow, gravel, and bale rows. Gap
+// Per-basemap styling. White over imagery reads on almost any aerial ground;
+// the casing keeps the line visible over snow, gravel, and bale rows. Gap
 // dashes get no casing — a solid casing under a dash reads as a solid line.
-const TRACK_STYLE: Record<Basemap, {
+// The boundary's heavy dash rhythm is distinct from the thin '2 8' gap dash:
+// gap = missing data, boundary = the field's edge. Cut cells fill light over
+// imagery (cut ground reads lighter from the air), brand green on street.
+const MAP_STYLE: Record<Basemap, {
   path: string
   casing: string | null
   gap: string
-  // Field boundary ring: heavier dash rhythm than the thin '2 8' gap dash so
-  // the two never read as the same idea (gap = missing data; boundary = the
-  // field's edge, traced from the outside rounds).
   boundary: string
-  // The swept swath — a header-width translucent ribbon. Light over imagery
-  // (cut ground reads lighter from the air), brand green on the street map.
-  sweep: string
-  sweepOpacity: number
+  cut: string
+  cutOpacity: number
 }> = {
-  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7', sweep: '#FFFFFF', sweepOpacity: 0.3 },
-  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen, sweep: forestGreen, sweepOpacity: 0.18 },
+  satellite: { path: '#FFFFFF', casing: CASING_DARK, gap: '#FFFFFF', boundary: '#FDFBF7', cut: '#FFFFFF', cutOpacity: 0.35 },
+  street:    { path: forestGreen, casing: null, gap: GAP_GRAY, boundary: forestGreen, cut: forestGreen, cutOpacity: 0.22 },
 }
 
 const fmtTime = (t: number) =>
@@ -106,13 +93,8 @@ function readBasemapFromUrl(): Basemap {
     : 'satellite'
 }
 
-// Once a job has bale detections, the bales ARE the story — pins render alone
-// by default and the raw impact track goes behind a toggle (?track=1, same
-// URL-state pattern as ?base=). Jobs without detections keep the track: it is
-// the only thing there is to see. Bales never get connecting lines — they are
-// a scatter on the ground, not a path the machine drove.
-function readShowTrackFromUrl(hasBales: boolean): boolean {
-  if (!hasBales) return true
+function readShowTrackFromUrl(defaultOn: boolean): boolean {
+  if (defaultOn) return true
   if (typeof window === 'undefined') return false
   return new URLSearchParams(window.location.search).get('track') === '1'
 }
@@ -147,35 +129,6 @@ function FollowController({ boundsKey, following, onUserMove }: {
   return null
 }
 
-// The swath — the machine's cutting runs drawn at TRUE header width, so the
-// fill IS the swept area the percent describes. Leaflet polyline weight is in
-// pixels, so the weight re-derives from zoom on every zoomend: weight =
-// header-width metres ÷ metres-per-pixel at the map's latitude.
-function SwathLayer({ runs, centerLat, color, opacity }: {
-  runs: [number, number][][]
-  centerLat: number
-  color: string
-  opacity: number
-}) {
-  const map = useMap()
-  const [zoom, setZoom] = useState(() => map.getZoom())
-  useMapEvents({ zoomend() { setZoom(map.getZoom()) } })
-  const mPerPx = (156543.03392 * Math.cos((centerLat * Math.PI) / 180)) / 2 ** zoom
-  const weight = Math.max(2, BOUNDARY_CONFIG.headerWidthM / mPerPx)
-  return (
-    <>
-      {runs.map((r, i) => (
-        <Polyline
-          key={`swath-${i}`}
-          positions={r}
-          interactive={false}
-          pathOptions={{ color, weight, opacity, lineCap: 'round', lineJoin: 'round' }}
-        />
-      ))}
-    </>
-  )
-}
-
 // Bale pins: cream fill + dark ring reads on both basemaps (white track line
 // already owns "path"; the pin must not be confusable with an impact dot).
 // Below BALE_VERIFY_BELOW the pin switches to the unverified style — dashed
@@ -189,107 +142,67 @@ const BALE_STYLE = {
   radius: 8,
 } as const
 
-function Legend({ basemap, hasBales, hasUnverified, showTrack, hasBoundary, hasSweep }: {
-  basemap: Basemap
+// The legend explains only what needs explaining — pins and data gaps. The
+// track is a line, the outline is a fence, the tint is cut ground; the page
+// caption says so in a sentence and none of them need a legend row.
+function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
   hasBales: boolean
   hasUnverified: boolean
-  showTrack: boolean
-  hasBoundary: boolean
-  hasSweep: boolean
+  showGapChip: boolean
+  basemap: Basemap
 }) {
-  const style = TRACK_STYLE[basemap]
+  if (!hasBales && !hasUnverified && !showGapChip) return null
+  const style = MAP_STYLE[basemap]
   const onImagery = basemap === 'satellite'
-  // On satellite the line samples sit on a small dark chip — white-on-white
-  // would show nothing.
-  const chip = (line: React.CSSProperties) => (
-    <span
-      className="flex items-center justify-center rounded-sm"
-      style={{ width: 22, height: 10, background: onImagery ? '#4B5563' : 'transparent' }}
-    >
-      <span style={{ width: 18, ...line }} />
-    </span>
-  )
   return (
     <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 12 }}>
       <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
-        {/* The legend explains only what is on the map right now. */}
-        {showTrack && (
-          <>
-            <p className="font-dm-sans text-[11px] font-semibold text-forest-green">Impact strength</p>
-            {MG_BUCKETS.map(b => (
-              <div key={b.label} className="mt-1 flex items-center gap-2">
-                <span
-                  style={{
-                    width: b.radius * 2, height: b.radius * 2, background: b.color,
-                    borderRadius: '50%', border: '1.5px solid white', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
-                  }}
-                />
-                <span className="font-dm-sans text-[11px] text-forest-green/70">{b.label}</span>
-              </div>
-            ))}
-          </>
+        {hasBales && (
+          <div className="flex items-center gap-2">
+            <span
+              style={{
+                width: 14, height: 14, borderRadius: '50%',
+                background: BALE_STYLE.fill, border: `2.5px solid ${BALE_STYLE.ring}`,
+              }}
+            />
+            <span className="font-dm-sans text-[11px] text-forest-green/70">bale</span>
+          </div>
         )}
-        <div className={showTrack ? 'mt-2 border-t border-gray-100 pt-1.5' : ''}>
-          {showTrack && (
-            <>
-              <div className="flex items-center gap-2">
-                {chip({ borderTop: `3px solid ${style.path}` })}
-                <span className="font-dm-sans text-[11px] text-forest-green/70">recorded path</span>
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                {chip({ borderTop: `2px dashed ${style.gap}` })}
-                <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
-              </div>
-            </>
-          )}
-          {hasBoundary && (
-            <div className={`flex items-center gap-2 ${showTrack ? 'mt-1' : ''}`}>
-              {chip({ borderTop: `3.5px dashed ${style.boundary}` })}
-              <span className="font-dm-sans text-[11px] text-forest-green/70">field boundary</span>
-            </div>
-          )}
-          {hasSweep && (
-            <div className="mt-1 flex items-center gap-2">
-              {chip({ borderTop: `7px solid ${style.sweep}`, opacity: style.sweepOpacity + 0.25 })}
-              <span className="font-dm-sans text-[11px] text-forest-green/70">cut so far</span>
-            </div>
-          )}
-          {hasBales && (
-            <div className="mt-1 flex items-center gap-2">
-              <span
-                style={{
-                  width: 14, height: 14, borderRadius: '50%',
-                  background: BALE_STYLE.fill, border: `2.5px solid ${BALE_STYLE.ring}`,
-                }}
-              />
-              <span className="font-dm-sans text-[11px] text-forest-green/70">bale</span>
-            </div>
-          )}
-          {hasUnverified && (
-            <div className="mt-1 flex items-center gap-2">
-              <span
-                style={{
-                  width: 14, height: 14, borderRadius: '50%',
-                  background: 'transparent', border: `2.5px dashed ${BALE_STYLE.unverifiedRing}`,
-                }}
-              />
-              <span className="font-dm-sans text-[11px] text-forest-green/70">unverified — go look</span>
-            </div>
-          )}
-        </div>
+        {hasUnverified && (
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              style={{
+                width: 14, height: 14, borderRadius: '50%',
+                background: 'transparent', border: `2.5px dashed ${BALE_STYLE.unverifiedRing}`,
+              }}
+            />
+            <span className="font-dm-sans text-[11px] text-forest-green/70">unverified — go look</span>
+          </div>
+        )}
+        {showGapChip && (
+          <div className={`flex items-center gap-2 ${hasBales || hasUnverified ? 'mt-1' : ''}`}>
+            <span
+              className="flex items-center justify-center rounded-sm"
+              style={{ width: 22, height: 10, background: onImagery ? '#4B5563' : 'transparent' }}
+            >
+              <span style={{ width: 18, borderTop: `2px dashed ${style.gap}` }} />
+            </span>
+            <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }: JobMapProps) {
+export default function JobMapClient({ track, bbox, mode, bales, boundary, cells }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
   const hasUnverified = (bales ?? []).some(b => b.confidence < BALE_VERIFY_BELOW)
-  const swathRuns: [number, number][][] = sweepFill
-    ? sweepRuns(track).map(run => run.map(p => [p.lat, p.lng] as [number, number]))
-    : []
+  // Track defaults ON only when it IS the story: mapping/plain with no pins.
+  // Pins-first jobs and working mode put it behind the toggle.
+  const trackDefaultOn = !hasBales && mode !== 'working'
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
-  const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(hasBales))
+  const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(trackDefaultOn))
   const [following, setFollowing] = useState(true)
 
   const pickBasemap = (b: Basemap) => {
@@ -305,7 +218,7 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
     const next = !showTrack
     setShowTrack(next)
     const params = new URLSearchParams(window.location.search)
-    // The param only means anything on a detections job (default hidden).
+    // The param only means anything where the default is hidden.
     if (next) params.set('track', '1')
     else params.delete('track')
     const qs = params.toString()
@@ -331,7 +244,7 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
     : [[track[0].lat, track[0].lng], [track[track.length - 1].lat, track[track.length - 1].lng]]
   const boundsKey = bounds.flat().join(',')
 
-  const style = TRACK_STYLE[basemap]
+  const style = MAP_STYLE[basemap]
   const tiles = BASEMAPS[basemap]
 
   return (
@@ -357,16 +270,16 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
           onUserMove={() => setFollowing(false)}
         />
 
-        {/* Paint order tells the story bottom-up: swath fill (what's been
-            cut), then boundary ring, then the track and its impacts on top. */}
-        {swathRuns.length > 0 && (
-          <SwathLayer
-            runs={swathRuns}
-            centerLat={bounds[0][0]}
-            color={style.sweep}
-            opacity={style.sweepOpacity}
+        {/* Paint order tells the story bottom-up: cut ground, then the field
+            edge, then (only when asked for) the track, then pins on top. */}
+        {(cells ?? []).map((c, i) => (
+          <Rectangle
+            key={`cut-${i}`}
+            bounds={[[c.minLat, c.minLng], [c.maxLat, c.maxLng]]}
+            interactive={false}
+            pathOptions={{ stroke: false, fillColor: style.cut, fillOpacity: style.cutOpacity }}
           />
-        )}
+        ))}
         {(boundary ?? []).length >= 3 && (
           <Polygon
             positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
@@ -402,28 +315,17 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
           />
         ))}
 
-        {showTrack && track.map(p => {
-          const b = bucketFor(p.mg)
-          return (
-            <CircleMarker
-              key={p.seq}
-              center={[p.lat, p.lng]}
-              radius={b.radius}
-              pathOptions={{ color: 'white', weight: 1.5, fillColor: b.color, fillOpacity: 0.85 }}
-            >
-              <Popup>
-                <div className="font-dm-sans text-xs">
-                  <p className="font-semibold">{fmtTime(p.t)} MT</p>
-                  <p className="mt-0.5">
-                    {p.mg != null ? `${(p.mg / 1000).toFixed(1)} g impact` : 'impact'}
-                    {p.w != null && ` · width ${p.w}`}
-                  </p>
-                  <p className="mt-0.5 text-gray-500">seq {p.seq}</p>
-                </div>
-              </Popup>
-            </CircleMarker>
-          )
-        })}
+        {/* Impact dots: small, uniform, silent. Where the machine worked —
+            not how hard it hit. The g-diagnostic left the product view. */}
+        {showTrack && track.map(p => (
+          <CircleMarker
+            key={p.seq}
+            center={[p.lat, p.lng]}
+            radius={2.5}
+            interactive={false}
+            pathOptions={{ stroke: false, fillColor: style.path, fillOpacity: 0.75 }}
+          />
+        ))}
 
         {(bales ?? []).map((b, i) => {
           const verified = b.confidence >= BALE_VERIFY_BELOW
@@ -456,9 +358,7 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
           basemap={basemap}
           hasBales={hasBales}
           hasUnverified={hasUnverified}
-          showTrack={showTrack}
-          hasBoundary={(boundary ?? []).length >= 3}
-          hasSweep={swathRuns.length > 0}
+          showGapChip={showTrack && gapHops.length > 0}
         />
       </MapContainer>
 
@@ -479,7 +379,7 @@ export default function JobMapClient({ track, bbox, bales, boundary, sweepFill }
             </button>
           ))}
         </div>
-        {hasBales && (
+        {!trackDefaultOn && (
           <button
             type="button"
             onClick={toggleTrack}
