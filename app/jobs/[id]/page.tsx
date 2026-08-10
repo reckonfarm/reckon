@@ -18,9 +18,9 @@ import { fmtAcres, fmtDay, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } f
 import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE, BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
-import type { TrackPoint, JobPause } from '@/lib/jobs/derive'
+import type { TrackPoint } from '@/lib/jobs/derive'
 
-// ─── /jobs/[id] — one work session: the numbers, the pauses, the map ───────────
+// ─── /jobs/[id] — one work session: the numbers, the map ───────────────────────
 // The map draws only what the ledger actually holds: solid line = consecutive
 // recorded impacts, dashed = a gap (evicted events or silence) — it never
 // implies a path we didn't observe. Coverage and derivation provenance are on
@@ -40,7 +40,6 @@ interface JobRow {
   coverage: number
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number } | null
   track: TrackPoint[]
-  pauses: JobPause[]
   multi_field: boolean
   stats: { positionedCount?: number; mgP50?: number | null; mgMax?: number | null }
   deriver_version: string
@@ -67,7 +66,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, started_at, ended_at, duration_s, seq_start, seq_end, event_count, evicted_count, coverage, bbox, track, pauses, multi_field, stats, deriver_version, derived_at, devices(name)')
+    .select('id, started_at, ended_at, duration_s, seq_start, seq_end, event_count, evicted_count, coverage, bbox, track, multi_field, stats, deriver_version, derived_at, devices(name)')
     .eq('id', id)
     .maybeSingle()
 
@@ -169,17 +168,21 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         )}
 
         <Card shadow="none" className="mt-5 px-5 py-4">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {/* Two stats a rancher acts on. Impact and eviction counts are
+              engineering-facing and left the grid — but "lost before sync"
+              returns in prose the moment Data received dips under 100%, where
+              it stops being noise and becomes the explanation (the same rule
+              that renamed Coverage: a number only appears where it means
+              something). */}
+          <div className="grid grid-cols-2 gap-4">
             <Stat label="Working time" value={fmtDuration(job.duration_s)} />
-            <Stat label="Impacts recorded" value={job.event_count.toLocaleString()} />
-            <Stat label="Lost before sync" value={job.evicted_count.toLocaleString()} />
             {/* "Data received", never "coverage" — that word is banned on these
                 pages now that a field-percent lives here too. Two numbers, two
                 names, two faces. */}
             <Stat label="Data received" value={`${covPct}%`} warn={lowCoverage} />
           </div>
-          {lowCoverage && (
-            <p className="mt-3 font-dm-sans text-xs text-warning">
+          {job.evicted_count > 0 && (
+            <p className={`mt-3 font-dm-sans text-xs ${lowCoverage ? 'text-warning' : 'text-forest-green/60'}`}>
               The device generated {(job.event_count + job.evicted_count).toLocaleString()} events
               (seq {job.seq_start}–{job.seq_end}) but only {job.event_count.toLocaleString()} reached
               the ledger before the on-device queue overwrote the rest. Times and totals
@@ -330,23 +333,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </Card>
         )}
 
-        {job.pauses.length > 0 && (
-          <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-base font-semibold text-forest-green">Stops</p>
-            <ul className="mt-2 space-y-1.5">
-              {job.pauses.map((p, i) => (
-                <li key={i} className="font-dm-sans text-sm text-forest-green/70">
-                  <span className="tabular-nums font-semibold text-forest-green">{fmtTime(p.atIso)}</span>
-                  {' · '}
-                  {p.kind === 'observed'
-                    ? `stopped ${Math.round(p.durationS / 60)} min`
-                    : `stopped ~${Math.round(p.durationS / 60)} min (estimated — ${plural(p.missing, 'event')} ${p.missing === 1 ? 'was' : 'were'} lost around this stop, so the exact timing is uncertain)`}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-
+        {/* The Stops card was removed 2026-08-09 (engineering-facing) — but the
+            pause DATA is untouched: the deriver still emits jobs.pauses and the
+            ETA's rate window still discounts stopped time (lib/jobs/eta.ts reads
+            the track's own gaps). Only the card went. */}
         <AnnotationControls jobId={job.id} name={name} dismissed={dismissed} />
 
         <p className="mt-6 font-dm-sans text-xs text-forest-green/40">
