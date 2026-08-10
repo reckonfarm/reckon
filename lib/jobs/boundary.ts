@@ -95,7 +95,11 @@ export interface BoundaryResult {
   /**
    * Mean gap between the boundary lap and a second concentric lap inside it,
    * when one exists — the operator's real effective cut width, and the number
-   * that eventually settles the buffer. Recorded for the CLI, never displayed.
+   * that eventually settles the buffer question (raw vs buffered vs onX).
+   * BIASED LOW by GPS scatter: noise on both rings shrinks the mean gap
+   * (synthetic two-lap field reads 4.41 m against a true 4.9 m header), so
+   * this is EVIDENCE THAT ACCUMULATES ACROSS FIELDS, never a per-field ruler.
+   * Recorded for the CLI, never displayed.
    */
   loopSpacingM: number | null
 }
