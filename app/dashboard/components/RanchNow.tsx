@@ -63,7 +63,7 @@ async function headlineFor(
   const track = (data?.track ?? []) as TrackPoint[]
   if (track.length >= 2) {
     const boundary = computeFieldBoundary(track, job.multi_field)
-    if (boundary.status === 'ok') {
+    if (boundary.status === 'confirmed') {
       const sweep = computeSweep(track, boundary)
       if (sweep != null) {
         const eta = computeEta(track, boundary).minutes

@@ -62,7 +62,7 @@ export default async function SeasonTotals() {
     }
     if (j.track.length >= 2) {
       const boundary = computeFieldBoundary(j.track, j.multi_field)
-      if (boundary.status === 'ok' && boundary.acres != null) {
+      if (boundary.status === 'confirmed' && boundary.acres != null) {
         acres += boundary.acres
         fields++
       }

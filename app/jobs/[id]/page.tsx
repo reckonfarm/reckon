@@ -112,7 +112,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // Field boundary + sweep — computed at read time, per job, nothing stored.
   // The numbers have to be proven on real field days before anything persists.
   const boundary = job.track.length >= 2 ? computeFieldBoundary(job.track, job.multi_field) : null
-  const boundaryOk = boundary?.status === 'ok'
+  const boundaryOk = boundary?.status === 'confirmed'
   const sweep = boundaryOk ? computeSweep(job.track, boundary!) : null
   // ETA is derived from the same two numbers as the percent and rides the same
   // guards; its own pause/window/sanity checks decide null. Display-only.
@@ -124,7 +124,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // claims nothing at all.
   const mapping =
     live && !boundaryOk && boundary != null &&
-    (boundary.status === 'no_loop' || boundary.status === 'too_few_points' || boundary.status === 'unverified')
+    (boundary.status === 'no_loop' || boundary.status === 'too_few_points' || boundary.status === 'estimate')
 
   return (
     <div className="min-h-screen bg-cream">

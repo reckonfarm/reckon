@@ -1,6 +1,9 @@
 import type { TrackPoint } from './derive'
 import {
   BOUNDARY_CONFIG,
+  M_PER_LAT,
+  boundaryQualified,
+  distToRing,
   distToSegment,
   meanLat,
   pointInPolygon,
@@ -22,6 +25,13 @@ import {
 // row leaves a short 'gap' hop that was still real cutting, while a transit
 // hop between patches is long and must not paint a swath across the field.
 //
+// SAME BUFFER ON BOTH SIDES of the ratio, deliberately: the denominator is
+// the boundary interior EXTENDED by the same half-header the swath sweeps
+// with, so "field size" and "acres cut" are measured with one ruler and a
+// buffer error largely cancels in the percentage. The percent stays honest
+// while the absolute acreage question (raw 2.29 vs buffered 2.55 vs the
+// operator's 2.3) is still settling — consistency beats precision.
+//
 // The result is approximate by design (GPS scatter ~3.7 m against a 4.9 m
 // header) and is therefore only ever SPOKEN coarsely: nearest 5%, capped at
 // 100. The word for this number is "cut" — never "coverage", which on these
@@ -36,11 +46,19 @@ export const SWEEP_CONFIG = {
 } as const
 
 export interface SweepResult {
-  /** Stepped to the nearest 5, capped at 100. The only number the UI speaks. */
+  /** Stepped to the nearest 5, capped at 100. */
   percentCut: number
+  /** Acres cut — swept raster inside the buffered field. */
   sweptInsideM2: number
+  /** Field size — the boundary interior plus the same half-header buffer. */
   boundaryInsideM2: number
   rawFraction: number
+  /**
+   * Row-merged rectangles of the swept cells, for the map's WORKING mode —
+   * the fill on screen and the percent beside it are literally these cells.
+   * Only populated when requested via withCells.
+   */
+  cells?: { minLat: number; minLng: number; maxLat: number; maxLng: number }[]
 }
 
 // The cutting segments of a track, split wherever a hop is too long to be
@@ -67,15 +85,17 @@ export function sweepRuns(track: TrackPoint[]): TrackPoint[][] {
 /**
  * Swept share of the boundary. endIdx limits the track to [0..endIdx] — the
  * ETA math uses it to ask "how much had swept as of a while ago". Returns null
- * unless the boundary's status is 'ok': a guard-failed boundary must never
- * produce a percentage.
+ * unless the boundary qualified (confirmed or estimate): below the gates,
+ * no percentage exists. withCells additionally returns the row-merged swept
+ * rectangles for rendering.
  */
 export function computeSweep(
   track: TrackPoint[],
   boundary: BoundaryResult,
   endIdx?: number,
+  withCells = false,
 ): SweepResult | null {
-  if (boundary.status !== 'ok' || boundary.polygon == null) return null
+  if (!boundaryQualified(boundary.status) || boundary.polygon == null) return null
   const pts = endIdx != null ? track.slice(0, endIdx + 1) : track
   if (pts.length < 2) return null
 
@@ -94,14 +114,16 @@ export function computeSweep(
   const cols = Math.max(1, Math.ceil((maxX - minX) / cell))
   const rows = Math.max(1, Math.ceil((maxY - minY) / cell))
 
-  // Which cells are inside the field. Cell centers; a 2.5 m quantization error
-  // at the edge is far below the GPS scatter already priced in.
+  // Which cells are inside the FIELD — the ring interior plus the same
+  // half-header buffer the swath sweeps with (see header: one ruler for both
+  // sides of the ratio). Cell centers; a 2.5 m quantization error at the edge
+  // is far below the GPS scatter already priced in.
   const inside = new Uint8Array(cols * rows)
   let boundaryCells = 0
   for (let cy = 0; cy < rows; cy++) {
     for (let cx = 0; cx < cols; cx++) {
       const center: Pt = { x: minX + (cx + 0.5) * cell, y: minY + (cy + 0.5) * cell }
-      if (pointInPolygon(center, ring)) {
+      if (pointInPolygon(center, ring) || distToRing(center, ring) <= r) {
         inside[cy * cols + cx] = 1
         boundaryCells++
       }
@@ -135,6 +157,30 @@ export function computeSweep(
   let sweptInside = 0
   for (let k = 0; k < swept.length; k++) if (swept[k] && inside[k]) sweptInside++
 
+  // Row-merge swept∩inside cells into horizontal strips — a few hundred
+  // rectangles instead of thousands of cells, and still exactly the raster.
+  let cells: SweepResult['cells']
+  if (withCells) {
+    const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+    cells = []
+    for (let cy = 0; cy < rows; cy++) {
+      let runStart = -1
+      for (let cx = 0; cx <= cols; cx++) {
+        const on = cx < cols && swept[cy * cols + cx] === 1 && inside[cy * cols + cx] === 1
+        if (on && runStart === -1) runStart = cx
+        if (!on && runStart !== -1) {
+          cells.push({
+            minLng: (minX + runStart * cell) / mPerLng,
+            maxLng: (minX + cx * cell) / mPerLng,
+            minLat: (minY + cy * cell) / M_PER_LAT,
+            maxLat: (minY + (cy + 1) * cell) / M_PER_LAT,
+          })
+          runStart = -1
+        }
+      }
+    }
+  }
+
   const cellArea = cell * cell
   const rawFraction = sweptInside / boundaryCells
   const stepped = Math.round((rawFraction * 100) / SWEEP_CONFIG.percentStep) * SWEEP_CONFIG.percentStep
@@ -143,5 +189,6 @@ export function computeSweep(
     sweptInsideM2: sweptInside * cellArea,
     boundaryInsideM2: boundaryCells * cellArea,
     rawFraction,
+    ...(cells != null ? { cells } : {}),
   }
 }
