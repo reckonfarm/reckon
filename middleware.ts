@@ -67,8 +67,9 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // Signed-in user opening the app at bare / (the PWA start_url / cold-launch after
-  // a swipe-kill) → send them to their dashboard, which defaults to the News view,
-  // opened to their Home (or most-recent saved) county. Done HERE, not in
+  // a swipe-kill) → send them to /home, the ranch home (2026-08-09 repositioning:
+  // the county tool stays at /dashboard; the signed-in home leads with the
+  // operation's own data and resolves its county silently). Done HERE, not in
   // app/page.tsx, because the middleware holds the refreshed session and can redirect
   // the document request reliably — a Server Component's getUser() can't refresh the
   // rotating auth cookie and would miss exactly this cold-start case. Guards, none to
@@ -77,10 +78,8 @@ export async function middleware(request: NextRequest) {
   // redirects; an explicit /?fips=X share link is preserved). Carries the refreshed
   // auth cookies onto the redirect, exactly as the /dashboard branch below does.
   if (user && request.nextUrl.pathname === '/' && !request.nextUrl.searchParams.has('fips')) {
-    const fips = await resolveDefaultFips(user.id)
     const dest = request.nextUrl.clone()
-    dest.pathname = '/dashboard'
-    if (fips) dest.searchParams.set('fips', fips)
+    dest.pathname = '/home'
     const redirectResponse = NextResponse.redirect(dest)
     supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
     return redirectResponse
