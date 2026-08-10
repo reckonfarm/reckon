@@ -61,7 +61,9 @@ export function fmtEtaMin(min: number): string {
 // push through or come in, the clock answers the real question (before dark?
 // before the rain?) better than a countdown. Rounded to :05, ranch time,
 // no am/pm — nobody wonders which side of noon their own afternoon is on.
-export function fmtDoneAt(nowMs: number, etaMin: number): string {
+// Date.now() defaults here, not in render bodies (react-hooks/purity; same
+// pattern as todayKey and isInProgress).
+export function fmtDoneAt(etaMin: number, nowMs: number = Date.now()): string {
   const step = 5 * 60 * 1000
   const doneMs = Math.round((nowMs + etaMin * 60 * 1000) / step) * step
   return new Date(doneMs).toLocaleTimeString('en-US', {
