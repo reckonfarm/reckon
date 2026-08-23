@@ -1,4 +1,5 @@
 import type { TrackPoint } from './derive'
+import { segmentWorkAreas } from './clusters'
 
 // ─── Field boundary — the largest tied loop in the track ───────────────────────
 //
@@ -132,7 +133,7 @@ function project(track: TrackPoint[]): XY[] {
   return track.map((p, idx) => ({ x: p.lng * mPerLng, y: p.lat * M_PER_LAT, seq: p.seq, idx }))
 }
 
-function shoelaceAbs(pts: XY[]): number {
+function shoelaceAbs(pts: Pt[]): number {
   let s = 0
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i]
@@ -181,20 +182,57 @@ export function distToRing(p: Pt, ring: Pt[]): number {
   return min
 }
 
+// ─── Simple-closed-curve test — a boundary must not cross itself ───────────────
+// A perimeter lap is a simple closed curve. A winding fill path that happens
+// to re-enter its own start radius is NOT — it self-intersects dozens of
+// times, and the shoelace area of a self-intersecting polygon is inflated by
+// its double-wound regions (Aug 23 proved it: a serpentine "loop" claimed
+// 22 raw acres against its own 19-acre convex hull, which is impossible for
+// a simple polygon). So candidate loops must pass this test before they can
+// win: count proper segment crossings among non-adjacent edges, tolerating a
+// couple (GPS scatter can nick a corner); a serpentine fails in the first few
+// comparisons, a real lap — even a long thin strip field — has none.
+function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  const o = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+  const o1 = o(a, b, c)
+  const o2 = o(a, b, d)
+  const o3 = o(c, d, a)
+  const o4 = o(c, d, b)
+  // Proper crossings only: collinear touches (o = 0) are GPS-noise overlaps
+  // on retraced ground, not the winding this test exists to catch.
+  return o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0
+}
+
+export function loopSelfCrossings(loop: Pt[], stopAbove = 2): number {
+  let n = 0
+  for (let i = 0; i < loop.length - 1; i++) {
+    for (let j = i + 2; j < loop.length - 1; j++) {
+      if (i === 0 && j === loop.length - 2) continue // closing edge is adjacent to the first
+      if (segmentsCross(loop[i], loop[i + 1], loop[j], loop[j + 1])) {
+        n++
+        if (n > stopAbove) return n
+      }
+    }
+  }
+  return n
+}
+
+const MAX_LOOP_SELF_CROSSINGS = 2
+
 // Convex hull (monotone chain) — the sanity check the boundary is judged
 // against, never the boundary itself: a hull can't see concave field edges and
 // happily swallows the road between patches.
-export function convexHullAreaM2(track: TrackPoint[]): number | null {
-  if (track.length < 3) return null
-  const pts = project(track)
+export function convexHullAreaM2(points: { lat: number; lng: number }[]): number | null {
+  if (points.length < 3) return null
+  const pts = projectXY(points, meanLat(points))
   const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y)
-  const cross = (o: XY, a: XY, b: XY) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-  const lower: XY[] = []
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: Pt[] = []
   for (const q of p) {
     while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop()
     lower.push(q)
   }
-  const upper: XY[] = []
+  const upper: Pt[] = []
   for (let i = p.length - 1; i >= 0; i--) {
     const q = p[i]
     while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop()
@@ -228,12 +266,13 @@ export function computeFieldBoundary(
   const eps2 = cfg.closureEpsM ** 2
   const leave2 = cfg.leaveMinM ** 2
 
-  // First spatial return per anchor; largest tied loop wins. Every tied loop
-  // above the area floor is kept as a candidate — the second-largest DISTINCT
-  // lap is where loop-to-loop spacing (effective cut width) comes from.
+  // First spatial return per anchor; largest tied SIMPLE loop wins. Every tied
+  // loop above the area floor is kept as a candidate — the second-largest
+  // DISTINCT lap is where loop-to-loop spacing (effective cut width) comes
+  // from. The self-crossing test runs lazily, in descending-area order, so a
+  // field with a clean lap pays for a handful of checks, not hundreds.
   type Cand = { area: number; i: number; j: number; closure: number }
   const candidates: Cand[] = []
-  let best: Cand | null = null
   for (let i = 0; i < pts.length - cfg.minLoopPoints; i++) {
     const anchor = pts[i]
     let left = false
@@ -250,15 +289,18 @@ export function computeFieldBoundary(
           const loop = pts.slice(i, j + 1)
           const area = shoelaceAbs(loop)
           if (area >= cfg.minLoopAreaM2) {
-            const cand = { area, i, j, closure: Math.sqrt(dd) }
-            candidates.push(cand)
-            if (best == null || area > best.area) best = cand
+            candidates.push({ area, i, j, closure: Math.sqrt(dd) })
           }
         }
         break // first return only — a later, larger "return" would be winding
       }
     }
   }
+
+  const isSimple = (c: Cand) =>
+    loopSelfCrossings(pts.slice(c.i, c.j + 1), MAX_LOOP_SELF_CROSSINGS) <= MAX_LOOP_SELF_CROSSINGS
+  candidates.sort((a, b) => b.area - a.area)
+  const best = candidates.find(isSimple) ?? null
 
   if (best == null) return { status: 'no_loop', ...empty }
 
@@ -297,11 +339,11 @@ export function computeFieldBoundary(
   // sitting inside the boundary ring. Its mean gap to the boundary is the
   // operator's real effective cut width. One round → null, honestly.
   let loopSpacingM: number | null = null
-  const inner = candidates
+  const inner = candidates // already sorted descending by area
     .filter(c => (c.i >= best.j || c.j <= best.i) && c.area >= 0.3 * best.area && c.area <= 0.97 * best.area)
-    .sort((a, b) => b.area - a.area)
-    .slice(0, 3)
+    .slice(0, 8)
   for (const c of inner) {
+    if (!isSimple(c)) continue // a lap is a simple curve; serpentines don't measure spacing
     const cRing = pts.slice(c.i, c.j + 1)
     let insideCount = 0
     let distSum = 0
@@ -341,4 +383,40 @@ export function computeFieldBoundary(
   if (explainShare < cfg.explainMinShare) return { status: 'unexplained', ...result }
   if (secondPassShare < cfg.secondPassMinShare) return { status: 'estimate', ...result }
   return { status: 'confirmed', ...result }
+}
+
+// ─── Multi-field: a SEGMENTER, not a suppressor ────────────────────────────────
+//
+// multi_field is a FACT on the job ("this session spans N work areas"), and it
+// used to silence everything. Now it routes: the track splits into per-field
+// segments along the deriver's own cluster rule (lib/jobs/clusters.ts — one
+// algorithm, so the fact and the split can never disagree), and every segment
+// runs the FULL existing pipeline against its own points only. Nothing is
+// loosened: each field faces the same tie, the same explain-share gate, the
+// same second-pass grade. A field whose outside rounds went unrecorded
+// degrades honestly to silence; it never borrows a neighbor's loop.
+
+export interface FieldSegment {
+  /** 1-based, in time order — "Field 1" on screen. */
+  index: number
+  track: TrackPoint[]
+  boundary: BoundaryResult
+}
+
+export function computeFieldBoundaries(track: TrackPoint[], multiField: boolean): FieldSegment[] {
+  if (!multiField) {
+    return [{ index: 1, track, boundary: computeFieldBoundary(track, false) }]
+  }
+  const segments = segmentWorkAreas(track)
+  if (segments.length < 2) {
+    // The deriver stamped multi_field but read-time clustering found one work
+    // area — same algorithm, same data, so this shouldn't happen. Honor the
+    // stored fact and stay silent rather than compute across a road.
+    return [{ index: 1, track, boundary: computeFieldBoundary(track, true) }]
+  }
+  return segments.map((t, i) => ({
+    index: i + 1,
+    track: t,
+    boundary: computeFieldBoundary(t, false),
+  }))
 }

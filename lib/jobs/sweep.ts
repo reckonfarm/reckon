@@ -194,8 +194,22 @@ export interface SweepRender {
   fillRenderedM2: number
   fillRasterM2: number
   fillDivergence: number
-  /** The area-matching shrink actually applied, meters. Capped by
-   *  RENDER_CONFIG.offsetMaxM in the CLI — visible distortion fails loudly. */
+  /** The rendered boundary sits within divergenceCap of its raster — the only
+   *  condition under which the edge may be drawn. */
+  boundaryOk: boolean
+  /** The rendered fill sits within divergenceCap of its raster. When false the
+   *  fill must NOT be drawn — the numbers still come from the raster and still
+   *  show; only the shading goes quiet. This is the honest degrade for work
+   *  patterns the close/hole-physics pipeline can't draw truthfully (spaced
+   *  windrower rows: the width rule erases real uncut strips between passes,
+   *  and no invisible offset can hand that area back). */
+  fillOk: boolean
+  /** The area-matching offset the reconciliation ASKED for, meters. */
+  offsetNeededM: number
+  /** The offset actually applied — by construction never above
+   *  RENDER_CONFIG.offsetMaxM: a correction big enough to visibly distort the
+   *  outline is SKIPPED (never applied silently), leaving the divergence to
+   *  tell the truth and fillOk to suppress the picture. */
   offsetAppliedM: number
   /** Interior holes filled by the physics floor (narrower than a header). */
   holesSuppressed: number
@@ -273,6 +287,7 @@ export function computeSweepRender(
   // distort the outline must fail loudly, never apply silently.
   let finalOuters = smoothOuters
   let finalHoles = smoothHoles.map(h => h.ring)
+  let offsetNeededM = 0
   let offsetAppliedM = 0
   const excess = areaOf(finalOuters, finalHoles) - fillRasterM2
   const totalPerim =
@@ -280,10 +295,17 @@ export function computeSweepRender(
     finalHoles.reduce((s, h) => s + ringPerimeter(h), 0)
   if (totalPerim > 0 && Math.abs(excess) / Math.max(fillRasterM2, 1) > 0.02) {
     const d = Math.abs(excess) / totalPerim
-    const shrink = excess > 0 // too big → shrink fill; too small → grow it
-    finalOuters = finalOuters.map(o => offsetRing(o, d, shrink))
-    finalHoles = finalHoles.map(h => offsetRing(h, d, !shrink))
-    offsetAppliedM = d
+    offsetNeededM = d
+    // Apply only while invisible. A correction past offsetMaxM would visibly
+    // distort the outline to hit the number — skip it and let the divergence
+    // (and fillOk below) suppress the picture instead. Never distort, never
+    // draw a lie: those are the only two branches.
+    if (d <= RENDER_CONFIG.offsetMaxM) {
+      const shrink = excess > 0 // too big → shrink fill; too small → grow it
+      finalOuters = finalOuters.map(o => offsetRing(o, d, shrink))
+      finalHoles = finalHoles.map(h => offsetRing(h, d, !shrink))
+      offsetAppliedM = d
+    }
   }
 
   let fillRenderedM2 = 0
@@ -296,15 +318,21 @@ export function computeSweepRender(
     polys[smoothHoles[i].ownerIdx].holes.push(h.map(toLatLng))
   })
 
+  const boundaryDivergence = Math.abs(boundaryRenderedM2 - boundaryRasterM2) / boundaryRasterM2
+  const fillDivergence = fillRasterM2 > 0 ? Math.abs(fillRenderedM2 - fillRasterM2) / fillRasterM2 : 0
+
   return {
     boundaryRing: boundarySmooth.map(toLatLng),
     fill: polys,
     boundaryRenderedM2,
     boundaryRasterM2,
-    boundaryDivergence: Math.abs(boundaryRenderedM2 - boundaryRasterM2) / boundaryRasterM2,
+    boundaryDivergence,
     fillRenderedM2,
     fillRasterM2,
-    fillDivergence: fillRasterM2 > 0 ? Math.abs(fillRenderedM2 - fillRasterM2) / fillRasterM2 : 0,
+    fillDivergence,
+    boundaryOk: boundaryDivergence <= RENDER_CONFIG.divergenceCap,
+    fillOk: fillDivergence <= RENDER_CONFIG.divergenceCap,
+    offsetNeededM,
     offsetAppliedM,
     holesSuppressed,
   }

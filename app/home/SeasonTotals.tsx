@@ -4,7 +4,7 @@ import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
-import { computeFieldBoundary } from '@/lib/jobs/boundary'
+import { computeFieldBoundaries } from '@/lib/jobs/boundary'
 import { fmtAcres, fmtDay, fmtDuration } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
 
@@ -64,10 +64,15 @@ export default async function SeasonTotals() {
       bales += run.detection_count
     }
     if (j.track.length >= 2) {
-      const boundary = computeFieldBoundary(j.track, j.multi_field)
-      if (boundary.status === 'confirmed' && boundary.acres != null) {
-        acres += boundary.acres
-        fields++
+      // Multi-field sessions segment (same machinery as the job page): each
+      // field's boundary is judged on its own points, and only CONFIRMED
+      // fields join the total — one silent field never blocks its neighbors,
+      // and never rides in on them either.
+      for (const f of computeFieldBoundaries(j.track, j.multi_field)) {
+        if (f.boundary.status === 'confirmed' && f.boundary.acres != null) {
+          acres += f.boundary.acres
+          fields++
+        }
       }
     }
   }

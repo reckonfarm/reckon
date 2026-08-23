@@ -19,7 +19,9 @@
 // Any change to logic or thresholds = bump DERIVER_VERSION and re-derive;
 // jobs are a rebuildable artifact, never source data.
 
-export const DERIVER_VERSION = 'jobs-v1.1.0'
+import { CLUSTER_CONFIG, detectMultiField } from './clusters'
+
+export const DERIVER_VERSION = 'jobs-v1.2.0'
 
 export const DERIVE_CONFIG = {
   // ts_source='server' means the ledger stamped receipt time, not event time —
@@ -43,11 +45,13 @@ export const DERIVE_CONFIG = {
   // Track drawing: a hop is 'solid' ONLY when seq-adjacent and quick — anything
   // else renders dashed. The map must never imply data we don't have.
   solidHopMaxS: 60,
-  // Multi-field detection (grid clustering of positioned points)
-  clusterCellM: 150,
-  clusterMinShare: 0.05,
-  clusterMinPoints: 10,
-  multiFieldMinSeparationM: 400,
+  // Multi-field detection (grid clustering of positioned points) — the
+  // algorithm and these values live in lib/jobs/clusters.ts, shared with the
+  // boundary layer's per-field segmenter so fact and split can never disagree.
+  clusterCellM: CLUSTER_CONFIG.cellM,
+  clusterMinShare: CLUSTER_CONFIG.minShare,
+  clusterMinPoints: CLUSTER_CONFIG.minPoints,
+  multiFieldMinSeparationM: CLUSTER_CONFIG.minSeparationM,
 } as const
 
 export interface RawEventInput {
@@ -99,6 +103,16 @@ export interface DerivedJob {
   stats: {
     cadenceS: number
     positionedCount: number
+    /**
+     * The contiguous run of generated-but-unusable events immediately before
+     * this job's first timed event — received with no fix and no GPS clock
+     * (cold start: fixType=0, unixTime=0, server-stamped), plus any evicted
+     * seqs INSIDE that run. These events can't be timed or placed, so they
+     * fall outside the job span as orphans; this count is the stored fact
+     * that lets the display say "GPS had no fix during the opening rounds
+     * (first N events unpositioned)" instead of guessing.
+     */
+    leadingNoFixCount: number
     mgP50: number | null
     mgP95: number | null
     mgMax: number | null
@@ -130,78 +144,12 @@ function median(xs: number[]): number | null {
   return s[Math.floor(s.length / 2)]
 }
 
-// ─── Multi-field: grid the positioned points, union-find touching cells, and
-// flag when 2+ substantial clusters sit far apart. A transit line between
-// fields is sparse (its cells miss the share floor), so the fields stay
-// separate clusters even though impacts occurred along the road.
-function detectMultiField(points: TrackPoint[], cfg: typeof DERIVE_CONFIG): boolean {
-  if (points.length < 2 * cfg.clusterMinPoints) return false
-  const lat0 = points.reduce((s, p) => s + p.lat, 0) / points.length
-  const mPerLat = 111_132
-  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
-  const cell = cfg.clusterCellM
-
-  const cells = new Map<string, { key: string; count: number; x: number; y: number }>()
-  for (const p of points) {
-    const x = Math.floor((p.lng * mPerLng) / cell)
-    const y = Math.floor((p.lat * mPerLat) / cell)
-    const key = `${x}:${y}`
-    const c = cells.get(key)
-    if (c) c.count++
-    else cells.set(key, { key, count: 1, x, y })
-  }
-
-  // Union-find over 8-neighbor cells
-  const parent = new Map<string, string>()
-  const find = (k: string): string => {
-    let r = k
-    while (parent.get(r) !== r) r = parent.get(r)!
-    parent.set(k, r)
-    return r
-  }
-  for (const k of cells.keys()) parent.set(k, k)
-  for (const c of cells.values()) {
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const nk = `${c.x + dx}:${c.y + dy}`
-        if (nk !== c.key && cells.has(nk)) {
-          const ra = find(c.key)
-          const rb = find(nk)
-          if (ra !== rb) parent.set(ra, rb)
-        }
-      }
-    }
-  }
-
-  const clusters = new Map<string, { count: number; sx: number; sy: number }>()
-  for (const c of cells.values()) {
-    const r = find(c.key)
-    const cl = clusters.get(r) ?? { count: 0, sx: 0, sy: 0 }
-    cl.count += c.count
-    cl.sx += (c.x + 0.5) * cell * c.count
-    cl.sy += (c.y + 0.5) * cell * c.count
-    clusters.set(r, cl)
-  }
-
-  const floor = Math.max(cfg.clusterMinPoints, Math.ceil(points.length * cfg.clusterMinShare))
-  const big = [...clusters.values()].filter(c => c.count >= floor)
-  if (big.length < 2) return false
-  for (let i = 0; i < big.length; i++) {
-    for (let j = i + 1; j < big.length; j++) {
-      const a = big[i]
-      const b = big[j]
-      const d = Math.hypot(a.sx / a.count - b.sx / b.count, a.sy / a.count - b.sy / b.count)
-      if (d >= cfg.multiFieldMinSeparationM) return true
-    }
-  }
-  return false
-}
-
 function buildJob(
   segment: TimedEvent[],
   pauses: JobPause[],
   untimedBySeq: Map<number, RawEventInput>,
   cadenceS: number,
+  leadingNoFixCount: number,
   cfg: typeof DERIVE_CONFIG
 ): DerivedJob {
   const seqStart = segment[0].seq
@@ -256,10 +204,16 @@ function buildJob(
     bbox,
     track,
     pauses,
-    multiField: detectMultiField(track, cfg),
+    multiField: detectMultiField(track, {
+      cellM: cfg.clusterCellM,
+      minShare: cfg.clusterMinShare,
+      minPoints: cfg.clusterMinPoints,
+      minSeparationM: cfg.multiFieldMinSeparationM,
+    }),
     stats: {
       cadenceS,
       positionedCount: track.length,
+      leadingNoFixCount,
       mgP50: quantile(mgs, 0.5),
       mgP95: quantile(mgs, 0.95),
       mgMax: mgs.length ? mgs[mgs.length - 1] : null,
@@ -303,6 +257,29 @@ export function deriveJobs(
   }
   const cadenceS = median(dts) ?? cfg.defaultCadenceS
 
+  // Cold-start census for a job: walk back from its first timed event through
+  // the contiguous run of unusable events — received with neither a credible
+  // device time nor a position (no GPS clock, no fix), tolerating evicted
+  // seqs INSIDE the run. The walk stops at the first usable event (the
+  // previous job's tail, or any positioned/timed stray), and trailing evicted
+  // seqs against that stop don't count — an eviction proves nothing about GPS.
+  const leadingNoFixBefore = (seqStart: number, stopAfterSeq: number): number => {
+    let count = 0
+    let pending = 0
+    for (let s = seqStart - 1; s > stopAfterSeq; s--) {
+      const e = bySeq.get(s)
+      if (e === undefined) {
+        pending++
+        continue
+      }
+      const timedOk = !e.serverTs && e.unixTime >= cfg.minCredibleUnixTime
+      if (timedOk || e.lat != null) break
+      count += pending + 1
+      pending = 0
+    }
+    return count
+  }
+
   // The state machine: walk timed events, classify each gap, split on boundaries.
   const jobs: DerivedJob[] = []
   let segment: TimedEvent[] = []
@@ -310,7 +287,9 @@ export function deriveJobs(
 
   const closeSegment = () => {
     if (segment.length > 0) {
-      jobs.push(buildJob(segment, pauses, untimedBySeq, cadenceS, cfg))
+      const prevSeqEnd = jobs.length > 0 ? jobs[jobs.length - 1].seqEnd : -1
+      const leadingNoFix = leadingNoFixBefore(segment[0].seq, prevSeqEnd)
+      jobs.push(buildJob(segment, pauses, untimedBySeq, cadenceS, leadingNoFix, cfg))
     }
     segment = []
     pauses = []

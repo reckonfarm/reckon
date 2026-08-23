@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen, warning } from '@/lib/brand-colors'
@@ -201,12 +201,14 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
   )
 }
 
-export default function JobMapClient({ track, bbox, mode, bales, boundary, fill }: JobMapProps) {
+export default function JobMapClient({ track, bbox, mode, bales, boundaries, fill }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
   const hasUnverified = (bales ?? []).some(b => b.confidence < BALE_VERIFY_BELOW)
-  // Track defaults ON only when it IS the story: mapping/plain with no pins.
-  // Pins-first jobs and working mode put it behind the toggle.
-  const trackDefaultOn = !hasBales && mode !== 'working'
+  // Track defaults ON only when it IS the story: mapping/plain with no pins —
+  // and working mode whose fill was suppressed (nothing tinted means the rows
+  // themselves are the only picture of cut ground). Pins-first jobs and
+  // shaded working mode put it behind the toggle.
+  const trackDefaultOn = !hasBales && (mode !== 'working' || (fill ?? []).length === 0)
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
   const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(trackDefaultOn))
   const [following, setFollowing] = useState(true)
@@ -295,22 +297,22 @@ export default function JobMapClient({ track, bbox, mode, bales, boundary, fill 
             }}
           />
         ))}
-        {(boundary ?? []).length >= 3 && (
-          <>
+        {(boundaries ?? []).filter(b => b.length >= 3).map((b, i) => (
+          <Fragment key={`edge-${i}`}>
             {style.boundaryCasing && (
               <Polygon
-                positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
+                positions={b.map(p => [p.lat, p.lng] as [number, number])}
                 interactive={false}
                 pathOptions={{ color: style.boundaryCasing, weight: 6, opacity: 0.5, fillOpacity: 0 }}
               />
             )}
             <Polygon
-              positions={(boundary ?? []).map(p => [p.lat, p.lng] as [number, number])}
+              positions={b.map(p => [p.lat, p.lng] as [number, number])}
               interactive={false}
               pathOptions={{ color: style.boundary, weight: 3, opacity: 0.95, fillOpacity: 0 }}
             />
-          </>
-        )}
+          </Fragment>
+        ))}
 
         {showTrack && style.casing && solidRuns.map((r, i) => (
           <Polyline

@@ -36,10 +36,12 @@ export interface JobMapProps {
   // Detected bale positions (slam fixes, truck-length accurate). Only passed
   // when the session is unlabeled or confirmed as a baler.
   bales?: BalePin[]
-  // The drawn field edge — the buffered field mask's smoothed contour
-  // (lib/jobs/sweep.ts computeSweepRender). Only passed when the boundary
-  // qualified; below the gates it is never drawn.
-  boundary?: { lat: number; lng: number }[] | null
+  // The drawn field edges — each entry is one field's buffered-mask smoothed
+  // contour (lib/jobs/sweep.ts computeSweepRender). Only boundaries that
+  // qualified AND held their raster within the divergence cap are passed;
+  // below the gates nothing is drawn. Multi-field jobs pass one ring per
+  // graded field.
+  boundaries?: { lat: number; lng: number }[][]
   // Cut ground: closed + smoothed polygons (holes = the uncut middle),
   // clipped to the field at the raster stage. Cartography, not data — the
   // numbers come from the raster and the divergence guard keeps these honest.

@@ -46,7 +46,8 @@ function printJob(j: DerivedJob, i: number) {
       `  events ${j.eventCount} (${j.timedCount} timed${j.untimedCount ? ` + ${j.untimedCount} untimed` : ''})` +
       `  evicted ${j.evictedCount}` +
       `  coverage ${(j.coverage * 100).toFixed(1)}%` +
-      (j.multiField ? '  [MULTI-FIELD]' : '')
+      (j.multiField ? '  [MULTI-FIELD]' : '') +
+      (j.stats.leadingNoFixCount > 0 ? `  [${j.stats.leadingNoFixCount} no-fix events before first timed]` : '')
   )
   for (const p of j.pauses) {
     const mins = (p.durationS / 60).toFixed(1)

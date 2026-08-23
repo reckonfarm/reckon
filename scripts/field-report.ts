@@ -13,22 +13,39 @@
 // finished jobs (acres-cut should converge on field size; a fully cut field
 // that doesn't close the gap means something's wrong).
 //
+// Multi-field jobs run the SEGMENTER (lib/jobs/boundary.ts
+// computeFieldBoundaries): the track splits into per-field clusters and every
+// field prints its own full block — same guards, same grades, per field.
+//
 // SELF-CHECKING (same doctrine as detect-bales.ts): the known-ground matrix
 // below must hold on the scout's real data, and the process exits nonzero
-// when it doesn't. This script NEVER writes; there is no wet run — boundaries
-// are computed at read time, per job, on purpose.
+// when it doesn't. Two standing tripwires run on EVERY qualified loop, not
+// just the matrix cases:
+//   * hull-exceedance — a simple polygon's area can never exceed its own
+//     convex hull's; if a winner does, the simple-loop filter has a hole.
+//   * render divergence / area-match offset — the picture held against the
+//     numbers (unchanged from the map-visual build).
+// This script NEVER writes; there is no wet run — boundaries are computed at
+// read time, per job, on purpose.
 
 import { loadEnvConfig } from '@next/env'
 loadEnvConfig(process.cwd())
 
 import { createClient } from '@supabase/supabase-js'
-import { computeFieldBoundary, convexHullAreaM2, boundaryQualified, ACRE_M2 } from '../lib/jobs/boundary'
+import {
+  computeFieldBoundaries,
+  convexHullAreaM2,
+  boundaryQualified,
+  ACRE_M2,
+  type BoundaryResult,
+  type BoundaryStatus,
+  type FieldSegment,
+} from '../lib/jobs/boundary'
 import { computeSweep, computeSweepRender } from '../lib/jobs/sweep'
 import { RENDER_CONFIG } from '../lib/jobs/render-geometry'
 import { computeEta } from '../lib/jobs/eta'
 import { isInProgress } from '../lib/jobs/display'
 import type { TrackPoint } from '../lib/jobs/derive'
-import type { BoundaryStatus } from '../lib/jobs/boundary'
 
 // ─── Known ground — the regression matrix ──────────────────────────────────────
 // Aug 10 is the first REAL-GROUND acreage case: onX reference 2.3 ac, loop raw
@@ -36,20 +53,52 @@ import type { BoundaryStatus } from '../lib/jobs/boundary'
 // spacing from future two-round fields settles the buffer question. The
 // buffered range below is deliberately loose (±0.15) so re-derivation jitter
 // doesn't cry wolf; a real algorithm change will blow well past it.
+//
+// Aug 23 is the first SEGMENTED multi-field case (three fields cut, one
+// session). Field 1's outside rounds fell in a GPS cold-start window (first
+// ~188 events unpositioned) — it must stay silent; fields 2 and 3 tie clean
+// simple laps and grade CONFIRMED. Their acre ranges are REGRESSION LOCKS,
+// not acceptance: operator ground truth is pending and joins this matrix
+// when reported.
+type FieldExpectation = {
+  index: number
+  status: BoundaryStatus
+  bufferedAcRange?: [number, number]
+  /** Lock on the render's honesty branch: true = the fill draws within caps;
+   *  false = the fill is suppressed (picture can't match the raster). */
+  fillRendered?: boolean
+}
 const REGRESSION: {
   hardware: string
   seqStart: number
   label: string
-  status: BoundaryStatus
+  multiField?: boolean // assert the deriver's stored fact
+  status?: BoundaryStatus // single-field jobs: the one grade
   bufferedAcRange?: [number, number]
+  fillRendered?: boolean
+  allFieldsSilent?: boolean // multi-field: no segment may show numbers
+  fields?: FieldExpectation[]
 }[] = [
   { hardware: '14c19f3534f0', seqStart: 111, label: 'Aug 5 mosaic — meander must stay silenced', status: 'unexplained' },
-  { hardware: '14c19f3534f0', seqStart: 11005, label: 'Aug 7 rake — multi-field', status: 'multi_field' },
+  { hardware: '14c19f3534f0', seqStart: 11005, label: 'Aug 7 rake — multi-field, every segment silent', multiField: true, allFieldsSilent: true },
   { hardware: '14c19f3534f0', seqStart: 11064, label: 'Aug 8 baling — no perimeter laps', status: 'no_loop' },
   {
     hardware: '14c19f3534f0', seqStart: 11163,
     label: 'Aug 10 small field — one round + partial fill (onX 2.3 / raw 2.29 / buffered 2.55)',
-    status: 'estimate', bufferedAcRange: [2.4, 2.7],
+    status: 'estimate', bufferedAcRange: [2.4, 2.7], fillRendered: true,
+  },
+  {
+    hardware: '14c19f3534f0', seqStart: 11498,
+    label: 'Aug 23 three fields — segmented; field 1 silent (GPS cold start), 2+3 confirmed',
+    multiField: true,
+    // Acre ranges are REGRESSION LOCKS, not acceptance — operator ground truth
+    // pending. fillRendered:false locks the honest-suppression branch: these
+    // fields are cut in spaced rows the render can't yet draw truthfully.
+    fields: [
+      { index: 1, status: 'unexplained' },
+      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: false },
+      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: false },
+    ],
   },
 ]
 
@@ -74,7 +123,7 @@ const ac = (m2: number | null | undefined) => (m2 == null ? '—' : (m2 / ACRE_M
 async function run() {
   let q = db
     .from('jobs')
-    .select('id, hardware_id, started_at, ended_at, seq_start, seq_end, event_count, coverage, multi_field, track')
+    .select('id, hardware_id, started_at, ended_at, seq_start, seq_end, event_count, coverage, multi_field, stats, track')
     .order('seq_start', { ascending: true })
   if (ONLY_HARDWARE) q = q.eq('hardware_id', ONLY_HARDWARE)
   const { data: jobs, error } = await q
@@ -82,99 +131,174 @@ async function run() {
 
   const failures: string[] = []
 
+  // One field's full block — grade, loop, checks, sweep, render tripwires.
+  // `tag` prefixes multi-field output ("field 2 "); single-field jobs pass ''.
+  const reportField = (
+    j: { seq_start: number },
+    inProgress: boolean,
+    f: FieldSegment,
+    tag: string,
+  ) => {
+    const b: BoundaryResult = f.boundary
+    const track = f.track
+    console.log(`  ${tag}grade: ${b.status.toUpperCase()}${tag ? ` (${track.length} pts)` : ''}`)
+    if (b.rawAreaM2 != null) {
+      console.log(
+        `    ${tag}loop  raw ${ac(b.rawAreaM2)} ac · buffered ${ac(b.areaM2)} ac (raw recorded, never displayed)` +
+          ` · perim ${b.perimeterM!.toFixed(0)} m · tie ${b.closureDistM!.toFixed(1)} m` +
+          ` · seq ${b.loopSeqStart}→${b.loopSeqEnd}`
+      )
+      console.log(
+        `    ${tag}checks  explains ${(b.explainShare! * 100).toFixed(0)}% of track (gate)` +
+          ` · second-pass ${(b.secondPassShare! * 100).toFixed(0)}% (grade)`
+      )
+      console.log(
+        b.loopSpacingM != null
+          ? `    ${tag}spacing  ${b.loopSpacingM.toFixed(1)} m loop-to-loop — effective cut width (header is 4.9)`
+          : `    ${tag}spacing  — (no second concentric lap; one round or fill-only corroboration)`
+      )
+      // Standing tripwire: a simple polygon can never out-measure its own
+      // convex hull. If a winner does, the simple-loop filter has a hole and
+      // an inflated serpentine is posing as a boundary.
+      const loopHull = b.polygon != null ? convexHullAreaM2(b.polygon) : null
+      if (loopHull != null && b.rawAreaM2 > loopHull * 1.02) {
+        failures.push(
+          `seq ${j.seq_start}${tag ? ` ${tag.trim()}` : ''}: loop raw ${ac(b.rawAreaM2)} ac EXCEEDS its own hull ${ac(loopHull)} ac — self-intersecting winner`
+        )
+      }
+    }
+    console.log(`    ${tag}hull  ${ac(convexHullAreaM2(track))} ac (sanity — swallows concavities and roads)`)
+
+    if (!boundaryQualified(b.status)) return null
+
+    const sweep = computeSweep(track, b)
+    if (sweep == null) return null
+    console.log(
+      `    ${tag}field ${ac(sweep.boundaryInsideM2)} ac (buffered raster) · cut ${ac(sweep.sweptInsideM2)} ac` +
+        ` · ${sweep.percentCut}% (raw ${(sweep.rawFraction * 100).toFixed(1)}%)`
+    )
+    if (!inProgress) {
+      // The free self-check: a finished, fully cut field should close this.
+      const gapM2 = sweep.boundaryInsideM2 - sweep.sweptInsideM2
+      console.log(
+        `    ${tag}completion gap  ${ac(gapM2)} ac unswept (${(100 - sweep.rawFraction * 100).toFixed(1)}%)` +
+          ` — should approach zero on a field cut to the fence`
+      )
+    }
+    const lastMs = track[track.length - 1].t * 1000 + 1000
+    const eta = computeEta(track, b, lastMs)
+    console.log(`    ${tag}eta   ${eta.minutes != null ? `~${eta.minutes} min left` : 'hidden'} (as-if-live)`)
+
+    // The picture held against the number: rendered polygon areas must sit
+    // within RENDER_CONFIG.divergenceCap of their raster sources, or the
+    // smoothing is lying and this build fails.
+    const render = computeSweepRender(track, b)
+    if (render != null) {
+      console.log(
+        `    ${tag}render  boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off raster` +
+          ` (${ac(render.boundaryRenderedM2)} vs ${ac(render.boundaryRasterM2)} ac)` +
+          ` · fill ${(render.fillDivergence * 100).toFixed(1)}% off raster` +
+          ` (${ac(render.fillRenderedM2)} vs ${ac(render.fillRasterM2)} ac)` +
+          ` · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%`
+      )
+      console.log(
+        `    ${tag}render  area-match offset applied ${render.offsetAppliedM.toFixed(2)} m` +
+          (render.offsetNeededM > render.offsetAppliedM
+            ? ` (asked for ${render.offsetNeededM.toFixed(2)} m — over the ${RENDER_CONFIG.offsetMaxM} m visibility cap, SKIPPED)`
+            : ` (cap ${RENDER_CONFIG.offsetMaxM} m ≈ half the GPS scatter)`) +
+          ` · ${render.holesSuppressed} false hole${render.holesSuppressed === 1 ? '' : 's'} filled (physics floor ${RENDER_CONFIG.holeMinM2} m²)`
+      )
+      if (!render.fillOk) {
+        console.log(
+          `    ${tag}render  FILL SUPPRESSED — the picture can't match the raster within ${RENDER_CONFIG.divergenceCap * 100}%` +
+            ` (spaced rows: the hole width rule erases real uncut strips). Numbers unaffected; shading not drawn.`
+        )
+      }
+      const where = `seq ${j.seq_start}${tag ? ` ${tag.trim()}` : ''}`
+      if (render.boundaryDivergence > RENDER_CONFIG.divergenceCap) {
+        failures.push(`${where}: rendered boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
+      }
+      // Invariant tripwire: the offset is applied only under the cap, so an
+      // applied value above it means the never-distort branch has a hole.
+      if (render.offsetAppliedM > RENDER_CONFIG.offsetMaxM) {
+        failures.push(`${where}: area-match offset ${render.offsetAppliedM.toFixed(2)} m APPLIED past the ${RENDER_CONFIG.offsetMaxM} m cap — the never-distort invariant is broken`)
+      }
+    }
+    return render
+  }
+
   for (const j of jobs ?? []) {
     const track = (j.track ?? []) as TrackPoint[]
+    const leadingNoFix = (j.stats as { leadingNoFixCount?: number } | null)?.leadingNoFixCount ?? null
     console.log(
       `\n${j.hardware_id} seq ${j.seq_start}–${j.seq_end} · ${denver(j.started_at)} → ${denver(j.ended_at)} MT` +
         ` · ${j.event_count} events · data received ${(j.coverage * 100).toFixed(0)}%` +
-        (j.multi_field ? ' · MULTI-FIELD' : '')
+        (j.multi_field ? ' · MULTI-FIELD' : '') +
+        (leadingNoFix != null && leadingNoFix > 0 ? ` · ${leadingNoFix} no-fix events before first timed` : '')
     )
     if (track.length < 2) {
       console.log('  (no track)')
       continue
     }
 
-    const b = computeFieldBoundary(track, j.multi_field)
-    const hullM2 = convexHullAreaM2(track)
-
-    console.log(`  grade: ${b.status.toUpperCase()}`)
-    if (b.rawAreaM2 != null) {
-      console.log(
-        `    loop  raw ${ac(b.rawAreaM2)} ac · buffered ${ac(b.areaM2)} ac (raw recorded, never displayed)` +
-          ` · perim ${b.perimeterM!.toFixed(0)} m · tie ${b.closureDistM!.toFixed(1)} m` +
-          ` · seq ${b.loopSeqStart}→${b.loopSeqEnd}`
-      )
-      console.log(
-        `    checks  explains ${(b.explainShare! * 100).toFixed(0)}% of track (gate)` +
-          ` · second-pass ${(b.secondPassShare! * 100).toFixed(0)}% (grade)`
-      )
-      console.log(
-        b.loopSpacingM != null
-          ? `    spacing  ${b.loopSpacingM.toFixed(1)} m loop-to-loop — effective cut width (header is 4.9)`
-          : '    spacing  — (no second concentric lap; one round or fill-only corroboration)'
-      )
-    }
-    console.log(`    hull  ${ac(hullM2)} ac (sanity — swallows concavities and roads)`)
-
-    const sweep = computeSweep(track, b)
-    if (sweep != null) {
-      console.log(
-        `    field ${ac(sweep.boundaryInsideM2)} ac (buffered raster) · cut ${ac(sweep.sweptInsideM2)} ac` +
-          ` · ${sweep.percentCut}% (raw ${(sweep.rawFraction * 100).toFixed(1)}%)`
-      )
-      if (!isInProgress(j)) {
-        // The free self-check: a finished, fully cut field should close this.
-        const gapM2 = sweep.boundaryInsideM2 - sweep.sweptInsideM2
-        console.log(
-          `    completion gap  ${ac(gapM2)} ac unswept (${(100 - sweep.rawFraction * 100).toFixed(1)}%)` +
-            ` — should approach zero on a field cut to the fence`
-        )
-      }
-      const lastMs = track[track.length - 1].t * 1000 + 1000
-      const eta = computeEta(track, b, lastMs)
-      console.log(`    eta   ${eta.minutes != null ? `~${eta.minutes} min left` : 'hidden'} (as-if-live)`)
-
-      // The picture held against the number: rendered polygon areas must sit
-      // within RENDER_CONFIG.divergenceCap of their raster sources, or the
-      // smoothing is lying and this build fails.
-      const render = computeSweepRender(track, b)
-      if (render != null) {
-        console.log(
-          `    render  boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off raster` +
-            ` (${ac(render.boundaryRenderedM2)} vs ${ac(render.boundaryRasterM2)} ac)` +
-            ` · fill ${(render.fillDivergence * 100).toFixed(1)}% off raster` +
-            ` (${ac(render.fillRenderedM2)} vs ${ac(render.fillRasterM2)} ac)` +
-            ` · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%`
-        )
-        console.log(
-          `    render  area-match offset ${render.offsetAppliedM.toFixed(2)} m` +
-            ` (flag at ${RENDER_CONFIG.offsetMaxM} m ≈ half the GPS scatter)` +
-            ` · ${render.holesSuppressed} false hole${render.holesSuppressed === 1 ? '' : 's'} filled (physics floor ${RENDER_CONFIG.holeMinM2} m²)`
-        )
-        if (render.boundaryDivergence > RENDER_CONFIG.divergenceCap) {
-          failures.push(`seq ${j.seq_start}: rendered boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
-        }
-        if (render.fillDivergence > RENDER_CONFIG.divergenceCap) {
-          failures.push(`seq ${j.seq_start}: rendered fill ${(render.fillDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
-        }
-        if (render.offsetAppliedM > RENDER_CONFIG.offsetMaxM) {
-          failures.push(`seq ${j.seq_start}: area-match offset ${render.offsetAppliedM.toFixed(2)} m exceeds ${RENDER_CONFIG.offsetMaxM} m — the outline is being visibly distorted to hit the number`)
-        }
-      }
+    const fields = computeFieldBoundaries(track, j.multi_field)
+    const segmented = j.multi_field && fields.length >= 2
+    const inProgress = isInProgress(j)
+    const renders = new Map<number, ReturnType<typeof computeSweepRender>>()
+    if (segmented) {
+      console.log(`  ${fields.length} work areas — full pipeline per field:`)
+      for (const f of fields) renders.set(f.index, reportField(j, inProgress, f, `field ${f.index} `))
+    } else {
+      renders.set(1, reportField(j, inProgress, fields[0], ''))
     }
 
     // Regression assertions
     const exp = REGRESSION.find(r => r.hardware === j.hardware_id && r.seqStart === j.seq_start)
     if (exp) {
-      if (b.status !== exp.status) {
-        failures.push(`${exp.label}: expected ${exp.status.toUpperCase()}, got ${b.status.toUpperCase()}`)
+      if (exp.multiField != null && j.multi_field !== exp.multiField) {
+        failures.push(`${exp.label}: expected multi_field=${exp.multiField}, got ${j.multi_field}`)
       }
-      if (exp.bufferedAcRange && boundaryQualified(b.status)) {
-        const acres = b.areaM2! / ACRE_M2
-        if (acres < exp.bufferedAcRange[0] || acres > exp.bufferedAcRange[1]) {
-          failures.push(
-            `${exp.label}: buffered ${acres.toFixed(2)} ac outside [${exp.bufferedAcRange.join(', ')}]`
-          )
+      if (exp.status != null) {
+        const b = fields[0].boundary
+        if (fields.length !== 1) {
+          failures.push(`${exp.label}: expected a single field, got ${fields.length}`)
+        } else if (b.status !== exp.status) {
+          failures.push(`${exp.label}: expected ${exp.status.toUpperCase()}, got ${b.status.toUpperCase()}`)
+        } else if (exp.bufferedAcRange && boundaryQualified(b.status)) {
+          const acres = b.areaM2! / ACRE_M2
+          if (acres < exp.bufferedAcRange[0] || acres > exp.bufferedAcRange[1]) {
+            failures.push(`${exp.label}: buffered ${acres.toFixed(2)} ac outside [${exp.bufferedAcRange.join(', ')}]`)
+          }
+        }
+        if (exp.fillRendered != null && (renders.get(1)?.fillOk ?? false) !== exp.fillRendered) {
+          failures.push(`${exp.label}: expected fill ${exp.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+        }
+      }
+      if (exp.allFieldsSilent) {
+        for (const f of fields) {
+          if (boundaryQualified(f.boundary.status)) {
+            failures.push(`${exp.label}: field ${f.index} shows numbers (${f.boundary.status.toUpperCase()}) — must be silent`)
+          }
+        }
+      }
+      if (exp.fields) {
+        if (fields.length !== exp.fields.length) {
+          failures.push(`${exp.label}: expected ${exp.fields.length} fields, got ${fields.length}`)
+        } else {
+          for (const fe of exp.fields) {
+            const f = fields.find(x => x.index === fe.index)!
+            if (f.boundary.status !== fe.status) {
+              failures.push(`${exp.label}: field ${fe.index} expected ${fe.status.toUpperCase()}, got ${f.boundary.status.toUpperCase()}`)
+            } else if (fe.bufferedAcRange && boundaryQualified(f.boundary.status)) {
+              const acres = f.boundary.areaM2! / ACRE_M2
+              if (acres < fe.bufferedAcRange[0] || acres > fe.bufferedAcRange[1]) {
+                failures.push(`${exp.label}: field ${fe.index} buffered ${acres.toFixed(2)} ac outside [${fe.bufferedAcRange.join(', ')}]`)
+              }
+            }
+            if (fe.fillRendered != null && (renders.get(fe.index)?.fillOk ?? false) !== fe.fillRendered) {
+              failures.push(`${exp.label}: field ${fe.index} expected fill ${fe.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+            }
+          }
         }
       }
     }
