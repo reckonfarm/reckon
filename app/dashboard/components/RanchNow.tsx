@@ -6,7 +6,7 @@ import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
-import { computeFieldBoundary, boundaryQualified } from '@/lib/jobs/boundary'
+import { computeFieldBoundaries, boundaryQualified } from '@/lib/jobs/boundary'
 import { computeSweep } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { dayKey, todayKey, fmtDoneAt, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
@@ -61,17 +61,32 @@ async function headlineFor(
   // here so a baling day never pays for the jsonb column it won't use.
   // Grades mirror the job page (never more confident than the detail): the
   // estimate grade speaks its caveat and drops the ETA — a finish time built
-  // on an unconfirmed boundary is not a glanceable promise.
+  // on an unconfirmed boundary is not a glanceable promise. A multi-field
+  // session segments (same machinery as the job page) and the card speaks for
+  // the field the machine is IN — the one holding the track's last point —
+  // named so the number can't be read as the whole session's.
   const { data } = await supabase.from('jobs').select('track').eq('id', job.id).maybeSingle()
   const track = (data?.track ?? []) as TrackPoint[]
   if (track.length >= 2) {
-    const boundary = computeFieldBoundary(track, job.multi_field)
-    if (boundaryQualified(boundary.status)) {
-      const sweep = computeSweep(track, boundary)
+    const fields = computeFieldBoundaries(track, job.multi_field)
+    const segmented = job.multi_field && fields.length >= 2
+    const lastSeq = track[track.length - 1].seq
+    const f = segmented
+      ? fields.find(x => x.track.length > 0 && x.track[x.track.length - 1].seq === lastSeq) ?? null
+      : fields[0] ?? null
+    if (f != null && boundaryQualified(f.boundary.status)) {
+      const sweep = computeSweep(f.track, f.boundary)
       if (sweep != null) {
-        if (boundary.status === 'estimate') return `About ${sweep.percentCut}% cut · unconfirmed boundary`
-        const eta = computeEta(track, boundary).minutes
-        return `About ${sweep.percentCut}% cut${eta != null ? ` · done ~${fmtDoneAt(eta)}` : ''}`
+        // Floor-honest: an undersampled sweep says "at least", never "about",
+        // and gets no done-clock — an ETA built on an undercounted cut can
+        // only ever read too long.
+        const qual = sweep.sweepIsFloor ? 'at least' : 'about'
+        const lead = segmented
+          ? `Field ${f.index}: ${qual}`
+          : qual.charAt(0).toUpperCase() + qual.slice(1)
+        if (f.boundary.status === 'estimate') return `${lead} ${sweep.percentCut}% cut · unconfirmed boundary`
+        const eta = sweep.sweepIsFloor ? null : computeEta(f.track, f.boundary).minutes
+        return `${lead} ${sweep.percentCut}% cut${eta != null ? ` · done ~${fmtDoneAt(eta)}` : ''}`
       }
     }
   }

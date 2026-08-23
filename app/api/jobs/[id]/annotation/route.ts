@@ -70,6 +70,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     update.actual_acres = v === null ? null : Math.round(v * 10) / 10
   }
+  // Per-field completion (040) — { field_cut: { index, status } }, where
+  // status is 'cut' | 'dismissed' | null (null clears). Read-modify-write on
+  // the jsonb map so marking field 3 never clobbers field 2's mark.
+  if ('field_cut' in body) {
+    const fc = body.field_cut
+    const validIndex = fc != null && typeof fc.index === 'number' && Number.isInteger(fc.index) && fc.index >= 1 && fc.index <= 50
+    const validStatus = fc != null && (fc.status === 'cut' || fc.status === 'dismissed' || fc.status === null)
+    if (!validIndex || !validStatus) {
+      return NextResponse.json({ error: 'field_cut must be { index: 1–50, status: "cut" | "dismissed" | null }' }, { status: 400 })
+    }
+    const { data: existing } = await supabase
+      .from('job_annotations')
+      .select('fields_cut')
+      .eq('job_id', job.id)
+      .maybeSingle()
+    const map: Record<string, unknown> =
+      existing?.fields_cut != null && typeof existing.fields_cut === 'object'
+        ? { ...(existing.fields_cut as Record<string, unknown>) }
+        : {}
+    if (fc.status === null) delete map[String(fc.index)]
+    else map[String(fc.index)] = fc.status
+    update.fields_cut = map
+  }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }

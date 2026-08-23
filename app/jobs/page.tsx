@@ -13,6 +13,8 @@ import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
 import { dayKey, todayKey, fmtDay, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
+import { computeFieldBoundaries } from '@/lib/jobs/boundary'
+import type { TrackPoint } from '@/lib/jobs/derive'
 
 // ─── /jobs — the work-session ledger (P1's face) ───────────────────────────────
 // One card per derived job: when, how long, how many impacts, and — always —
@@ -79,6 +81,32 @@ export default async function JobsPage({
     if (machine === BALE_MACHINE) return plural(run.detection_count, 'bale')
     if (machine == null) return `${plural(run.detection_count, 'gate slam')} — baling?`
     return null // labeled as another machine: the label wins on the list
+  }
+
+  // Multi-field rows say what their fields earned ("3 fields · 2 confirmed"),
+  // not just that a road was crossed. That needs the track jsonb — fetched in
+  // a second query for ONLY the multi-field rows (rare), so the list never
+  // pays for the column it mostly doesn't use. Grades come from the same
+  // segmenter the detail page runs; the count speaks only CONFIRMED fields —
+  // an estimate keeps its caveat on the detail page, never in a summary.
+  const multiIds = jobs.filter(j => j.multi_field).map(j => j.id)
+  const fieldSummaries = new Map<string, string>()
+  if (multiIds.length > 0) {
+    const { data: trackRows } = await supabase
+      .from('jobs')
+      .select('id, track')
+      .in('id', multiIds)
+    for (const row of trackRows ?? []) {
+      const track = (row.track ?? []) as TrackPoint[]
+      if (track.length < 2) continue
+      const fields = computeFieldBoundaries(track, true)
+      if (fields.length < 2) continue
+      const confirmed = fields.filter(f => f.boundary.status === 'confirmed').length
+      fieldSummaries.set(
+        row.id as string,
+        `${fields.length} fields${confirmed > 0 ? ` · ${confirmed} confirmed` : ''}`
+      )
+    }
   }
 
   // Liveness: real devices only (bench convention: 'bench-' prefix stays out
@@ -190,7 +218,9 @@ export default async function JobsPage({
                               {j.multi_field && (
                                 <>
                                   <span className="text-forest-green/25"> · </span>
-                                  <span className="font-semibold text-warning">Multi-field</span>
+                                  <span className="font-semibold text-forest-green/70">
+                                    {fieldSummaries.get(j.id) ?? 'Multi-field'}
+                                  </span>
                                 </>
                               )}
                             </p>
