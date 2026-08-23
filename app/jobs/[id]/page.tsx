@@ -112,6 +112,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const fields = job.track.length >= 2 ? computeFieldBoundaries(job.track, job.multi_field) : []
   const segmented = job.multi_field && fields.length >= 2
   const lastSeq = job.track.length > 0 ? job.track[job.track.length - 1].seq : null
+  // Done is done: a CONFIRMED field the machine has left, whose sweep reads
+  // essentially complete, fills as the whole boundary polygon — stripes on
+  // finished ground are sampling artifacts, not information. The percent gate
+  // doubles as the honesty gate: while the sweep undercounts a work pattern
+  // (impact-triggered sampling on smooth fast ground reads fully-cut fields
+  // low — Aug 23), no field reaches it and nothing gets masked. Live/active
+  // fields never take this branch.
+  const DONE_FILL_MIN_PERCENT = 90
   const fieldViews = fields.map(f => {
     const fQualified = boundaryQualified(f.boundary.status)
     const fSweep = fQualified ? computeSweep(f.track, f.boundary) : null
@@ -124,7 +132,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     const active = f.track.length > 0 && f.track[f.track.length - 1].seq === lastSeq
     const fEta =
       fSweep != null && (!segmented || active) ? computeEta(f.track, f.boundary).minutes : null
-    return { ...f, qualified: fQualified, sweep: fSweep, render: fRender, active, etaMinutes: fEta }
+    const doneFill =
+      f.boundary.status === 'confirmed' &&
+      fSweep != null && fSweep.percentCut >= DONE_FILL_MIN_PERCENT &&
+      !(live && active) &&
+      fRender != null && fRender.boundaryOk
+    return { ...f, qualified: fQualified, sweep: fSweep, render: fRender, active, etaMinutes: fEta, doneFill }
   })
 
   // The single-field view keeps its existing shape; segmented pages use
@@ -157,10 +170,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const drawnBoundaries = fieldViews
     .filter(f => f.render != null && f.render.boundaryOk)
     .map(f => f.render!.boundaryRing)
-  const drawnFill = fieldViews
-    .filter(f => f.render != null && f.render.fillOk)
-    .flatMap(f => f.render!.fill)
-  const fillSuppressedCount = fieldViews.filter(f => f.render != null && !f.render.fillOk).length
+  const drawnFill = fieldViews.flatMap(f => {
+    if (f.render == null) return []
+    if (f.doneFill) return [{ outer: f.render.boundaryRing, holes: [] }]
+    return f.render.fillOk ? f.render.fill : []
+  })
+  const fillSuppressedCount = fieldViews.filter(
+    f => f.render != null && !f.render.fillOk && !f.doneFill
+  ).length
   const anySweep = fieldViews.some(f => f.sweep != null)
 
   return (
