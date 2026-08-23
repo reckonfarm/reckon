@@ -41,7 +41,7 @@ import {
   type BoundaryStatus,
   type FieldSegment,
 } from '../lib/jobs/boundary'
-import { computeSweep, computeSweepRender } from '../lib/jobs/sweep'
+import { computeSweep, computeSweepRender, SWEEP_CONFIG } from '../lib/jobs/sweep'
 import { RENDER_CONFIG } from '../lib/jobs/render-geometry'
 import { computeEta } from '../lib/jobs/eta'
 import { isInProgress } from '../lib/jobs/display'
@@ -67,6 +67,11 @@ type FieldExpectation = {
   /** Lock on the render's honesty branch: true = the fill draws within caps;
    *  false = the fill is suppressed (picture can't match the raster). */
   fillRendered?: boolean
+  /** Lock on the raw swept fraction, in percent — set after the dt hop rule
+   *  (cutting = dt ≤ 60 s, not d ≤ 25 m) landed. */
+  sweptPctRange?: [number, number]
+  /** Lock on floor detection: true = undersampled, displays say "at least". */
+  sweepFloor?: boolean
 }
 const REGRESSION: {
   hardware: string
@@ -76,6 +81,8 @@ const REGRESSION: {
   status?: BoundaryStatus // single-field jobs: the one grade
   bufferedAcRange?: [number, number]
   fillRendered?: boolean
+  sweptPctRange?: [number, number]
+  sweepFloor?: boolean
   allFieldsSilent?: boolean // multi-field: no segment may show numbers
   fields?: FieldExpectation[]
 }[] = [
@@ -86,6 +93,9 @@ const REGRESSION: {
     hardware: '14c19f3534f0', seqStart: 11163,
     label: 'Aug 10 small field — one round + partial fill (onX 2.3 / raw 2.29 / buffered 2.55)',
     status: 'estimate', bufferedAcRange: [2.4, 2.7], fillRendered: true,
+    // Dense impact sampling (long-hop share ~2%) — the dt hop rule barely
+    // moves it (34.9 → 36.4% raw) and it must NEVER flag as a floor.
+    sweptPctRange: [30, 42], sweepFloor: false,
   },
   {
     hardware: '14c19f3534f0', seqStart: 11498,
@@ -94,10 +104,13 @@ const REGRESSION: {
     // Acre ranges are REGRESSION LOCKS, not acceptance — operator ground truth
     // pending. fillRendered:false locks the honest-suppression branch: these
     // fields are cut in spaced rows the render can't yet draw truthfully.
+    // Swept locks are post-dt-rule values; both fields are FULLY CUT per the
+    // operator, so both must flag sweepFloor (long-hop shares 21–24% — the
+    // sensor outran its sampling) and their percents display as "at least".
     fields: [
       { index: 1, status: 'unexplained' },
-      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: false },
-      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: false },
+      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: false, sweptPctRange: [58, 70], sweepFloor: true },
+      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: false, sweptPctRange: [70, 80], sweepFloor: true },
     ],
   },
 ]
@@ -177,6 +190,10 @@ async function run() {
       `    ${tag}field ${ac(sweep.boundaryInsideM2)} ac (buffered raster) · cut ${ac(sweep.sweptInsideM2)} ac` +
         ` · ${sweep.percentCut}% (raw ${(sweep.rawFraction * 100).toFixed(1)}%)`
     )
+    console.log(
+      `    ${tag}floor  ${sweep.sweepIsFloor ? 'YES — sweep is a lower bound, displays say "at least"' : 'no — well-sampled, displays say "about"'}` +
+        ` (long-hop share ${(sweep.longHopShare * 100).toFixed(1)}% vs threshold ${(SWEEP_CONFIG.floorShareThreshold * 100).toFixed(0)}%)`
+    )
     if (!inProgress) {
       // The free self-check: a finished, fully cut field should close this.
       const gapM2 = sweep.boundaryInsideM2 - sweep.sweptInsideM2
@@ -224,7 +241,7 @@ async function run() {
         failures.push(`${where}: area-match offset ${render.offsetAppliedM.toFixed(2)} m APPLIED past the ${RENDER_CONFIG.offsetMaxM} m cap — the never-distort invariant is broken`)
       }
     }
-    return render
+    return { render, sweep }
   }
 
   for (const j of jobs ?? []) {
@@ -244,12 +261,12 @@ async function run() {
     const fields = computeFieldBoundaries(track, j.multi_field)
     const segmented = j.multi_field && fields.length >= 2
     const inProgress = isInProgress(j)
-    const renders = new Map<number, ReturnType<typeof computeSweepRender>>()
+    const results = new Map<number, { render: ReturnType<typeof computeSweepRender>; sweep: NonNullable<ReturnType<typeof computeSweep>> } | null>()
     if (segmented) {
       console.log(`  ${fields.length} work areas — full pipeline per field:`)
-      for (const f of fields) renders.set(f.index, reportField(j, inProgress, f, `field ${f.index} `))
+      for (const f of fields) results.set(f.index, reportField(j, inProgress, f, `field ${f.index} `))
     } else {
-      renders.set(1, reportField(j, inProgress, fields[0], ''))
+      results.set(1, reportField(j, inProgress, fields[0], ''))
     }
 
     // Regression assertions
@@ -270,8 +287,18 @@ async function run() {
             failures.push(`${exp.label}: buffered ${acres.toFixed(2)} ac outside [${exp.bufferedAcRange.join(', ')}]`)
           }
         }
-        if (exp.fillRendered != null && (renders.get(1)?.fillOk ?? false) !== exp.fillRendered) {
+        if (exp.fillRendered != null && (results.get(1)?.render?.fillOk ?? false) !== exp.fillRendered) {
           failures.push(`${exp.label}: expected fill ${exp.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+        }
+        const s1 = results.get(1)?.sweep
+        if (exp.sweptPctRange) {
+          const pct = s1 != null ? s1.rawFraction * 100 : null
+          if (pct == null || pct < exp.sweptPctRange[0] || pct > exp.sweptPctRange[1]) {
+            failures.push(`${exp.label}: swept ${pct?.toFixed(1) ?? '—'}% outside [${exp.sweptPctRange.join(', ')}]`)
+          }
+        }
+        if (exp.sweepFloor != null && (s1?.sweepIsFloor ?? false) !== exp.sweepFloor) {
+          failures.push(`${exp.label}: expected sweepFloor=${exp.sweepFloor}, got ${s1?.sweepIsFloor ?? 'no sweep'}`)
         }
       }
       if (exp.allFieldsSilent) {
@@ -295,8 +322,18 @@ async function run() {
                 failures.push(`${exp.label}: field ${fe.index} buffered ${acres.toFixed(2)} ac outside [${fe.bufferedAcRange.join(', ')}]`)
               }
             }
-            if (fe.fillRendered != null && (renders.get(fe.index)?.fillOk ?? false) !== fe.fillRendered) {
+            if (fe.fillRendered != null && (results.get(fe.index)?.render?.fillOk ?? false) !== fe.fillRendered) {
               failures.push(`${exp.label}: field ${fe.index} expected fill ${fe.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+            }
+            const fs = results.get(fe.index)?.sweep
+            if (fe.sweptPctRange) {
+              const pct = fs != null ? fs.rawFraction * 100 : null
+              if (pct == null || pct < fe.sweptPctRange[0] || pct > fe.sweptPctRange[1]) {
+                failures.push(`${exp.label}: field ${fe.index} swept ${pct?.toFixed(1) ?? '—'}% outside [${fe.sweptPctRange.join(', ')}]`)
+              }
+            }
+            if (fe.sweepFloor != null && (fs?.sweepIsFloor ?? false) !== fe.sweepFloor) {
+              failures.push(`${exp.label}: field ${fe.index} expected sweepFloor=${fe.sweepFloor}, got ${fs?.sweepIsFloor ?? 'no sweep'}`)
             }
           }
         }

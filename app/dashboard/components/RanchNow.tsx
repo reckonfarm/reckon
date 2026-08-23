@@ -77,9 +77,15 @@ async function headlineFor(
     if (f != null && boundaryQualified(f.boundary.status)) {
       const sweep = computeSweep(f.track, f.boundary)
       if (sweep != null) {
-        const lead = segmented ? `Field ${f.index}: about` : 'About'
+        // Floor-honest: an undersampled sweep says "at least", never "about",
+        // and gets no done-clock — an ETA built on an undercounted cut can
+        // only ever read too long.
+        const qual = sweep.sweepIsFloor ? 'at least' : 'about'
+        const lead = segmented
+          ? `Field ${f.index}: ${qual}`
+          : qual.charAt(0).toUpperCase() + qual.slice(1)
         if (f.boundary.status === 'estimate') return `${lead} ${sweep.percentCut}% cut · unconfirmed boundary`
-        const eta = computeEta(f.track, f.boundary).minutes
+        const eta = sweep.sweepIsFloor ? null : computeEta(f.track, f.boundary).minutes
         return `${lead} ${sweep.percentCut}% cut${eta != null ? ` · done ~${fmtDoneAt(eta)}` : ''}`
       }
     }

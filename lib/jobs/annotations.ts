@@ -28,6 +28,36 @@ export async function fetchAnnotations(
   return new Map((data ?? []).map(a => [a.job_id, a as JobAnnotation]))
 }
 
+// Per-field completion (040): fields_cut jsonb on the same annotation row —
+// { "<field index>": "cut" | "dismissed" }. The operator's word that a field
+// is finished, proposed by the system and confirmed with one tap; it survives
+// re-derivation exactly like every other annotation (field indexes are
+// deterministic: time-ordered clusters of the same track). Fetched separately
+// and TOLERANTLY — before 040 is applied the column doesn't exist, and the
+// completion feature simply stays invisible rather than breaking the page.
+export type FieldCutStatus = 'cut' | 'dismissed'
+
+export async function fetchFieldsCut(
+  supabase: SupabaseClient,
+  jobId: string,
+): Promise<Record<string, FieldCutStatus>> {
+  try {
+    const { data, error } = await supabase
+      .from('job_annotations')
+      .select('fields_cut')
+      .eq('job_id', jobId)
+      .maybeSingle()
+    if (error || data?.fields_cut == null || typeof data.fields_cut !== 'object') return {}
+    const out: Record<string, FieldCutStatus> = {}
+    for (const [k, v] of Object.entries(data.fields_cut as Record<string, unknown>)) {
+      if (v === 'cut' || v === 'dismissed') out[k] = v
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
 // Suggested names — tappable chips so the common case never needs the
 // keyboard. A stopgap until field boundaries let the place name the work.
 export const NAME_SUGGESTIONS = ['Baling', 'Cutting', 'Raking', 'Hauling bales', 'Moving equipment'] as const

@@ -10,12 +10,13 @@ import InProgressBadge from '../InProgressBadge'
 import AnnotationControls from './AnnotationControls'
 import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
+import FieldCutConfirm from './FieldCutConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { computeFieldBoundaries, boundaryQualified, ACRE_M2, BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
 import { computeSweep, computeSweepRender } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { fmtAcres, fmtDay, fmtDoneAt, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
-import { MACHINE_SUGGESTIONS } from '@/lib/jobs/annotations'
+import { MACHINE_SUGGESTIONS, fetchFieldsCut } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE, BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import type { TrackPoint } from '@/lib/jobs/derive'
@@ -74,6 +75,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const dismissed = annotation?.dismissed_at != null
   const actualBaleCount = (annotation?.actual_bale_count as number | null) ?? null
   const actualAcres = (annotation?.actual_acres as number | null) ?? null
+  // Per-field completion (040) — tolerant fetch: {} until the column exists.
+  const fieldsCut = await fetchFieldsCut(supabase, id)
 
   // Detections — same two-query, no-FK shape as annotations. baleRun may be
   // undefined either because detection hasn't run or because 038 isn't
@@ -130,14 +133,20 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     // the numbers come from the raster and are unaffected.
     const fRender = fSweep != null ? computeSweepRender(f.track, f.boundary) : null
     const active = f.track.length > 0 && f.track[f.track.length - 1].seq === lastSeq
+    // No done-clock on a floored sweep: with the cut undercounted, "remaining"
+    // includes ground already cut and the ETA can only ever read too long —
+    // a promise built on a number we know is a lower bound.
     const fEta =
-      fSweep != null && (!segmented || active) ? computeEta(f.track, f.boundary).minutes : null
+      fSweep != null && !fSweep.sweepIsFloor && (!segmented || active)
+        ? computeEta(f.track, f.boundary).minutes
+        : null
+    const cutStatus = fieldsCut[String(f.index)] // 'cut' | 'dismissed' | undefined
     const doneFill =
       f.boundary.status === 'confirmed' &&
-      fSweep != null && fSweep.percentCut >= DONE_FILL_MIN_PERCENT &&
-      !(live && active) &&
-      fRender != null && fRender.boundaryOk
-    return { ...f, qualified: fQualified, sweep: fSweep, render: fRender, active, etaMinutes: fEta, doneFill }
+      fRender != null && fRender.boundaryOk &&
+      (cutStatus === 'cut' ||
+        (fSweep != null && fSweep.percentCut >= DONE_FILL_MIN_PERCENT && !(live && active)))
+    return { ...f, qualified: fQualified, sweep: fSweep, render: fRender, active, etaMinutes: fEta, doneFill, cutStatus }
   })
 
   // The single-field view keeps its existing shape; segmented pages use
@@ -226,18 +235,31 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               {fieldViews.map(f => {
                 const fCut = f.sweep != null ? f.sweep.sweptInsideM2 / ACRE_M2 : null
                 const fSize = f.sweep != null ? f.sweep.boundaryInsideM2 / ACRE_M2 : null
+                // Floor-honest language: an undersampled sweep is a lower
+                // bound and must say "at least"; a well-sampled one says
+                // "about". A field the operator marked cut leads with that —
+                // percent stops being the story.
+                const qual = f.sweep?.sweepIsFloor ? 'at least' : 'about'
+                const isCut = f.cutStatus === 'cut'
+                const proposed =
+                  f.boundary.status === 'confirmed' &&
+                  f.sweep != null &&
+                  !(live && f.active) &&
+                  (f.sweep.percentCut >= DONE_FILL_MIN_PERCENT || f.sweep.sweepIsFloor)
                 return (
                   <div key={f.index}>
                     <p className="font-dm-sans text-sm text-forest-green/85">
                       <span className="font-semibold">Field {f.index}:</span>{' '}
-                      {f.sweep != null ? (
+                      {isCut && fSize != null ? (
+                        <>Cut complete · about {fmtAcres(fSize)} acres</>
+                      ) : f.sweep != null ? (
                         live && f.active ? (
                           <>
-                            about {f.sweep.percentCut}% cut · {fmtAcres(fCut!)} of about {fmtAcres(fSize!)} acres
+                            {qual} {f.sweep.percentCut}% cut · {qual} {fmtAcres(fCut!)} of about {fmtAcres(fSize!)} acres
                             {f.etaMinutes != null && <> · about {fmtEtaMin(f.etaMinutes)} left</>}
                           </>
                         ) : (
-                          <>about {fmtAcres(fCut!)} of about {fmtAcres(fSize!)} acres cut</>
+                          <>{qual} {fmtAcres(fCut!)} of about {fmtAcres(fSize!)} acres cut</>
                         )
                       ) : f.index === 1 && coldStartExplains ? (
                         <>no boundary — GPS had no fix during the opening rounds (first {leadingNoFix} events unpositioned)</>
@@ -245,12 +267,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                         <>no boundary — outside rounds not tied off in this track</>
                       )}
                     </p>
-                    {f.boundary.status === 'estimate' && (
+                    {!isCut && f.boundary.status === 'estimate' && (
                       <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
                         Boundary unconfirmed — one pass around; a second round (or finishing
                         the field) confirms it.
                       </p>
                     )}
+                    {!isCut && f.sweep?.sweepIsFloor && (
+                      <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
+                        The Scout logged too few impacts on this smooth ground to see every
+                        pass — the true cut is at least this much, likely more.
+                      </p>
+                    )}
+                    <FieldCutConfirm
+                      jobId={job.id}
+                      fieldIndex={f.index}
+                      status={f.cutStatus ?? null}
+                      proposed={proposed}
+                    />
                   </div>
                 )
               })}
@@ -345,28 +379,59 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             (the honesty stat) lives in quiet prose below the map. */}
         {sweep != null && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-3xl font-semibold text-forest-green">
-              {live
-                ? `About ${sweep.percentCut}% cut`
-                : `About ${fmtAcres(cutAcres!)} acres cut`}
-            </p>
-            {live && etaMinutes != null && (
-              <p className="mt-0.5 font-fraunces text-xl font-semibold text-forest-green/80">
-                About {fmtEtaMin(etaMinutes)} left · done ~{fmtDoneAt(etaMinutes)}
-              </p>
+            {single?.cutStatus === 'cut' ? (
+              <>
+                <p className="font-fraunces text-3xl font-semibold text-forest-green">
+                  Cut complete
+                </p>
+                <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+                  about {fmtAcres(fieldAcres!)} acres — field traced from your outside rounds
+                  {actualAcres != null && <> · you call the field {actualAcres}</>}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-fraunces text-3xl font-semibold text-forest-green">
+                  {live
+                    ? `${sweep.sweepIsFloor ? 'At least' : 'About'} ${sweep.percentCut}% cut`
+                    : `${sweep.sweepIsFloor ? 'At least' : 'About'} ${fmtAcres(cutAcres!)} acres cut`}
+                </p>
+                {live && etaMinutes != null && (
+                  <p className="mt-0.5 font-fraunces text-xl font-semibold text-forest-green/80">
+                    About {fmtEtaMin(etaMinutes)} left · done ~{fmtDoneAt(etaMinutes)}
+                  </p>
+                )}
+                <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+                  {live
+                    ? <>{sweep.sweepIsFloor ? 'at least ' : ''}{fmtAcres(cutAcres!)} of about {fmtAcres(fieldAcres!)} acres</>
+                    : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
+                  {actualAcres != null && <> · you call the field {actualAcres}</>}
+                </p>
+                {isEstimate && (
+                  <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+                    Boundary unconfirmed — one pass around; a second round (or finishing
+                    the field) confirms it.
+                  </p>
+                )}
+                {sweep.sweepIsFloor && (
+                  <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+                    The Scout logged too few impacts on this smooth ground to see every
+                    pass — the true cut is at least this much, likely more.
+                  </p>
+                )}
+              </>
             )}
-            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
-              {live
-                ? <>{fmtAcres(cutAcres!)} of about {fmtAcres(fieldAcres!)} acres</>
-                : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
-              {actualAcres != null && <> · you call the field {actualAcres}</>}
-            </p>
-            {isEstimate && (
-              <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-                Boundary unconfirmed — one pass around; a second round (or finishing
-                the field) confirms it.
-              </p>
-            )}
+            <FieldCutConfirm
+              jobId={job.id}
+              fieldIndex={1}
+              status={single?.cutStatus ?? null}
+              proposed={
+                single != null &&
+                single.boundary.status === 'confirmed' &&
+                !(live && single.active) &&
+                (sweep.percentCut >= DONE_FILL_MIN_PERCENT || sweep.sweepIsFloor)
+              }
+            />
           </Card>
         )}
         {mapping && (

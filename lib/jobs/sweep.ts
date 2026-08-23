@@ -52,7 +52,25 @@ import {
 
 export const SWEEP_CONFIG = {
   cellM: 2.5, // raster cell ≈ half a header — finer buys nothing against 3.7 m scatter
-  maxSweepHopM: 25, // hops longer than this are transit, not cutting
+  // A hop is CUTTING when it happened at work rhythm — TIME separates cutting
+  // from transit where distance could not. An impact-triggered sensor on
+  // smooth fast ground goes 6–18 s between bumps at 4+ m/s, producing
+  // 26–70 m hops that are genuine cutting (Aug 23: ~45% of cutting distance
+  // lived in such hops; the old 25 m cap hid it and read two fully cut
+  // fields at 37%/51%). Transit between fields runs MINUTES quiet (162–273 s
+  // observed). The distance ceiling is a backstop so a GPS teleport can
+  // never paint a swath across the field.
+  cutHopMaxS: 60,
+  cutHopMaxM: 200,
+  // Floor detection — the sweep's own honesty about undersampling. A quick
+  // hop longer than floorLongHopM paints a straight chord where the real
+  // path curved, and stretches with no events at all paint nothing; when the
+  // share of such hops is material, the percent is a LOWER BOUND and every
+  // display must say "at least", never "about". Aug 23's fully cut fields
+  // measure 21–24%; Aug 10's bumpy dense-sampled field measures well under
+  // the threshold. Provenance (the measured share) rides the result.
+  floorLongHopM: 25,
+  floorShareThreshold: 0.1,
   percentStep: 5, // "About 60%", never 62.4%
 } as const
 
@@ -64,6 +82,16 @@ export interface SweepResult {
   /** Field size — the boundary interior plus the same half-header buffer. */
   boundaryInsideM2: number
   rawFraction: number
+  /**
+   * The sweep is a LOWER BOUND, not an estimate: a material share of this
+   * field's cutting hops covered more ground than the paint can honestly
+   * reconstruct (sparse impacts on smooth fast ground — long straight chords
+   * where the path curved, and stretches with no events at all). Every
+   * display must say "at least N% / at least N acres", never "about".
+   */
+  sweepIsFloor: boolean
+  /** Provenance for the flag: measured share of quick hops > floorLongHopM. */
+  longHopShare: number
 }
 
 interface SweepGrids extends MaskGrid {
@@ -116,15 +144,18 @@ function buildSweepGrids(
   }
   if (boundaryCells === 0) return null
 
-  // Paint the swath: cells within half a header of any cutting hop. Hops are
-  // distance-limited, not link-limited — an evicted block mid-row leaves a
-  // short 'gap' hop that was still real cutting, while a transit hop is long
-  // and must not paint a swath across the field.
+  // Paint the swath: cells within half a header of any cutting hop. A hop is
+  // cutting when it happened at work rhythm (dt ≤ cutHopMaxS) — an evicted
+  // block mid-row or a sparse-impact fast stretch was still real cutting,
+  // while a transit hop is minutes quiet and must not paint a swath across
+  // the field. The distance ceiling backstops GPS teleports.
   const swept = new Uint8Array(cols * rows)
-  const maxHop2 = SWEEP_CONFIG.maxSweepHopM ** 2
+  const maxHop2 = SWEEP_CONFIG.cutHopMaxM ** 2
   for (let i = 1; i < xy.length; i++) {
     const a = xy[i - 1]
     const b = xy[i]
+    const dt = pts[i].t - pts[i - 1].t
+    if (dt > SWEEP_CONFIG.cutHopMaxS) continue
     const dx = b.x - a.x
     const dy = b.y - a.y
     if (dx * dx + dy * dy > maxHop2) continue
@@ -163,12 +194,34 @@ export function computeSweep(
   if (g == null) return null
   const cellArea = g.cellM * g.cellM
   const rawFraction = g.sweptInside / g.boundaryCells
+
+  // Floor detection, from this track's own hops: among quick hops (work
+  // rhythm, dt ≤ cutHopMaxS), how many jumped farther than floorLongHopM?
+  // Those hops are the sensor outrunning its own sampling — measured, never
+  // assumed. Distances in projected meters via the same lat0 anchor.
+  const pts = endIdx != null ? track.slice(0, endIdx + 1) : track
+  const lat0 = meanLat(track)
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  let quickHops = 0
+  let longHops = 0
+  for (let i = 1; i < pts.length; i++) {
+    const dt = pts[i].t - pts[i - 1].t
+    if (dt > SWEEP_CONFIG.cutHopMaxS) continue
+    const dx = (pts[i].lng - pts[i - 1].lng) * mPerLng
+    const dy = (pts[i].lat - pts[i - 1].lat) * M_PER_LAT
+    quickHops++
+    if (dx * dx + dy * dy > SWEEP_CONFIG.floorLongHopM ** 2) longHops++
+  }
+  const longHopShare = quickHops > 0 ? longHops / quickHops : 0
+
   const stepped = Math.round((rawFraction * 100) / SWEEP_CONFIG.percentStep) * SWEEP_CONFIG.percentStep
   return {
     percentCut: Math.max(0, Math.min(100, stepped)),
     sweptInsideM2: g.sweptInside * cellArea,
     boundaryInsideM2: g.boundaryCells * cellArea,
     rawFraction,
+    sweepIsFloor: longHopShare > SWEEP_CONFIG.floorShareThreshold,
+    longHopShare,
   }
 }
 
