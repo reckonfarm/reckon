@@ -42,7 +42,7 @@ import {
   type BoundaryStatus,
   type FieldSegment,
 } from '../lib/jobs/boundary'
-import { computeSweep, computeSweepRender, SWEEP_CONFIG } from '../lib/jobs/sweep'
+import { computeSweep, computeSweepRender, SWEEP_CONFIG, type FloorReason } from '../lib/jobs/sweep'
 import { RENDER_CONFIG } from '../lib/jobs/render-geometry'
 import { computeEta } from '../lib/jobs/eta'
 import { isInProgress } from '../lib/jobs/display'
@@ -73,6 +73,8 @@ type FieldExpectation = {
   sweptPctRange?: [number, number]
   /** Lock on floor detection: true = undersampled, displays say "at least". */
   sweepFloor?: boolean
+  /** Lock on WHICH detector(s) fired — provenance, exact set. */
+  floorReasons?: FloorReason[]
 }
 const REGRESSION: {
   hardware: string
@@ -84,6 +86,7 @@ const REGRESSION: {
   fillRendered?: boolean
   sweptPctRange?: [number, number]
   sweepFloor?: boolean
+  floorReasons?: FloorReason[]
   allFieldsSilent?: boolean // multi-field: no segment may show numbers
   fields?: FieldExpectation[]
 }[] = [
@@ -96,7 +99,7 @@ const REGRESSION: {
     status: 'estimate', bufferedAcRange: [2.4, 2.7], fillRendered: true,
     // Dense impact sampling (long-hop share ~2%) — the dt hop rule barely
     // moves it (34.9 → 36.4% raw) and it must NEVER flag as a floor.
-    sweptPctRange: [30, 42], sweepFloor: false,
+    sweptPctRange: [30, 42], sweepFloor: false, floorReasons: [],
   },
   {
     hardware: '14c19f3534f0', seqStart: 11498,
@@ -109,8 +112,8 @@ const REGRESSION: {
     // sensor outran its sampling) and their percents display as "at least".
     fields: [
       { index: 1, status: 'unexplained' },
-      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: true, sweptPctRange: [58, 70], sweepFloor: true },
-      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: true, sweptPctRange: [70, 80], sweepFloor: true },
+      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: true, sweptPctRange: [58, 70], sweepFloor: true, floorReasons: ['long_hops', 'path_cover'] },
+      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: true, sweptPctRange: [70, 80], sweepFloor: true, floorReasons: ['long_hops', 'path_cover'] },
     ],
   },
   {
@@ -121,11 +124,14 @@ const REGRESSION: {
     // loop explained 12% of the track and silenced everything. Union gate 99%
     // → three fields, each CONFIRMED on its own assigned points. B got two
     // outside rounds before the operator moved on (sweep ~10%); C partial.
-    // Acre ranges are regression locks; ground truth pending.
+    // Operator ground truth (Aug 25): A TOTALLY FINISHED (hop stats identical
+    // to Aug 10 — only the path-cover detector sees it: ratio 1.24, sweep
+    // 74%); B two rounds, rest uncut; C two rounds + dike passes. A must
+    // flag as a floor by path_cover alone; B and C must stay "about".
     fields: [
-      { index: 1, status: 'confirmed', bufferedAcRange: [11.5, 12.0], fillRendered: true },
-      { index: 2, status: 'confirmed', bufferedAcRange: [20.5, 21.1], fillRendered: true },
-      { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5], fillRendered: true },
+      { index: 1, status: 'confirmed', bufferedAcRange: [11.5, 12.0], fillRendered: true, sweptPctRange: [68, 80], sweepFloor: true, floorReasons: ['path_cover'] },
+      { index: 2, status: 'confirmed', bufferedAcRange: [20.5, 21.1], fillRendered: true, sweptPctRange: [6, 16], sweepFloor: false, floorReasons: [] },
+      { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5], fillRendered: true, sweptPctRange: [15, 28], sweepFloor: false, floorReasons: [] },
     ],
   },
 ]
@@ -206,8 +212,9 @@ async function run() {
         ` · ${sweep.percentCut}% (raw ${(sweep.rawFraction * 100).toFixed(1)}%)`
     )
     console.log(
-      `    ${tag}floor  ${sweep.sweepIsFloor ? 'YES — sweep is a lower bound, displays say "at least"' : 'no — well-sampled, displays say "about"'}` +
-        ` (long-hop share ${(sweep.longHopShare * 100).toFixed(1)}% vs threshold ${(SWEEP_CONFIG.floorShareThreshold * 100).toFixed(0)}%)`
+      `    ${tag}floor  ${sweep.sweepIsFloor ? `YES [${sweep.floorReasons.join('+')}] — sweep is a lower bound, displays say "at least"` : 'no — displays say "about"'}` +
+        ` · long-hop share ${(sweep.longHopShare * 100).toFixed(1)}% (fires >${(SWEEP_CONFIG.floorShareThreshold * 100).toFixed(0)}%)` +
+        ` · path-cover ${sweep.pathCoverRatio.toFixed(2)} (fires ≥${SWEEP_CONFIG.pathCoverMinRatio} with sweep <${SWEEP_CONFIG.pathCoverSweepBelow})`
     )
     if (!inProgress) {
       // The free self-check: a finished, fully cut field should close this.
@@ -307,6 +314,9 @@ async function run() {
         if (exp.sweepFloor != null && (s1?.sweepIsFloor ?? false) !== exp.sweepFloor) {
           failures.push(`${exp.label}: expected sweepFloor=${exp.sweepFloor}, got ${s1?.sweepIsFloor ?? 'no sweep'}`)
         }
+        if (exp.floorReasons && (s1?.floorReasons ?? []).join('+') !== exp.floorReasons.join('+')) {
+          failures.push(`${exp.label}: expected floor reasons [${exp.floorReasons.join('+')}], got [${(s1?.floorReasons ?? []).join('+')}]`)
+        }
       }
       if (exp.allFieldsSilent) {
         for (const f of fields) {
@@ -341,6 +351,9 @@ async function run() {
             }
             if (fe.sweepFloor != null && (fs?.sweepIsFloor ?? false) !== fe.sweepFloor) {
               failures.push(`${exp.label}: field ${fe.index} expected sweepFloor=${fe.sweepFloor}, got ${fs?.sweepIsFloor ?? 'no sweep'}`)
+            }
+            if (fe.floorReasons && (fs?.floorReasons ?? []).join('+') !== fe.floorReasons.join('+')) {
+              failures.push(`${exp.label}: field ${fe.index} expected floor reasons [${fe.floorReasons.join('+')}], got [${(fs?.floorReasons ?? []).join('+')}]`)
             }
           }
         }

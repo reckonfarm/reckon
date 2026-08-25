@@ -69,6 +69,17 @@ export const SWEEP_CONFIG = {
   // the threshold. Provenance (the measured share) rides the result.
   floorLongHopM: 25,
   floorShareThreshold: 0.1,
+  // Second floor detector — DISTANCE ACCOUNTING, for the failure mode hop
+  // statistics cannot see: on dense rows GPS scatter opens gaps between
+  // passes painted at exactly half a header, so a fully cut field reads ~75%
+  // while its hop distribution is identical to a half-cut one (Sunday PM
+  // Field A vs Aug 10 — twins on every hop measure). The machine's cutting
+  // path × header ÷ field area says whether it drove enough to cover the
+  // field regardless of where the paint landed: finished fields sit at
+  // 1.02–1.24, partials at 0.14–0.54. Path covers the field but the raster
+  // says otherwise → the raster is undercounting → floor.
+  pathCoverMinRatio: 0.9,
+  pathCoverSweepBelow: 0.9,
   percentStep: 5, // "About 60%", never 62.4%
 } as const
 
@@ -88,9 +99,17 @@ export interface SweepResult {
    * display must say "at least N% / at least N acres", never "about".
    */
   sweepIsFloor: boolean
-  /** Provenance for the flag: measured share of quick hops > floorLongHopM. */
+  /** Provenance: which detector(s) fired. Empty when the sweep is not a floor. */
+  floorReasons: FloorReason[]
+  /** Long-hop detector input: measured share of quick hops > floorLongHopM. */
   longHopShare: number
+  /** Path-cover detector input: cutting path × header ÷ field area. */
+  pathCoverRatio: number
 }
+
+export type FloorReason =
+  | 'long_hops' // sparse sampling: the sensor outran its own impacts
+  | 'path_cover' // GPS scatter: the machine drove enough to cover the field, the raster missed it
 
 interface SweepGrids extends MaskGrid {
   mPerLng: number
@@ -202,24 +221,40 @@ export function computeSweep(
   const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
   let quickHops = 0
   let longHops = 0
+  let cuttingPathM = 0
   for (let i = 1; i < pts.length; i++) {
     const dt = pts[i].t - pts[i - 1].t
     if (dt > SWEEP_CONFIG.cutHopMaxS) continue
     const dx = (pts[i].lng - pts[i - 1].lng) * mPerLng
     const dy = (pts[i].lat - pts[i - 1].lat) * M_PER_LAT
+    const d2 = dx * dx + dy * dy
     quickHops++
-    if (dx * dx + dy * dy > SWEEP_CONFIG.floorLongHopM ** 2) longHops++
+    if (d2 > SWEEP_CONFIG.floorLongHopM ** 2) longHops++
+    // The same hops the paint counts as cutting (the distance ceiling backstops teleports).
+    if (d2 <= SWEEP_CONFIG.cutHopMaxM ** 2) cuttingPathM += Math.sqrt(d2)
   }
   const longHopShare = quickHops > 0 ? longHops / quickHops : 0
+  const boundaryInsideM2 = g.boundaryCells * cellArea
+  const pathCoverRatio = boundaryInsideM2 > 0 ? (cuttingPathM * BOUNDARY_CONFIG.headerWidthM) / boundaryInsideM2 : 0
+
+  // Two detectors, two failure modes, floor if EITHER fires — provenance
+  // rides the result so the display can say which.
+  const floorReasons: FloorReason[] = []
+  if (longHopShare > SWEEP_CONFIG.floorShareThreshold) floorReasons.push('long_hops')
+  if (pathCoverRatio >= SWEEP_CONFIG.pathCoverMinRatio && rawFraction < SWEEP_CONFIG.pathCoverSweepBelow) {
+    floorReasons.push('path_cover')
+  }
 
   const stepped = Math.round((rawFraction * 100) / SWEEP_CONFIG.percentStep) * SWEEP_CONFIG.percentStep
   return {
     percentCut: Math.max(0, Math.min(100, stepped)),
     sweptInsideM2: g.sweptInside * cellArea,
-    boundaryInsideM2: g.boundaryCells * cellArea,
+    boundaryInsideM2,
     rawFraction,
-    sweepIsFloor: longHopShare > SWEEP_CONFIG.floorShareThreshold,
+    sweepIsFloor: floorReasons.length > 0,
+    floorReasons,
     longHopShare,
+    pathCoverRatio,
   }
 }
 
