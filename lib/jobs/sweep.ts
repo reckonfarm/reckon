@@ -15,8 +15,6 @@ import {
   RENDER_CONFIG,
   morphClose,
   morphOpen,
-  offsetRing,
-  ringPerimeter,
   signedArea,
   smoothRing,
   traceMask,
@@ -238,32 +236,27 @@ export interface SweepRender {
    *  acreage agree by construction (the old centerline ring under-drew the
    *  claimed field by half a header all the way around). */
   boundaryRing: { lat: number; lng: number }[]
-  /** Cut ground: closed (dilate+erode), traced, smoothed, holes kept. Clipped
-   *  to the field mask at the raster stage — it cannot spill outside. */
+  /** Cut ground, IMPRESSIONISTIC: painted at a display-only radius, hops
+   *  bridged liberally, closed, holes kept only where physically real, then
+   *  traced and smoothed. Clipped to the field mask at the raster stage — it
+   *  cannot spill outside. A picture of where the machine has been, never
+   *  the number: percent and acres come from the measurement sweep only. */
   fill: RenderedPolygon[]
   boundaryRenderedM2: number
   boundaryRasterM2: number
   boundaryDivergence: number
-  fillRenderedM2: number
-  fillRasterM2: number
-  fillDivergence: number
   /** The rendered boundary sits within divergenceCap of its raster — the only
    *  condition under which the edge may be drawn. */
   boundaryOk: boolean
-  /** The rendered fill sits within divergenceCap of its raster. When false the
-   *  fill must NOT be drawn — the numbers still come from the raster and still
-   *  show; only the shading goes quiet. This is the honest degrade for work
-   *  patterns the close/hole-physics pipeline can't draw truthfully (spaced
-   *  windrower rows: the width rule erases real uncut strips between passes,
-   *  and no invisible offset can hand that area back). */
-  fillOk: boolean
-  /** The area-matching offset the reconciliation ASKED for, meters. */
-  offsetNeededM: number
-  /** The offset actually applied — by construction never above
-   *  RENDER_CONFIG.offsetMaxM: a correction big enough to visibly distort the
-   *  outline is SKIPPED (never applied silently), leaving the divergence to
-   *  tell the truth and fillOk to suppress the picture. */
-  offsetAppliedM: number
+  /** Area of the drawn fill polygons (informational — the picture). */
+  fillRenderedM2: number
+  /** Area the MEASUREMENT sweep counts (the number). The picture runs over
+   *  it by design; the gap is reported, never "corrected". */
+  fillRasterM2: number
+  /** Share of fill vertices lying outside the boundary ring + margin. The one
+   *  fill guard: paint escaping the field is geometric nonsense and fails
+   *  the build. Clipping makes this ~0 by construction. */
+  fillEscapeShare: number
   /** Interior holes filled by the physics floor (narrower than a header). */
   holesSuppressed: number
 }
@@ -286,12 +279,36 @@ export function computeSweepRender(
   const boundaryRenderedM2 = Math.abs(signedArea(boundarySmooth))
   const boundaryRasterM2 = g.boundaryCells * cellArea
 
-  // Cut ground: swept ∧ inside, then the morphological close that turns
-  // spotty into complete (pinholes, pass gaps), re-clipped to the field so
-  // dilation can never leak past the edge.
-  const fill = new Uint8Array(g.cols * g.rows)
-  for (let k = 0; k < fill.length; k++) fill[k] = g.swept[k] && g.inside[k] ? 1 : 0
-  const closedRaw = morphClose({ ...g, mask: fill }, RENDER_CONFIG.closeRadiusCells)
+  // Cut ground — the PICTURE. Repaint the track on the same grid at the
+  // display radius with the liberal display hop rule, clipped to the field;
+  // then close, apply hole physics, trace, smooth. No area matching: the
+  // number is the raster's, the picture is allowed to run generous.
+  const lat0 = meanLat(track)
+  const xy = projectXY(track, lat0)
+  const rd = RENDER_CONFIG.displayRadiusM
+  const maxHop2 = RENDER_CONFIG.displayHopMaxM ** 2
+  const painted = new Uint8Array(g.cols * g.rows)
+  for (let i = 1; i < xy.length; i++) {
+    const a = xy[i - 1]
+    const b = xy[i]
+    if (track[i].t - track[i - 1].t > RENDER_CONFIG.displayHopMaxS) continue
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    if (dx * dx + dy * dy > maxHop2) continue
+    const x0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - rd - g.minX) / g.cellM))
+    const x1 = Math.min(g.cols - 1, Math.floor((Math.max(a.x, b.x) + rd - g.minX) / g.cellM))
+    const y0 = Math.max(0, Math.floor((Math.min(a.y, b.y) - rd - g.minY) / g.cellM))
+    const y1 = Math.min(g.rows - 1, Math.floor((Math.max(a.y, b.y) + rd - g.minY) / g.cellM))
+    for (let cy = y0; cy <= y1; cy++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        const k = cy * g.cols + cx
+        if (painted[k] || !g.inside[k]) continue
+        const center: Pt = { x: g.minX + (cx + 0.5) * g.cellM, y: g.minY + (cy + 0.5) * g.cellM }
+        if (distToSegment(center, a, b) <= rd) painted[k] = 1
+      }
+    }
+  }
+  const closedRaw = morphClose({ ...g, mask: painted }, RENDER_CONFIG.displayCloseRadiusCells)
   const closed = new Uint8Array(g.cols * g.rows)
   for (let k = 0; k < closed.length; k++) closed[k] = closedRaw[k] && g.inside[k] ? 1 : 0
 
@@ -305,11 +322,7 @@ export function computeSweepRender(
   for (let k = 0; k < closed.length; k++) closed[k] = g.inside[k] && !holesOpened[k] ? 1 : 0
 
   // Trace, drop speckles (under ~4 cells — sensor dust, not ground), smooth.
-  // Holes survive only above the physics floor (RENDER_CONFIG.holeMinM2): a
-  // real obstacle must be wider than the header, so an interior pocket
-  // smaller than that is scatter, not ground that was driven around. The
-  // uncut middle — the story — is orders of magnitude above the floor and
-  // shrinks below it only when the field is essentially done.
+  // Holes survive only above the physics floor (RENDER_CONFIG.holeMinM2).
   const MIN_RING_M2 = 25
   const rings = traceMask(g, closed).filter(r => Math.abs(r.area) >= MIN_RING_M2)
   const outers = rings.filter(r => r.area > 0)
@@ -319,60 +332,36 @@ export function computeSweepRender(
   const smoothOuters = outers.map(o => smoothRing(o.ring))
   const smoothHoles: { ring: Pt[]; ownerIdx: number }[] = []
   for (const h of holes) {
-    // A hole belongs to the outer that contains it.
     const probe = h.ring[0]
     const ownerIdx = outers.findIndex(o => pointInPolygon(probe, o.ring))
     if (ownerIdx === -1) continue
     smoothHoles.push({ ring: smoothRing(h.ring), ownerIdx })
   }
 
-  const fillRasterM2 = g.sweptInside * cellArea
-  const areaOf = (os: Pt[][], hs: Pt[][]) =>
-    os.reduce((s, o) => s + Math.abs(signedArea(o)), 0) -
-    hs.reduce((s, h) => s + Math.abs(signedArea(h)), 0)
-
-  // Area matching (render-geometry.ts header): the close bridged real gaps
-  // and the physics floor filled false holes — hand the gained area back with
-  // one uniform sub-metre offset (outers shrink, holes grow) so the
-  // complete-looking picture carries the raster's area. First-order step; a
-  // second pass would be overkill under the cap. The applied distance is
-  // reported and capped (offsetMaxM): a correction big enough to visibly
-  // distort the outline must fail loudly, never apply silently.
-  let finalOuters = smoothOuters
-  let finalHoles = smoothHoles.map(h => h.ring)
-  let offsetNeededM = 0
-  let offsetAppliedM = 0
-  const excess = areaOf(finalOuters, finalHoles) - fillRasterM2
-  const totalPerim =
-    finalOuters.reduce((s, o) => s + ringPerimeter(o), 0) +
-    finalHoles.reduce((s, h) => s + ringPerimeter(h), 0)
-  if (totalPerim > 0 && Math.abs(excess) / Math.max(fillRasterM2, 1) > 0.02) {
-    const d = Math.abs(excess) / totalPerim
-    offsetNeededM = d
-    // Apply only while invisible. A correction past offsetMaxM would visibly
-    // distort the outline to hit the number — skip it and let the divergence
-    // (and fillOk below) suppress the picture instead. Never distort, never
-    // draw a lie: those are the only two branches.
-    if (d <= RENDER_CONFIG.offsetMaxM) {
-      const shrink = excess > 0 // too big → shrink fill; too small → grow it
-      finalOuters = finalOuters.map(o => offsetRing(o, d, shrink))
-      finalHoles = finalHoles.map(h => offsetRing(h, d, !shrink))
-      offsetAppliedM = d
-    }
-  }
-
   let fillRenderedM2 = 0
-  const polys: RenderedPolygon[] = finalOuters.map(o => {
+  const polys: RenderedPolygon[] = smoothOuters.map(o => {
     fillRenderedM2 += Math.abs(signedArea(o))
     return { outer: o.map(toLatLng), holes: [] }
   })
-  finalHoles.forEach((h, i) => {
-    fillRenderedM2 -= Math.abs(signedArea(h))
-    polys[smoothHoles[i].ownerIdx].holes.push(h.map(toLatLng))
+  smoothHoles.forEach(h => {
+    fillRenderedM2 -= Math.abs(signedArea(h.ring))
+    polys[h.ownerIdx].holes.push(h.ring.map(toLatLng))
   })
 
+  // The one fill guard: every drawn vertex must sit inside the drawn field
+  // edge (+ a cell of smoothing slack). Clipping guarantees it; the guard
+  // proves it every run.
+  let outside = 0
+  let total = 0
+  for (const o of smoothOuters) {
+    for (const v of o) {
+      total++
+      if (!pointInPolygon(v, boundarySmooth) && distToRing(v, boundarySmooth) > g.cellM) outside++
+    }
+  }
+  const fillEscapeShare = total > 0 ? outside / total : 0
+
   const boundaryDivergence = Math.abs(boundaryRenderedM2 - boundaryRasterM2) / boundaryRasterM2
-  const fillDivergence = fillRasterM2 > 0 ? Math.abs(fillRenderedM2 - fillRasterM2) / fillRasterM2 : 0
 
   return {
     boundaryRing: boundarySmooth.map(toLatLng),
@@ -380,13 +369,10 @@ export function computeSweepRender(
     boundaryRenderedM2,
     boundaryRasterM2,
     boundaryDivergence,
-    fillRenderedM2,
-    fillRasterM2,
-    fillDivergence,
     boundaryOk: boundaryDivergence <= RENDER_CONFIG.divergenceCap,
-    fillOk: fillDivergence <= RENDER_CONFIG.divergenceCap,
-    offsetNeededM,
-    offsetAppliedM,
+    fillRenderedM2,
+    fillRasterM2: g.sweptInside * cellArea,
+    fillEscapeShare,
     holesSuppressed,
   }
 }

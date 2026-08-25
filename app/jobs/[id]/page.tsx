@@ -127,11 +127,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const fieldViews = fields.map(f => {
     const fQualified = boundaryQualified(f.boundary.status)
     const fSweep = fQualified ? computeSweep(f.track, f.boundary) : null
-    // The picture, separately from the numbers: smoothed field edge + closed,
-    // smoothed fill, traced from the same raster masks the numbers count. The
-    // divergence guard decides what may be DRAWN (boundaryOk / fillOk) — a
-    // fill the smoothing can't hold within caps is suppressed, never shown;
-    // the numbers come from the raster and are unaffected.
+    // The picture, separately from the numbers: the smoothed field edge is
+    // held to the field-size raster (boundaryOk); the fill is impressionistic
+    // and always draws. Percent and acres come from the measurement sweep only.
     const fRender = fSweep != null ? computeSweepRender(f.track, f.boundary) : null
     const active = f.track.length > 0 && f.track[f.track.length - 1].seq === lastSeq
     // No done-clock on a floored sweep: with the cut undercounted, "remaining"
@@ -175,19 +173,18 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const coldStartExplains = leadingNoFix >= BOUNDARY_CONFIG.minTrackPoints
 
   // What the map may draw, across all fields: every boundary that held its
-  // raster, every fill that did. A suppressed fill leaves its field outlined
-  // but unshaded — degrade the picture, never distort it.
+  // raster, and its fill.
   const drawnBoundaries = fieldViews
     .filter(f => f.render != null && f.render.boundaryOk)
     .map(f => f.render!.boundaryRing)
+  // The fill is a picture (operator's ruling: "just has to be close"): every
+  // field with a drawn boundary paints as cutting progresses — generously,
+  // clipped to the field. A field marked cut paints wall-to-wall.
   const drawnFill = fieldViews.flatMap(f => {
-    if (f.render == null) return []
+    if (f.render == null || !f.render.boundaryOk) return []
     if (f.doneFill) return [{ outer: f.render.boundaryRing, holes: [] }]
-    return f.render.fillOk ? f.render.fill : []
+    return f.render.fill
   })
-  const fillSuppressedCount = fieldViews.filter(
-    f => f.render != null && !f.render.fillOk && !f.doneFill
-  ).length
   const anySweep = fieldViews.some(f => f.sweep != null)
 
   return (
@@ -491,12 +488,6 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 : anySweep
                   ? `${segmented ? 'Each outline is a field edge' : 'The outline is the field edge'}, traced from your outside rounds. Tinted ground is cut.`
                   : 'The line is where the machine worked. Dashed stretches are gaps in the data.'}
-              {fillSuppressedCount > 0 && (
-                <>
-                  {' '}Cut-ground shading is hidden where the smoothed picture couldn&apos;t match
-                  the measured area — the acres and percent come from the raw data either way.
-                </>
-              )}
             </p>
             {/* The honesty numbers, demoted to a quiet line — loud only when
                 something was actually lost. "Data received", never "coverage":
