@@ -69,7 +69,7 @@ async function headlineFor(
   const track = (data?.track ?? []) as TrackPoint[]
   if (track.length >= 2) {
     const fields = computeFieldBoundaries(track, job.multi_field)
-    const segmented = job.multi_field && fields.length >= 2
+    const segmented = fields.length >= 2
     const lastSeq = track[track.length - 1].seq
     const f = segmented
       ? fields.find(x => x.track.length > 0 && x.track[x.track.length - 1].seq === lastSeq) ?? null

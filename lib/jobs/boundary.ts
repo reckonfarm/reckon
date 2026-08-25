@@ -241,38 +241,23 @@ export function convexHullAreaM2(points: { lat: number; lng: number }[]): number
   return shoelaceAbs(lower.slice(0, -1).concat(upper.slice(0, -1)))
 }
 
-export function computeFieldBoundary(
-  track: TrackPoint[],
-  multiField: boolean,
-  cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
-): BoundaryResult {
-  const empty: Omit<BoundaryResult, 'status'> = {
-    polygon: null, areaM2: null, acres: null, rawAreaM2: null, perimeterM: null,
-    closureDistM: null, loopSeqStart: null, loopSeqEnd: null,
-    secondPassShare: null, explainShare: null, loopSpacingM: null,
-  }
+// ─── Tied-loop scan — shared by the single-field path and the multi-loop
+// cluster path so both see the same candidates ────────────────────────────────
+// First spatial return per anchor; every tied loop above the area floor is a
+// candidate, sorted largest first. Simplicity is tested lazily by callers in
+// descending-area order, so a field with a clean lap pays for a handful of
+// checks, not hundreds.
+export interface LoopCandidate {
+  area: number
+  i: number // start index into the (possibly decimated) point array
+  j: number // end index (inclusive)
+  closure: number
+}
 
-  if (multiField) return { status: 'multi_field', ...empty }
-  if (track.length < cfg.minTrackPoints) return { status: 'too_few_points', ...empty }
-
-  const all = project(track)
-
-  // Loop search runs on a stride-decimated copy when the track is huge — the
-  // adjacent-lap geometry survives 2–4× decimation easily (a lap passes within
-  // header width of the anchor for many consecutive points, not one).
-  const stride = Math.max(1, Math.ceil(all.length / cfg.maxLoopSearchPoints))
-  const pts = stride === 1 ? all : all.filter((_, i) => i % stride === 0)
-
+function scanTiedLoops(pts: XY[], cfg: typeof BOUNDARY_CONFIG): LoopCandidate[] {
   const eps2 = cfg.closureEpsM ** 2
   const leave2 = cfg.leaveMinM ** 2
-
-  // First spatial return per anchor; largest tied SIMPLE loop wins. Every tied
-  // loop above the area floor is kept as a candidate — the second-largest
-  // DISTINCT lap is where loop-to-loop spacing (effective cut width) comes
-  // from. The self-crossing test runs lazily, in descending-area order, so a
-  // field with a clean lap pays for a handful of checks, not hundreds.
-  type Cand = { area: number; i: number; j: number; closure: number }
-  const candidates: Cand[] = []
+  const candidates: LoopCandidate[] = []
   for (let i = 0; i < pts.length - cfg.minLoopPoints; i++) {
     const anchor = pts[i]
     let left = false
@@ -296,10 +281,38 @@ export function computeFieldBoundary(
       }
     }
   }
-
-  const isSimple = (c: Cand) =>
-    loopSelfCrossings(pts.slice(c.i, c.j + 1), MAX_LOOP_SELF_CROSSINGS) <= MAX_LOOP_SELF_CROSSINGS
   candidates.sort((a, b) => b.area - a.area)
+  return candidates
+}
+
+function isSimpleLoop(pts: XY[], c: LoopCandidate): boolean {
+  return loopSelfCrossings(pts.slice(c.i, c.j + 1), MAX_LOOP_SELF_CROSSINGS) <= MAX_LOOP_SELF_CROSSINGS
+}
+
+export function computeFieldBoundary(
+  track: TrackPoint[],
+  multiField: boolean,
+  cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
+): BoundaryResult {
+  const empty: Omit<BoundaryResult, 'status'> = {
+    polygon: null, areaM2: null, acres: null, rawAreaM2: null, perimeterM: null,
+    closureDistM: null, loopSeqStart: null, loopSeqEnd: null,
+    secondPassShare: null, explainShare: null, loopSpacingM: null,
+  }
+
+  if (multiField) return { status: 'multi_field', ...empty }
+  if (track.length < cfg.minTrackPoints) return { status: 'too_few_points', ...empty }
+
+  const all = project(track)
+
+  // Loop search runs on a stride-decimated copy when the track is huge — the
+  // adjacent-lap geometry survives 2–4× decimation easily (a lap passes within
+  // header width of the anchor for many consecutive points, not one).
+  const stride = Math.max(1, Math.ceil(all.length / cfg.maxLoopSearchPoints))
+  const pts = stride === 1 ? all : all.filter((_, i) => i % stride === 0)
+
+  const candidates = scanTiedLoops(pts, cfg)
+  const isSimple = (c: LoopCandidate) => isSimpleLoop(pts, c)
   const best = candidates.find(isSimple) ?? null
 
   if (best == null) return { status: 'no_loop', ...empty }
@@ -401,22 +414,129 @@ export interface FieldSegment {
   index: number
   track: TrackPoint[]
   boundary: BoundaryResult
+  /**
+   * Set on the single segment returned for a cluster that holds MORE THAN ONE
+   * distinct tied loop whose union still fails the explain gate — the honest
+   * "this track holds more than one field and the outlines don't account for
+   * it" state. Display code says exactly that instead of showing bare track.
+   */
+  clusterUnexplained?: boolean
+}
+
+// ─── Multi-loop clusters — adjacent fields sharing one work area ───────────────
+//
+// Fields that touch land in ONE spatial cluster (the 150 m cell rule joins
+// them), so the largest tied loop explains only its own field and the whole
+// cluster went silent (Aug 23 PM: three fields, 11/20/17.5 ac, the 20-ac
+// winner explaining 12% of the track). Within a cluster, ALL distinct simple
+// tied loops become fields, each graded by the unchanged per-field pipeline.
+//
+// TWO-LEVEL GATE — nothing loosens:
+//   1. CLUSTER: the union of the distinct loops (+ margin) must explain
+//      explainMinShare of the cluster's points — the standing doctrine "the
+//      boundary must account for the track", lifted to the set. A cluster that
+//      fails stays ONE unexplained segment (today's shape). This is what keeps
+//      Aug 5's mosaic silent (union 36%) and keeps Aug 23 AM's field-1
+//      cluster — three headland loops, 0.5–1 ac, union 56% — from surfacing a
+//      bogus half-acre "field".
+//   2. PER LOOP: every point is ASSIGNED to its nearest loop (inside → that
+//      loop, else nearest ring), and each loop runs computeFieldBoundary on
+//      its assigned subset — the same tie, the same explain gate against the
+//      points it owns, the same second-pass grade. Proximity assigns,
+//      containment judges: not circular.
+//
+// Distinct means disjoint: a candidate with ≥ half its vertices inside an
+// accepted loop is that field's concentric lap (spacing evidence), not a new
+// field. A cluster with one distinct loop takes the single-field path exactly.
+
+const NESTED_ABSORB_SHARE = 0.5
+
+function computeClusterFields(
+  track: TrackPoint[],
+  cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
+): { fields: TrackPoint[][]; clusterUnexplained: boolean } {
+  const single = { fields: [track], clusterUnexplained: false }
+  if (track.length < cfg.minTrackPoints) return single
+
+  const all = project(track)
+  const stride = Math.max(1, Math.ceil(all.length / cfg.maxLoopSearchPoints))
+  const pts = stride === 1 ? all : all.filter((_, i) => i % stride === 0)
+
+  const candidates = scanTiedLoops(pts, cfg)
+  const distinct: XY[][] = []
+  for (const c of candidates) {
+    if (!isSimpleLoop(pts, c)) continue
+    const ring = pts.slice(c.i, c.j + 1)
+    const absorbed = distinct.some(d => {
+      let inside = 0
+      for (const v of ring) if (pointInPolygon(v, d) || distToRing(v, d) <= cfg.explainMarginM) inside++
+      return inside / ring.length >= NESTED_ABSORB_SHARE
+    })
+    if (!absorbed) distinct.push(ring)
+  }
+  if (distinct.length < 2) return single
+
+  // Cluster gate: the loops together must account for the track.
+  let inUnion = 0
+  for (const p of all) {
+    if (distinct.some(d => pointInPolygon(p, d) || distToRing(p, d) <= cfg.explainMarginM)) inUnion++
+  }
+  if (inUnion / all.length < cfg.explainMinShare) return { fields: [track], clusterUnexplained: true }
+
+  // Proximity assignment; per-loop grading happens in the caller via the
+  // unchanged single-field pipeline on each subset.
+  const assigned: TrackPoint[][] = distinct.map(() => [])
+  // Time order follows each field's OWN lap (the ring's first point), never a
+  // stray transit point assigned by proximity — "Field 1" is the field cut first.
+  const lapSeq = distinct.map(d => track[d[0].idx].seq)
+  for (const p of all) {
+    let best = 0
+    let bd = Infinity
+    distinct.forEach((d, k) => {
+      const dist = pointInPolygon(p, d) ? 0 : distToRing(p, d)
+      if (dist < bd) {
+        bd = dist
+        best = k
+      }
+    })
+    assigned[best].push(track[p.idx])
+  }
+  const order = assigned.map((f, k) => ({ f, lap: lapSeq[k] })).filter(x => x.f.length > 0).sort((a, b) => a.lap - b.lap)
+  return { fields: order.map(x => x.f), clusterUnexplained: false }
 }
 
 export function computeFieldBoundaries(track: TrackPoint[], multiField: boolean): FieldSegment[] {
+  // Work areas first (the deriver's multi_field fact → spatial clusters), then
+  // fields within each area (adjacent fields sharing a cluster). Indexes are
+  // time-ordered across everything so "Field 2" means the second field cut.
+  let clusters: TrackPoint[][]
   if (!multiField) {
-    return [{ index: 1, track, boundary: computeFieldBoundary(track, false) }]
+    clusters = [track]
+  } else {
+    const segments = segmentWorkAreas(track)
+    if (segments.length < 2) {
+      // The deriver stamped multi_field but read-time clustering found one
+      // work area — same algorithm, same data, so this shouldn't happen.
+      // Honor the stored fact and stay silent rather than compute across a road.
+      return [{ index: 1, track, boundary: computeFieldBoundary(track, true) }]
+    }
+    clusters = segments
   }
-  const segments = segmentWorkAreas(track)
-  if (segments.length < 2) {
-    // The deriver stamped multi_field but read-time clustering found one work
-    // area — same algorithm, same data, so this shouldn't happen. Honor the
-    // stored fact and stay silent rather than compute across a road.
-    return [{ index: 1, track, boundary: computeFieldBoundary(track, true) }]
+
+  const out: FieldSegment[] = []
+  for (const c of clusters) {
+    const { fields, clusterUnexplained } = computeClusterFields(c)
+    for (const f of fields) {
+      out.push({
+        index: 0,
+        track: f,
+        boundary: computeFieldBoundary(f, false),
+        ...(clusterUnexplained ? { clusterUnexplained: true } : {}),
+      })
+    }
   }
-  return segments.map((t, i) => ({
-    index: i + 1,
-    track: t,
-    boundary: computeFieldBoundary(t, false),
-  }))
+  const timeKey = (f: FieldSegment) => f.boundary.loopSeqStart ?? f.track[0].seq
+  out.sort((a, b) => timeKey(a) - timeKey(b))
+  out.forEach((f, i) => { f.index = i + 1 })
+  return out
 }

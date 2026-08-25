@@ -113,6 +113,21 @@ const REGRESSION: {
       { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: false, sweptPctRange: [70, 80], sweepFloor: true },
     ],
   },
+  {
+    hardware: '14c19f3534f0', seqStart: 13150,
+    label: 'Aug 23 PM three ADJACENT fields — one spatial cluster, multi-loop split; all confirmed',
+    multiField: false,
+    // The multi-loop case: adjacent fields share a 150 m cluster, the largest
+    // loop explained 12% of the track and silenced everything. Union gate 99%
+    // → three fields, each CONFIRMED on its own assigned points. B got two
+    // outside rounds before the operator moved on (sweep ~10%); C partial.
+    // Acre ranges are regression locks; ground truth pending.
+    fields: [
+      { index: 1, status: 'confirmed', bufferedAcRange: [11.5, 12.0] },
+      { index: 2, status: 'confirmed', bufferedAcRange: [20.5, 21.1] },
+      { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5] },
+    ],
+  },
 ]
 
 const hwFlag = process.argv.indexOf('--hardware')
@@ -259,11 +274,14 @@ async function run() {
     }
 
     const fields = computeFieldBoundaries(track, j.multi_field)
-    const segmented = j.multi_field && fields.length >= 2
+    const segmented = fields.length >= 2
     const inProgress = isInProgress(j)
     const results = new Map<number, { render: ReturnType<typeof computeSweepRender>; sweep: NonNullable<ReturnType<typeof computeSweep>> } | null>()
+    if (fields.some(f => f.clusterUnexplained)) {
+      console.log('  CLUSTER UNEXPLAINED — more than one distinct loop, union fails the explain gate → one honest silent segment')
+    }
     if (segmented) {
-      console.log(`  ${fields.length} work areas — full pipeline per field:`)
+      console.log(`  ${fields.length} fields — full pipeline per field:`)
       for (const f of fields) results.set(f.index, reportField(j, inProgress, f, `field ${f.index} `))
     } else {
       results.set(1, reportField(j, inProgress, fields[0], ''))
