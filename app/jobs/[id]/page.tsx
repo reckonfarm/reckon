@@ -13,7 +13,7 @@ import MachineConfirm from './MachineConfirm'
 import FieldCutConfirm from './FieldCutConfirm'
 import { isInProgress } from '@/lib/jobs/display'
 import { computeFieldBoundaries, boundaryQualified, ACRE_M2, BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
-import { computeSweep, computeSweepRender } from '@/lib/jobs/sweep'
+import { computeSweep, computeSweepRender, type FloorReason } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { fmtAcres, fmtDay, fmtDoneAt, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
 import { MACHINE_SUGGESTIONS, fetchFieldsCut } from '@/lib/jobs/annotations'
@@ -28,6 +28,20 @@ import type { TrackPoint } from '@/lib/jobs/derive'
 // the page because a rebuilt artifact should say when and by what it was built.
 
 export const dynamic = 'force-dynamic'
+
+// Why the percent is a floor, in the operator's terms — keyed on which
+// detector fired (provenance rides the sweep result).
+function floorCaveat(reasons: FloorReason[]): string {
+  const sparse = reasons.includes('long_hops')
+  const scatter = reasons.includes('path_cover')
+  if (sparse && scatter) {
+    return 'The Scout logged too few impacts to see every pass, and the machine drove enough to cover this field — the true cut is at least this much, likely more.'
+  }
+  if (scatter) {
+    return 'The machine drove enough to cover this field but GPS scatter leaves gaps the count can\u2019t see — the true cut is at least this much, likely more.'
+  }
+  return 'The Scout logged too few impacts on this smooth ground to see every pass — the true cut is at least this much, likely more.'
+}
 
 interface JobRow {
   id: string
@@ -273,8 +287,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     )}
                     {!isCut && f.sweep?.sweepIsFloor && (
                       <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
-                        The Scout logged too few impacts on this smooth ground to see every
-                        pass — the true cut is at least this much, likely more.
+                        {floorCaveat(f.sweep.floorReasons)}
                       </p>
                     )}
                     <FieldCutConfirm
@@ -425,8 +438,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 )}
                 {sweep.sweepIsFloor && (
                   <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-                    The Scout logged too few impacts on this smooth ground to see every
-                    pass — the true cut is at least this much, likely more.
+                    {floorCaveat(sweep.floorReasons)}
                   </p>
                 )}
               </>
