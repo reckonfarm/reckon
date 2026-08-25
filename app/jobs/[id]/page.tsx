@@ -113,7 +113,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // for itself — one confirmed, one estimated, one honestly silent, all on
   // the same page. ETA belongs only to the field the machine is actually in.
   const fields = job.track.length >= 2 ? computeFieldBoundaries(job.track, job.multi_field) : []
-  const segmented = job.multi_field && fields.length >= 2
+  const segmented = fields.length >= 2
+  const clusterUnexplained = fields.some(f => f.clusterUnexplained)
   const lastSeq = job.track.length > 0 ? job.track[job.track.length - 1].seq : null
   // Done is done: a CONFIRMED field the machine has left, whose sweep reads
   // essentially complete, fills as the whole boundary polygon — stripes on
@@ -291,7 +292,19 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
           </Card>
         )}
-        {job.multi_field && !segmented && (
+        {clusterUnexplained && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-fraunces text-2xl font-semibold text-forest-green/70">
+              Mapping paused
+            </p>
+            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+              This track holds more than one field and the outlines don&apos;t account
+              for it — the fields here can&apos;t be told apart from the data. Percent and
+              acres stay off until they can.
+            </p>
+          </Card>
+        )}
+        {job.multi_field && !segmented && !clusterUnexplained && (
           <Card shadow="none" className="mt-4 border-warning/40 px-5 py-3">
             <p className="font-dm-sans text-sm text-warning">
               This track spans more than one work area. Acreage from its outline
@@ -432,6 +445,22 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 (sweep.percentCut >= DONE_FILL_MIN_PERCENT || sweep.sweepIsFloor)
               }
             />
+          </Card>
+        )}
+        {/* A finished job below the gates says WHY in one line — never bare
+            track with no explanation. Live jobs get "Mapping the field…" below;
+            multi-field pages carry the reason per field in their own card. */}
+        {!live && !segmented && !clusterUnexplained && boundary != null && !qualified && (
+          <Card shadow="none" className="mt-5 px-5 py-4">
+            <p className="font-dm-sans text-sm text-forest-green/70">
+              {boundary.status === 'unexplained'
+                ? 'No boundary — the outside rounds that tied off don\u2019t account for where the machine worked. Percent and acres stay off.'
+                : boundary.status === 'no_loop'
+                  ? coldStartExplains
+                    ? `No boundary — GPS had no fix during the opening rounds (first ${leadingNoFix} events unpositioned).`
+                    : 'No boundary — the outside rounds never tied off in this track.'
+                  : 'No boundary — too few positioned points to trace one.'}
+            </p>
           </Card>
         )}
         {mapping && (
