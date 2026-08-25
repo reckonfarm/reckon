@@ -204,11 +204,9 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
 export default function JobMapClient({ track, bbox, mode, bales, boundaries, fill }: JobMapProps) {
   const hasBales = (bales ?? []).length > 0
   const hasUnverified = (bales ?? []).some(b => b.confidence < BALE_VERIFY_BELOW)
-  // Track defaults ON only when it IS the story: mapping/plain with no pins —
-  // and working mode whose fill was suppressed (nothing tinted means the rows
-  // themselves are the only picture of cut ground). Pins-first jobs and
-  // shaded working mode put it behind the toggle.
-  const trackDefaultOn = !hasBales && (mode !== 'working' || (fill ?? []).length === 0)
+  // Track defaults ON only when it IS the story: mapping/plain with no pins.
+  // Pins-first jobs and working mode (fill always paints) put it behind the toggle.
+  const trackDefaultOn = !hasBales && mode !== 'working'
   const [basemap, setBasemap] = useState<Basemap>(readBasemapFromUrl)
   const [showTrack, setShowTrack] = useState<boolean>(() => readShowTrackFromUrl(trackDefaultOn))
   const [following, setFollowing] = useState(true)

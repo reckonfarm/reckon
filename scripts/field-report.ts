@@ -23,8 +23,9 @@
 // just the matrix cases:
 //   * hull-exceedance — a simple polygon's area can never exceed its own
 //     convex hull's; if a winner does, the simple-loop filter has a hole.
-//   * render divergence / area-match offset — the picture held against the
-//     numbers (unchanged from the map-visual build).
+//   * boundary divergence — the drawn edge held against the field-size raster;
+//     fill containment — paint must never escape the field (the fill itself
+//     is a picture by doctrine and is never held against the number).
 // This script NEVER writes; there is no wet run — boundaries are computed at
 // read time, per job, on purpose.
 
@@ -64,8 +65,8 @@ type FieldExpectation = {
   index: number
   status: BoundaryStatus
   bufferedAcRange?: [number, number]
-  /** Lock on the render's honesty branch: true = the fill draws within caps;
-   *  false = the fill is suppressed (picture can't match the raster). */
+  /** Lock: a qualified field with swept ground always draws fill polygons
+   *  (the fill is a picture — no suppression branch exists any more). */
   fillRendered?: boolean
   /** Lock on the raw swept fraction, in percent — set after the dt hop rule
    *  (cutting = dt ≤ 60 s, not d ≤ 25 m) landed. */
@@ -102,15 +103,14 @@ const REGRESSION: {
     label: 'Aug 23 three fields — segmented; field 1 silent (GPS cold start), 2+3 confirmed',
     multiField: true,
     // Acre ranges are REGRESSION LOCKS, not acceptance — operator ground truth
-    // pending. fillRendered:false locks the honest-suppression branch: these
-    // fields are cut in spaced rows the render can't yet draw truthfully.
+    // pending. fillRendered:true — the fill is a picture now and always draws.
     // Swept locks are post-dt-rule values; both fields are FULLY CUT per the
     // operator, so both must flag sweepFloor (long-hop shares 21–24% — the
     // sensor outran its sampling) and their percents display as "at least".
     fields: [
       { index: 1, status: 'unexplained' },
-      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: false, sweptPctRange: [58, 70], sweepFloor: true },
-      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: false, sweptPctRange: [70, 80], sweepFloor: true },
+      { index: 2, status: 'confirmed', bufferedAcRange: [10.2, 10.7], fillRendered: true, sweptPctRange: [58, 70], sweepFloor: true },
+      { index: 3, status: 'confirmed', bufferedAcRange: [16.0, 16.6], fillRendered: true, sweptPctRange: [70, 80], sweepFloor: true },
     ],
   },
   {
@@ -123,9 +123,9 @@ const REGRESSION: {
     // outside rounds before the operator moved on (sweep ~10%); C partial.
     // Acre ranges are regression locks; ground truth pending.
     fields: [
-      { index: 1, status: 'confirmed', bufferedAcRange: [11.5, 12.0] },
-      { index: 2, status: 'confirmed', bufferedAcRange: [20.5, 21.1] },
-      { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5] },
+      { index: 1, status: 'confirmed', bufferedAcRange: [11.5, 12.0], fillRendered: true },
+      { index: 2, status: 'confirmed', bufferedAcRange: [20.5, 21.1], fillRendered: true },
+      { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5], fillRendered: true },
     ],
   },
 ]
@@ -221,39 +221,28 @@ async function run() {
     const eta = computeEta(track, b, lastMs)
     console.log(`    ${tag}eta   ${eta.minutes != null ? `~${eta.minutes} min left` : 'hidden'} (as-if-live)`)
 
-    // The picture held against the number: rendered polygon areas must sit
-    // within RENDER_CONFIG.divergenceCap of their raster sources, or the
-    // smoothing is lying and this build fails.
+    // The picture: the boundary is held against its raster (the line IS the
+    // field-size number's edge); the fill is impressionistic by doctrine —
+    // reported against the measured sweep for the record, guarded only by
+    // containment (paint must never escape the field).
     const render = computeSweepRender(track, b)
     if (render != null) {
       console.log(
         `    ${tag}render  boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off raster` +
-          ` (${ac(render.boundaryRenderedM2)} vs ${ac(render.boundaryRasterM2)} ac)` +
-          ` · fill ${(render.fillDivergence * 100).toFixed(1)}% off raster` +
-          ` (${ac(render.fillRenderedM2)} vs ${ac(render.fillRasterM2)} ac)` +
-          ` · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%`
+          ` (${ac(render.boundaryRenderedM2)} vs ${ac(render.boundaryRasterM2)} ac) · cap ${(RENDER_CONFIG.divergenceCap * 100).toFixed(0)}%` +
+          ` · fill drawn ${ac(render.fillRenderedM2)} ac over measured ${ac(render.fillRasterM2)} ac (picture, not number)` +
+          ` · ${render.fill.length} polygon${render.fill.length === 1 ? '' : 's'}` +
+          ` · escape ${(render.fillEscapeShare * 100).toFixed(2)}% · ${render.holesSuppressed} false hole${render.holesSuppressed === 1 ? '' : 's'} filled`
       )
-      console.log(
-        `    ${tag}render  area-match offset applied ${render.offsetAppliedM.toFixed(2)} m` +
-          (render.offsetNeededM > render.offsetAppliedM
-            ? ` (asked for ${render.offsetNeededM.toFixed(2)} m — over the ${RENDER_CONFIG.offsetMaxM} m visibility cap, SKIPPED)`
-            : ` (cap ${RENDER_CONFIG.offsetMaxM} m ≈ half the GPS scatter)`) +
-          ` · ${render.holesSuppressed} false hole${render.holesSuppressed === 1 ? '' : 's'} filled (physics floor ${RENDER_CONFIG.holeMinM2} m²)`
-      )
-      if (!render.fillOk) {
-        console.log(
-          `    ${tag}render  FILL SUPPRESSED — the picture can't match the raster within ${RENDER_CONFIG.divergenceCap * 100}%` +
-            ` (spaced rows: the hole width rule erases real uncut strips). Numbers unaffected; shading not drawn.`
-        )
-      }
       const where = `seq ${j.seq_start}${tag ? ` ${tag.trim()}` : ''}`
       if (render.boundaryDivergence > RENDER_CONFIG.divergenceCap) {
         failures.push(`${where}: rendered boundary ${(render.boundaryDivergence * 100).toFixed(1)}% off its raster (cap ${RENDER_CONFIG.divergenceCap * 100}%)`)
       }
-      // Invariant tripwire: the offset is applied only under the cap, so an
-      // applied value above it means the never-distort branch has a hole.
-      if (render.offsetAppliedM > RENDER_CONFIG.offsetMaxM) {
-        failures.push(`${where}: area-match offset ${render.offsetAppliedM.toFixed(2)} m APPLIED past the ${RENDER_CONFIG.offsetMaxM} m cap — the never-distort invariant is broken`)
+      if (render.fillEscapeShare > 0.01) {
+        failures.push(`${where}: fill escapes the boundary (${(render.fillEscapeShare * 100).toFixed(1)}% of vertices outside) — geometric nonsense`)
+      }
+      if (render.fill.length === 0 && sweep.sweptInsideM2 > 0) {
+        failures.push(`${where}: qualified field with swept ground drew NO fill — a confirmed boundary always paints`)
       }
     }
     return { render, sweep }
@@ -305,8 +294,8 @@ async function run() {
             failures.push(`${exp.label}: buffered ${acres.toFixed(2)} ac outside [${exp.bufferedAcRange.join(', ')}]`)
           }
         }
-        if (exp.fillRendered != null && (results.get(1)?.render?.fillOk ?? false) !== exp.fillRendered) {
-          failures.push(`${exp.label}: expected fill ${exp.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+        if (exp.fillRendered != null && ((results.get(1)?.render?.fill.length ?? 0) > 0) !== exp.fillRendered) {
+          failures.push(`${exp.label}: expected fill ${exp.fillRendered ? 'drawn' : 'absent'}, got the opposite`)
         }
         const s1 = results.get(1)?.sweep
         if (exp.sweptPctRange) {
@@ -340,8 +329,8 @@ async function run() {
                 failures.push(`${exp.label}: field ${fe.index} buffered ${acres.toFixed(2)} ac outside [${fe.bufferedAcRange.join(', ')}]`)
               }
             }
-            if (fe.fillRendered != null && (results.get(fe.index)?.render?.fillOk ?? false) !== fe.fillRendered) {
-              failures.push(`${exp.label}: field ${fe.index} expected fill ${fe.fillRendered ? 'rendered' : 'suppressed'}, got the opposite`)
+            if (fe.fillRendered != null && ((results.get(fe.index)?.render?.fill.length ?? 0) > 0) !== fe.fillRendered) {
+              failures.push(`${exp.label}: field ${fe.index} expected fill ${fe.fillRendered ? 'drawn' : 'absent'}, got the opposite`)
             }
             const fs = results.get(fe.index)?.sweep
             if (fe.sweptPctRange) {

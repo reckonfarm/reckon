@@ -35,11 +35,17 @@ export const RENDER_CONFIG = {
   // drove around — a tree, a well vent, a rock pile.
   holeOpenRadiusCells: 2, // 2 × 2.5 m cells each way ⇒ features under ~10 m die
   holeMinM2: 200, // and the area proxy (~0.05 ac) mops up surviving slivers
-  // The area-matching offset must stay invisible: if the shrink needed to
-  // absorb close-gain + suppressed holes ever approaches the GPS scatter, the
-  // outline is being visibly distorted to hit the number — fail loudly (CLI)
-  // instead of silently applying it.
-  offsetMaxM: 1.8, // ≈ half the 3.7 m scatter
+  // DISPLAY PAINT — the fill is a picture, not a measurement (operator's
+  // ruling: "the coloring in is the least worry for accuracy, just has to be
+  // close"). The measurement sweep paints exactly half a header and counts
+  // cells; the display paints GENEROUSLY so adjacent passes spread apart by
+  // GPS scatter still read as one cut surface, bridges hops liberally, and
+  // is clipped to the field at the raster stage — paint can never escape the
+  // boundary, and that containment is the ONE remaining fill guard.
+  displayRadiusM: 4.9, // a full header each side — bridges scatter-spread rows
+  displayHopMaxS: 120, // bridge display hops liberally (transits run minutes)
+  displayHopMaxM: 300,
+  displayCloseRadiusCells: 2, // 5 m close: pass gaps and pinholes vanish
 } as const
 
 export interface MaskGrid {
