@@ -386,12 +386,17 @@ export function computeSweepRender(
   // The one fill guard: every drawn vertex must sit inside the drawn field
   // edge (+ a cell of smoothing slack). Clipping guarantees it; the guard
   // proves it every run.
+  // Judged against the RAW traced clip edge (what the raster actually
+  // clipped to), with the slack smoothing can legitimately add — the smoothed
+  // boundary line cuts corners inward, and that is style, not a leak.
+  const rawEdge = fieldRings[0].ring
+  const slack = RENDER_CONFIG.simplifyTolM + g.cellM
   let outside = 0
   let total = 0
   for (const o of smoothOuters) {
     for (const v of o) {
       total++
-      if (!pointInPolygon(v, boundarySmooth) && distToRing(v, boundarySmooth) > g.cellM) outside++
+      if (!pointInPolygon(v, rawEdge) && distToRing(v, rawEdge) > slack) outside++
     }
   }
   const fillEscapeShare = total > 0 ? outside / total : 0

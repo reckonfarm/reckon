@@ -23,6 +23,7 @@ import type { Pt } from './boundary'
 export const RENDER_CONFIG = {
   simplifyTolM: 3.5, // under the 3.7 m GPS scatter — smooths wobble, keeps shape
   chaikinIterations: 2,
+  chaikinMaxEdgeM: 10, // subdivide longer edges before Chaikin so corner cuts stay local
   closeRadiusCells: 1, // dilate+erode by one 2.5 m cell: pinholes and pass gaps
   divergenceCap: 0.05, // rendered area may sit at most this far from the raster
   // A real obstacle must be WIDER THAN THE HEADER — anything narrower gets cut
@@ -258,41 +259,25 @@ export function chaikinClosed(ring: Pt[], iterations: number): Pt[] {
 }
 
 export function smoothRing(ring: Pt[], cfg: typeof RENDER_CONFIG = RENDER_CONFIG): Pt[] {
-  return chaikinClosed(simplifyRing(ring, cfg.simplifyTolM), cfg.chaikinIterations)
+  return chaikinClosed(subdivideRing(simplifyRing(ring, cfg.simplifyTolM), cfg.chaikinMaxEdgeM), cfg.chaikinIterations)
 }
 
-// ─── Area matching — the close's honesty mechanism ─────────────────────────────
-// The morphological close makes the fill look complete by bridging pass gaps
-// and pinholes — REAL area the raster didn't count (11.7% on the Aug 10 field,
-// against a 5% cap). Weakening the close brings the spots back; widening the
-// cap defeats the guard. Instead: keep the complete look and hand the added
-// area back by offsetting every fill outline a uniform sub-metre distance
-// toward less-fill (outers shrink, holes grow). The offset is excess ÷ total
-// perimeter — first-order exact, ~0.3 m on Aug 10, an order of magnitude under
-// the GPS scatter. The picture stays complete; the area stays the number's.
-
-// Offset a closed ring by |d| along per-vertex normals, in whichever
-// direction changes the enclosed area the way the caller asks. The sign is
-// found empirically with a tiny probe offset — immune to orientation
-// bookkeeping mistakes, which is exactly where offset bugs live.
-export function offsetRing(ring: Pt[], d: number, shrinkEnclosed: boolean): Pt[] {
-  if (ring.length < 3 || d === 0) return ring
-  const apply = (dist: number): Pt[] =>
-    ring.map((p, i) => {
-      const prev = ring[(i - 1 + ring.length) % ring.length]
-      const next = ring[(i + 1) % ring.length]
-      const tx = next.x - prev.x
-      const ty = next.y - prev.y
-      const len = Math.hypot(tx, ty) || 1
-      // left normal of travel
-      return { x: p.x + (-ty / len) * dist, y: p.y + (tx / len) * dist }
-    })
-  const base = Math.abs(signedArea(ring))
-  const probe = Math.abs(signedArea(apply(0.01)))
-  const leftShrinks = probe < base
-  const sign = shrinkEnclosed === leftShrinks ? 1 : -1
-  return apply(sign * Math.abs(d))
+// Chaikin cuts every corner at ¼ and ¾ of its two edges — on a long straight
+// fence line simplified down to two vertices that is a corner cut measured in
+// tens of metres, not the few-metre rounding it's meant to be. Subdividing
+// long edges first keeps every cut local; a 4-vertex rectangle otherwise
+// loses ~10% of its area to smoothing.
+function subdivideRing(ring: Pt[], maxEdgeM: number): Pt[] {
+  const out: Pt[] = []
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / maxEdgeM))
+    for (let k = 0; k < n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n })
+  }
+  return out
 }
+
 
 export function ringPerimeter(ring: Pt[]): number {
   let s = 0

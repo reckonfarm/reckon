@@ -12,7 +12,7 @@ import ActualsCard from './ActualsCard'
 import MachineConfirm from './MachineConfirm'
 import FieldCutConfirm from './FieldCutConfirm'
 import { isInProgress } from '@/lib/jobs/display'
-import { computeFieldBoundaries, boundaryQualified, ACRE_M2, BOUNDARY_CONFIG } from '@/lib/jobs/boundary'
+import { computeFieldBoundaries, boundaryQualified, ACRE_M2, BOUNDARY_CONFIG, type EstimateReason } from '@/lib/jobs/boundary'
 import { computeSweep, computeSweepRender, type FloorReason } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { fmtAcres, fmtDay, fmtDoneAt, fmtEtaMin, fmtTime, fmtDuration, plural, RANCH_TZ } from '@/lib/jobs/format'
@@ -28,6 +28,18 @@ import type { TrackPoint } from '@/lib/jobs/derive'
 // the page because a rebuilt artifact should say when and by what it was built.
 
 export const dynamic = 'force-dynamic'
+
+const RESIDUE_LINE_MIN_SHARE = 0.05
+
+// Why a boundary is an estimate rather than confirmed — keyed on the reasons
+// the grade ladder recorded. The honesty lives in the words.
+function estimateCaveat(reasons: EstimateReason[]): string {
+  const parts: string[] = []
+  if (reasons.includes('snapped')) parts.push('the outside round didn\u2019t quite close — closed at its nearest return')
+  if (reasons.includes('explain')) parts.push('cutting right next to it isn\u2019t mapped to this field')
+  if (reasons.includes('second_pass')) parts.push('one pass around; a second round (or finishing the field) confirms it')
+  return `Boundary unconfirmed — ${parts.join('; ')}.`
+}
 
 // Why the percent is a floor, in the operator's terms — keyed on which
 // detector fired (provenance rides the sweep result).
@@ -128,7 +140,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // the same page. ETA belongs only to the field the machine is actually in.
   const fields = job.track.length >= 2 ? computeFieldBoundaries(job.track, job.multi_field) : []
   const segmented = fields.length >= 2
-  const clusterUnexplained = fields.some(f => f.clusterUnexplained)
+  // Residue: cutting farther than the band from every field found — reported,
+  // never a kill switch. Same share on every field of a cluster; take the max.
+  const residueShare = fields.reduce((m, f) => Math.max(m, f.residueShare), 0)
   const lastSeq = job.track.length > 0 ? job.track[job.track.length - 1].seq : null
   // Done is done: a CONFIRMED field the machine has left, whose sweep reads
   // essentially complete, fills as the whole boundary polygon — stripes on
@@ -165,6 +179,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // The single-field view keeps its existing shape; segmented pages use
   // fieldViews directly.
   const single = segmented ? null : fieldViews[0] ?? null
+  const showResidue = residueShare >= RESIDUE_LINE_MIN_SHARE && fieldViews.some(f => f.qualified)
   const boundary = single?.boundary ?? null
   const qualified = single?.qualified ?? false
   const isEstimate = boundary?.status === 'estimate'
@@ -281,8 +296,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     </p>
                     {!isCut && f.boundary.status === 'estimate' && (
                       <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
-                        Boundary unconfirmed — one pass around; a second round (or finishing
-                        the field) confirms it.
+                        {estimateCaveat(f.boundary.estimateReasons)}
                       </p>
                     )}
                     {!isCut && f.sweep?.sweepIsFloor && (
@@ -302,19 +316,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </div>
           </Card>
         )}
-        {clusterUnexplained && (
-          <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-2xl font-semibold text-forest-green/70">
-              Mapping paused
-            </p>
-            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
-              This track holds more than one field and the outlines don&apos;t account
-              for it — the fields here can&apos;t be told apart from the data. Percent and
-              acres stay off until they can.
-            </p>
-          </Card>
-        )}
-        {job.multi_field && !segmented && !clusterUnexplained && (
+        {job.multi_field && !segmented && (
           <Card shadow="none" className="mt-4 border-warning/40 px-5 py-3">
             <p className="font-dm-sans text-sm text-warning">
               This track spans more than one work area. Acreage from its outline
@@ -430,10 +432,9 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
                   {actualAcres != null && <> · you call the field {actualAcres}</>}
                 </p>
-                {isEstimate && (
+                {isEstimate && boundary != null && (
                   <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-                    Boundary unconfirmed — one pass around; a second round (or finishing
-                    the field) confirms it.
+                    {estimateCaveat(boundary.estimateReasons)}
                   </p>
                 )}
                 {sweep.sweepIsFloor && (
@@ -459,11 +460,11 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         {/* A finished job below the gates says WHY in one line — never bare
             track with no explanation. Live jobs get "Mapping the field…" below;
             multi-field pages carry the reason per field in their own card. */}
-        {!live && !segmented && !clusterUnexplained && boundary != null && !qualified && (
+        {!live && !segmented && boundary != null && !qualified && (
           <Card shadow="none" className="mt-5 px-5 py-4">
             <p className="font-dm-sans text-sm text-forest-green/70">
               {boundary.status === 'unexplained'
-                ? 'No boundary — the outside rounds that tied off don\u2019t account for where the machine worked. Percent and acres stay off.'
+                ? 'No boundary — the only loops that closed here are turns inside a bigger working area, not a field edge. Percent and acres stay off.'
                 : boundary.status === 'no_loop'
                   ? coldStartExplains
                     ? `No boundary — GPS had no fix during the opening rounds (first ${leadingNoFix} events unpositioned).`
@@ -480,6 +481,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <p className="mt-1.5 font-dm-sans text-sm text-forest-green/55">
               The boundary draws itself as the outside rounds tie off. Percent cut
               starts once the loop closes.
+            </p>
+          </Card>
+        )}
+
+        {/* Residue — cutting the fields found don't account for. A fact with
+            a line of its own; it never mutes a field that qualified. */}
+        {showResidue && (
+          <Card shadow="none" className="mt-4 px-5 py-3">
+            <p className="font-dm-sans text-sm text-forest-green/70">
+              About {Math.round(residueShare * 100)}% of this track isn&apos;t mapped to a field yet —
+              cutting without a closed outside round of its own. It shows as track, not as acres.
             </p>
           </Card>
         )}
