@@ -38,7 +38,9 @@ import {
   convexHullAreaM2,
   boundaryQualified,
   ACRE_M2,
+  BOUNDARY_CONFIG,
   type BoundaryResult,
+  type EstimateReason,
   type BoundaryStatus,
   type FieldSegment,
 } from '../lib/jobs/boundary'
@@ -47,6 +49,8 @@ import { RENDER_CONFIG } from '../lib/jobs/render-geometry'
 import { computeEta } from '../lib/jobs/eta'
 import { isInProgress } from '../lib/jobs/display'
 import type { TrackPoint } from '../lib/jobs/derive'
+
+const SYNTH_HARDWARE = 'synthetic'
 
 // ─── Known ground — the regression matrix ──────────────────────────────────────
 // Aug 10 is the first REAL-GROUND acreage case: onX reference 2.3 ac, loop raw
@@ -75,6 +79,10 @@ type FieldExpectation = {
   sweepFloor?: boolean
   /** Lock on WHICH detector(s) fired — provenance, exact set. */
   floorReasons?: FloorReason[]
+  /** Lock on why a boundary is an estimate — exact set. */
+  estimateReasons?: EstimateReason[]
+  /** Lock on the completion chain: confirmed + (≥90% or floor) → proposes. */
+  proposesCut?: boolean
 }
 const REGRESSION: {
   hardware: string
@@ -87,10 +95,16 @@ const REGRESSION: {
   sweptPctRange?: [number, number]
   sweepFloor?: boolean
   floorReasons?: FloorReason[]
+  estimateReasons?: EstimateReason[]
+  residueRange?: [number, number]
+  proposesCut?: boolean
   allFieldsSilent?: boolean // multi-field: no segment may show numbers
   fields?: FieldExpectation[]
 }[] = [
-  { hardware: '14c19f3534f0', seqStart: 111, label: 'Aug 5 mosaic — meander must stay silenced', status: 'unexplained' },
+  // DOCTRINE CHANGE (final cutting day): the mosaic's largest loop may show
+  // as an ESTIMATE with the residue line, but must never read CONFIRMED —
+  // the 69% residue caps it. Was: must be silent (UNEXPLAINED).
+  { hardware: '14c19f3534f0', seqStart: 111, label: 'Aug 5 mosaic — may estimate, must not confirm', status: 'estimate', estimateReasons: ['explain'], residueRange: [0.6, 0.8] },
   { hardware: '14c19f3534f0', seqStart: 11005, label: 'Aug 7 rake — multi-field, every segment silent', multiField: true, allFieldsSilent: true },
   { hardware: '14c19f3534f0', seqStart: 11064, label: 'Aug 8 baling — no perimeter laps', status: 'no_loop' },
   {
@@ -134,6 +148,89 @@ const REGRESSION: {
       { index: 3, status: 'confirmed', bufferedAcRange: [18.0, 18.5], fillRendered: true, sweptPctRange: [15, 28], sweepFloor: false, floorReasons: [] },
     ],
   },
+  {
+    hardware: '14c19f3534f0', seqStart: 14817,
+    label: 'Aug 25 final day — adjacent fields + unmapped residue; no collective punishment',
+    multiField: false,
+    // The doctrine day: the cluster-union share (76%) used to silence all of
+    // this. Now three fields confirm on their own points, a 1.2-ac loop
+    // estimates, and 33% residue (morning patches + a lap-less piece next to
+    // field 3) is a reported fact. Acre ranges are locks, not ground truth.
+    residueRange: [0.25, 0.42],
+    fields: [
+      { index: 1, status: 'confirmed', bufferedAcRange: [9.7, 10.3], fillRendered: true, sweepFloor: true, proposesCut: true },
+      { index: 2, status: 'estimate', estimateReasons: ['explain'], bufferedAcRange: [1.1, 1.6], fillRendered: true },
+      { index: 3, status: 'confirmed', bufferedAcRange: [13.5, 14.2], fillRendered: true, sweepFloor: true, proposesCut: true },
+      { index: 4, status: 'confirmed', bufferedAcRange: [28.0, 28.8], fillRendered: true, sweepFloor: true, proposesCut: true },
+    ],
+  },
+  {
+    hardware: SYNTH_HARDWARE, seqStart: 900001,
+    label: 'SYNTH round-and-round — outermost lap is the boundary, inner laps are fill, field completes',
+    status: 'confirmed', bufferedAcRange: [7.2, 7.9], fillRendered: true, sweptPctRange: [60, 100], proposesCut: true,
+  },
+  {
+    hardware: SYNTH_HARDWARE, seqStart: 900002,
+    label: 'SYNTH open outside round + half fill (breakdown) — snapped shut, ESTIMATE [snapped], paints, no proposal',
+    status: 'estimate', estimateReasons: ['snapped'], bufferedAcRange: [7.2, 7.9], fillRendered: true, sweptPctRange: [35, 70], proposesCut: false,
+  },
+]
+
+// ─── Synthetic known-ground — patterns the season's data doesn't hold pure ────
+// Deterministic (seeded LCG noise, no Date.now()): a 200×150 m field on flat
+// ground at the ranch's latitude, 4.9 m rows, ~2 m/s at a 3 s cadence,
+// 1.2 m GPS scatter. Round-and-round: the outermost lap must be the boundary
+// and every inner lap fill; open outside round: closed at its nearest return
+// and graded ESTIMATE [snapped]. These run through the SAME functions the
+// pages call and are asserted like every real day.
+function synthTrack(kind: 'spiral' | 'open_round_fill', seqStart: number): TrackPoint[] {
+  const lat0 = 46.94
+  const lng0 = -106.5
+  const mPerLat = 111_132
+  const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
+  let seed = 12345
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 - 0.5 }
+  const W = 200, H = 150, ROW = 4.9, STEP = 6, T0 = 1_787_500_000
+  const path: [number, number][] = []
+  const walk = (a: [number, number], b: [number, number]) => {
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1])
+    const n = Math.max(1, Math.round(d / STEP))
+    for (let k = 1; k <= n; k++) path.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n])
+  }
+  if (kind === 'spiral') {
+    path.push([0, 0])
+    for (let lap = 0; lap * ROW * 2 < Math.min(W, H) - ROW; lap++) {
+      const i = lap * ROW
+      const c: [number, number][] = [[i, i], [W - i, i], [W - i, H - i], [i, H - i], [i, H - i - ROW + 0.01]]
+      // corners of this lap, then step in to start the next
+      walk(path[path.length - 1], c[0]); walk(c[0], c[1]); walk(c[1], c[2]); walk(c[2], c[3]); walk(c[3], [i + ROW, i + ROW])
+    }
+  } else {
+    // One outside round left OPEN by 18 m (turned in early), then lands
+    // fill from the FAR side, stopping half way (breakdown) — nothing ever
+    // comes back within a header of the start corner, so the round can only
+    // close by snapping.
+    path.push([0, 0])
+    walk([0, 0], [W, 0]); walk([W, 0], [W, H]); walk([W, H], [0, H]); walk([0, H], [0, 18])
+    walk([0, 18], [W - ROW, H - ROW])
+    let x = W - ROW
+    let dir = -1
+    while (x > W / 2) {
+      const y0 = dir > 0 ? ROW : H - ROW
+      const y1 = dir > 0 ? H - ROW : ROW
+      walk(path[path.length - 1], [x, y0]); walk([x, y0], [x, y1])
+      x -= ROW; dir = -dir
+    }
+  }
+  return path.map(([x, y], k) => ({
+    seq: seqStart + k, t: T0 + k * 3,
+    lat: lat0 + (y + rnd() * 2.4) / mPerLat, lng: lng0 + (x + rnd() * 2.4) / mPerLng,
+    mg: null, w: null, link: k === 0 ? 'gap' : 'solid',
+  }))
+}
+const SYNTHETIC_JOBS = [
+  { hardware_id: SYNTH_HARDWARE, seq_start: 900001, label: 'SYNTH round-and-round spiral to center', kind: 'spiral' as const },
+  { hardware_id: SYNTH_HARDWARE, seq_start: 900002, label: 'SYNTH open outside round (18 m gap) + lands fill', kind: 'open_round_fill' as const },
 ]
 
 const hwFlag = process.argv.indexOf('--hardware')
@@ -165,6 +262,30 @@ async function run() {
 
   const failures: string[] = []
 
+  // The completion chain, exactly as the page computes it for an inactive
+  // field: confirmed + (≥90% swept or a floor) → "mark it cut?" proposes.
+  const proposes = (f: FieldSegment, sw: ReturnType<typeof computeSweep> | null | undefined) =>
+    f.boundary.status === 'confirmed' && sw != null && (sw.percentCut >= 90 || sw.sweepIsFloor)
+
+  // EVERY-SITUATION MATRIX — one line per field, four columns, the way the
+  // page speaks. No cell is ever bare: a field is drawn, or it carries a
+  // specific honest line. Printed for every job, asserted via the locks.
+  const matrix: string[] = []
+  const matrixRow = (job: string, f: FieldSegment, sw: ReturnType<typeof computeSweep> | null | undefined, hasFill: boolean) => {
+    const b = f.boundary
+    const state = boundaryQualified(b.status)
+      ? `${b.status.toUpperCase()}${b.estimateReasons.length ? ` [${b.estimateReasons.join('+')}]` : ''}`
+      : b.status === 'unexplained' ? 'no field — headland loops only (line)'
+        : b.status === 'no_loop' ? 'no field — never tied off (line)'
+          : b.status === 'too_few_points' ? 'no field — too few points (line)'
+            : b.status
+    const numbers = sw == null ? '—' : `${sw.sweepIsFloor ? 'at least' : 'about'} ${sw.percentCut}%`
+    const fill = sw == null ? '—' : hasFill ? 'painted' : 'NONE ✗'
+    const cut = sw == null ? '—' : proposes(f, sw) ? 'proposes' : 'no'
+    matrix.push(`${job.padEnd(26)} f${f.index}  ${state.padEnd(44)} ${numbers.padEnd(14)} ${fill.padEnd(9)} ${cut}`)
+    if (f.residueShare > 0.05) matrix[matrix.length - 1] += `  · residue ${(f.residueShare * 100).toFixed(0)}% (line)`
+  }
+
   // One field's full block — grade, loop, checks, sweep, render tripwires.
   // `tag` prefixes multi-field output ("field 2 "); single-field jobs pass ''.
   const reportField = (
@@ -175,7 +296,12 @@ async function run() {
   ) => {
     const b: BoundaryResult = f.boundary
     const track = f.track
-    console.log(`  ${tag}grade: ${b.status.toUpperCase()}${tag ? ` (${track.length} pts)` : ''}`)
+    console.log(
+      `  ${tag}grade: ${b.status.toUpperCase()}${tag ? ` (${track.length} pts)` : ''}` +
+        (b.estimateReasons.length ? ` [${b.estimateReasons.join('+')}]` : '') +
+        (b.snapped ? ` · SNAPPED closure ${b.closureDistM!.toFixed(1)} m` : '') +
+        (b.outsideRatio != null ? ` · headland ratio ${b.outsideRatio.toFixed(2)} (max ${BOUNDARY_CONFIG.headlandOutsideRatioMax})` : '')
+    )
     if (b.rawAreaM2 != null) {
       console.log(
         `    ${tag}loop  raw ${ac(b.rawAreaM2)} ac · buffered ${ac(b.areaM2)} ac (raw recorded, never displayed)` +
@@ -255,7 +381,16 @@ async function run() {
     return { render, sweep }
   }
 
-  for (const j of jobs ?? []) {
+  const synthetic = ONLY_HARDWARE && ONLY_HARDWARE !== SYNTH_HARDWARE ? [] : SYNTHETIC_JOBS.map(sj => {
+    const track = synthTrack(sj.kind, sj.seq_start)
+    return {
+      id: sj.label, hardware_id: sj.hardware_id, started_at: new Date(track[0].t * 1000).toISOString(),
+      ended_at: new Date(track[track.length - 1].t * 1000).toISOString(), seq_start: sj.seq_start,
+      seq_end: track[track.length - 1].seq, event_count: track.length, coverage: 1, multi_field: false, stats: null, track,
+    }
+  })
+
+  for (const j of [...(jobs ?? []), ...synthetic]) {
     const track = (j.track ?? []) as TrackPoint[]
     const leadingNoFix = (j.stats as { leadingNoFixCount?: number } | null)?.leadingNoFixCount ?? null
     console.log(
@@ -273,14 +408,18 @@ async function run() {
     const segmented = fields.length >= 2
     const inProgress = isInProgress(j)
     const results = new Map<number, { render: ReturnType<typeof computeSweepRender>; sweep: NonNullable<ReturnType<typeof computeSweep>> } | null>()
-    if (fields.some(f => f.clusterUnexplained)) {
-      console.log('  CLUSTER UNEXPLAINED — more than one distinct loop, union fails the explain gate → one honest silent segment')
-    }
+    const residue = fields.reduce((m, f) => Math.max(m, f.residueShare), 0)
+    if (residue > 0) console.log(`  residue ${(residue * 100).toFixed(0)}% of track farther than ${BOUNDARY_CONFIG.residueBandM} m from every field — reported, never a kill switch`)
     if (segmented) {
       console.log(`  ${fields.length} fields — full pipeline per field:`)
       for (const f of fields) results.set(f.index, reportField(j, inProgress, f, `field ${f.index} `))
     } else {
       results.set(1, reportField(j, inProgress, fields[0], ''))
+    }
+    const jobLabel = j.hardware_id === SYNTH_HARDWARE ? String(j.id) : denver(j.started_at)
+    for (const f of fields) {
+      const r = results.get(f.index)
+      matrixRow(jobLabel.slice(0, 26), f, r?.sweep, (r?.render?.fill.length ?? 0) > 0)
     }
 
     // Regression assertions
@@ -316,6 +455,18 @@ async function run() {
         }
         if (exp.floorReasons && (s1?.floorReasons ?? []).join('+') !== exp.floorReasons.join('+')) {
           failures.push(`${exp.label}: expected floor reasons [${exp.floorReasons.join('+')}], got [${(s1?.floorReasons ?? []).join('+')}]`)
+        }
+        if (exp.estimateReasons && b.estimateReasons.join('+') !== exp.estimateReasons.join('+')) {
+          failures.push(`${exp.label}: expected estimate reasons [${exp.estimateReasons.join('+')}], got [${b.estimateReasons.join('+')}]`)
+        }
+        if (exp.proposesCut != null && proposes(fields[0], s1) !== exp.proposesCut) {
+          failures.push(`${exp.label}: expected completion proposal=${exp.proposesCut}, got ${proposes(fields[0], s1)}`)
+        }
+      }
+      if (exp.residueRange) {
+        const r = fields.reduce((m, f) => Math.max(m, f.residueShare), 0)
+        if (r < exp.residueRange[0] || r > exp.residueRange[1]) {
+          failures.push(`${exp.label}: residue ${(r * 100).toFixed(0)}% outside [${exp.residueRange.map(x => x * 100).join(', ')}]%`)
         }
       }
       if (exp.allFieldsSilent) {
@@ -355,6 +506,12 @@ async function run() {
             if (fe.floorReasons && (fs?.floorReasons ?? []).join('+') !== fe.floorReasons.join('+')) {
               failures.push(`${exp.label}: field ${fe.index} expected floor reasons [${fe.floorReasons.join('+')}], got [${(fs?.floorReasons ?? []).join('+')}]`)
             }
+            if (fe.estimateReasons && f.boundary.estimateReasons.join('+') !== fe.estimateReasons.join('+')) {
+              failures.push(`${exp.label}: field ${fe.index} expected estimate reasons [${fe.estimateReasons.join('+')}], got [${f.boundary.estimateReasons.join('+')}]`)
+            }
+            if (fe.proposesCut != null && proposes(f, fs) !== fe.proposesCut) {
+              failures.push(`${exp.label}: field ${fe.index} expected completion proposal=${fe.proposesCut}, got ${proposes(f, fs)}`)
+            }
           }
         }
       }
@@ -362,6 +519,9 @@ async function run() {
   }
 
   console.log('\n────────────────────────────────────────')
+  console.log('EVERY-SITUATION MATRIX — boundary · numbers · fill · completion (every cell drawn or a specific line)')
+  for (const row of matrix) console.log('  ' + row)
+  console.log('────────────────────────────────────────')
   if (failures.length > 0) {
     console.log(`REGRESSION: ${failures.length} FAILURE(S)`)
     for (const f of failures) console.log(`  ✗ ${f}`)
@@ -369,7 +529,7 @@ async function run() {
     process.exit(1)
   }
   const checked = REGRESSION.filter(r =>
-    (jobs ?? []).some(j => j.hardware_id === r.hardware && j.seq_start === r.seqStart)
+    [...(jobs ?? []), ...synthetic].some(j => j.hardware_id === r.hardware && j.seq_start === r.seqStart)
   ).length
   console.log(`REGRESSION: ${checked}/${REGRESSION.length} known-ground cases present, all pass`)
   console.log('(read-only: nothing written)')

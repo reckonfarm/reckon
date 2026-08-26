@@ -58,7 +58,30 @@ export const BOUNDARY_CONFIG = {
   secondPassBandM: 15, // ~3 header widths — where the corroborating lap must run
   secondPassMinShare: 0.5, // share of boundary vertices needing inside support
   explainMarginM: 10, // ~2 header widths outside the boundary still counts as "explained"
-  explainMinShare: 0.8, // the boundary must account for this share of the track
+  explainMinShare: 0.8, // below this the boundary grades ESTIMATE ("some nearby cutting isn't this field's")
+  // CLOSE-ENOUGH CLOSURE (operator's ruling, final cutting day: "it has to
+  // close new ones even if it's off a little bit"). A loop whose closest
+  // return sits past closureEpsM but within snapClosureM is SNAPPED shut and
+  // grades at most ESTIMATE with the unconfirmed caveat. 25 m from the
+  // season's gap distribution: every real field tied at 4.3–12.7 m (the one
+  // miss, a 13.3-ac field with three concentric rounds, at 12.7); junk and
+  // headland loops sit at 15–39 m and the headland guard handles those. At
+  // 40 m the Aug 8 baler grows a bogus 0.68-ac loop — 25 keeps it loopless.
+  snapClosureM: 25,
+  // HEADLAND GUARD — the bogus-field check that replaces the cluster-union
+  // kill switch. A real field edge has little track just OUTSIDE it (a
+  // neighbor's turns, transit); a headland loop inside a bigger field is
+  // smothered by that field's rows. Track points in the secondPassBandM band
+  // outside the ring ÷ points inside: real fields measure 0.07–0.48 across
+  // the season, headland/junk loops 0.62–4.6. Above the max → not a field.
+  headlandOutsideRatioMax: 0.55,
+  // RESIDUE — track farther than this outside every surviving field is "not
+  // mapped to a field yet": reported as a share, never a kill switch.
+  residueBandM: 25,
+  // A work area where MOST of the cutting is residue is a mosaic: its loops
+  // are chapters, and every field in it grades at most ESTIMATE ("cutting
+  // right next to it isn't mapped to this field"). Aug 5 = 69% residue.
+  mosaicResidueShare: 0.5,
 } as const
 
 export const ACRE_M2 = 4046.8564224
@@ -66,11 +89,16 @@ export const M_PER_LAT = 111_132
 
 export type BoundaryStatus =
   | 'confirmed' // tied + explained + second-pass corroborated: full numbers
-  | 'estimate' // tied + explained, corroboration still short: numbers + caveat
+  | 'estimate' // tied (or snapped), numbers + a caveat naming why (estimateReasons)
   | 'multi_field' // deriver flag — never compute across a road
   | 'too_few_points'
-  | 'no_loop' // outside rounds not tied off yet (or never)
-  | 'unexplained' // a loop tied, but most of the track lives outside it — silence
+  | 'no_loop' // outside rounds not tied off yet (or never), even at snap tolerance
+  | 'unexplained' // loops tied, but every one is a headland loop inside a bigger working area — no field here
+
+export type EstimateReason =
+  | 'second_pass' // one round; a second round (or finishing the field) confirms it
+  | 'explain' // cutting right next to this field isn't mapped to it
+  | 'snapped' // the outside round didn't quite close; closed at the nearest return
 
 // The two grades that may show numbers. Everything below them is silence.
 export function boundaryQualified(status: BoundaryStatus): boolean {
@@ -103,6 +131,12 @@ export interface BoundaryResult {
    * Recorded for the CLI, never displayed.
    */
   loopSpacingM: number | null
+  /** The loop's closest return sat past closureEpsM — closed at snapClosureM. */
+  snapped: boolean
+  /** Why the grade is ESTIMATE rather than CONFIRMED (empty otherwise). */
+  estimateReasons: EstimateReason[]
+  /** Headland-guard input: track just outside the ring ÷ track inside it. */
+  outsideRatio: number | null
 }
 
 // Shared flat-earth helpers — exported for lib/jobs/sweep.ts (and anything
@@ -256,11 +290,14 @@ export interface LoopCandidate {
 
 function scanTiedLoops(pts: XY[], cfg: typeof BOUNDARY_CONFIG): LoopCandidate[] {
   const eps2 = cfg.closureEpsM ** 2
+  const snap2 = cfg.snapClosureM ** 2
   const leave2 = cfg.leaveMinM ** 2
   const candidates: LoopCandidate[] = []
   for (let i = 0; i < pts.length - cfg.minLoopPoints; i++) {
     const anchor = pts[i]
     let left = false
+    let bestJ = -1
+    let bestDd = Infinity
     for (let j = i + 1; j < pts.length; j++) {
       const dx = pts[j].x - anchor.x
       const dy = pts[j].y - anchor.y
@@ -269,19 +306,26 @@ function scanTiedLoops(pts: XY[], cfg: typeof BOUNDARY_CONFIG): LoopCandidate[] 
         if (dd > leave2) left = true
         continue
       }
-      if (dd <= eps2) {
-        if (j - i >= cfg.minLoopPoints) {
-          const loop = pts.slice(i, j + 1)
-          const area = shoelaceAbs(loop)
-          if (area >= cfg.minLoopAreaM2) {
-            candidates.push({ area, i, j, closure: Math.sqrt(dd) })
-          }
-        }
-        break // first return only — a later, larger "return" would be winding
+      // Closest return wins; a true tie (≤ eps) ends the search at once —
+      // first return only, a later, larger "return" would be winding.
+      if (dd < bestDd) {
+        bestDd = dd
+        bestJ = j
       }
+      if (dd <= eps2) break
+    }
+    if (bestJ < 0 || bestDd > snap2 || bestJ - i < cfg.minLoopPoints) continue
+    const loop = pts.slice(i, bestJ + 1)
+    const area = shoelaceAbs(loop)
+    if (area >= cfg.minLoopAreaM2) {
+      candidates.push({ area, i, j: bestJ, closure: Math.sqrt(bestDd) })
     }
   }
-  candidates.sort((a, b) => b.area - a.area)
+  // Largest first — but a SNAPPED loop must beat a true tie by more than 3%
+  // to outrank it: the same field seen from two anchors (one tied at 5 m,
+  // one snapped at 21 m) must resolve to the tie, never the snap.
+  const rank = (c: LoopCandidate) => (c.closure > cfg.closureEpsM ? c.area * 0.97 : c.area)
+  candidates.sort((a, b) => rank(b) - rank(a))
   return candidates
 }
 
@@ -298,6 +342,7 @@ export function computeFieldBoundary(
     polygon: null, areaM2: null, acres: null, rawAreaM2: null, perimeterM: null,
     closureDistM: null, loopSeqStart: null, loopSeqEnd: null,
     secondPassShare: null, explainShare: null, loopSpacingM: null,
+    snapped: false, estimateReasons: [], outsideRatio: null,
   }
 
   if (multiField) return { status: 'multi_field', ...empty }
@@ -313,9 +358,24 @@ export function computeFieldBoundary(
 
   const candidates = scanTiedLoops(pts, cfg)
   const isSimple = (c: LoopCandidate) => isSimpleLoop(pts, c)
-  const best = candidates.find(isSimple) ?? null
+  // Largest simple loop that is not a headland loop — a tied lap smothered by
+  // its own surroundings is a turn inside a field, never the field.
+  let best: LoopCandidate | null = null
+  let outsideRatio: number | null = null
+  for (const c of candidates) {
+    if (!isSimple(c)) continue
+    const ratio = headlandRatio(all, pts.slice(c.i, c.j + 1), cfg)
+    if (ratio > cfg.headlandOutsideRatioMax) continue
+    best = c
+    outsideRatio = ratio
+    break
+  }
 
-  if (best == null) return { status: 'no_loop', ...empty }
+  if (best == null) {
+    // Loops tied but every one was a headland loop → the track holds no
+    // field of its own; plain no-loop when nothing tied at all.
+    return { status: candidates.some(isSimple) ? 'unexplained' : 'no_loop', ...empty }
+  }
 
   const ring = pts.slice(best.i, best.j + 1)
   const loopIdxStart = ring[0].idx
@@ -388,14 +448,38 @@ export function computeFieldBoundary(
     secondPassShare,
     explainShare,
     loopSpacingM,
+    snapped: best.closure > cfg.closureEpsM,
+    estimateReasons: [],
+    outsideRatio,
   }
 
-  // ORDER MATTERS: explain-share is the hard gate and runs first — a loop
-  // that doesn't describe the job must never surface, not even as an
-  // estimate. Second-pass corroboration is a GRADE on loops that passed it.
-  if (explainShare < cfg.explainMinShare) return { status: 'unexplained', ...result }
-  if (secondPassShare < cfg.secondPassMinShare) return { status: 'estimate', ...result }
+  // GRADES, NOT GATES (final-cutting-day doctrine): a tied simple loop that
+  // isn't a headland loop always SHOWS. Anything short of full corroboration
+  // is an ESTIMATE that names its reason — the honesty lives in the words.
+  const reasons: EstimateReason[] = []
+  if (result.snapped) reasons.push('snapped')
+  if (explainShare < cfg.explainMinShare) reasons.push('explain')
+  if (secondPassShare < cfg.secondPassMinShare) reasons.push('second_pass')
+  if (reasons.length > 0) return { status: 'estimate', ...result, estimateReasons: reasons }
   return { status: 'confirmed', ...result }
+}
+
+// Headland guard: track in the band just outside the ring (excluding the
+// lap's own span) ÷ track inside it.
+function headlandRatio(all: XY[], ring: XY[], cfg: typeof BOUNDARY_CONFIG): number {
+  const spanStart = ring[0].idx
+  const spanEnd = ring[ring.length - 1].idx
+  let outside = 0
+  let inside = 0
+  for (const p of all) {
+    if (pointInPolygon(p, ring)) {
+      inside++
+      continue
+    }
+    if (p.idx >= spanStart && p.idx <= spanEnd) continue
+    if (distToRing(p, ring) <= cfg.secondPassBandM) outside++
+  }
+  return outside / Math.max(inside, 1)
 }
 
 // ─── Multi-field: a SEGMENTER, not a suppressor ────────────────────────────────
@@ -415,48 +499,40 @@ export interface FieldSegment {
   track: TrackPoint[]
   boundary: BoundaryResult
   /**
-   * Set on the single segment returned for a cluster that holds MORE THAN ONE
-   * distinct tied loop whose union still fails the explain gate — the honest
-   * "this track holds more than one field and the outlines don't account for
-   * it" state. Display code says exactly that instead of showing bare track.
+   * Share of the field's WORK AREA (cluster) lying farther than residueBandM
+   * outside every field found there — cutting "not mapped to a field yet".
+   * A reported fact on every field of the cluster, never a kill switch.
    */
-  clusterUnexplained?: boolean
+  residueShare: number
 }
 
 // ─── Multi-loop clusters — adjacent fields sharing one work area ───────────────
 //
 // Fields that touch land in ONE spatial cluster (the 150 m cell rule joins
-// them), so the largest tied loop explains only its own field and the whole
-// cluster went silent (Aug 23 PM: three fields, 11/20/17.5 ac, the 20-ac
-// winner explaining 12% of the track). Within a cluster, ALL distinct simple
-// tied loops become fields, each graded by the unchanged per-field pipeline.
+// them). Within a cluster, ALL distinct simple tied loops become fields, each
+// graded by the unchanged per-field pipeline on the points nearest to it.
 //
-// TWO-LEVEL GATE — nothing loosens:
-//   1. CLUSTER: the union of the distinct loops (+ margin) must explain
-//      explainMinShare of the cluster's points — the standing doctrine "the
-//      boundary must account for the track", lifted to the set. A cluster that
-//      fails stays ONE unexplained segment (today's shape). This is what keeps
-//      Aug 5's mosaic silent (union 36%) and keeps Aug 23 AM's field-1
-//      cluster — three headland loops, 0.5–1 ac, union 56% — from surfacing a
-//      bogus half-acre "field".
-//   2. PER LOOP: every point is ASSIGNED to its nearest loop (inside → that
-//      loop, else nearest ring), and each loop runs computeFieldBoundary on
-//      its assigned subset — the same tie, the same explain gate against the
-//      points it owns, the same second-pass grade. Proximity assigns,
-//      containment judges: not circular.
+// NO COLLECTIVE PUNISHMENT (final-cutting-day doctrine): a field that
+// qualifies on its own shows — boundary, acres, fill — regardless of what
+// its neighbors did. The cluster-union share that used to silence everything
+// is now RESIDUE: the share of the cluster's track farther than residueBandM
+// from every field, reported on the page as "some of this track isn't mapped
+// to a field yet". Two things still keep a loop from being a field: the
+// headland guard (a tied lap smothered by its own surroundings is a turn
+// inside a field — Aug 23 AM's half-acre headland loops) and the area floor.
 //
 // Distinct means disjoint: a candidate with ≥ half its vertices inside an
-// accepted loop is that field's concentric lap (spacing evidence), not a new
-// field. A cluster with one distinct loop takes the single-field path exactly.
+// accepted loop is that field's concentric lap (spacing evidence and fill),
+// not a new field. Round-and-round: the outermost lap is the largest, wins
+// first, and every inner lap is absorbed — their paint is fill by construction.
 
 const NESTED_ABSORB_SHARE = 0.5
 
 function computeClusterFields(
   track: TrackPoint[],
   cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
-): { fields: TrackPoint[][]; clusterUnexplained: boolean } {
-  const single = { fields: [track], clusterUnexplained: false }
-  if (track.length < cfg.minTrackPoints) return single
+): { fields: TrackPoint[][]; residueShare: number } {
+  if (track.length < cfg.minTrackPoints) return { fields: [track], residueShare: 0 }
 
   const all = project(track)
   const stride = Math.max(1, Math.ceil(all.length / cfg.maxLoopSearchPoints))
@@ -472,23 +548,21 @@ function computeClusterFields(
       for (const v of ring) if (pointInPolygon(v, d) || distToRing(v, d) <= cfg.explainMarginM) inside++
       return inside / ring.length >= NESTED_ABSORB_SHARE
     })
-    if (!absorbed) distinct.push(ring)
+    if (absorbed) continue
+    if (headlandRatio(all, ring, cfg) > cfg.headlandOutsideRatioMax) continue
+    distinct.push(ring)
   }
-  if (distinct.length < 2) return single
-
-  // Cluster gate: the loops together must account for the track.
-  let inUnion = 0
-  for (const p of all) {
-    if (distinct.some(d => pointInPolygon(p, d) || distToRing(p, d) <= cfg.explainMarginM)) inUnion++
-  }
-  if (inUnion / all.length < cfg.explainMinShare) return { fields: [track], clusterUnexplained: true }
+  if (distinct.length === 0) return { fields: [track], residueShare: 0 }
 
   // Proximity assignment; per-loop grading happens in the caller via the
-  // unchanged single-field pipeline on each subset.
+  // unchanged single-field pipeline on each subset. Residue is a fact.
+  // A field OWNS the points inside it or within residueBandM of its edge —
+  // its own rows, its own headland turns. Anything farther from every field
+  // is residue: counted, reported, and kept out of every field's grade so a
+  // neighbor's unmapped cutting can never downgrade a field that closed.
   const assigned: TrackPoint[][] = distinct.map(() => [])
-  // Time order follows each field's OWN lap (the ring's first point), never a
-  // stray transit point assigned by proximity — "Field 1" is the field cut first.
   const lapSeq = distinct.map(d => track[d[0].idx].seq)
+  let residue = 0
   for (const p of all) {
     let best = 0
     let bd = Infinity
@@ -499,10 +573,14 @@ function computeClusterFields(
         best = k
       }
     })
+    if (bd > cfg.residueBandM) {
+      residue++
+      continue
+    }
     assigned[best].push(track[p.idx])
   }
   const order = assigned.map((f, k) => ({ f, lap: lapSeq[k] })).filter(x => x.f.length > 0).sort((a, b) => a.lap - b.lap)
-  return { fields: order.map(x => x.f), clusterUnexplained: false }
+  return { fields: order.map(x => x.f), residueShare: residue / all.length }
 }
 
 export function computeFieldBoundaries(track: TrackPoint[], multiField: boolean): FieldSegment[] {
@@ -518,21 +596,21 @@ export function computeFieldBoundaries(track: TrackPoint[], multiField: boolean)
       // The deriver stamped multi_field but read-time clustering found one
       // work area — same algorithm, same data, so this shouldn't happen.
       // Honor the stored fact and stay silent rather than compute across a road.
-      return [{ index: 1, track, boundary: computeFieldBoundary(track, true) }]
+      return [{ index: 1, track, boundary: computeFieldBoundary(track, true), residueShare: 0 }]
     }
     clusters = segments
   }
 
   const out: FieldSegment[] = []
   for (const c of clusters) {
-    const { fields, clusterUnexplained } = computeClusterFields(c)
+    const { fields, residueShare } = computeClusterFields(c)
     for (const f of fields) {
-      out.push({
-        index: 0,
-        track: f,
-        boundary: computeFieldBoundary(f, false),
-        ...(clusterUnexplained ? { clusterUnexplained: true } : {}),
-      })
+      let boundary = computeFieldBoundary(f, false)
+      // Mosaic cap: a work area that is mostly residue can't confirm any field.
+      if (boundary.status === 'confirmed' && residueShare >= BOUNDARY_CONFIG.mosaicResidueShare) {
+        boundary = { ...boundary, status: 'estimate', estimateReasons: ['explain'] }
+      }
+      out.push({ index: 0, track: f, boundary, residueShare })
     }
   }
   const timeKey = (f: FieldSegment) => f.boundary.loopSeqStart ?? f.track[0].seq
