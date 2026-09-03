@@ -15,8 +15,11 @@ import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@
 // per field, fetch, busy flag, router.refresh(). The sheet is a fixed
 // inset-0 overlay in the MapLightbox spirit — Esc or the backdrop closes it.
 //
-// A blank place is a valid answer everywhere. "New place…" creates a
-// name-only row through /api/places and selects it; it never gates the log.
+// A blank place is a valid answer everywhere. "New place…" reveals a name
+// input and nothing else — the ONE Save button creates the place (name-only,
+// /api/places) and then logs the event, in that order, in one submit. If the
+// place write fails the sheet stays open with everything typed intact; the
+// log is never saved without the place the operator asked for.
 
 const LAST_PLACE_KEY = 'manual_log_last_place'
 
@@ -43,67 +46,38 @@ function writeLastPlace(id: string) {
   try { if (id) localStorage.setItem(LAST_PLACE_KEY, id); else localStorage.removeItem(LAST_PLACE_KEY) } catch { /* private mode */ }
 }
 
-// Native select of the ranch's places + blank + "New place…" (reveals a name
-// input that POSTs /api/places). Kept inside this file: it exists for the log
-// form and nothing else yet.
-function PlaceSelect({ label, value, places, onChange, onCreated, disabled }: {
+// One place slot: a chosen id, or a pending name the operator typed after
+// picking "New place…". Resolution (POST /api/places) happens in the outer
+// submit, never here — no second button, no way to Save past a typed name.
+type PlaceSlot = { id: string; newName: string | null }
+const EMPTY_SLOT: PlaceSlot = { id: '', newName: null }
+
+function PlaceSelect({ label, slot, places, onChange, disabled }: {
   label: string
-  value: string
+  slot: PlaceSlot
   places: Place[]
-  onChange: (id: string) => void
-  onCreated: (p: Place) => void
+  onChange: (s: PlaceSlot) => void
   disabled?: boolean
 }) {
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const create = async () => {
-    const n = name.trim()
-    if (!n) return
-    setBusy(true); setErr(null)
-    try {
-      const res = await fetch('/api/places', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: n }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) { setErr(json.error ?? 'Could not save the place'); return }
-      onCreated(json.place)
-      onChange(json.place.id)
-      setCreating(false); setName('')
-    } catch {
-      setErr('No connection — try again')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (creating) {
+  if (slot.newName !== null) {
     return (
-      <Field label={`${label} — new place`} error={err ?? undefined} hint="A name is enough. No map.">
+      <Field label={`${label} — new place`} hint="A name is enough. Save adds it with the entry.">
         <div className="flex gap-2">
           <Input
             autoFocus
-            value={name}
-            onChange={e => setName(e.target.value)}
+            value={slot.newName}
+            onChange={e => onChange({ id: '', newName: e.target.value })}
             maxLength={60}
             placeholder="North 40"
-            disabled={busy}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); create() } }}
+            disabled={disabled}
           />
-          <Button type="button" onClick={create} disabled={busy || !name.trim()} className="shrink-0">
-            Add
-          </Button>
           <button
             type="button"
-            onClick={() => { setCreating(false); setName(''); setErr(null) }}
-            disabled={busy}
+            onClick={() => onChange(EMPTY_SLOT)}
+            disabled={disabled}
             className="shrink-0 px-1 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green"
           >
-            Cancel
+            Pick existing
           </button>
         </div>
       </Field>
@@ -113,11 +87,11 @@ function PlaceSelect({ label, value, places, onChange, onCreated, disabled }: {
   return (
     <Field label={label}>
       <Select
-        value={value}
+        value={slot.id}
         disabled={disabled}
         onChange={e => {
-          if (e.target.value === '__new__') { setCreating(true); return }
-          onChange(e.target.value)
+          if (e.target.value === '__new__') { onChange({ id: '', newName: '' }); return }
+          onChange({ id: e.target.value, newName: null })
         }}
       >
         <option value="">No place</option>
@@ -163,15 +137,15 @@ export default function LogIt() {
   // Fields — strings until submit, like ActualsCard.
   const [n1, setN1] = useState('')          // inches | bales | count | head
   const [what, setWhat] = useState('')
-  const [place, setPlace] = useState('')
-  const [fromPlace, setFromPlace] = useState('')
-  const [toPlace, setToPlace] = useState('')
+  const [place, setPlace] = useState<PlaceSlot>(EMPTY_SLOT)
+  const [fromPlace, setFromPlace] = useState<PlaceSlot>(EMPTY_SLOT)
+  const [toPlace, setToPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [when, setWhen] = useState('')      // '' = now
   const [editWhen, setEditWhen] = useState(false)
 
   const close = useCallback(() => {
     setOpen(false); setType(null); setError(null)
-    setN1(''); setWhat(''); setFromPlace(''); setToPlace(''); setWhen(''); setEditWhen(false)
+    setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false)
   }, [])
 
   // Load places on open; the last-used place only applies if it still exists.
@@ -185,7 +159,7 @@ export default function LogIt() {
         const list: Place[] = j.places ?? []
         setPlaces(list)
         const last = readLastPlace()
-        setPlace(list.some(p => p.id === last) ? last : '')
+        setPlace(list.some(p => p.id === last) ? { id: last, newName: null } : EMPTY_SLOT)
       })
       .catch(() => { /* offline: select still offers blank + new */ })
     return () => { cancelled = true }
@@ -200,23 +174,49 @@ export default function LogIt() {
 
   const addPlace = (p: Place) => setPlaces(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)))
 
+  // Save = (create any pending places) then (log the event), one intent.
+  // A pending slot with an empty name is a blank place — nothing typed,
+  // nothing lost. A failed place write stops here: error shown, sheet open,
+  // every field intact, the log NOT saved without its place. A slot that did
+  // resolve is pinned to its new id so a retry never creates it twice.
+  const resolveSlot = async (slot: PlaceSlot, set: (s: PlaceSlot) => void): Promise<string | null> => {
+    if (slot.newName === null) return slot.id || null
+    const name = slot.newName.trim()
+    if (!name) return null
+    const res = await fetch('/api/places', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.error ?? `Could not save the place "${name}"`)
+    const created: Place = json.place
+    addPlace(created)
+    set({ id: created.id, newName: null })
+    return created.id
+  }
+
   const submit = async () => {
     if (!type) return
     setBusy(true); setError(null)
-    const num = n1.trim() === '' ? NaN : Number(n1)
-    const body: Record<string, unknown> = { type }
-    if (when) body.ts = new Date(when).toISOString()
-    switch (type) {
-      case 'rain':          body.inches = num; body.place_id = place || null; break
-      case 'hay_fed':       body.bales = num; body.herd_lot_id = null; body.place_id = place || null; break
-      case 'bales_stacked': body.count = num; body.place_id = place || null; break
-      case 'cattle_moved':
-        body.head = num; body.from_place_id = fromPlace || null; body.to_place_id = toPlace || null
-        body.place_id = toPlace || null   // where they are now
-        break
-      case 'cattle_worked': body.head = num; body.what = what; body.place_id = place || null; break
-    }
     try {
+      const placeId = type === 'cattle_moved' ? null : await resolveSlot(place, setPlace)
+      const fromId = type === 'cattle_moved' ? await resolveSlot(fromPlace, setFromPlace) : null
+      const toId = type === 'cattle_moved' ? await resolveSlot(toPlace, setToPlace) : null
+
+      const num = n1.trim() === '' ? NaN : Number(n1)
+      const body: Record<string, unknown> = { type }
+      if (when) body.ts = new Date(when).toISOString()
+      switch (type) {
+        case 'rain':          body.inches = num; body.place_id = placeId; break
+        case 'hay_fed':       body.bales = num; body.herd_lot_id = null; body.place_id = placeId; break
+        case 'bales_stacked': body.count = num; body.place_id = placeId; break
+        case 'cattle_moved':
+          body.head = num; body.from_place_id = fromId; body.to_place_id = toId
+          body.place_id = toId   // where they are now
+          break
+        case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; break
+      }
       const res = await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -224,18 +224,18 @@ export default function LogIt() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setError(json.error ?? 'Could not save'); return }
-      writeLastPlace(type === 'cattle_moved' ? toPlace : place)
+      writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
       close()
       router.refresh()
-    } catch {
-      setError('No connection — try again')
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'No connection — try again')
     } finally {
       setBusy(false)
     }
   }
 
   const placeField = (label = 'Where') => (
-    <PlaceSelect label={label} value={place} places={places} onChange={setPlace} onCreated={addPlace} disabled={busy} />
+    <PlaceSelect label={label} slot={place} places={places} onChange={setPlace} disabled={busy} />
   )
 
   let fields: ReactNode = null
@@ -253,8 +253,8 @@ export default function LogIt() {
   </>)
   if (type === 'cattle_moved') fields = (<>
     <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
-    <PlaceSelect label="From" value={fromPlace} places={places} onChange={setFromPlace} onCreated={addPlace} disabled={busy} />
-    <PlaceSelect label="To" value={toPlace} places={places} onChange={setToPlace} onCreated={addPlace} disabled={busy} />
+    <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
+    <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
   </>)
   if (type === 'cattle_worked') fields = (<>
     <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
