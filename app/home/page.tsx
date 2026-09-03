@@ -10,6 +10,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import { LiveJobCard, TodayJobs } from '@/app/dashboard/components/RanchNow'
 import SeasonTotals from './SeasonTotals'
 import LogIt from './LogIt'
+import RecentlyLogged from './RecentlyLogged'
 import HerdValueCard from './HerdValueCard'
 import ConditionsStrip from '@/app/dashboard/components/ConditionsStrip'
 import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from '@/app/dashboard/components/LfpAlertCard'
@@ -194,6 +195,11 @@ export default async function HomePage() {
           {/* ── Season totals ── */}
           <Suspense fallback={null}>
             <SeasonTotals />
+          </Suspense>
+
+          {/* ── Recently logged — the operator's own lines; absent when none ── */}
+          <Suspense fallback={null}>
+            <RecentlyLogged />
           </Suspense>
 
           {/* ── Herd value — a card, not the hero ── */}

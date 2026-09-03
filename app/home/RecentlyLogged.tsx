@@ -1,0 +1,101 @@
+import { createClient } from '@/lib/supabase-server'
+import { Card } from '@/app/components/ui/Card'
+import { Heading } from '@/app/components/ui/Heading'
+import { fmtDay, fmtTime, plural } from '@/lib/jobs/format'
+import { isManualEventType, MANUAL_EVENT_LABELS } from '@/lib/manual-log'
+
+// "Recently logged" — the last ten lines the operator wrote by hand, newest
+// first, plain language, place name when one was given. Reads events
+// directly (payload->>source = 'manual') on the user-scoped client — the 034
+// SELECT policy is the scope. If there are none the section does not render:
+// no empty state, no zero (summary never says more than the ledger does).
+
+const FEED_CAP = 10
+
+type Row = {
+  id: string
+  type: string
+  ts: string
+  payload: Record<string, unknown>
+}
+
+const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+function line(r: Row, placeName: (id: unknown) => string | null): string {
+  const p = r.payload
+  const at = placeName(p.place_id)
+  const suffix = at ? ` at ${at}` : ''
+  switch (r.type) {
+    case 'rain': {
+      const inches = num(p.inches)
+      return inches == null ? `Rain${suffix}` : `${inches.toFixed(2)}" of rain${suffix}`
+    }
+    case 'hay_fed': {
+      const bales = num(p.bales)
+      return bales == null ? `Hay fed${suffix}` : `Fed ${plural(bales, 'bale')}${suffix}`
+    }
+    case 'bales_stacked': {
+      const count = num(p.count)
+      return count == null ? `Bales stacked${suffix}` : `Stacked ${plural(count, 'bale')}${suffix}`
+    }
+    case 'cattle_moved': {
+      const head = num(p.head)
+      const from = placeName(p.from_place_id)
+      const to = placeName(p.to_place_id)
+      const who = head == null ? 'Cattle' : `${head.toLocaleString()} head`
+      const route = from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''
+      return `Moved ${who}${route}`
+    }
+    case 'cattle_worked': {
+      const head = num(p.head)
+      const what = str(p.what)
+      const who = head == null ? 'cattle' : `${head.toLocaleString()} head`
+      return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}`
+    }
+    default:
+      return (isManualEventType(r.type) ? MANUAL_EVENT_LABELS[r.type] : r.type) + suffix
+  }
+}
+
+export default async function RecentlyLogged() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('events')
+    .select('id, type, ts, payload')
+    .eq('payload->>source', 'manual')
+    .order('ts', { ascending: false })
+    .limit(FEED_CAP)
+  const rows = (data ?? []) as Row[]
+  if (rows.length === 0) return null
+
+  // Resolve place names in one query; unknown ids just print without a place.
+  const ids = new Set<string>()
+  for (const r of rows) {
+    for (const k of ['place_id', 'from_place_id', 'to_place_id']) {
+      const v = str(r.payload[k]); if (v) ids.add(v)
+    }
+  }
+  const names = new Map<string, string>()
+  if (ids.size > 0) {
+    const { data: places } = await supabase.from('places').select('id, name').in('id', [...ids])
+    for (const p of places ?? []) names.set(p.id, p.name)
+  }
+  const placeName = (id: unknown) => { const s = str(id); return s ? names.get(s) ?? null : null }
+
+  return (
+    <Card shadow="none" className="px-5 py-4">
+      <Heading level={5}>Recently logged</Heading>
+      <ul className="mt-2 divide-y divide-forest-green/10">
+        {rows.map(r => (
+          <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
+            <span className="font-dm-sans text-sm text-forest-green">{line(r, placeName)}</span>
+            <span className="shrink-0 font-dm-sans text-xs tabular-nums text-forest-green/55">
+              {fmtDay(r.ts)} · {fmtTime(r.ts)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
