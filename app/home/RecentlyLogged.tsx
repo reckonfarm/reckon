@@ -53,6 +53,12 @@ function line(r: Row, placeName: (id: unknown) => string | null): string {
       const who = head == null ? 'cattle' : `${head.toLocaleString()} head`
       return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}`
     }
+    case 'hay_inventory': {
+      const bales = num(p.bales)
+      const asOf = str(p.as_of)
+      const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''
+      return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}`
+    }
     default:
       return (isManualEventType(r.type) ? MANUAL_EVENT_LABELS[r.type] : r.type) + suffix
   }
