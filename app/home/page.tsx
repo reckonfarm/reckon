@@ -9,6 +9,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { LiveJobCard, TodayJobs } from '@/app/dashboard/components/RanchNow'
 import SeasonTotals from './SeasonTotals'
+import LogIt from './LogIt'
 import HerdValueCard from './HerdValueCard'
 import ConditionsStrip from '@/app/dashboard/components/ConditionsStrip'
 import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from '@/app/dashboard/components/LfpAlertCard'
@@ -176,6 +177,9 @@ export default async function HomePage() {
       <SiteHeader center={county ? `${county.name}, ${county.state}` : undefined} />
       <main className="mx-auto max-w-2xl px-4 py-6 pb-24 sm:px-6 md:pb-10">
         <div className="space-y-4">
+
+          {/* ── Log it — the operator's own line in the ledger ── */}
+          <LogIt />
 
           {/* ── What's happening now ── */}
           <Suspense fallback={null}>
