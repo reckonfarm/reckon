@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { getHayLedger } from '@/lib/hay/queries'
-import { fmtDay, plural } from '@/lib/jobs/format'
+import { fmtDay, plural, todayKey } from '@/lib/jobs/format'
 
 // ─── Hay — what you stacked, what you fed, what's left if you counted ─────────
 // Same shape as SeasonTotals: a self-contained server component on the
@@ -9,7 +9,10 @@ import { fmtDay, plural } from '@/lib/jobs/format'
 // Every number keeps its provenance on screen:
 //   * On hand only with a counted baseline, labeled with that count's date —
 //     never stacked − fed alone (the logs can't know what the stack held
-//     before logging started). A negative on-hand is printed, not hidden.
+//     before logging started). A negative on-hand is printed, not hidden, and
+//     the note points at the baseline's AGE, not at the count being wrong:
+//     "more fed than your Sep 1 count of 200 bales; log a new count." A
+//     baseline older than STALE_BASELINE_DAYS gets the same quiet nudge.
 //   * Stacked / fed say how many entries (and days) stand behind them.
 //   * Burn rate is a rate over the whole trailing window and says how many
 //     of those days actually had a line.
@@ -21,6 +24,15 @@ import { fmtDay, plural } from '@/lib/jobs/format'
 function ranchDay(key: string): string {
   // 'YYYY-MM-DD' ranch day → "Tue, Sep 1, 2026" (noon local avoids any DST edge)
   return fmtDay(`${key}T12:00:00-06:00`)
+}
+
+// Past this, the arithmetic is still right but a fresh count is worth more
+// than the sum — feeding losses, weather, and a bale here and there add up.
+const STALE_BASELINE_DAYS = 90
+
+// Whole ranch days between two 'YYYY-MM-DD' keys.
+function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((Date.parse(`${toKey}T12:00:00Z`) - Date.parse(`${fromKey}T12:00:00Z`)) / 86_400_000)
 }
 
 const entriesWord = (n: number) => `${n.toLocaleString()} ${n === 1 ? 'entry' : 'entries'}`
@@ -38,12 +50,21 @@ export default async function HayInventoryCard() {
 
   const stats: { value: string; label: string; sub?: string }[] = []
   if (onHand) {
+    const b = onHand.baseline
+    const count = `${ranchDay(b.asOf)} count`
+    const age = daysBetween(b.asOf, todayKey())
+    let sub: string
+    if (onHand.bales < 0) {
+      sub = `more fed than your ${count} of ${plural(b.bales, 'bale')}; log a new count.`
+    } else if (age > STALE_BASELINE_DAYS) {
+      sub = `from your ${count}, ${age} days ago · a fresh count would help.`
+    } else {
+      sub = `from your ${count}`
+    }
     stats.push({
       value: onHand.bales.toLocaleString(),
       label: onHand.bales === 1 ? 'bale on hand' : 'bales on hand',
-      sub: onHand.bales < 0
-        ? `fed past your ${ranchDay(onHand.baseline.asOf)} count`
-        : `from your ${ranchDay(onHand.baseline.asOf)} count`,
+      sub,
     })
   }
   if (stacked) {
