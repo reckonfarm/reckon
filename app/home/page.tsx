@@ -9,6 +9,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { LiveJobCard, TodayJobs } from '@/app/dashboard/components/RanchNow'
 import SeasonTotals from './SeasonTotals'
+import HayInventoryCard from './HayInventoryCard'
 import LogIt from './LogIt'
 import RecentlyLogged from './RecentlyLogged'
 import HerdValueCard from './HerdValueCard'
@@ -195,6 +196,11 @@ export default async function HomePage() {
           {/* ── Season totals ── */}
           <Suspense fallback={null}>
             <SeasonTotals />
+          </Suspense>
+
+          {/* ── Hay — stacked, fed, on hand if counted; absent when nothing logged ── */}
+          <Suspense fallback={null}>
+            <HayInventoryCard />
           </Suspense>
 
           {/* ── Recently logged — the operator's own lines; absent when none ── */}
