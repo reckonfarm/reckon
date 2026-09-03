@@ -165,12 +165,29 @@ export default function LogIt() {
     return () => { cancelled = true }
   }, [open])
 
+  // Typed input is never dropped by an accident: once anything has been typed
+  // (a number, a "what", a new place name, or a changed time) a backdrop tap
+  // does nothing and Escape asks before discarding; Cancel stays the explicit
+  // way out. Picking an existing place from the list is a choice, not typing —
+  // an otherwise untouched sheet still closes freely. No dialog on the
+  // backdrop: on a phone that's the accidental path, and a prompt there is
+  // one more tap in the way.
+  const dirty =
+    n1.trim() !== '' ||
+    what.trim() !== '' ||
+    editWhen ||
+    [place, fromPlace, toPlace].some(s => s.newName !== null && s.newName.trim() !== '')
+  const dismiss = dirty ? undefined : close
+
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (!dirty || window.confirm('Discard what you typed?')) close()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, close])
+  }, [open, dirty, close])
 
   const addPlace = (p: Place) => setPlaces(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)))
 
@@ -277,7 +294,7 @@ export default function LogIt() {
       {open && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={close}
+          onClick={dismiss}
           role="dialog"
           aria-modal="true"
           aria-label="Log it"
