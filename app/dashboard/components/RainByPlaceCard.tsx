@@ -19,10 +19,8 @@ import type { PrecipNormalResult } from '@/lib/precip-normal'
 //     (lib/precip-normal): a NOAA station N miles off, or a PRISM county
 //     estimate. Shown with its own provenance label, never subtracted from
 //     or reconciled with the readings.
-// Absence doctrine, strictly: fewer than MIN_ENTRIES readings → no card. A
-// place with no readings this year does not render. No zeros anywhere.
-
-const MIN_ENTRIES = 3
+// Absence doctrine, strictly: no reading this year → no card. A place with
+// no readings this year does not render. No zeros anywhere.
 
 function inches(n: number): string {
   return `${n.toFixed(2)}"`
@@ -36,7 +34,7 @@ export default async function RainByPlaceCard({ precipPromise }: { precipPromise
   if (!user) return null
 
   const ledger = await getRainLedger(supabase)
-  if (ledger.entries.length < MIN_ENTRIES) return null
+  if (ledger.ytd.entries === 0) return null
 
   const rows = ledger.places.filter(p => p.ytd.entries > 0)
   if (rows.length === 0) return null
