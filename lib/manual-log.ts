@@ -13,6 +13,7 @@ export const MANUAL_EVENT_TYPES = [
   'bales_stacked',
   'cattle_moved',
   'cattle_worked',
+  'hay_inventory',
 ] as const
 export type ManualEventType = (typeof MANUAL_EVENT_TYPES)[number]
 
@@ -26,6 +27,7 @@ export const MANUAL_EVENT_LABELS: Record<ManualEventType, string> = {
   bales_stacked: 'Bales stacked',
   cattle_moved: 'Cattle moved',
   cattle_worked: 'Cattle worked',
+  hay_inventory: 'Bales on hand',
 }
 
 export const MANUAL_SCHEMA_VERSION = 1
@@ -38,6 +40,7 @@ export const LIMITS = {
   count:  { min: 1, max: 10000 },
   head:   { min: 1, max: 20000 },
   what:   { maxLen: 80 },
+  onHand: { min: 0, max: 100000 }, // 0 is honest ("stack's empty")
 } as const
 
 export type ManualPayload = {
@@ -50,6 +53,7 @@ export type ManualPayload = {
   | { count: number }
   | { head: number; from_place_id: string | null; to_place_id: string | null }
   | { head: number; what: string }
+  | { bales: number; as_of: string }
 )
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -72,6 +76,19 @@ function boundedNumber(v: unknown, name: string, min: number, max: number, integ
 }
 
 export class ValidationError extends Error {}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// 'YYYY-MM-DD' ranch day. Not in the future (a count is of a stack that
+// exists), not before 2000.
+function ranchDay(v: unknown, name: string): string {
+  if (typeof v !== 'string' || !DAY_RE.test(v)) throw new ValidationError(`${name} must be a date (YYYY-MM-DD)`)
+  const d = new Date(`${v}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) throw new ValidationError(`${name} must be a real date`)
+  if (d.getTime() > Date.now() + 36 * 3600 * 1000) throw new ValidationError(`${name} is in the future`)
+  if (d.getUTCFullYear() < 2000) throw new ValidationError(`${name} is too far in the past`)
+  return v
+}
 
 // Body → validated payload for one type. Throws ValidationError with a
 // plain-language message the route returns as a 400.
@@ -110,6 +127,15 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         what,
       }
     }
+    // A counted baseline: "N bales on hand as of D". The hay ledger
+    // (lib/hay/queries) takes the most recent count as the starting point
+    // for hay on hand — the only way that number is ever computed.
+    case 'hay_inventory':
+      return {
+        ...base,
+        bales: boundedNumber(body.bales, 'bales', LIMITS.onHand.min, LIMITS.onHand.max, true),
+        as_of: ranchDay(body.as_of, 'as_of'),
+      }
   }
 }
 

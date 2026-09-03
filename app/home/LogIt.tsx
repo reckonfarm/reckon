@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { todayKey } from '@/lib/jobs/format'
 import { useRouter } from 'next/navigation'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
@@ -31,6 +32,7 @@ const TILE_HINT: Record<ManualEventType, string> = {
   bales_stacked: 'bales into the stack',
   cattle_moved: 'head, from → to',
   cattle_worked: 'head and what you did',
+  hay_inventory: 'a count of the stack, as of a date',
 }
 
 // datetime-local wants local wall time without zone; the API wants ISO.
@@ -142,10 +144,11 @@ export default function LogIt() {
   const [toPlace, setToPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [when, setWhen] = useState('')      // '' = now
   const [editWhen, setEditWhen] = useState(false)
+  const [asOf, setAsOf] = useState('')      // hay_inventory: 'YYYY-MM-DD', '' = today
 
   const close = useCallback(() => {
     setOpen(false); setType(null); setError(null)
-    setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false)
+    setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
   }, [])
 
   // Load places on open; the last-used place only applies if it still exists.
@@ -176,6 +179,7 @@ export default function LogIt() {
     n1.trim() !== '' ||
     what.trim() !== '' ||
     editWhen ||
+    asOf !== '' ||
     [place, fromPlace, toPlace].some(s => s.newName !== null && s.newName.trim() !== '')
   const dismiss = dirty ? undefined : close
 
@@ -233,6 +237,7 @@ export default function LogIt() {
           body.place_id = toId   // where they are now
           break
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; break
+        case 'hay_inventory': body.bales = num; body.as_of = asOf || todayKey(); body.place_id = placeId; break
       }
       const res = await fetch('/api/log', {
         method: 'POST',
@@ -272,6 +277,12 @@ export default function LogIt() {
     <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
+  </>)
+  if (type === 'hay_inventory') fields = (<>
+    <NumberField label="Bales on hand" value={n1} onChange={setN1} max={100000} placeholder="0" />
+    <Field label="As of" hint="The day you counted.">
+      <Input type="date" value={asOf || todayKey()} max={todayKey()} onChange={e => setAsOf(e.target.value)} />
+    </Field>
   </>)
   if (type === 'cattle_worked') fields = (<>
     <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
