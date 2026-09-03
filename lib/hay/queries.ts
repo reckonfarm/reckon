@@ -62,6 +62,28 @@ export interface OnHand {
   fedSince: Provenanced
 }
 
+// A run-out date is a PROJECTION, never a fact. It exists only when BOTH a
+// counted baseline exists AND feeding has been logged on at least
+// MIN_FEED_DAYS distinct days — and it always carries its basis. Thin data
+// gets the burn rate alone and no date.
+export interface RunOut {
+  date: string               // 'YYYY-MM-DD' ranch day the stack reaches zero at this rate
+  daysLeft: number           // onHand ÷ balesPerDay, rounded down
+  basis: {
+    balesPerDay: number
+    windowDays: number
+    daysWithEntries: number  // of the window
+    feedDaysLogged: number   // distinct feeding days overall — the gate
+    onHandBales: number
+    baselineAsOf: string
+  }
+  withheld?: undefined
+}
+
+export type RunOutVerdict =
+  | RunOut
+  | { date?: undefined; withheld: 'no_baseline' | 'thin_feeding' | 'no_recent_feeding' | 'nothing_left' }
+
 export interface HaySummary {
   stacked: Provenanced | null
   fed: (Provenanced & { days: number; first: string; last: string }) | null
@@ -69,6 +91,7 @@ export interface HaySummary {
   range: { from: string; to: string } | null   // ISO ts of first/last hay line of any kind
   baseline: Baseline | null
   onHand: OnHand | null      // only with a baseline — never from logs alone
+  runOut: RunOutVerdict      // a date only when the gates pass; otherwise says which gate held it
 }
 
 export interface HayLedger {
@@ -77,10 +100,11 @@ export interface HayLedger {
 }
 
 export const BURN_WINDOW_DAYS = 14
+export const MIN_FEED_DAYS = 7
 
 const EMPTY: HayLedger = {
   entries: [],
-  summary: { stacked: null, fed: null, burnRate: null, range: null, baseline: null, onHand: null },
+  summary: { stacked: null, fed: null, burnRate: null, range: null, baseline: null, onHand: null, runOut: { withheld: 'no_baseline' } },
 }
 
 interface EventRow {
@@ -215,5 +239,34 @@ export function summarizeHay(input: HayEntry[], nowMs: number = Date.now()): Hay
     range: { from: entries[0].ts, to: entries[entries.length - 1].ts },
     baseline,
     onHand,
+    runOut: projectRunOut({ onHand, burnRate, feedDaysLogged: fed?.days ?? 0 }, nowMs),
+  }
+}
+
+// Pure. Gates, in order: a baseline (on hand exists) → feeding logged on at
+// least MIN_FEED_DAYS distinct days → something fed inside the trailing
+// window (a rate to project with) → bales actually left. Each refusal names
+// itself so the card can show the burn rate alone without pretending.
+export function projectRunOut(
+  input: { onHand: OnHand | null; burnRate: BurnRate | null; feedDaysLogged: number },
+  nowMs: number = Date.now(),
+): RunOutVerdict {
+  const { onHand, burnRate, feedDaysLogged } = input
+  if (!onHand) return { withheld: 'no_baseline' }
+  if (feedDaysLogged < MIN_FEED_DAYS) return { withheld: 'thin_feeding' }
+  if (!burnRate || burnRate.balesPerDay <= 0) return { withheld: 'no_recent_feeding' }
+  if (onHand.bales <= 0) return { withheld: 'nothing_left' }
+  const daysLeft = Math.floor(onHand.bales / burnRate.balesPerDay)
+  return {
+    date: dayKey(nowMs + daysLeft * 86_400_000),
+    daysLeft,
+    basis: {
+      balesPerDay: burnRate.balesPerDay,
+      windowDays: burnRate.windowDays,
+      daysWithEntries: burnRate.daysWithEntries,
+      feedDaysLogged,
+      onHandBales: onHand.bales,
+      baselineAsOf: onHand.baseline.asOf,
+    },
   }
 }
