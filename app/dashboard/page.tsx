@@ -15,6 +15,7 @@ import RegionalMapLoader from './components/RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './components/RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
 import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
+import RainByPlaceCard from './components/RainByPlaceCard'
 import ProgramStatus from './components/ProgramStatus'
 import LfpHero from './components/LfpHero'
 import type { County } from './components/CountySelector'
@@ -1089,6 +1090,14 @@ export default async function DashboardPage({
                 <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
               </Suspense>
             </div>
+
+            {/* Rain by place — the operator's own gauge readings, signed-in only
+                (the dashboard is public; signed out renders nothing). Absent under
+                3 readings. Consumes the SAME precipPromise for the county line —
+                no new fetch — and keeps the two kinds of fact visibly apart. */}
+            <Suspense fallback={null}>
+              <RainByPlaceCard precipPromise={precipPromise} />
+            </Suspense>
 
             {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
                 Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
