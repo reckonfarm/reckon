@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { flagEnabled } from '@/lib/flags'
 import SiteHeader from '@/app/components/SiteHeader'
 import ProfileForm from './ProfileForm'
+import RanchNameCard from './RanchNameCard'
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -20,6 +21,9 @@ export default async function ProfilePage() {
             ? 'This is how buyers and sellers see you on the hay marketplace.'
             : 'Your operation, as Dryline knows it.'}
         </p>
+        {/* The outfit's name first (flow, commit 2) — the operation's identity;
+            absent entirely for a person with no ranch membership. */}
+        <RanchNameCard />
         {/* Counties left the bottom bar (shell pass, commit 5): the watchlist —
             home county, watched counties, alert preferences — is reached from
             here now, one tap, a real 44px target. */}

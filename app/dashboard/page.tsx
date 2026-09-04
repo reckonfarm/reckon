@@ -45,6 +45,7 @@ import RecentlyLogged from './components/RecentlyLogged'
 import HerdValueCard from './components/HerdValueCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
+import { getRanch } from '@/lib/ranch-membership'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
 import HerdAnchorLoader from './components/HerdAnchorLoader'
 import type { Lot } from '@/lib/herd'
@@ -236,14 +237,23 @@ export default async function DashboardPage({
     fips
       ? (async () => {
           const { data: { user } } = await supabase.auth.getUser()
-          const profileResult = await getOperationProfile({ supabase, user })
-          return { user, profileResult }
-        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const } }))
-      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const } }),
+          // Profile and ranch (the outfit's name, flow commit 2) side by side —
+          // both need only the user; neither waits on the other.
+          const [profileResult, ranch] = await Promise.all([
+            getOperationProfile({ supabase, user }),
+            user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
+          ])
+          return { user, profileResult, ranch }
+        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }))
+      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }),
   ])
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
   const user = session.user
+  // The operation's name leads the page when the signed-in person's ranch has
+  // one; a blank name is no name (the county stays the subject, exactly as for
+  // a signed-out visitor). Never a placeholder.
+  const ranchName = session.ranch?.name || null
   const profileResult = session.profileResult
 
   // ── County lookup ────────────────────────────────────────────────────────────
@@ -358,9 +368,9 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-cream">
 
-      <SiteHeader
-        center={selectedCounty ? `${selectedCounty.name}, ${selectedCounty.state}` : undefined}
-      />
+      {/* No county in the header centre (flow, commit 2): it was a third copy
+          of the fact the orientation bar and the selector already carry. */}
+      <SiteHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <ScrollToTop />
@@ -394,12 +404,23 @@ export default async function DashboardPage({
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               {/* Semantic h1 (the page's only heading — public county pages are the SEO
                   surface) at the compact text-lg size; !important beats the level-1 scale. */}
-              <Heading level={1} className="!text-lg !leading-snug">
-                {selectedCounty.name}, {selectedCounty.state}
-                <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
-                  FIPS {selectedCounty.fips}
-                </span>
-              </Heading>
+              {ranchName ? (
+                // A named outfit is the subject; the county reads as home base
+                // on a secondary line (flow, commit 2). Same h1 slot and size.
+                <div className="min-w-0">
+                  <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
+                  <p className="font-dm-sans text-xs text-forest-green/50">
+                    Home base · {selectedCounty.name}, {selectedCounty.state} · FIPS {selectedCounty.fips}
+                  </p>
+                </div>
+              ) : (
+                <Heading level={1} className="!text-lg !leading-snug">
+                  {selectedCounty.name}, {selectedCounty.state}
+                  <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
+                    FIPS {selectedCounty.fips}
+                  </span>
+                </Heading>
+              )}
               <div className="flex items-center gap-2">
                 <ShareButton
                   fips={selectedCounty.fips}
