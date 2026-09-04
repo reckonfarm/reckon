@@ -7,6 +7,7 @@ import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import Link from 'next/link'
 import CountySelector from './components/CountySelector'
 import DroughtCattleToggle from '@/app/components/DroughtCattleToggle'
+import { DashboardViewProvider, DashboardViewPanels } from './components/DashboardViews'
 import ShareButton from '@/app/components/ShareButton'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { droughtSeverity } from '@/lib/drought-severity'
@@ -380,18 +381,6 @@ export default async function DashboardPage({
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let latest: DroughtReading | null                 = null
-  let history: DroughtReading[]                     = []
-  let threeYearHistory: DroughtHistoryWeek[]        = []
-  let stateMap: OfficialMapRecord | null            = null
-  let lfpResult: LfpEligibilityResult | null          = null
-  let priorYearLfpResult: LfpEligibilityResult | null = null
-  let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
-  let regionalMapUrl: string | null                 = null
-  let hayNearbyCount: number                        = 0
-  let hayNearbyCards: NearbyHayCard[]               = []   // nearest-4 sell listings — Hay view only
-  let hayMapPins: MapListing[]                      = []   // same nearest-4, shaped for the hay map pins
-  let hayPrimaryVariety: string | null              = null
-  let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
 
   // Rainfall (ACIS) is held as a PROMISE and resolved behind a <Suspense> boundary in
   // the chrome (RainfallPanelAsync below) so it NEVER blocks the page's server render —
@@ -478,27 +467,6 @@ export default async function DashboardPage({
     cycle = cycleRes
   }
 
-  // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
-  // for it. getLatestLrp is a fast Supabase SELECT (the RMA fetch is the offline seed,
-  // not a request-path call), so a direct await is fine — no Suspense needed. 'MT' is the
-  // seeded national-index snapshot; the card frames it as the CME national floor, never a
-  // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
-  let lrpResult: LrpResult = { status: 'none' }
-  // Local auction + national beef (Block 2) — same gating and same character as LRP:
-  // pure Supabase SELECTs (the external fetches live in the snapshot crons, never the
-  // request path), fetched concurrently, each degrading to its own honest state.
-  let localAuction: LocalAuctionResult = { status: 'no_coverage' }
-  let nationalBeef: NationalBeefResult = { status: 'none' }
-  if (selectedCounty && view === 'markets') {
-    const [lrpRes, localRes, nationalRes] = await Promise.all([
-      getLatestLrp('MT'),
-      getLocalAuctionRead(selectedCounty.fips),
-      getNationalBeef(),
-    ])
-    lrpResult = lrpRes
-    localAuction = localRes
-    nationalBeef = nationalRes
-  }
 
   // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
   // can show in EVERY view. Held as a PROMISE, not awaited here: it streams behind a
@@ -515,296 +483,11 @@ export default async function DashboardPage({
         .catch(() => ({ ok: false as const }))
     : Promise.resolve({ ok: false as const })
 
-  // Heavy ranch-view data only when the Drought view is open — keeps News fast and
-  // off the external USDM/ACIS calls.
-  if (selectedCounty && view === 'drought') {
-    const state = selectedCounty.state
 
-    // Run all ranch-view queries in parallel
-    const [
-      historyRes,
-      stateMapRes,
-      lfpRes,
-      priorYearLfpRes,
-      threeYearRaw,
-      hayListingsRes,
-    ] = await Promise.all([
-      // 52 weeks of drought data for this county
-      db
-        .from('drought_data')
-        .select('week_date, d0, d1, d2, d3, d4')
-        .eq('county_id', selectedCounty.id)
-        .order('week_date', { ascending: false })
-        .limit(52),
 
-      // State-level USDM map
-      db
-        .from('official_maps')
-        .select('id, map_type, scope, release_date, image_url, source_url')
-        .eq('map_type', 'usdm_state')
-        .eq('scope', state)
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-
-      // LFP eligibility — reuse the hoisted always-run promise (computed ONCE, shared
-      // with the LFP alert). Same tagged { ok, result } outcome the destructure expects.
-      lfpPromise,
-
-      // Prior year LFP eligibility — same forage period but year - 1
-      computeLfpEligibility(
-        selectedCounty.fips,
-        { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
-      )
-        // Prior-year comparison is non-critical context; absence is already handled.
-        .catch(() => null),
-
-      // 3-year weekly drought history from USDM API (statisticsType=2 = actual per-category %)
-      (() => {
-        const today        = new Date().toISOString().slice(0, 10)
-        const threeYearsAgo = new Date(Date.now() - 3 * 365.25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-        return fetch(
-          `https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent` +
-          `?aoi=${selectedCounty.fips}&startdate=${threeYearsAgo}&enddate=${today}&statisticsType=2`,
-          { headers: { Accept: 'application/json' }, next: { revalidate: 86400 }, signal: timeoutSignal() },
-        )
-          .then(r => r.ok ? r.json() : [])
-          .catch(() => [])
-      })(),
-
-      // Active hay listings — fetched for the nearby + cash-to-hay cards.
-      // Marketplace flagged off → skip the query entirely (the card is gated too).
-      flagEnabled('marketplace')
-        ? db
-            .from('hay_listings')
-            .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
-            .eq('active', true)
-            .gt('expires_at', new Date().toISOString())
-        : Promise.resolve({ data: [] }),
-    ])
-
-    history            = historyRes.data ?? []
-    threeYearHistory   = (Array.isArray(threeYearRaw) ? threeYearRaw : []).map(
-      (row: { mapDate: string; none: number; d0: number; d1: number; d2: number; d3: number; d4: number }) => ({
-        // mapDate is an ISO datetime string: "2026-05-19T00:00:00"
-        date: row.mapDate.slice(0, 10),
-        none: row.none,
-        d0:   row.d0,
-        d1:   row.d1,
-        d2:   row.d2,
-        d3:   row.d3,
-        d4:   row.d4,
-      }),
-    ).reverse()
-    stateMap           = stateMapRes.data as OfficialMapRecord | null
-    lfpResult          = lfpRes.ok ? lfpRes.result : null
-    lfpUnavailable     = !lfpRes.ok
-    priorYearLfpResult = priorYearLfpRes
-
-    if (selectedCounty.lat != null && selectedCounty.lon != null) {
-      const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
-
-      // One consistent set: ACTIVE SELL listings, priced, with seller coords,
-      // within 200 ROAD miles (haversine × circuity factor). deliveredCost enforces sell +
-      // price + coords and returns the road-mile distance we gate and average on.
-      const nearbySell = (hayListingsRes.data ?? [])
-        .map(l => {
-          const row = l as unknown as {
-            hay_type: string | null
-            listing_type: string
-            price_per_ton: number | null
-            counties: { lat: number | null; lon: number | null } | null
-          }
-          return { hayType: row.hay_type, dc: deliveredCost(buyer, row) }
-        })
-        .filter((x): x is { hayType: string | null; dc: DeliveredCost } =>
-          x.dc !== null && x.dc.miles <= 200,
-        )
-
-      hayNearbyCount = nearbySell.length
-
-      if (nearbySell.length > 0) {
-        // Most common hay variety among the nearby sell listings
-        const varietyCounts: Record<string, number> = {}
-        for (const { hayType } of nearbySell) {
-          if (hayType) varietyCounts[hayType] = (varietyCounts[hayType] ?? 0) + 1
-        }
-        hayPrimaryVariety = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
-
-        // Average DELIVERED price/ton (not raw price) — matches the delivered framing
-        const sum = nearbySell.reduce((acc, { dc }) => acc + dc.delivered, 0)
-        hayAvgPrice = Math.round(sum / nearbySell.length)
-      }
-    }
-
-    if (nationalMap?.release_date) {
-      const region = getUsdmRegion(selectedCounty.state)
-      if (region !== 'national') {
-        const releaseDate = new Date(nationalMap.release_date + 'T00:00:00Z')
-        const mapDate = new Date(releaseDate.getTime() - 2 * 24 * 60 * 60 * 1000)
-        const compact = mapDate.toISOString().slice(0, 10).replace(/-/g, '')
-        regionalMapUrl = `https://droughtmonitor.unl.edu/data/png/${compact}/${compact}_${region}_text.png`
-      }
-    }
-  }
-
-  // ── Hay view data — nearest-4 sell listings (Hay view ONLY) ──────────────────
-  // Runs only on view === 'hay' so news/drought never pay for it. Sell-only (matches
-  // the "Hay nearby" card's listing-type filter), active, non-expired, with seller
-  // county coords (coordless listings are dropped — never ranked, never shown).
-  // Ranked by road miles from the home county centroid (selectedCounty), nearest 4.
-  if (selectedCounty && view === 'hay' && selectedCounty.lat != null && selectedCounty.lon != null) {
-    const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
-
-    const { data: hayRows } = await db
-      .from('hay_listings')
-      .select(
-        'id, listing_type, hay_type, cutting_number, bale_type, storage_method, ' +
-        'tonnage, price_per_ton, haul_radius_miles, relief_flag, description, photo_urls, ' +
-        'hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct, ' +
-        'counties(id, name, state, lat, lon)',
-      )
-      .eq('active', true)
-      .eq('listing_type', 'sell')
-      .gt('expires_at', new Date().toISOString())
-
-    type HayRow = {
-      id: string
-      listing_type: string
-      hay_type: string | null
-      cutting_number: number | null
-      bale_type: string | null
-      storage_method: string | null
-      tonnage: number | null
-      price_per_ton: number | null
-      haul_radius_miles: number | null
-      relief_flag: boolean | null
-      description: string | null
-      photo_urls: string[] | null
-      hay_test_protein_pct: number | null
-      hay_test_tdn_pct: number | null
-      hay_test_rfv: number | null
-      hay_test_moisture_pct: number | null
-      counties: { id: number; name: string; state: string; lat: number | null; lon: number | null } | { id: number; name: string; state: string; lat: number | null; lon: number | null }[] | null
-    }
-
-    const ranked = ((hayRows ?? []) as unknown as HayRow[])
-      .flatMap(row => {
-        const c = Array.isArray(row.counties) ? row.counties[0] : row.counties
-        if (!c || c.lat == null || c.lon == null) return []
-        return [{ row, county: { id: c.id, name: c.name, state: c.state, lat: c.lat, lon: c.lon }, miles: Math.round(roadMiles(buyer.lat, buyer.lon, c.lat, c.lon)) }]
-      })
-      .sort((a, b) => a.miles - b.miles)
-      .slice(0, 4)
-
-    // Latest drought tier for the displayed counties — one cheap lookup, only the few
-    // counties actually shown. Mirrors the tier derivation used on the marketplace map.
-    const countyIds = [...new Set(ranked.map(r => r.county.id))]
-    const tierByCounty = new Map<number, number | null>()
-    if (countyIds.length > 0) {
-      const { data: droughtRows } = await db
-        .from('drought_data')
-        .select('county_id, d0, d1, d2, d3, d4')
-        .in('county_id', countyIds)
-        .order('week_date', { ascending: false })
-      for (const d of droughtRows ?? []) {
-        if (tierByCounty.has(d.county_id)) continue
-        tierByCounty.set(
-          d.county_id,
-          d.d4 > 0 ? 4 : d.d3 > 0 ? 3 : d.d2 > 0 ? 2 : d.d1 > 0 ? 1 : d.d0 > 0 ? 0 : null,
-        )
-      }
-    }
-
-    hayNearbyCards = ranked.map(({ row, county, miles }): NearbyHayCard => ({
-      id:              row.id,
-      hayType:         row.hay_type,
-      cuttingNumber:   row.cutting_number,
-      baleType:        row.bale_type,
-      storageMethod:   row.storage_method,
-      tonnage:         row.tonnage,
-      pricePerTon:     row.price_per_ton,
-      haulRadiusMiles: row.haul_radius_miles,
-      reliefFlag:      row.relief_flag ?? false,
-      hasTest:
-        row.hay_test_protein_pct  != null ||
-        row.hay_test_tdn_pct      != null ||
-        row.hay_test_rfv          != null ||
-        row.hay_test_moisture_pct != null,
-      photoUrls:       row.photo_urls ?? [],
-      description:     row.description,
-      countyName:      county.name,
-      state:           county.state,
-      miles,
-      droughtTier:     tierByCounty.get(county.id) ?? null,
-      delivered:       deliveredCost(buyer, { listing_type: row.listing_type, price_per_ton: row.price_per_ton, counties: county }),
-    }))
-
-    // Same nearest-4, shaped for the map pins (reuses the marketplace map renderer).
-    hayMapPins = ranked.map(({ row, county }): MapListing => ({
-      id:           row.id,
-      hay_type:     row.hay_type,
-      listing_type: row.listing_type,
-      price_per_ton: row.price_per_ton,
-      tonnage:      row.tonnage,
-      lat:          county.lat,
-      lon:          county.lon,
-      drought_tier: tierByCounty.get(county.id) ?? null,
-      county_name:  county.name,
-      state:        county.state,
-    }))
-  }
-
-  // ── Own ground (S4) — the signed-in user's places for the Weather map overlay.
-  // Fetched only where the map renders (drought view), via the page's USER-SCOPED
-  // client (third RLS consumer). Signed out → null → the public map is unchanged.
-  // A failed read → error:true so the map's status line says so (never a silent
-  // absence); an auth-resolution failure → null (indistinguishable from signed
-  // out, and treated as such).
-  let ownGround: { places: OwnPlace[]; devices: OwnDevice[]; error: boolean } | null = null
-  if (selectedCounty && view === 'drought') {
-    try {
-      if (user) {
-        // Places + PLACED devices in parallel (unplaced devices are honestly
-        // off the map — the Devices tab is the full registry).
-        const [placesRes, devicesRes] = await Promise.all([
-          supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
-          supabase.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
-        ])
-        ownGround = {
-          places:  (placesRes.data ?? []) as OwnPlace[],
-          devices: (devicesRes.data ?? []) as OwnDevice[],
-          error:   !!placesRes.error || !!devicesRes.error,
-        }
-      }
-    } catch {
-      ownGround = null
-    }
-  }
 
   // Public, neighborly drought descriptor for the Share affordance (no money/PII).
   const shareDrought = droughtSeverity(latest)
-
-  // Default reference estimate (100 head beef_adult) — feeds the hay card's
-  // cash-to-hay line and the eligibility-math accordion preview.
-  const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
-    ? estimatePayment('beef_adult', 100, lfpResult.payments).cappedEstimate
-    : 0
-
-  // FSA-enforcement gate for the DOLLAR-bearing surfaces. The estimate above stays the real
-  // value; this only gates VISIBILITY. A 'pending_obbba' county (D2 qualifies under OBBBA but
-  // FSA hasn't loaded the 2026 maps) shows the amber pending banner and NO dollar figure.
-  const lfpOfficial = !!lfpResult && lfpResult.enforcement === 'officially_eligible'
-
-  // D2+ drought flag for hay card context
-  const latestInDrought = (latest?.d2 ?? 0) > 0
-
-  // Cash-to-hay: how many tons the estimated LFP check buys at the average
-  // delivered price nearby. Honest only when both the estimate and a real
-  // delivered average exist; otherwise null → soft browse fallback.
-  const cashToHayTons = (bannerDefaultEstimate > 0 && hayAvgPrice != null && hayAvgPrice > 0)
-    ? Math.round(bannerDefaultEstimate / hayAvgPrice)
-    : null
 
   return (
     <div className="min-h-screen bg-cream">
@@ -836,6 +519,7 @@ export default async function DashboardPage({
         {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
           <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
+            <DashboardViewProvider initial={view}>
 
             {/* ── B1: compact orientation bar — WHICH county, before any money or market
                    read. One slim row shared across all views: county + FIPS left, the same
@@ -941,354 +625,756 @@ export default async function DashboardPage({
               />
             </Suspense>
 
-            {/* Peer-view toggle — Today ↔ Weather ↔ Markets (same county) */}
-            <DroughtCattleToggle fips={selectedCounty.fips} active={view} />
+            {/* Peer-view toggle — Today ↔ Jobs ↔ Weather ↔ Markets (same county).
+                A tap is client state (DashboardViewProvider above), not a
+                navigation: no request, no re-render of anything above this line. */}
+            <DroughtCattleToggle />
 
-            {/* Today (key 'news' — see the parse note above) — the daily-use floor:
+            {/* The view bodies — ALL rendered on first load, each behind its own
+                Suspense (Weather's USDM/ACIS fan-out and Markets' snapshot reads
+                stream in without blocking the shell), shown one at a time by the
+                client. Hidden, not unmounted: a switch never re-pays a fetch, and
+                the news hook / accordions keep their state across taps.
+
+                Today (key 'news' — see the parse note above) — the daily-use floor:
                 7-day forecast carousel + the 3-headline news hook. The carousel reuses
                 the SAME already-started forecastPromise the ConditionsStrip streams
-                from (zero new fetches; it also renders in Weather, but only one view
-                renders at a time). The hook is the ENTIRE news surface now — the old
-                full MarketsNews feed is parked (component kept, no longer rendered). */}
-            {view === 'news' && (
-              <>
-                {/* Today's completed sessions — quiet, gone at midnight ranch
-                    time (at breakfast the slate is clean; history lives in the
-                    Jobs view). The live card above already carries in-progress. */}
-                <Suspense fallback={null}>
-                  <TodayJobs />
-                </Suspense>
-                <div>
-                  <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
-                  <Suspense fallback={<ForecastPanelSkeleton />}>
-                    <ForecastPanelAsync dataPromise={forecastPromise} />
-                  </Suspense>
-                </div>
-                <NewsHookCard fips={selectedCounty.fips} />
-              </>
-            )}
+                from (zero new fetches; Weather renders its own copy). The hook is the
+                ENTIRE news surface now — the old full MarketsNews feed is parked.
 
-            {/* Jobs — derived work sessions, the view that replaced Activity
-                (raw-event feed, parked). Streamed behind Suspense so the jobs
-                query never blocks the shell. Self-contained: resolves its own
-                user (signed-out gets the honest private-ledger gate — the
-                dashboard stays public, the ledger doesn't). */}
-            {view === 'jobs' && (
-              <Suspense fallback={<JobsViewSkeleton />}>
-                <JobsView user={user} />
-              </Suspense>
-            )}
+                Jobs — derived work sessions (the view that replaced Activity).
+                Self-contained; signed-out gets the honest private-ledger gate — the
+                dashboard stays public, the ledger doesn't.
 
-            {/* Markets view (Block 2) — three boring stacked cards, most-local first:
+                Markets (Block 2) — three boring stacked cards, most-local first:
                 the nearest barn's latest sale, the two national benchmarks, and the
                 LRP price floor. All pure Supabase reads (crons own the external
                 fetches); each card carries its own honest states + as-of. */}
-            {view === 'markets' && (
-              <>
-                {/* Market Read leads the view its chips belong to — the missing
-                    header for the cards below. Gate unchanged in the move
-                    (signed-in with a herd): relocation only, nobody's
-                    visibility changed. */}
-                {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-                <LocalAuctionCard result={localAuction} />
-                <NationalBeefCard result={nationalBeef} />
-                <LrpMarketsCard result={lrpResult} />
-              </>
-            )}
-
-            {/* Hay view — placeholder only. Nearest-4 pins/cards + the hay map land in
-                later commits. For now it just routes into the existing marketplace. */}
-            {view === 'hay' && (
-              <div className="space-y-4">
-                <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
-                  Hay for sale near you
-                </p>
-
-                {/* Map-prominent lead: the nearest-4 pinned on a hay map centered on the
-                    home county. Pins tap → /hay/[id]. Renders whenever the home county has
-                    a centroid (the drought overlay gives regional context even at 0 pins). */}
-                {selectedCounty.lat != null && selectedCounty.lon != null && (
-                  <HayMapLoader
-                    listings={hayMapPins}
-                    center={[selectedCounty.lat, selectedCounty.lon]}
-                  />
-                )}
-
-                {/* Honest explainer of the hay-score choropleth — collapsed by default,
-                    opens inline (reuses DashboardAccordion's toggle so it matches the rest
-                    of the dashboard and can't trap the user). Copy is edited in one place
-                    after the calibration drive; render-only, no score/backend tie-in. */}
-                <DashboardAccordion title="How the Hay Score works">
-                  <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-forest-green/80">
-                    <p>
-                      Each county gets a 0–100 score for how its hay outlook is shaping up this
-                      season. Greener is better, redder is worse. It&rsquo;s built from four things:
-                    </p>
-                    <ul className="space-y-2">
-                      <li>
-                        <span className="font-semibold text-ink">Rain so far</span> — this year&rsquo;s
-                        moisture vs. normal for that county, updated weekly.
-                      </li>
-                      <li>
-                        <span className="font-semibold text-ink">How the season started</span> — drought
-                        and moisture on hand at green-up. A county that started dry stays capped, no
-                        matter how spring went.
-                      </li>
-                      <li>
-                        <span className="font-semibold text-ink">Spring frost</span> — whether a killing
-                        freeze hit after a county greened up, when new growth was tender. Counties that
-                        greened up early and got frosted score lower than ones still dormant when the
-                        cold came.
-                      </li>
-                      <li>
-                        <span className="font-semibold text-ink">Heat &amp; dry stress</span> — hot,
-                        windy, dry stretches that pull moisture out of the crop, weighted toward the
-                        stages when it hurts most.
-                      </li>
-                    </ul>
-                    <p>
-                      <span className="font-semibold text-ink">What it is and isn&rsquo;t.</span> This is
-                      an early, free tool, and the exact numbers are still being calibrated against real
-                      fields — including a drive across these counties this season. Treat the score as a
-                      directional read on the region, not a verdict on any one field, and not a
-                      substitute for walking your own ground. Conditions change fast as rain comes. If a
-                      county looks wrong to you, that&rsquo;s worth knowing — tell us.
-                    </p>
-                    <p className="text-forest-green/50">
-                      Data: PRISM precip, gridMET temperature/humidity/wind, USDM drought monitor.
-                      Updated weekly, provisional for the current season.
-                    </p>
-                  </div>
-                </DashboardAccordion>
-
-                <HayNearbyCards listings={hayNearbyCards} deliverToFips={selectedCounty.fips} />
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href="/hay"
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
-                  >
-                    Browse all hay
-                  </Link>
-                  <Link
-                    href="/hay"
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-forest-green/20 bg-white px-4 font-dm-sans text-sm font-medium text-forest-green transition-colors hover:bg-forest-green/5"
-                  >
-                    Post a listing
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {view === 'drought' && (
-              <>
-
-            {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
-                summary). Weather view only (above the map). Hero renders from the reliable
-                DB `latest`; the ribbon + summary come from the live 3-year USDM history and
-                degrade independently to "history unavailable" if it failed. */}
-            {latest && (
-              <LatestReadingCard latest={latest} history={threeYearHistory} />
-            )}
-
-            {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
-                boundary so the slow ACIS call never blocks the Weather view paint. */}
-            <div>
-              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
-              <Suspense fallback={<RainfallPanelSkeleton />}>
-                <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
-              </Suspense>
-            </div>
-
-            {/* Rain by place — the operator's own gauge readings, signed-in only
-                (the dashboard is public; signed out renders nothing). Absent under
-                3 readings. Consumes the SAME precipPromise for the county line —
-                no new fetch — and keeps the two kinds of fact visibly apart. */}
-            <Suspense fallback={null}>
-              <RainByPlaceCard precipPromise={precipPromise} user={user} />
-            </Suspense>
-
-            {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
-                Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
-            <div>
-              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
-              <Suspense fallback={<ForecastPanelSkeleton />}>
-                <ForecastPanelAsync dataPromise={forecastPromise} />
-              </Suspense>
-            </div>
-
-            {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
-
-            {/* Regional conditions map — COLLAPSED BY DEFAULT (Block 2): a 400px canvas
-                everyone has already scrolled is reference material, not a daily signal;
-                the LatestReadingCard above carries the current category + 3-year ribbon.
-                Collapsed, the ssr:false map client NEVER mounts (DashboardAccordion
-                renders children only when open), so the Leaflet payload is spent on
-                demand — restoring the collapsed-accordion economy the loader was
-                originally built for. The USDM week stays visible in the preview so
-                freshness is never hidden behind the fold (data-derived, never today's
-                date). Own-ground places/device pins draw when expanded, unchanged. */}
-            <DashboardAccordion
-              title="Regional map"
-              preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
-            >
-              <RegionalMapLoader
-                fips={selectedCounty.fips}
-                center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
-                countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-                runtime={{
-                  usdm: {
-                    fallbackImage: {
-                      url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
-                      sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
-                    },
-                  },
-                  // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
-                  alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
-                }}
-                ownGround={ownGround}
-              />
-            </DashboardAccordion>
-
-            {/* ── LFP status — the single contextual LFP card (A1 merged the old
-                   TriggeredBanner into LfpHero): hero line per enforcement state, tracker,
-                   and the signup CTA / pending FSA-office guidance. The detailed
-                   "Eligibility math" accordion (calculator, tier ladder, CCC-853) is
-                   untouched below. ── */}
-            {lfpResult && !lfpUnavailable && (
-              <LfpHero eligibility={lfpResult} countyName={selectedCounty.name} />
-            )}
-
-            {!history.length && (
-              <Card shadow="none" className="px-6 py-8 text-center">
-                <p className="text-sm text-forest-green/60 font-dm-sans">
-                  No drought data yet for this county.
-                </p>
-              </Card>
-            )}
-
-            {history.length > 0 && (
-              <>
-                {/* LAYER 2 — The why (compact cards, always visible) */}
-                <div className="space-y-3">
-
-                  {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA.
-                      Rides the marketplace flag: no listings fetch, no card, no /hay CTA. */}
-                  {flagEnabled('marketplace') && (
-                  <Card shadow="none" className="px-5 py-4">
-                    <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
-                      Hay nearby
-                    </p>
-
-                    {hayNearbyCount > 0 ? (
-                      <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
-                        {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
-                        {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
-                        {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
-                      </p>
-                    ) : (
-                      <p className="font-fraunces text-base font-semibold text-forest-green/50 leading-snug sm:text-lg">
-                        No hay listed within 200 miles yet.
-                      </p>
-                    )}
-
-                    {lfpOfficial && bannerDefaultEstimate > 0 && (
-                      <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
-                        {cashToHayTons != null && hayAvgPrice != null
-                          ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
-                          : `Your estimated LFP payment is ~$${Math.round(bannerDefaultEstimate).toLocaleString()}.`}
-                      </p>
-                    )}
-
-                    <Link
-                      href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
-                      className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
-                    >
-                      Browse hay delivered to {selectedCounty.name} →
-                    </Link>
-
-                    {hayNearbyCount === 0 && (
-                      <p className="mt-3 text-center font-dm-sans text-xs text-forest-green/40">
-                        <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
-                      </p>
-                    )}
-
-                    {lfpOfficial && bannerDefaultEstimate > 0 && (
-                      <div className="mt-3">
-                        <LfpEstimateNote />
-                      </div>
-                    )}
-                  </Card>
-                  )}
-
-                </div>
-
-                {/* LAYER 3 — Deep dive accordions. id = stable scroll target for the
-                    hero's "View FSA checklist" link (the old #action-cards anchor only
-                    exists while the accordion is open). */}
-                <div id="eligibility-math" className="scroll-mt-24 space-y-2 pt-2">
-
-                  <DashboardAccordion
-                    title="Eligibility math"
-                    hashTarget="eligibility-math"
-                    preview={
-                      lfpUnavailable
-                        ? 'Estimate temporarily unavailable'
-                        : lfpOfficial && lfpResult
-                          ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
-                          : lfpResult?.enforcement === 'pending_obbba'
-                            ? 'Meets new OBBBA threshold — pending FSA'
-                            : 'Not currently triggered'
+            <DashboardViewPanels
+              panels={{
+                news: (
+                  <>
+                          {/* Today's completed sessions — quiet, gone at midnight ranch
+                              time (at breakfast the slate is clean; history lives in the
+                              Jobs view). The live card above already carries in-progress. */}
+                          <Suspense fallback={null}>
+                            <TodayJobs />
+                          </Suspense>
+                          <div>
+                            <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+                            <Suspense fallback={<ForecastPanelSkeleton />}>
+                              <ForecastPanelAsync dataPromise={forecastPromise} />
+                            </Suspense>
+                          </div>
+                          <NewsHookCard fips={selectedCounty.fips} />
+                  </>
+                ),
+                jobs: (
+                  <Suspense fallback={<JobsViewSkeleton />}>
+                    <JobsView user={user} />
+                  </Suspense>
+                ),
+                drought: (
+                  <Suspense fallback={<RainfallPanelSkeleton />}>
+                    <WeatherViewBody
+                      selectedCounty={selectedCounty}
+                      latest={latest}
+                      nationalMap={nationalMap}
+                      pt={pt}
+                      user={user}
+                      lfpPromise={lfpPromise}
+                      precipPromise={precipPromise}
+                      forecastPromise={forecastPromise}
+                    />
+                  </Suspense>
+                ),
+                ...(flagEnabled('marketplace')
+                  ? {
+                      hay: (
+                        <Suspense fallback={null}>
+                          <HayViewBody selectedCounty={selectedCounty} />
+                        </Suspense>
+                      ),
                     }
-                    previewAmount={lfpOfficial && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
-                    highlight={lfpOfficial}
-                    defaultOpen={lfpUnavailable}
-                  >
-                    {lfpUnavailable ? (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                        <p className="font-dm-sans text-sm font-semibold text-amber-800">
-                          LFP estimate temporarily unavailable
-                        </p>
-                        <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
-                          The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
-                          can&apos;t compute your LFP tier or payment estimate.
-                          {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
-                          Check back shortly — this usually clears on its own.
-                        </p>
-                      </div>
-                    ) : lfpResult ? (
-                      <ProgramStatus
-                        eligibility={lfpResult}
-                        priorYearEligibility={priorYearLfpResult}
-                        fips={selectedCounty.fips}
-                        countyName={selectedCounty.name}
-                      />
-                    ) : null}
-                  </DashboardAccordion>
+                  : {}),
+                markets: (
+                  <Suspense fallback={<JobsViewSkeleton />}>
+                    <MarketsViewBody
+                      selectedCounty={selectedCounty}
+                      herdAnchor={herdAnchor}
+                      corn={corn}
+                      moisture={moisture}
+                      crop={crop}
+                      cycle={cycle}
+                    />
+                  </Suspense>
+                ),
+              }}
+            />
 
-                  {/* The static "Forecast" accordion (CPC outlook images) was removed when
-                      those outlooks became the map's "Drought Forecast" layer; that layer is
-                      now PARKED with the rest of the moisture sprawl (North Star v3 §6,
-                      inToggle:false in layers.ts) — nothing renders here by design. */}
-
-                </div>
-
-                {/* Legal links (no site footer this pass) */}
-                <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
-                  <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
-                  {' · '}
-                  <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
-                </p>
-              </>
-            )}
-
-              </>
-            )}
+            </DashboardViewProvider>
 
           </div>
         )}
       </main>
     </div>
+  )
+}
+
+// ─── View bodies — one async server component per peer view ────────────────
+// Each is rendered on EVERY load (Commit 2 of the perf block: the toggle is
+// client state, not a navigation) but behind its own Suspense boundary, so
+// the shell + the always-on stack paint from the head reads alone and each
+// body streams in when its own reads finish. The data each one gathers is
+// exactly what the page used to gather only when that view was open; the
+// gating on `view` is gone, nothing else moved. Signed-out gates and honest
+// degrade states are unchanged inside.
+
+async function WeatherViewBody({
+  selectedCounty, latest, nationalMap, pt, user, lfpPromise, precipPromise, forecastPromise,
+}: {
+  selectedCounty: CountyRow
+  latest: DroughtReading | null
+  nationalMap: OfficialMapRecord | null
+  pt: string | undefined
+  user: { id: string } | null
+  lfpPromise: Promise<LfpFetchOutcome>
+  precipPromise: Promise<PrecipNormalResult>
+  forecastPromise: Promise<LocalForecast | null>
+}) {
+  const db = createServiceClient()
+  let history: DroughtReading[]                     = []
+  let threeYearHistory: DroughtHistoryWeek[]        = []
+  let stateMap: OfficialMapRecord | null            = null
+  let lfpResult: LfpEligibilityResult | null          = null
+  let priorYearLfpResult: LfpEligibilityResult | null = null
+  let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
+  let regionalMapUrl: string | null                 = null
+  let hayNearbyCount: number                        = 0
+  let hayPrimaryVariety: string | null              = null
+  let hayAvgPrice: number | null                    = null   // average DELIVERED $/ton, sell-only
+
+  const state = selectedCounty.state
+
+  // Run all ranch-view queries in parallel
+  const [
+    historyRes,
+    stateMapRes,
+    lfpRes,
+    priorYearLfpRes,
+    threeYearRaw,
+    hayListingsRes,
+  ] = await Promise.all([
+    // 52 weeks of drought data for this county
+    db
+      .from('drought_data')
+      .select('week_date, d0, d1, d2, d3, d4')
+      .eq('county_id', selectedCounty.id)
+      .order('week_date', { ascending: false })
+      .limit(52),
+
+    // State-level USDM map
+    db
+      .from('official_maps')
+      .select('id, map_type, scope, release_date, image_url, source_url')
+      .eq('map_type', 'usdm_state')
+      .eq('scope', state)
+      .order('release_date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+
+    // LFP eligibility — reuse the hoisted always-run promise (computed ONCE, shared
+    // with the LFP alert). Same tagged { ok, result } outcome the destructure expects.
+    lfpPromise,
+
+    // Prior year LFP eligibility — same forage period but year - 1
+    computeLfpEligibility(
+      selectedCounty.fips,
+      { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
+    )
+      // Prior-year comparison is non-critical context; absence is already handled.
+      .catch(() => null),
+
+    // 3-year weekly drought history from USDM API (statisticsType=2 = actual per-category %)
+    (() => {
+      const today        = new Date().toISOString().slice(0, 10)
+      const threeYearsAgo = new Date(Date.now() - 3 * 365.25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      return fetch(
+        `https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent` +
+        `?aoi=${selectedCounty.fips}&startdate=${threeYearsAgo}&enddate=${today}&statisticsType=2`,
+        { headers: { Accept: 'application/json' }, next: { revalidate: 86400 }, signal: timeoutSignal() },
+      )
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+    })(),
+
+    // Active hay listings — fetched for the nearby + cash-to-hay cards.
+    // Marketplace flagged off → skip the query entirely (the card is gated too).
+    flagEnabled('marketplace')
+      ? db
+          .from('hay_listings')
+          .select('id, listing_type, hay_type, price_per_ton, counties(lat, lon, state)')
+          .eq('active', true)
+          .gt('expires_at', new Date().toISOString())
+      : Promise.resolve({ data: [] }),
+  ])
+
+  history            = historyRes.data ?? []
+  threeYearHistory   = (Array.isArray(threeYearRaw) ? threeYearRaw : []).map(
+    (row: { mapDate: string; none: number; d0: number; d1: number; d2: number; d3: number; d4: number }) => ({
+      // mapDate is an ISO datetime string: "2026-05-19T00:00:00"
+      date: row.mapDate.slice(0, 10),
+      none: row.none,
+      d0:   row.d0,
+      d1:   row.d1,
+      d2:   row.d2,
+      d3:   row.d3,
+      d4:   row.d4,
+    }),
+  ).reverse()
+  stateMap           = stateMapRes.data as OfficialMapRecord | null
+  lfpResult          = lfpRes.ok ? lfpRes.result : null
+  lfpUnavailable     = !lfpRes.ok
+  priorYearLfpResult = priorYearLfpRes
+
+  if (selectedCounty.lat != null && selectedCounty.lon != null) {
+    const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
+
+    // One consistent set: ACTIVE SELL listings, priced, with seller coords,
+    // within 200 ROAD miles (haversine × circuity factor). deliveredCost enforces sell +
+    // price + coords and returns the road-mile distance we gate and average on.
+    const nearbySell = (hayListingsRes.data ?? [])
+      .map(l => {
+        const row = l as unknown as {
+          hay_type: string | null
+          listing_type: string
+          price_per_ton: number | null
+          counties: { lat: number | null; lon: number | null } | null
+        }
+        return { hayType: row.hay_type, dc: deliveredCost(buyer, row) }
+      })
+      .filter((x): x is { hayType: string | null; dc: DeliveredCost } =>
+        x.dc !== null && x.dc.miles <= 200,
+      )
+
+    hayNearbyCount = nearbySell.length
+
+    if (nearbySell.length > 0) {
+      // Most common hay variety among the nearby sell listings
+      const varietyCounts: Record<string, number> = {}
+      for (const { hayType } of nearbySell) {
+        if (hayType) varietyCounts[hayType] = (varietyCounts[hayType] ?? 0) + 1
+      }
+      hayPrimaryVariety = Object.entries(varietyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+
+      // Average DELIVERED price/ton (not raw price) — matches the delivered framing
+      const sum = nearbySell.reduce((acc, { dc }) => acc + dc.delivered, 0)
+      hayAvgPrice = Math.round(sum / nearbySell.length)
+    }
+  }
+
+  if (nationalMap?.release_date) {
+    const region = getUsdmRegion(selectedCounty.state)
+    if (region !== 'national') {
+      const releaseDate = new Date(nationalMap.release_date + 'T00:00:00Z')
+      const mapDate = new Date(releaseDate.getTime() - 2 * 24 * 60 * 60 * 1000)
+      const compact = mapDate.toISOString().slice(0, 10).replace(/-/g, '')
+      regionalMapUrl = `https://droughtmonitor.unl.edu/data/png/${compact}/${compact}_${region}_text.png`
+    }
+  }
+
+  // ── Own ground (S4) — the signed-in user's places for the Weather map overlay.
+  // Fetched only where the map renders (drought view), via the page's USER-SCOPED
+  // client (third RLS consumer). Signed out → null → the public map is unchanged.
+  // A failed read → error:true so the map's status line says so (never a silent
+  // absence); an auth-resolution failure → null (indistinguishable from signed
+  // out, and treated as such).
+  let ownGround: { places: OwnPlace[]; devices: OwnDevice[]; error: boolean } | null = null
+  {
+    try {
+        const sb = await createClient()
+      if (user) {
+        // Places + PLACED devices in parallel (unplaced devices are honestly
+        // off the map — the Devices tab is the full registry).
+        const [placesRes, devicesRes] = await Promise.all([
+          sb.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
+          sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
+        ])
+        ownGround = {
+          places:  (placesRes.data ?? []) as OwnPlace[],
+          devices: (devicesRes.data ?? []) as OwnDevice[],
+          error:   !!placesRes.error || !!devicesRes.error,
+        }
+      }
+    } catch {
+      ownGround = null
+    }
+  }
+
+  // Default reference estimate (100 head beef_adult) — feeds the hay card's
+  // cash-to-hay line and the eligibility-math accordion preview.
+  const bannerDefaultEstimate = (lfpResult && lfpResult.maxTier >= 1 && lfpResult.payments > 0)
+    ? estimatePayment('beef_adult', 100, lfpResult.payments).cappedEstimate
+    : 0
+
+  // FSA-enforcement gate for the DOLLAR-bearing surfaces. The estimate above stays the real
+  // value; this only gates VISIBILITY. A 'pending_obbba' county (D2 qualifies under OBBBA but
+  // FSA hasn't loaded the 2026 maps) shows the amber pending banner and NO dollar figure.
+  const lfpOfficial = !!lfpResult && lfpResult.enforcement === 'officially_eligible'
+  // Cash-to-hay: how many tons the estimated LFP check buys at the average
+  // delivered price nearby. Honest only when both the estimate and a real
+  // delivered average exist; otherwise null → soft browse fallback.
+  const cashToHayTons = (bannerDefaultEstimate > 0 && hayAvgPrice != null && hayAvgPrice > 0)
+    ? Math.round(bannerDefaultEstimate / hayAvgPrice)
+    : null
+
+  return (
+    <>
+      {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
+          summary). Weather view only (above the map). Hero renders from the reliable
+          DB `latest`; the ribbon + summary come from the live 3-year USDM history and
+          degrade independently to "history unavailable" if it failed. */}
+      {latest && (
+        <LatestReadingCard latest={latest} history={threeYearHistory} />
+      )}
+
+      {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
+          boundary so the slow ACIS call never blocks the Weather view paint. */}
+      <div>
+        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
+        <Suspense fallback={<RainfallPanelSkeleton />}>
+          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
+        </Suspense>
+      </div>
+
+      {/* Rain by place — the operator's own gauge readings, signed-in only
+          (the dashboard is public; signed out renders nothing). Absent under
+          3 readings. Consumes the SAME precipPromise for the county line —
+          no new fetch — and keeps the two kinds of fact visibly apart. */}
+      <Suspense fallback={null}>
+        <RainByPlaceCard precipPromise={precipPromise} user={user} />
+      </Suspense>
+
+      {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
+          Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
+      <div>
+        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+        <Suspense fallback={<ForecastPanelSkeleton />}>
+          <ForecastPanelAsync dataPromise={forecastPromise} />
+        </Suspense>
+      </div>
+
+      {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
+
+      {/* Regional conditions map — COLLAPSED BY DEFAULT (Block 2): a 400px canvas
+          everyone has already scrolled is reference material, not a daily signal;
+          the LatestReadingCard above carries the current category + 3-year ribbon.
+          Collapsed, the ssr:false map client NEVER mounts (DashboardAccordion
+          renders children only when open), so the Leaflet payload is spent on
+          demand — restoring the collapsed-accordion economy the loader was
+          originally built for. The USDM week stays visible in the preview so
+          freshness is never hidden behind the fold (data-derived, never today's
+          date). Own-ground places/device pins draw when expanded, unchanged. */}
+      <DashboardAccordion
+        title="Regional map"
+        preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
+      >
+        <RegionalMapLoader
+          fips={selectedCounty.fips}
+          center={selectedCounty.lat != null && selectedCounty.lon != null ? [selectedCounty.lat, selectedCounty.lon] : null}
+          countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+          runtime={{
+            usdm: {
+              fallbackImage: {
+                url: regionalMapUrl ?? stateMap?.image_url ?? nationalMap?.image_url ?? null,
+                sourceUrl: 'https://droughtmonitor.unl.edu/CurrentMap.aspx',
+              },
+            },
+            // County-dynamic NWS alerts endpoint (client-fetched like the other layers).
+            alerts: { endpoint: `/api/layers/alerts?area=${selectedCounty.state}` },
+          }}
+          ownGround={ownGround}
+        />
+      </DashboardAccordion>
+
+      {/* ── LFP status — the single contextual LFP card (A1 merged the old
+             TriggeredBanner into LfpHero): hero line per enforcement state, tracker,
+             and the signup CTA / pending FSA-office guidance. The detailed
+             "Eligibility math" accordion (calculator, tier ladder, CCC-853) is
+             untouched below. ── */}
+      {lfpResult && !lfpUnavailable && (
+        <LfpHero eligibility={lfpResult} countyName={selectedCounty.name} />
+      )}
+
+      {!history.length && (
+        <Card shadow="none" className="px-6 py-8 text-center">
+          <p className="text-sm text-forest-green/60 font-dm-sans">
+            No drought data yet for this county.
+          </p>
+        </Card>
+      )}
+
+      {history.length > 0 && (
+        <>
+          {/* LAYER 2 — The why (compact cards, always visible) */}
+          <div className="space-y-3">
+
+            {/* Hay (consolidated) — supply nearby + cash-to-hay context + one CTA.
+                Rides the marketplace flag: no listings fetch, no card, no /hay CTA. */}
+            {flagEnabled('marketplace') && (
+            <Card shadow="none" className="px-5 py-4">
+              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
+                Hay nearby
+              </p>
+
+              {hayNearbyCount > 0 ? (
+                <p className="font-fraunces text-base font-semibold text-forest-green leading-snug sm:text-lg">
+                  {hayNearbyCount} hay listing{hayNearbyCount !== 1 ? 's' : ''} within 200 miles
+                  {hayPrimaryVariety && ` · ${hayPrimaryVariety.toLowerCase()}`}
+                  {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
+                </p>
+              ) : (
+                <p className="font-fraunces text-base font-semibold text-forest-green/50 leading-snug sm:text-lg">
+                  No hay listed within 200 miles yet.
+                </p>
+              )}
+
+              {lfpOfficial && bannerDefaultEstimate > 0 && (
+                <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+                  {cashToHayTons != null && hayAvgPrice != null
+                    ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
+                    : `Your estimated LFP payment is ~$${Math.round(bannerDefaultEstimate).toLocaleString()}.`}
+                </p>
+              )}
+
+              <Link
+                href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
+                className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
+              >
+                Browse hay delivered to {selectedCounty.name} →
+              </Link>
+
+              {hayNearbyCount === 0 && (
+                <p className="mt-3 text-center font-dm-sans text-xs text-forest-green/40">
+                  <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                </p>
+              )}
+
+              {lfpOfficial && bannerDefaultEstimate > 0 && (
+                <div className="mt-3">
+                  <LfpEstimateNote />
+                </div>
+              )}
+            </Card>
+            )}
+
+          </div>
+
+          {/* LAYER 3 — Deep dive accordions. id = stable scroll target for the
+              hero's "View FSA checklist" link (the old #action-cards anchor only
+              exists while the accordion is open). */}
+          <div id="eligibility-math" className="scroll-mt-24 space-y-2 pt-2">
+
+            <DashboardAccordion
+              title="Eligibility math"
+              hashTarget="eligibility-math"
+              preview={
+                lfpUnavailable
+                  ? 'Estimate temporarily unavailable'
+                  : lfpOfficial && lfpResult
+                    ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
+                    : lfpResult?.enforcement === 'pending_obbba'
+                      ? 'Meets new OBBBA threshold — pending FSA'
+                      : 'Not currently triggered'
+              }
+              previewAmount={lfpOfficial && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
+              highlight={lfpOfficial}
+              defaultOpen={lfpUnavailable}
+            >
+              {lfpUnavailable ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="font-dm-sans text-sm font-semibold text-amber-800">
+                    LFP estimate temporarily unavailable
+                  </p>
+                  <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
+                    The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
+                    can&apos;t compute your LFP tier or payment estimate.
+                    {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
+                    Check back shortly — this usually clears on its own.
+                  </p>
+                </div>
+              ) : lfpResult ? (
+                <ProgramStatus
+                  eligibility={lfpResult}
+                  priorYearEligibility={priorYearLfpResult}
+                  fips={selectedCounty.fips}
+                  countyName={selectedCounty.name}
+                />
+              ) : null}
+            </DashboardAccordion>
+
+            {/* The static "Forecast" accordion (CPC outlook images) was removed when
+                those outlooks became the map's "Drought Forecast" layer; that layer is
+                now PARKED with the rest of the moisture sprawl (North Star v3 §6,
+                inToggle:false in layers.ts) — nothing renders here by design. */}
+
+          </div>
+
+          {/* Legal links (no site footer this pass) */}
+          <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
+            <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
+            {' · '}
+            <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
+          </p>
+        </>
+      )}
+    </>
+  )
+}
+
+async function HayViewBody({
+  selectedCounty,
+}: {
+  selectedCounty: CountyRow
+}) {
+  const db = createServiceClient()
+  let hayNearbyCards: NearbyHayCard[]               = []   // nearest-4 sell listings — Hay view only
+  let hayMapPins: MapListing[]                      = []   // same nearest-4, shaped for the hay map pins
+
+  // ── Hay view data — nearest-4 sell listings (Hay view ONLY) ──────────────────
+  // Runs only on view === 'hay' so news/drought never pay for it. Sell-only (matches
+  // the "Hay nearby" card's listing-type filter), active, non-expired, with seller
+  // county coords (coordless listings are dropped — never ranked, never shown).
+  // Ranked by road miles from the home county centroid (selectedCounty), nearest 4.
+  if (selectedCounty.lat != null && selectedCounty.lon != null) {
+    const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
+
+    const { data: hayRows } = await db
+      .from('hay_listings')
+      .select(
+        'id, listing_type, hay_type, cutting_number, bale_type, storage_method, ' +
+        'tonnage, price_per_ton, haul_radius_miles, relief_flag, description, photo_urls, ' +
+        'hay_test_protein_pct, hay_test_tdn_pct, hay_test_rfv, hay_test_moisture_pct, ' +
+        'counties(id, name, state, lat, lon)',
+      )
+      .eq('active', true)
+      .eq('listing_type', 'sell')
+      .gt('expires_at', new Date().toISOString())
+
+    type HayRow = {
+      id: string
+      listing_type: string
+      hay_type: string | null
+      cutting_number: number | null
+      bale_type: string | null
+      storage_method: string | null
+      tonnage: number | null
+      price_per_ton: number | null
+      haul_radius_miles: number | null
+      relief_flag: boolean | null
+      description: string | null
+      photo_urls: string[] | null
+      hay_test_protein_pct: number | null
+      hay_test_tdn_pct: number | null
+      hay_test_rfv: number | null
+      hay_test_moisture_pct: number | null
+      counties: { id: number; name: string; state: string; lat: number | null; lon: number | null } | { id: number; name: string; state: string; lat: number | null; lon: number | null }[] | null
+    }
+
+    const ranked = ((hayRows ?? []) as unknown as HayRow[])
+      .flatMap(row => {
+        const c = Array.isArray(row.counties) ? row.counties[0] : row.counties
+        if (!c || c.lat == null || c.lon == null) return []
+        return [{ row, county: { id: c.id, name: c.name, state: c.state, lat: c.lat, lon: c.lon }, miles: Math.round(roadMiles(buyer.lat, buyer.lon, c.lat, c.lon)) }]
+      })
+      .sort((a, b) => a.miles - b.miles)
+      .slice(0, 4)
+
+    // Latest drought tier for the displayed counties — one cheap lookup, only the few
+    // counties actually shown. Mirrors the tier derivation used on the marketplace map.
+    const countyIds = [...new Set(ranked.map(r => r.county.id))]
+    const tierByCounty = new Map<number, number | null>()
+    if (countyIds.length > 0) {
+      const { data: droughtRows } = await db
+        .from('drought_data')
+        .select('county_id, d0, d1, d2, d3, d4')
+        .in('county_id', countyIds)
+        .order('week_date', { ascending: false })
+      for (const d of droughtRows ?? []) {
+        if (tierByCounty.has(d.county_id)) continue
+        tierByCounty.set(
+          d.county_id,
+          d.d4 > 0 ? 4 : d.d3 > 0 ? 3 : d.d2 > 0 ? 2 : d.d1 > 0 ? 1 : d.d0 > 0 ? 0 : null,
+        )
+      }
+    }
+
+    hayNearbyCards = ranked.map(({ row, county, miles }): NearbyHayCard => ({
+      id:              row.id,
+      hayType:         row.hay_type,
+      cuttingNumber:   row.cutting_number,
+      baleType:        row.bale_type,
+      storageMethod:   row.storage_method,
+      tonnage:         row.tonnage,
+      pricePerTon:     row.price_per_ton,
+      haulRadiusMiles: row.haul_radius_miles,
+      reliefFlag:      row.relief_flag ?? false,
+      hasTest:
+        row.hay_test_protein_pct  != null ||
+        row.hay_test_tdn_pct      != null ||
+        row.hay_test_rfv          != null ||
+        row.hay_test_moisture_pct != null,
+      photoUrls:       row.photo_urls ?? [],
+      description:     row.description,
+      countyName:      county.name,
+      state:           county.state,
+      miles,
+      droughtTier:     tierByCounty.get(county.id) ?? null,
+      delivered:       deliveredCost(buyer, { listing_type: row.listing_type, price_per_ton: row.price_per_ton, counties: county }),
+    }))
+
+    // Same nearest-4, shaped for the map pins (reuses the marketplace map renderer).
+    hayMapPins = ranked.map(({ row, county }): MapListing => ({
+      id:           row.id,
+      hay_type:     row.hay_type,
+      listing_type: row.listing_type,
+      price_per_ton: row.price_per_ton,
+      tonnage:      row.tonnage,
+      lat:          county.lat,
+      lon:          county.lon,
+      drought_tier: tierByCounty.get(county.id) ?? null,
+      county_name:  county.name,
+      state:        county.state,
+    }))
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
+          Hay for sale near you
+        </p>
+
+        {/* Map-prominent lead: the nearest-4 pinned on a hay map centered on the
+            home county. Pins tap → /hay/[id]. Renders whenever the home county has
+            a centroid (the drought overlay gives regional context even at 0 pins). */}
+        {selectedCounty.lat != null && selectedCounty.lon != null && (
+          <HayMapLoader
+            listings={hayMapPins}
+            center={[selectedCounty.lat, selectedCounty.lon]}
+          />
+        )}
+
+        {/* Honest explainer of the hay-score choropleth — collapsed by default,
+            opens inline (reuses DashboardAccordion's toggle so it matches the rest
+            of the dashboard and can't trap the user). Copy is edited in one place
+            after the calibration drive; render-only, no score/backend tie-in. */}
+        <DashboardAccordion title="How the Hay Score works">
+          <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-forest-green/80">
+            <p>
+              Each county gets a 0–100 score for how its hay outlook is shaping up this
+              season. Greener is better, redder is worse. It&rsquo;s built from four things:
+            </p>
+            <ul className="space-y-2">
+              <li>
+                <span className="font-semibold text-ink">Rain so far</span> — this year&rsquo;s
+                moisture vs. normal for that county, updated weekly.
+              </li>
+              <li>
+                <span className="font-semibold text-ink">How the season started</span> — drought
+                and moisture on hand at green-up. A county that started dry stays capped, no
+                matter how spring went.
+              </li>
+              <li>
+                <span className="font-semibold text-ink">Spring frost</span> — whether a killing
+                freeze hit after a county greened up, when new growth was tender. Counties that
+                greened up early and got frosted score lower than ones still dormant when the
+                cold came.
+              </li>
+              <li>
+                <span className="font-semibold text-ink">Heat &amp; dry stress</span> — hot,
+                windy, dry stretches that pull moisture out of the crop, weighted toward the
+                stages when it hurts most.
+              </li>
+            </ul>
+            <p>
+              <span className="font-semibold text-ink">What it is and isn&rsquo;t.</span> This is
+              an early, free tool, and the exact numbers are still being calibrated against real
+              fields — including a drive across these counties this season. Treat the score as a
+              directional read on the region, not a verdict on any one field, and not a
+              substitute for walking your own ground. Conditions change fast as rain comes. If a
+              county looks wrong to you, that&rsquo;s worth knowing — tell us.
+            </p>
+            <p className="text-forest-green/50">
+              Data: PRISM precip, gridMET temperature/humidity/wind, USDM drought monitor.
+              Updated weekly, provisional for the current season.
+            </p>
+          </div>
+        </DashboardAccordion>
+
+        <HayNearbyCards listings={hayNearbyCards} deliverToFips={selectedCounty.fips} />
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="/hay"
+            className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+          >
+            Browse all hay
+          </Link>
+          <Link
+            href="/hay"
+            className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-lg border border-forest-green/20 bg-white px-4 font-dm-sans text-sm font-medium text-forest-green transition-colors hover:bg-forest-green/5"
+          >
+            Post a listing
+          </Link>
+        </div>
+      </div>
+    </>
+  )
+}
+
+async function MarketsViewBody({
+  selectedCounty, herdAnchor, corn, moisture, crop, cycle,
+}: {
+  selectedCounty: CountyRow
+  herdAnchor: HerdAnchor | null
+  corn: CornResult
+  moisture: MoistureResult
+  crop: CropResult
+  cycle: CycleResult
+}) {
+  // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
+  // for it. getLatestLrp is a fast Supabase SELECT (the RMA fetch is the offline seed,
+  // not a request-path call), so a direct await is fine — no Suspense needed. 'MT' is the
+  // seeded national-index snapshot; the card frames it as the CME national floor, never a
+  // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
+  let lrpResult: LrpResult = { status: 'none' }
+  // Local auction + national beef (Block 2) — same gating and same character as LRP:
+  // pure Supabase SELECTs (the external fetches live in the snapshot crons, never the
+  // request path), fetched concurrently, each degrading to its own honest state.
+  let localAuction: LocalAuctionResult = { status: 'no_coverage' }
+  let nationalBeef: NationalBeefResult = { status: 'none' }
+
+  const [lrpRes, localRes, nationalRes] = await Promise.all([
+    getLatestLrp('MT'),
+    getLocalAuctionRead(selectedCounty.fips),
+    getNationalBeef(),
+  ])
+  lrpResult = lrpRes
+  localAuction = localRes
+  nationalBeef = nationalRes
+
+  return (
+    <>
+      {/* Market Read leads the view its chips belong to — the missing
+          header for the cards below. Gate unchanged in the move
+          (signed-in with a herd): relocation only, nobody's
+          visibility changed. */}
+      {herdAnchor && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+      <LocalAuctionCard result={localAuction} />
+      <NationalBeefCard result={nationalBeef} />
+      <LrpMarketsCard result={lrpResult} />
+    </>
   )
 }
 
