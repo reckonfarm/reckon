@@ -15,9 +15,12 @@ import WatchlistButton from './components/WatchlistButton'
 import RegionalMapLoader from './components/RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './components/RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './components/LatestReadingCard'
-import { PrecipVsNormalPanel } from './components/PrecipForecastSection'
+// Lazy client islands (perf block, commit 4): the grazing-table picker and the
+// recharts rainfall graph load in their own chunks on first mount — see the two
+// loaders. Same pattern as HerdAnchorLoader / RegionalMapLoader.
+import PrecipVsNormalPanel from './components/RainfallPanelLoader'
 import RainByPlaceCard from './components/RainByPlaceCard'
-import ProgramStatus from './components/ProgramStatus'
+import ProgramStatus from './components/ProgramStatusLoader'
 import LfpHero from './components/LfpHero'
 import type { County } from './components/CountySelector'
 import { type OfficialMapRecord } from './components/OfficialMap'
