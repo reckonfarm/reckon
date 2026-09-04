@@ -17,7 +17,7 @@ import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 // Lazy client islands (perf block, commit 4): the grazing-table picker and the
 // recharts rainfall graph load in their own chunks on first mount — see the two
-// loaders. Same pattern as HerdAnchorLoader / RegionalMapLoader.
+// loaders. Same pattern as RegionalMapLoader.
 import { type OfficialMapRecord } from './components/OfficialMap'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { getLocalForecast, type LocalForecast } from '@/lib/nws'
@@ -47,7 +47,6 @@ import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getRanch } from '@/lib/ranch-membership'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
-import HerdAnchorLoader from './components/HerdAnchorLoader'
 import type { Lot } from '@/lib/herd'
 import { flagEnabled } from '@/lib/flags'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -130,23 +129,6 @@ function DeadlineQuietRow({ quietDeadline, countyName }: {
       <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
     </ProgramStatusRow>
   )
-}
-
-// Conditions strip (B2′) — awaits the SAME always-started NWS forecast promise the
-// drought view consumes (computed once, no new fetch) inside a Suspense boundary whose
-// fallback is the chip-only strip (real USDM data, no placeholder), so the weather half
-// streams in without ever blocking the news/page paint.
-async function ConditionsStripAsync({
-  reading,
-  forecastPromise,
-  fips,
-}: {
-  reading: ({ week_date: string } & DroughtReading) | null
-  forecastPromise: Promise<LocalForecast | null>
-  fips: string
-}) {
-  const forecast = await forecastPromise
-  return <ConditionsStrip reading={reading} forecast={forecast} fips={fips} />
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -489,15 +471,7 @@ export default async function DashboardPage({
                            fetch, News stays fast, default tab unchanged). Tapping opens the
                            Weather tab via the toggle's exact link pattern. Renders nothing
                            when there's no real data. ── */}
-                    <Suspense
-                      fallback={<ConditionsStrip reading={latest} forecast={null} fips={selectedCounty.fips} />}
-                    >
-                      <ConditionsStripAsync
-                        reading={latest}
-                        forecastPromise={forecastPromise}
-                        fips={selectedCounty.fips}
-                      />
-                    </Suspense>
+                    <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
 
                     {/* A machine working RIGHT NOW — loud at the top of Today, carrying the
                         headline number for the job type (bale count / percent cut + ETA).
@@ -507,15 +481,9 @@ export default async function DashboardPage({
                       <LiveJobCard />
                     </Suspense>
 
-                    {/* Herd-value anchor — the operation's own number, first in Today
-                        (flow, commit 3). Still the ssr:false client island (HerdAnchorLoader). */}
-                    {herdAnchor && (
-                      <HerdAnchorLoader
-                        estimate={herdAnchor.estimate}
-                        trend={herdAnchor.trend}
-                        outlook={herdAnchor.outlook}
-                      />
-                    )}
+                    {/* Herd value: ONE surface (flow, commit 5) — the HerdValueCard below.
+                        The always-on HerdEstimatePanel island (HerdAnchorLoader) is gone;
+                        the full Now/Trend/Outlook panel lives on /herd, one tap away. */}
 
                     {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
                         building a D2 streak / data unavailable (an outage must speak — see
@@ -581,10 +549,8 @@ export default async function DashboardPage({
                       <RecentlyLogged />
                     </Suspense>
 
-                    {/* Herd value — a card, not the hero, linking to /herd. NOTE: the
-                        always-on stack above also renders the herd anchor panel
-                        (HerdAnchorLoader) from the same herdAnchor — both show on Today
-                        now; which one stays is a separate call. */}
+                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
+                        surface on Today since flow commit 5). */}
                     {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
 
                     <div>

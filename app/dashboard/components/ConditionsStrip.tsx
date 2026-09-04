@@ -2,31 +2,26 @@
 
 import Link from 'next/link'
 import { useLinkStatus } from 'next/link'
-import type { LocalForecast } from '@/lib/nws'
 import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 import { useDashboardView } from '@/app/dashboard/components/DashboardViews'
 
-// ─── Conditions strip (B2′) ─────────────────────────────────────────────────────
-// The compact always-visible weather lead at the top of the county dashboard — one
-// slim row (drought chip + today's forecast) directly under the orientation bar, so
-// conditions lead on every open regardless of which tab is active. READS EXISTING
-// PAGE DATA ONLY: the always-awaited `latest` USDM reading and the always-started
-// NWS forecast promise (streamed in behind Suspense; the chip renders immediately).
+// ─── Conditions strip ──────────────────────────────────────────────────────────
+// The drought lead at the top of Today — one slim row: the USDM category chip
+// with its as-of date, tap → Weather. It used to carry today's high/low and
+// rain chance too; flow commit 5 cut that half because the 7-day carousel's
+// first cell on the same screen said exactly the same numbers. This is now
+// the ONE place the drought category renders on Today (the LFP card states the
+// consequence — tier, payments — not the chip). READS EXISTING PAGE DATA ONLY:
+// the always-awaited `latest` USDM reading.
 //
-// Honesty: each half renders only from real data — no reading → no chip, no forecast
-// → no temps (never a fake temp or fabricated 0%). Both missing → the strip renders
-// NOTHING (no placeholder). The drought reading (a current condition) carries its
-// visible USDM as-of date. The whole row links to the Weather tab using the exact
-// href/scroll pattern of the DroughtCattleToggle segments — no new tab plumbing.
+// Honesty: renders only from a real reading — none → nothing (no placeholder).
+// The reading (a current condition) carries its visible USDM as-of date. The
+// row links to the Weather tab with the toggle's exact href pattern.
 //
 // Client component for the SAME reason the toggle is one: the Weather view is a heavy
 // dynamic render with no loading.js, so a tap shows a useLinkStatus pending spinner
 // (the toggle's exact SegLabel mechanism) instead of reading as a dead tap while the
 // old view stays on screen.
-
-// Same water-blue as the forecast card's rain % so "chance of rain" reads
-// consistently across surfaces.
-const RAIN_BLUE = '#2563EB'
 
 // USDM chip palette — calm tint + solid dot + dark readable text, the same chip
 // vocabulary as LfpAlertCard / LfpHero (which only need D2+; the strip can see any
@@ -66,33 +61,11 @@ function TapStatus() {
   )
 }
 
-// Today's outlook from the NWS periods the page already fetched: the first calendar
-// day's daytime high, overnight low, and max rain chance. Same field semantics as
-// ForecastPanel's day rows (precipProbability null = absent → omitted, never 0).
-function todayOutlook(fc: LocalForecast | null): { hi: number | null; lo: number | null; rain: number | null } | null {
-  const periods = fc?.periods
-  if (!periods || periods.length === 0) return null
-  const dateKey = periods[0].startTime.slice(0, 10)
-  let hi: number | null = null
-  let lo: number | null = null
-  let rain: number | null = null
-  for (const p of periods) {
-    if (p.startTime.slice(0, 10) !== dateKey) break
-    if (p.isDaytime) hi = hi == null ? p.temperature : Math.max(hi, p.temperature)
-    else lo = lo == null ? p.temperature : Math.min(lo, p.temperature)
-    if (p.precipProbability != null) rain = rain == null ? p.precipProbability : Math.max(rain, p.precipProbability)
-  }
-  if (hi == null && lo == null && rain == null) return null
-  return { hi, lo, rain }
-}
-
 export default function ConditionsStrip({
   reading,
-  forecast,
   fips,
 }: {
   reading: ({ week_date: string } & UsdmReading) | null
-  forecast: LocalForecast | null
   fips: string
 }) {
   // On the dashboard the Weather view is already on the page: a tap switches
@@ -101,10 +74,9 @@ export default function ConditionsStrip({
   const dashboardView = useDashboardView()
 
   const sev = droughtSeverity(reading)
-  const today = todayOutlook(forecast)
 
-  // No real data at all → nothing. Never a placeholder row.
-  if (!reading && !today) return null
+  // No real reading → nothing. Never a placeholder row.
+  if (!reading) return null
 
   const chip = sev.level != null ? CHIP[sev.level] : NO_DROUGHT_CHIP
   const chipLabel = sev.level != null ? `D${sev.level} ${SEVERITY_SHORT[sev.level]}` : 'No drought'
@@ -118,8 +90,7 @@ export default function ConditionsStrip({
     >
       <style>{`@keyframes dlStripSpin{to{transform:rotate(360deg)}}.dl-strip-spin{animation:dlStripSpin .6s linear infinite}`}</style>
       <span className="inline-flex items-center gap-2">
-        {reading && (
-          <>
+        <>
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
               style={{ backgroundColor: chip.bg, color: chip.text }}
@@ -130,28 +101,11 @@ export default function ConditionsStrip({
             <span className="font-dm-sans text-[10px] text-forest-green/40">
               USDM {fmtShort(reading.week_date)}
             </span>
-          </>
-        )}
+        </>
       </span>
 
       <span className="inline-flex items-center gap-2 font-dm-sans text-sm text-forest-green">
-        {today && (
-          <>
-            <span className="text-xs text-forest-green/50">Today</span>
-            {(today.hi != null || today.lo != null) && (
-              <span className="tabular-nums">
-                {today.hi != null && `${today.hi}°`}
-                {today.hi != null && today.lo != null && <span className="text-forest-green/40"> / </span>}
-                {today.lo != null && <span className={today.hi != null ? 'text-forest-green/60' : ''}>{today.lo}°</span>}
-              </span>
-            )}
-            {today.rain != null && (
-              <span className="font-semibold tabular-nums" style={{ color: RAIN_BLUE }}>
-                {today.rain}% rain
-              </span>
-            )}
-          </>
-        )}
+        <span className="text-xs text-forest-green/50">Weather</span>
         <TapStatus />
       </span>
     </Link>
