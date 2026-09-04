@@ -337,31 +337,46 @@ export default async function DashboardPage({
           : viewParam === 'markets' ? 'markets'
             : 'news'
   const db = createServiceClient()
+  // ONE cookie-bound client and ONE auth.getUser() for the whole request. Every
+  // consumer below (operation profile, herd anchor's RLS read, own-ground places,
+  // the Jobs view gate, rain by place) takes this client/user instead of minting
+  // its own and paying the auth round-trip again. Signed out → user null → each
+  // of them degrades exactly as before. The session itself is refreshed by
+  // middleware; this is a read.
+  const supabase = await createClient()
 
-  // ── National view data (always fetched) ─────────────────────────────────────
-  const { data: nationalMapRow } = await db
-    .from('official_maps')
-    .select('id, map_type, scope, release_date, image_url, source_url')
-    .eq('map_type', 'usdm_national')
-    .is('scope', null)
-    .order('release_date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // ── Head reads, in parallel: national map · county · session+profile ────────
+  // These are independent of one another. The profile is chained on the user
+  // (it can't start before getUser resolves) but runs alongside the two
+  // service-role reads. Auth is only resolved when a county is in play — a bare
+  // /dashboard never needed it and still doesn't.
+  const [{ data: nationalMapRow }, countyRes, session] = await Promise.all([
+    db
+      .from('official_maps')
+      .select('id, map_type, scope, release_date, image_url, source_url')
+      .eq('map_type', 'usdm_national')
+      .is('scope', null)
+      .order('release_date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    fips
+      ? db.from('counties').select('id, fips, name, state, lat, lon').eq('fips', fips).single()
+      : Promise.resolve(null),
+    fips
+      ? (async () => {
+          const { data: { user } } = await supabase.auth.getUser()
+          const profileResult = await getOperationProfile({ supabase, user })
+          return { user, profileResult }
+        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const } }))
+      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const } }),
+  ])
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
+  const user = session.user
+  const profileResult = session.profileResult
 
   // ── County lookup ────────────────────────────────────────────────────────────
-  let selectedCounty: CountyRow | null = null
-
-  if (fips) {
-    const { data: countyRow } = await db
-      .from('counties')
-      .select('id, fips, name, state, lat, lon')
-      .eq('fips', fips)
-      .single()
-
-    selectedCounty = countyRow as CountyRow | null
-  }
+  const selectedCounty: CountyRow | null = countyRes ? (countyRes.data as CountyRow | null) : null
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let latest: DroughtReading | null                 = null
@@ -397,53 +412,49 @@ export default async function DashboardPage({
       ? getLocalForecast(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
 
-  // Cheap latest reading — always awaited (drives the shared Share label + heading and
-  // the Latest Reading chrome card), independent of which view is open.
-  if (selectedCounty) {
-    const { data: latestRow } = await db
-      .from('drought_data')
-      .select('week_date, d0, d1, d2, d3, d4')
-      .eq('county_id', selectedCounty.id)
-      .order('week_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    latest = latestRow as DroughtReading | null
-  }
-
   // Insurance deadline countdown — shown for EVERY selected county in EVERY view (it
   // serves all producers, farmers included, so it is not gated behind the view toggle).
   // Crops come from the signed-in user's operation profile when present; a missing
   // profile or a crops jsonb that isn't a clean string array → null → show all county/
-  // state deadlines. Fast local queries, so a direct await (no Suspense) is fine.
+  // state deadlines.
   let deadlineResult: UpcomingDeadlinesResult = { status: 'none' }
   // Operation zone (Block 2, Slice 1) — the herd-value anchor for a signed-in user with a
-  // herd. Additive: gated on the SAME getOperationProfile() result the deadline read already
-  // uses (NO new getUser/auth call). userId comes from the profile row; homeFips via the
-  // existing service-role home-county helper; the user-scoped SSR client is created only so
-  // the herd_estimate_history read inside getHerdAnchor stays RLS-scoped to the owner. Anon /
-  // no-herd / no-home-county all leave herdAnchor null → nothing renders, and any failure
-  // degrades to null so the public county view below never blocks.
+  // herd. Gated on the SAME profile result the deadline read uses (no new auth call).
+  // userId comes from the profile row; homeFips via the existing service-role
+  // home-county helper; the page's user-scoped client keeps the herd_estimate_history
+  // read inside getHerdAnchor RLS-scoped to the owner. Anon / no-herd / no-home-county
+  // all leave herdAnchor null → nothing renders, and any failure degrades to null so the
+  // public county view below never blocks.
   let herdAnchor: HerdAnchor | null = null
   if (selectedCounty) {
-    const profileResult = await getOperationProfile()
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
-    deadlineResult = await getUpcomingDeadlines(selectedCounty.fips, crops)
+    const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[] } | null) : null
+    const lots = Array.isArray(herd?.lots) ? herd!.lots : []
+    const profileUserId = profileResult.status === 'ok' ? profileResult.profile.user_id : null
 
-    if (profileResult.status === 'ok') {
-      const herd = profileResult.profile.herd as { lots?: Lot[] } | null
-      const lots = Array.isArray(herd?.lots) ? herd!.lots : []
-      if (lots.length > 0) {
-        try {
-          const homeFips = await getHomeCountyFips(profileResult.profile.user_id)
-          if (homeFips) {
-            const supabase = await createClient()
-            herdAnchor = await getHerdAnchor({ lots, homeFips, supabase })
-          }
-        } catch {
-          herdAnchor = null
-        }
-      }
-    }
+    // Second parallel stage — the three reads that need the county but not each
+    // other: the cheap latest reading (drives the shared Share label + heading and
+    // the Latest Reading chrome card, independent of which view is open), the
+    // deadlines, and the herd-anchor chain. Only the chain is serial, and only
+    // because the anchor genuinely needs the profile's lots + home county first.
+    const [{ data: latestRow }, deadlineRes, anchor] = await Promise.all([
+      db
+        .from('drought_data')
+        .select('week_date, d0, d1, d2, d3, d4')
+        .eq('county_id', selectedCounty.id)
+        .order('week_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      getUpcomingDeadlines(selectedCounty.fips, crops),
+      lots.length > 0 && profileUserId
+        ? getHomeCountyFips(profileUserId)
+            .then(homeFips => (homeFips ? getHerdAnchor({ lots, homeFips, supabase }) : null))
+            .catch(() => null)
+        : Promise.resolve(null),
+    ])
+    latest = latestRow as DroughtReading | null
+    deadlineResult = deadlineRes
+    herdAnchor = anchor
   }
 
   // Corn settle for the Market Read Price chip (§4 Leg 3) — fetched ONLY when the Market Read
@@ -745,7 +756,7 @@ export default async function DashboardPage({
   }
 
   // ── Own ground (S4) — the signed-in user's places for the Weather map overlay.
-  // Fetched only where the map renders (drought view), via the USER-SCOPED SSR
+  // Fetched only where the map renders (drought view), via the page's USER-SCOPED
   // client (third RLS consumer). Signed out → null → the public map is unchanged.
   // A failed read → error:true so the map's status line says so (never a silent
   // absence); an auth-resolution failure → null (indistinguishable from signed
@@ -753,14 +764,12 @@ export default async function DashboardPage({
   let ownGround: { places: OwnPlace[]; devices: OwnDevice[]; error: boolean } | null = null
   if (selectedCounty && view === 'drought') {
     try {
-      const sb = await createClient()
-      const { data: { user } } = await sb.auth.getUser()
       if (user) {
         // Places + PLACED devices in parallel (unplaced devices are honestly
         // off the map — the Devices tab is the full registry).
         const [placesRes, devicesRes] = await Promise.all([
-          sb.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
-          sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
+          supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
+          supabase.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
         ])
         ownGround = {
           places:  (placesRes.data ?? []) as OwnPlace[],
@@ -966,7 +975,7 @@ export default async function DashboardPage({
                 dashboard stays public, the ledger doesn't). */}
             {view === 'jobs' && (
               <Suspense fallback={<JobsViewSkeleton />}>
-                <JobsView />
+                <JobsView user={user} />
               </Suspense>
             )}
 
@@ -1096,7 +1105,7 @@ export default async function DashboardPage({
                 3 readings. Consumes the SAME precipPromise for the county line —
                 no new fetch — and keeps the two kinds of fact visibly apart. */}
             <Suspense fallback={null}>
-              <RainByPlaceCard precipPromise={precipPromise} />
+              <RainByPlaceCard precipPromise={precipPromise} user={user} />
             </Suspense>
 
             {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
