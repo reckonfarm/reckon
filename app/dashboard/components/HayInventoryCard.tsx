@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { getHayLedger } from '@/lib/hay/queries'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── Hay — what you stacked, what you fed, what's left if you counted ─────────
 // Same shape as SeasonTotals: a self-contained server component on the
@@ -87,7 +88,7 @@ export default async function HayInventoryCard() {
 
   return (
     <Card shadow="none" className="px-5 py-4">
-      <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+      <p className={EYEBROW}>
         Hay
       </p>
       {stats.length > 0 && (

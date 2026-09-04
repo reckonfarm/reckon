@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Card } from '@/app/components/ui/Card'
 import type { HerdAnchor } from '@/lib/herd-anchor'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── Herd value — a card, not the hero (2026-08-09 repositioning) ──────────────
 // One number (this week's estimate at the nearest auction) plus the LRP floor
@@ -35,7 +36,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
   return (
     <Link href="/herd" className="block">
       <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
-        <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+        <p className={EYEBROW}>
           Herd value
         </p>
         {priced ? (

@@ -6,6 +6,7 @@ import type { MoistureResult } from '@/lib/moisture-service'
 import type { CropResult } from '@/lib/crop-service'
 import type { CycleResult } from '@/lib/cattle-cycle-service'
 import { marketDelta } from '@/lib/market-direction'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // Market Read — the §4 feedlot-demand corn read, shown as RAW EVIDENCE ONLY. A2 retired the
 // composed narrative lead; Block 2 finished the job: PURE METRICS, ZERO PHRASES. Each chip is
@@ -24,7 +25,6 @@ import { marketDelta } from '@/lib/market-direction'
 // Honest throughout: a leg with no data → "warming up"; a read error → "temporarily
 // unavailable"; never a fabricated $0 / 0% / lean.
 
-const EYEBROW = 'font-dm-sans text-xs font-medium uppercase tracking-wider text-muted/50'
 const CHIP = 'rounded-lg border border-forest-green/10 bg-cream/40 px-3 py-3'
 const CHIP_LABEL = 'font-dm-sans text-xs font-medium text-forest-green/60'
 const CHIP_VALUE = 'mt-1 font-dm-sans text-base font-semibold tabular-nums text-ink'

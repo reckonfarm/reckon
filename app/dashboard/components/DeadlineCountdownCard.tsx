@@ -1,13 +1,13 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { UpcomingDeadlinesResult, UpcomingDeadline } from '@/lib/rma-deadline-service'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // Crop-insurance deadline countdown. Reads a discriminated result from
 // lib/rma-deadline-service.ts and renders each state honestly — a real countdown only
 // when there's an upcoming date; otherwise honest absence / unavailable copy. Never a
 // zero or negative countdown, never a past date shown as upcoming.
 
-const EYEBROW = 'text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide'
 
 // Plain-language labels for the seeded slugs (fallback: de-underscore).
 const TYPE_LABELS: Record<string, string> = {

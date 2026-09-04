@@ -3,6 +3,7 @@ import { Card } from '@/app/components/ui/Card'
 import { getRainLedger } from '@/lib/rain/queries'
 import { fmtDay } from '@/lib/jobs/format'
 import type { PrecipNormalResult } from '@/lib/precip-normal'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── Rain by place — what you measured, beside what the county estimate says ──
 // Weather view only. Self-contained server component on the USER-SCOPED
@@ -52,7 +53,7 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
 
   return (
     <Card shadow="none" className="px-5 py-4">
-      <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+      <p className={EYEBROW}>
         Rain you measured · {ledger.ytd.year}
       </p>
       <ul className="mt-3 divide-y divide-forest-green/10">
@@ -74,7 +75,7 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
 
       {estimate && (
         <div className="mt-4 border-t border-forest-green/10 pt-3">
-          <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+          <p className={EYEBROW}>
             County estimate · not a gauge
           </p>
           <p className="mt-1 font-dm-sans text-sm text-forest-green/70">

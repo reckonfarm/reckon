@@ -7,6 +7,7 @@ import { BALE_MACHINE } from '@/lib/detections/detect-bales'
 import { computeFieldBoundaries } from '@/lib/jobs/boundary'
 import { fmtAcres, fmtDay, fmtDuration, ranchYearStart } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── Season totals — what the machines did, added up ───────────────────────────
 // Bales, acres, hours across the working list (dismissed sessions and minor
@@ -106,7 +107,7 @@ export default async function SeasonTotals() {
 
   return (
     <Card shadow="none" className="px-5 py-4">
-      <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+      <p className={EYEBROW}>
         This season
       </p>
       <div className={`mt-3 grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>

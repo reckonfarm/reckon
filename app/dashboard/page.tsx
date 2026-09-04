@@ -25,8 +25,12 @@ import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, isDeadlineLoud, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 import DeadlineCountdownCard from './components/DeadlineCountdownCard'
-import ProgramStatusRow, { deadlineQuietPreview, LFP_QUIET_PREVIEW } from './components/ProgramStatusRow'
-import LfpAlertCard, { LfpAlertSkeleton, isLfpLoud } from './components/LfpAlertCard'
+import ProgramStatusRow, { deadlineQuietPreview } from './components/ProgramStatusRow'
+import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
+import LfpCard from './components/LfpCard'
+import LfpHero from './components/LfpHero'
+import ProgramStatus from './components/ProgramStatusLoader'
+import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
 import HomeCountyButton from './components/HomeCountyButton'
@@ -45,6 +49,7 @@ import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
 import HerdAnchorLoader from './components/HerdAnchorLoader'
 import type { Lot } from '@/lib/herd'
 import { flagEnabled } from '@/lib/flags'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,66 +70,63 @@ function cropsToStringArray(crops: unknown): string[] | null {
   return strings.length > 0 ? strings : null
 }
 
-async function LfpAlertAsync({
+// ─── LFP: ONE card per screen (shell pass, commit 6) ────────────────────────────
+// Awaits the shared lfpPromise (computed once) and renders the single LFP card in
+// the always-on stack: the summary is the LfpAlertCard body — triggered /
+// pending / building / no-trigger / unavailable, real engine values, no dollar —
+// visible without a tap in EVERY state (the quiet no-trigger line no longer
+// hides in the Program status row); the detail (LfpHero: path to payment,
+// payout schedule, estimate, FSA guidance; ProgramStatus: calculator, tier
+// ladder, prior year, CCC-853) expands on one tap. The prior-year comparison
+// rides its own promise (5 cached USDM calls, keyed by release date) that
+// nothing awaits until this card streams. Unavailable → summary only.
+async function LfpCardAsync({
   dataPromise,
+  priorYearPromise,
   countyName,
+  fips,
 }: {
   dataPromise: Promise<LfpFetchOutcome>
+  priorYearPromise: Promise<LfpEligibilityResult | null>
   countyName: string
+  fips: string
 }) {
   const res = await dataPromise
   const eligibility = res.ok ? res.result : null
   const unavailable = !res.ok
-  // Quiet (the clean no-trigger state) renders NOTHING here — the Program status row
-  // below (ProgramStatusRowAsync, same promise) carries the line instead. Everything
-  // else — triggered / pending / building / unavailable — stays loud in this slot.
-  if (!isLfpLoud(unavailable, eligibility)) return null
+  const official = !!eligibility && eligibility.enforcement === 'officially_eligible'
+  const priorYear = eligibility ? await priorYearPromise : null
   return (
-    <LfpAlertCard
-      eligibility={eligibility}
-      unavailable={unavailable}
-      countyName={countyName}
+    <LfpCard
+      highlight={official}
+      summary={<LfpAlertCard eligibility={eligibility} unavailable={unavailable} countyName={countyName} embedded />}
+      detail={eligibility ? (
+        <>
+          <LfpHero eligibility={eligibility} countyName={countyName} />
+          <div id="eligibility-math" className="scroll-mt-24">
+            <ProgramStatus
+              eligibility={eligibility}
+              priorYearEligibility={priorYear}
+              fips={fips}
+              countyName={countyName}
+            />
+          </div>
+        </>
+      ) : null}
     />
   )
 }
 
-// The quiet home's assembler — awaits the SAME lfpPromise (computed once, shared with
-// the alert slot and the Weather view) to learn whether LFP is quiet, then renders ONE
-// collapsed Program status row for everything quiet: the LFP no-trigger line and/or
-// far-out deadlines (quietDeadline is null when the deadline card is loud above).
-// Everything loud ⇒ renders nothing at all — a fully loud dashboard has no quiet row.
-async function ProgramStatusRowAsync({
-  dataPromise,
-  countyName,
-  quietDeadline,
-}: {
-  dataPromise: Promise<LfpFetchOutcome>
-  countyName: string
+// The quiet Program status row now carries ONLY far-out deadlines (the LFP line
+// lives in the card above, in every state). Nothing quiet ⇒ nothing rendered.
+function DeadlineQuietRow({ quietDeadline, countyName }: {
   quietDeadline: UpcomingDeadlinesResult | null
+  countyName: string
 }) {
-  const res = await dataPromise
-  const eligibility = res.ok ? res.result : null
-  const unavailable = !res.ok
-  const lfpQuiet = !isLfpLoud(unavailable, eligibility)
-
-  const segments: string[] = []
-  if (lfpQuiet) segments.push(LFP_QUIET_PREVIEW)
-  if (quietDeadline) segments.push(deadlineQuietPreview(quietDeadline))
-  if (segments.length === 0) return null
-
+  if (!quietDeadline) return null
   return (
-    <ProgramStatusRow preview={segments.join(' — ')}>
-      {lfpQuiet && (
-        <LfpAlertCard
-          eligibility={eligibility}
-          unavailable={unavailable}
-          countyName={countyName}
-          embedded
-        />
-      )}
-      {quietDeadline && (
-        <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
-      )}
+    <ProgramStatusRow preview={deadlineQuietPreview(quietDeadline)}>
+      <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
     </ProgramStatusRow>
   )
 }
@@ -329,6 +331,17 @@ export default async function DashboardPage({
         .catch(() => ({ ok: false as const }))
     : Promise.resolve({ ok: false as const })
 
+  // Prior-year LFP (same forage period, year − 1) for the card's eligibility-math
+  // comparison. Started here, awaited only inside LfpCardAsync once the current
+  // year resolves — five USDM calls behind unstable_cache (keyed by release date),
+  // a cache hit after the first load. Used to run inside the Weather body only.
+  const priorYearPromise: Promise<LfpEligibilityResult | null> = selectedCounty
+    ? computeLfpEligibility(
+        selectedCounty.fips,
+        { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
+      ).catch(() => null)
+    : Promise.resolve(null)
+
 
 
 
@@ -452,7 +465,12 @@ export default async function DashboardPage({
                 in every view, persistent across the toggle, above the deadline card
                 (higher priority). */}
             <Suspense fallback={<LfpAlertSkeleton />}>
-              <LfpAlertAsync dataPromise={lfpPromise} countyName={selectedCounty.name} />
+              <LfpCardAsync
+                dataPromise={lfpPromise}
+                priorYearPromise={priorYearPromise}
+                countyName={selectedCounty.name}
+                fips={selectedCounty.fips}
+              />
             </Suspense>
 
             {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
@@ -470,13 +488,10 @@ export default async function DashboardPage({
                 fetch resolves; quiet content is by definition non-urgent, so the late
                 paint costs nothing (null fallback — a quiet row has no skeleton).
                 Renders nothing when everything above is loud. */}
-            <Suspense fallback={null}>
-              <ProgramStatusRowAsync
-                dataPromise={lfpPromise}
-                countyName={selectedCounty.name}
-                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
-              />
-            </Suspense>
+            <DeadlineQuietRow
+              countyName={selectedCounty.name}
+              quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+            />
 
             {/* Peer-view toggle — Today ↔ Jobs ↔ Weather ↔ Markets (same county).
                 A tap is client state (DashboardViewProvider above), not a
@@ -548,7 +563,7 @@ export default async function DashboardPage({
                     {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
 
                     <div>
-                      <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
                       <Suspense fallback={<ForecastPanelSkeleton />}>
                         <ForecastPanelAsync dataPromise={forecastPromise} />
                       </Suspense>
@@ -570,7 +585,6 @@ export default async function DashboardPage({
                           selectedCounty={selectedCounty}
                           latest={latest}
                           nationalMap={nationalMap}
-                          pt={pt}
                           user={user}
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
