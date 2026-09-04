@@ -70,10 +70,17 @@ function isEmptyProfile(p: OperationProfile): boolean {
 // ─── Read ─────────────────────────────────────────────────────────────────────────
 // RLS scopes the SELECT to the caller's own row automatically (unique user_id ⇒ at
 // most one visible row), so there is no manual owner filter here on purpose.
-export async function getOperationProfile(): Promise<GetOperationProfileResult> {
-  const supabase = await createClient()
+//
+// `auth` is optional: a page that has ALREADY resolved the session (one getUser at
+// the top of the request) passes its cookie-bound client + user in, and this read
+// skips the second auth round-trip. Same client kind, same RLS — only the duplicate
+// network call is gone. Callers with no context (the API route) keep the old path.
+export async function getOperationProfile(
+  auth?: { supabase: Awaited<ReturnType<typeof createClient>>; user: { id: string } | null },
+): Promise<GetOperationProfileResult> {
+  const supabase = auth ? auth.supabase : await createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = auth ? auth.user : (await supabase.auth.getUser()).data.user
   if (!user) return { status: 'unauthenticated' }
 
   const { data, error } = await supabase

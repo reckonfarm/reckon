@@ -45,9 +45,12 @@ export function JobsViewSkeleton() {
   )
 }
 
-export default async function JobsView() {
+// `user` is the page's already-resolved session (one getUser per request, at the
+// top of the dashboard). The gate below is unchanged: null → the honest private-
+// ledger card, never a fake-empty list. The cookie-bound client is still minted
+// here for the RLS-scoped reads — that's a cookie read, not an auth round-trip.
+export default async function JobsView({ user }: { user: { id: string } | null }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     return (

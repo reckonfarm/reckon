@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
-import { fmtDay, fmtTime, plural } from '@/lib/jobs/format'
-import { isManualEventType, MANUAL_EVENT_LABELS } from '@/lib/manual-log'
+import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
+import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 
 // "Recently logged" — the last ten lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
@@ -66,10 +66,15 @@ function line(r: Row, placeName: (id: unknown) => string | null): string {
 
 export default async function RecentlyLogged() {
   const supabase = await createClient()
+  // Bounded: the manual types by name (an indexable predicate ahead of the
+  // jsonb source check) and this ranch year as the floor — the season the
+  // rest of /home is scoped to. Cap unchanged.
   const { data } = await supabase
     .from('events')
     .select('id, type, ts, payload')
+    .in('type', [...MANUAL_EVENT_TYPES])
     .eq('payload->>source', 'manual')
+    .gte('ts', ranchYearStart())
     .order('ts', { ascending: false })
     .limit(FEED_CAP)
   const rows = (data ?? []) as Row[]

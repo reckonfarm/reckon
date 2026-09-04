@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { getHayLedger } from '@/lib/hay/queries'
-import { fmtDay, plural, todayKey } from '@/lib/jobs/format'
+import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
 
 // ─── Hay — what you stacked, what you fed, what's left if you counted ─────────
 // Same shape as SeasonTotals: a self-contained server component on the
@@ -43,7 +43,9 @@ function fmtRate(n: number): string {
 
 export default async function HayInventoryCard() {
   const supabase = await createClient()
-  const { entries, summary } = await getHayLedger(supabase)
+  // Season-scoped read (this ranch year, capped); the latest count still
+  // anchors on-hand even when it predates the floor — see getHayLedger.
+  const { entries, summary } = await getHayLedger(supabase, { since: ranchYearStart() })
   if (entries.length === 0) return null
 
   const { stacked, fed, burnRate, onHand, runOut, range } = summary

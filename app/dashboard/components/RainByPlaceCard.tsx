@@ -28,10 +28,15 @@ function inches(n: number): string {
 
 const readings = (n: number) => `${n} reading${n === 1 ? '' : 's'}`
 
-export default async function RainByPlaceCard({ precipPromise }: { precipPromise: Promise<PrecipNormalResult> }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+// `user` is the page's already-resolved session (one getUser per request). Signed
+// out → null → nothing, exactly as before; the client minted here is for the
+// RLS-scoped ledger read only (a cookie read, not an auth round-trip).
+export default async function RainByPlaceCard({ precipPromise, user }: {
+  precipPromise: Promise<PrecipNormalResult>
+  user: { id: string } | null
+}) {
   if (!user) return null
+  const supabase = await createClient()
 
   const ledger = await getRainLedger(supabase)
   if (ledger.ytd.entries === 0) return null

@@ -105,9 +105,6 @@ export default async function HomePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/home')
 
-  // County context resolves silently — never a selector on this page.
-  const homeFips = await getHomeCountyFips(user.id).catch(() => null)
-
   const db = createServiceClient()
   interface CountyRow {
     id: number
@@ -117,28 +114,57 @@ export default async function HomePage() {
     lat: number | null
     lon: number | null
   }
-  let county: CountyRow | null = null
-  if (homeFips) {
-    const { data } = await db
-      .from('counties')
-      .select('id, fips, name, state, lat, lon')
-      .eq('fips', homeFips)
-      .maybeSingle()
-    county = (data as CountyRow | null) ?? null
-  }
 
-  // Latest drought reading for the conditions strip (cheap, service-role).
-  let latest: DroughtReading | null = null
-  if (county) {
-    const { data } = await db
-      .from('drought_data')
-      .select('week_date, d0, d1, d2, d3, d4')
-      .eq('county_id', county.id)
-      .order('week_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    latest = data as DroughtReading | null
-  }
+  // ONE getUser for the whole request (above). The two reads that need only the
+  // user — home county and operation profile — run together; the profile takes
+  // the page's cookie-bound client so it never pays a second auth round-trip.
+  // County context resolves silently — never a selector on this page.
+  const [homeFips, profileResult] = await Promise.all([
+    getHomeCountyFips(user.id).catch(() => null),
+    getOperationProfile({ supabase, user }),
+  ])
+
+  const crops = profileResult.status === 'ok' && Array.isArray(profileResult.profile.crops)
+    ? (profileResult.profile.crops as unknown[]).filter((c): c is string => typeof c === 'string')
+    : null
+  const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[] } | null) : null
+  const lots = Array.isArray(herd?.lots) ? herd!.lots : []
+
+  // Second stage, in parallel: county → latest reading (the one genuinely serial
+  // pair), the crop-filtered deadlines (keyed by the home fips, which IS the
+  // county's fips), and the herd anchor (needs lots + home fips, not the county
+  // row). Failures degrade to absent cards, never a blocked page.
+  const [countyBundle, deadlineRaw, herdAnchor] = await Promise.all([
+    (async (): Promise<{ county: CountyRow | null; latest: DroughtReading | null }> => {
+      if (!homeFips) return { county: null, latest: null }
+      const { data } = await db
+        .from('counties')
+        .select('id, fips, name, state, lat, lon')
+        .eq('fips', homeFips)
+        .maybeSingle()
+      const county = (data as CountyRow | null) ?? null
+      if (!county) return { county: null, latest: null }
+      // Latest drought reading for the conditions strip (cheap, service-role).
+      const { data: reading } = await db
+        .from('drought_data')
+        .select('week_date, d0, d1, d2, d3, d4')
+        .eq('county_id', county.id)
+        .order('week_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      return { county, latest: reading as DroughtReading | null }
+    })(),
+    homeFips
+      ? getUpcomingDeadlines(homeFips, crops && crops.length > 0 ? crops : null)
+      : Promise.resolve<UpcomingDeadlinesResult>({ status: 'none' }),
+    lots.length > 0 && homeFips
+      ? getHerdAnchor({ lots, homeFips, supabase }).catch((): HerdAnchor | null => null)
+      : Promise.resolve<HerdAnchor | null>(null),
+  ])
+  const { county, latest } = countyBundle
+  // Deadlines only ever rendered for a resolved county; an unresolvable home fips
+  // keeps the old { status: 'none' } rather than surfacing the service's error state.
+  const deadlineResult: UpcomingDeadlinesResult = county ? deadlineRaw : { status: 'none' }
 
   const forecastPromise: Promise<LocalForecast | null> =
     county && county.lat != null && county.lon != null
@@ -150,29 +176,6 @@ export default async function HomePage() {
         .then(result => ({ ok: true as const, result }))
         .catch(() => ({ ok: false as const }))
     : Promise.resolve({ ok: false as const })
-
-  // Profile → deadlines (crop-filtered) + the herd anchor. Same derivation the
-  // dashboard used; failures degrade to absent cards, never a blocked page.
-  const profileResult = await getOperationProfile()
-  const crops = profileResult.status === 'ok' && Array.isArray(profileResult.profile.crops)
-    ? (profileResult.profile.crops as unknown[]).filter((c): c is string => typeof c === 'string')
-    : null
-  const deadlineResult: UpcomingDeadlinesResult = county
-    ? await getUpcomingDeadlines(county.fips, crops && crops.length > 0 ? crops : null)
-    : { status: 'none' }
-
-  let herdAnchor: HerdAnchor | null = null
-  if (profileResult.status === 'ok' && homeFips) {
-    const herd = profileResult.profile.herd as { lots?: Lot[] } | null
-    const lots = Array.isArray(herd?.lots) ? herd!.lots : []
-    if (lots.length > 0) {
-      try {
-        herdAnchor = await getHerdAnchor({ lots, homeFips, supabase })
-      } catch {
-        herdAnchor = null
-      }
-    }
-  }
 
   return (
     <div className="min-h-screen bg-cream">

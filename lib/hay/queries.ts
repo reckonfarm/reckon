@@ -140,9 +140,21 @@ function toEntry(r: EventRow): HayEntry | null {
   }
 }
 
+// Hard cap on one ledger read. PostgREST silently truncates at 1,000 anyway;
+// saying it out loud keeps the truncation a known quantity (a daily feeding
+// line for a year is ~200 rows).
+export const HAY_ROW_CAP = 1000
+
 // Reads the hay lines (RLS-scoped by the caller's client) and derives the
 // summary. `since` (ISO) trims the read; `now` fixes the burn-rate window
 // (tests pass it; pages let it default).
+//
+// The baseline survives the floor: hay ON HAND exists only with a counted
+// baseline (the most recent hay_inventory line), and that count may predate
+// `since` — a November count feeding a January ledger. So when a floor is
+// given, the latest count is read on its own (one row) and merged in if the
+// bounded read didn't already carry it. The season totals (stacked / fed /
+// burn rate) stay bounded; only the anchor is exempt.
 export async function getHayLedger(
   supabase: SupabaseClient,
   opts: { since?: string; now?: number } = {},
@@ -154,10 +166,24 @@ export async function getHayLedger(
       .in('type', [...HAY_EVENT_TYPES])
       .eq('payload->>source', 'manual')
       .order('ts', { ascending: true })
+      .limit(HAY_ROW_CAP)
     if (opts.since) q = q.gte('ts', opts.since)
     const { data, error } = await q
     if (error) return EMPTY
-    const entries = ((data ?? []) as EventRow[]).map(toEntry).filter((e): e is HayEntry => e !== null)
+    const rows = (data ?? []) as EventRow[]
+
+    if (opts.since && !rows.some(r => r.type === 'hay_inventory')) {
+      const { data: latestCount } = await supabase
+        .from('events')
+        .select('id, type, ts, payload')
+        .eq('type', 'hay_inventory')
+        .eq('payload->>source', 'manual')
+        .order('ts', { ascending: false })
+        .limit(1)
+      for (const r of (latestCount ?? []) as EventRow[]) rows.push(r)
+    }
+
+    const entries = rows.map(toEntry).filter((e): e is HayEntry => e !== null)
     return { entries, summary: summarizeHay(entries, opts.now) }
   } catch {
     return EMPTY

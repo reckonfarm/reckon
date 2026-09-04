@@ -1,85 +1,64 @@
 'use client'
 
-import Link from 'next/link'
-import { useLinkStatus } from 'next/link'
 import { flagEnabled } from '@/lib/flags'
+import { useDashboardView, type DashboardViewKey } from '@/app/dashboard/components/DashboardViews'
 
-// Segmented control marking the peer views of one county. Preserves fips. TODAY is
-// the DEFAULT (bare /dashboard, no view param — internal key 'news', see below);
-// Weather is opt-in via &view=drought.
+// Segmented control marking the peer views of one county. TODAY is the DEFAULT
+// (bare /dashboard, no view param — internal key 'news', see below); Weather is
+// opt-in via &view=drought.
 //
-// Client component so the tapped segment can show a pending spinner via useLinkStatus
-// while the (dynamic, no-loading.js) Drought view renders server-side — so the first
-// cold tap feels responsive instead of frozen. Perceived-perf only; no data change.
+// A tap is a client state change (DashboardViewProvider), not a navigation:
+// the bodies are already on the page, so the switch is instant and no request
+// is made. The URL's ?view= is kept in sync by the provider so deep links and
+// reloads land on the same view. The old useLinkStatus pending spinner is gone
+// with the round-trip it was covering for.
 
-// useLinkStatus must run inside the <Link> it tracks. animate-spin is disabled in this
-// project's @theme, so the spinner uses a scoped keyframe.
-function SegLabel({ label }: { label: string }) {
-  const { pending } = useLinkStatus()
-  return (
-    <span className="inline-flex items-center justify-center gap-1.5">
-      {label}
-      {pending && (
-        <span
-          aria-hidden
-          className="dl-toggle-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent"
-        />
-      )}
-    </span>
-  )
-}
+export default function DroughtCattleToggle() {
+  const ctx = useDashboardView()
+  const active = ctx?.view ?? 'news'
 
-export default function DroughtCattleToggle({
-  fips,
-  active,
-}: {
-  fips: string
-  active: 'news' | 'jobs' | 'drought' | 'hay' | 'markets'
-}) {
-  const seg = (href: string, label: string, isActive: boolean) => (
-    <Link
-      key={href}
-      href={href}
-      scroll={false}
-      aria-current={isActive ? 'page' : undefined}
-      className={[
-        'flex-1 basis-0 inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-center font-dm-sans text-sm font-medium transition-colors',
-        isActive
-          ? 'bg-forest-green text-white shadow-sm'
-          : 'text-forest-green/70 hover:bg-forest-green/5',
-      ].join(' ')}
-    >
-      <SegLabel label={label} />
-    </Link>
-  )
-
-  // Data-driven so a 3rd/4th view is one array entry (+ widen `active` / the ?view= parse),
-  // not a redesign. Each item's href / scroll={false} / aria-current / active=== logic is
-  // identical to the previous hardcoded segments — this is structure only.
+  // Data-driven so a 3rd/4th view is one array entry (+ widen the key type / the
+  // ?view= parse), not a redesign.
   // NOTE: the 'drought' key drives ?view=drought while its label reads "Weather", and
   // the 'news' key is the default view while its label reads "Today" — the label↔key
   // mismatches are deliberate (renaming the values would break deep links, the
   // heavy-fetch gate, and the auth redirect).
-  const segments: { key: 'news' | 'jobs' | 'drought' | 'hay' | 'markets'; label: string; href: string }[] = [
-    { key: 'news',     label: 'Today',    href: `/dashboard?fips=${fips}` },
+  const segments: { key: DashboardViewKey; label: string }[] = [
+    { key: 'news',    label: 'Today' },
     // Jobs — derived work sessions (replaced Activity 2026-08-09; the raw-event
     // feed was a debug view, jobs are the product). Second position holds: the
     // ranch's own record beats the outside world's on the home surface. Stale
     // ?view=activity deep links parse to this view on the dashboard side.
-    { key: 'jobs', label: 'Jobs', href: `/dashboard?fips=${fips}&view=jobs` },
-    { key: 'drought',  label: 'Weather',  href: `/dashboard?fips=${fips}&view=drought` },
+    { key: 'jobs',    label: 'Jobs' },
+    { key: 'drought', label: 'Weather' },
     // Hay segment rides the marketplace flag (the dashboard's ?view=hay parse is
     // gated on the same flag, so a stale deep link falls back to the default view).
-    ...(flagEnabled('marketplace')
-      ? [{ key: 'hay' as const, label: 'Hay', href: `/dashboard?fips=${fips}&view=hay` }]
-      : []),
-    { key: 'markets', label: 'Markets', href: `/dashboard?fips=${fips}&view=markets` },
+    ...(flagEnabled('marketplace') ? [{ key: 'hay' as const, label: 'Hay' }] : []),
+    { key: 'markets', label: 'Markets' },
   ]
 
   return (
-    <div className="flex w-full rounded-xl bg-forest-green/8 p-1">
-      <style>{`@keyframes dlToggleSpin{to{transform:rotate(360deg)}}.dl-toggle-spin{animation:dlToggleSpin .6s linear infinite}`}</style>
-      {segments.map(s => seg(s.href, s.label, active === s.key))}
+    <div className="flex w-full rounded-xl bg-forest-green/8 p-1" role="tablist" aria-label="County views">
+      {segments.map(s => {
+        const isActive = active === s.key
+        return (
+          <button
+            key={s.key}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => ctx?.setView(s.key)}
+            className={[
+              'flex-1 basis-0 inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-center font-dm-sans text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-forest-green text-white shadow-sm'
+                : 'text-forest-green/70 hover:bg-forest-green/5',
+            ].join(' ')}
+          >
+            {s.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

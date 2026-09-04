@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useLinkStatus } from 'next/link'
 import type { LocalForecast } from '@/lib/nws'
 import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
+import { useDashboardView } from '@/app/dashboard/components/DashboardViews'
 
 // ─── Conditions strip (B2′) ─────────────────────────────────────────────────────
 // The compact always-visible weather lead at the top of the county dashboard — one
@@ -94,6 +95,11 @@ export default function ConditionsStrip({
   forecast: LocalForecast | null
   fips: string
 }) {
+  // On the dashboard the Weather view is already on the page: a tap switches
+  // the client view state instead of navigating (zero requests). On /home there
+  // is no provider (null) and the href below does the real navigation as before.
+  const dashboardView = useDashboardView()
+
   const sev = droughtSeverity(reading)
   const today = todayOutlook(forecast)
 
@@ -107,6 +113,7 @@ export default function ConditionsStrip({
     <Link
       href={`/dashboard?fips=${fips}&view=drought`}
       scroll={false}
+      onClick={dashboardView ? e => { e.preventDefault(); dashboardView.setView('drought') } : undefined}
       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"
     >
       <style>{`@keyframes dlStripSpin{to{transform:rotate(360deg)}}.dl-strip-spin{animation:dlStripSpin .6s linear infinite}`}</style>
