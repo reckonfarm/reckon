@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase-server'
 import { computeLfpEligibility, type LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
-import { getLocalForecast, type LocalForecast } from '@/lib/nws'
+import type { LocalForecast } from '@/lib/nws'
 import { timeoutSignal } from '@/lib/external-fetch'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
@@ -176,7 +176,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -184,7 +184,6 @@ export async function WeatherViewBody({
   user: { id: string } | null
   lfpPromise: Promise<LfpFetchOutcome>
   precipPromise: Promise<PrecipNormalResult>
-  forecastPromise: Promise<LocalForecast | null>
 }) {
   const db = createServiceClient()
   let history: DroughtReading[]                     = []
@@ -407,14 +406,8 @@ export async function WeatherViewBody({
         <RainByPlaceCard precipPromise={precipPromise} user={user} />
       </Suspense>
 
-      {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
-          Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
-      <div>
-        <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-        <Suspense fallback={<ForecastPanelSkeleton />}>
-          <ForecastPanelAsync dataPromise={forecastPromise} />
-        </Suspense>
-      </div>
+      {/* The 7-day forecast carousel left this view (layout, commit 3): it
+          renders on Today only — one carousel, one place. */}
 
       {/* Weather verdict band — fills in Slice 4 (renders nothing yet) */}
 
@@ -851,10 +844,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
         .catch(() => ({ ok: false as const }))
       const precipPromise: Promise<PrecipNormalResult> =
         getPrecipNormal(county.fips, county.lat, county.lon).catch(() => 'data_unavailable' as const)
-      const forecastPromise: Promise<LocalForecast | null> =
-        county.lat != null && county.lon != null
-          ? getLocalForecast(county.lat, county.lon).catch(() => null)
-          : Promise.resolve(null)
+      // No forecast fetch here since layout commit 3: the carousel is Today's.
       return (
         <Suspense fallback={<RainfallPanelSkeleton />}>
           <WeatherViewBody
@@ -864,7 +854,6 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
             user={user}
             lfpPromise={lfpPromise}
             precipPromise={precipPromise}
-            forecastPromise={forecastPromise}
           />
         </Suspense>
       )

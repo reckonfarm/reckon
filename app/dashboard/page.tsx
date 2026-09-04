@@ -505,15 +505,13 @@ export default async function DashboardPage({
                            fetch, News stays fast, default tab unchanged). Tapping opens the
                            Weather tab via the toggle's exact link pattern. Renders nothing
                            when there's no real data. ── */}
+                    {/* Today's order (layout, commit 3), top to bottom: conditions
+                        strip · LFP card · deadlines · Log it · live job · today's
+                        jobs · herd value · 7-day forecast · headlines · This season ·
+                        Hay · Recently logged. Money and the operator's own line
+                        first; the machines; the herd; the sky; the news; then the
+                        season ledgers at the bottom. Same components, same gates. */}
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-
-                    {/* A machine working RIGHT NOW — loud at the top of Today, carrying the
-                        headline number for the job type (bale count / percent cut + ETA).
-                        Null when nothing runs and for signed-out visitors (RLS returns
-                        nothing). */}
-                    <Suspense fallback={null}>
-                      <LiveJobCard />
-                    </Suspense>
 
                     {/* Herd value: ONE surface (flow, commit 5) — the HerdValueCard below.
                         The always-on HerdEstimatePanel island (HerdAnchorLoader) is gone;
@@ -564,6 +562,13 @@ export default async function DashboardPage({
                         button that can only 401. */}
                     {user && <LogIt />}
 
+                    {/* A machine working RIGHT NOW, carrying the headline number for
+                        the job type (bale count / percent cut + ETA). Null when nothing
+                        runs and for signed-out visitors (RLS returns nothing). */}
+                    <Suspense fallback={null}>
+                      <LiveJobCard />
+                    </Suspense>
+
                     {/* Today's completed sessions — quiet, gone at midnight ranch
                         time (at breakfast the slate is clean; history lives in the
                         Jobs view). The live card above already carries in-progress. */}
@@ -571,6 +576,22 @@ export default async function DashboardPage({
                       <TodayJobs />
                     </Suspense>
 
+                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
+                        surface on Today since flow commit 5). */}
+                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
+
+                    {/* 7-day forecast — Today ONLY since layout commit 3 (its Weather
+                        copy was cut: one carousel, one place). Streamed behind Suspense. */}
+                    <div>
+                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
+                      <Suspense fallback={<ForecastPanelSkeleton />}>
+                        <ForecastPanelAsync dataPromise={forecastPromise} />
+                      </Suspense>
+                    </div>
+                    <NewsHookCard fips={selectedCounty.fips} />
+
+                    {/* The season ledgers, at the bottom (layout, commit 3). Each is
+                        the same self-gating server component it was on /home. */}
                     <Suspense fallback={null}>
                       <SeasonTotals />
                     </Suspense>
@@ -582,18 +603,6 @@ export default async function DashboardPage({
                     <Suspense fallback={null}>
                       <RecentlyLogged />
                     </Suspense>
-
-                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
-                        surface on Today since flow commit 5). */}
-                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
-
-                    <div>
-                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-                      <Suspense fallback={<ForecastPanelSkeleton />}>
-                        <ForecastPanelAsync dataPromise={forecastPromise} />
-                      </Suspense>
-                    </div>
-                    <NewsHookCard fips={selectedCounty.fips} />
                   </>
                 ),
                 ...(view === 'jobs'
@@ -613,7 +622,6 @@ export default async function DashboardPage({
                           user={user}
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
-                          forecastPromise={forecastPromise}
                         />
                       </Suspense>
                     ) }
