@@ -6,8 +6,13 @@ export default function NotFound() {
       <header className="border-b border-forest-green/10">
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
           <Link href="/" className="flex flex-col leading-tight hover:opacity-80 transition-opacity">
-            <span className="font-fraunces text-2xl font-bold text-forest-green">
-              Dryline
+            {/* Same mark-left-of-wordmark lockup as SiteHeader (brand, commit 3);
+                this header is a local copy, not the shared component — flagged. */}
+            <span className="flex items-center gap-2">
+              <img src="/brand/dryline-mark.svg" alt="" aria-hidden className="h-[30px] w-auto shrink-0" />
+              <span className="font-fraunces text-2xl font-bold text-forest-green">
+                Dryline
+              </span>
             </span>
             <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
               Ranch Intelligence for Cattle Country

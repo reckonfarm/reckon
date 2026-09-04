@@ -243,6 +243,7 @@ export default function SignInForm({
   if (view === 'otp') {
     return (
       <div className="w-full max-w-sm">
+        <img src="/brand/dryline-mark.svg" alt="" aria-hidden className="mb-4 h-10 w-auto" />
         <p className="font-fraunces text-2xl font-semibold text-forest-green">
           Sign in to Dryline
         </p>
@@ -309,6 +310,12 @@ export default function SignInForm({
 
   return (
     <div className="w-full max-w-sm">
+      {/* The mark alone above the heading (brand, commit 3). The full stacked
+          lockup was tried here first: its wordmark is Georgia spaced caps, and
+          stacked over the Fraunces "Sign in to Dryline" it read as two brands
+          saying the name twice in two faces — so the mark carries the brand and
+          the existing heading keeps the name. */}
+      <img src="/brand/dryline-mark.svg" alt="" aria-hidden className="mb-4 h-10 w-auto" />
       <p className="font-fraunces text-2xl font-semibold text-forest-green">
         {isSignup ? 'Create your account' : 'Sign in to Dryline'}
       </p>

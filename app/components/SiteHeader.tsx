@@ -55,8 +55,21 @@ export default function SiteHeader({ center }: Props) {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
 
         <Link href="/" className="flex flex-col leading-tight">
-          <span className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
-            Dryline
+          {/* The rope-line mark sits left of the wordmark (brand, commit 3). Its ink
+              fills 44.8 of the file's 80 viewBox units, so the box is drawn at
+              80/44.8 × the wordmark's cap height (Fraunces ≈ 0.7em: 14px at
+              text-xl, 17px at text-2xl) — the LINE matches the caps, not the
+              box. Decorative: the text beside it is the accessible name. */}
+          <span className="flex items-center gap-2">
+            <img
+              src="/brand/dryline-mark.svg"
+              alt=""
+              aria-hidden
+              className="h-[25px] w-auto shrink-0 sm:h-[30px]"
+            />
+            <span className="font-fraunces text-xl font-semibold text-forest-green sm:text-2xl">
+              Dryline
+            </span>
           </span>
           <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
             {TAGLINE}
