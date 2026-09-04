@@ -13,9 +13,12 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#FDFBF7',
     theme_color: '#1B4332',
+    // The rope-line mark (brand, commit 4): opaque, full-bleed forest-green
+    // squares — no alpha, no rounded corners — so every launcher masks its own
+    // shape and nothing shows black. The old "/icon-*.png" D-mark files are gone.
     icons: [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
     ],
   }
 }
