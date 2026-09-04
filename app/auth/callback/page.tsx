@@ -18,7 +18,9 @@ export default function AuthCallbackPage() {
     const params     = new URLSearchParams(window.location.search)
     const token_hash = params.get('token_hash')
     const type       = params.get('type')
-    const next       = params.get('next') ?? '/watchlist'
+    // Default landing = the county dashboard (middleware resolves the home county),
+    // the same spot every other signed-in path lands on (shell pass, commit 2).
+    const next       = params.get('next') ?? '/dashboard'
 
     async function exchange() {
       if (!token_hash || !type) {

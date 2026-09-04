@@ -78,8 +78,14 @@ export async function middleware(request: NextRequest) {
   // redirects; an explicit /?fips=X share link is preserved). Carries the refreshed
   // auth cookies onto the redirect, exactly as the /dashboard branch below does.
   if (user && request.nextUrl.pathname === '/' && !request.nextUrl.searchParams.has('fips')) {
+    // ONE landing spot (shell pass, commit 2): the county dashboard with Today open,
+    // on the operation's home county — resolved here in the same hop so a cold
+    // open is a single redirect, not / → /dashboard → /dashboard?fips=. No home
+    // county → bare /dashboard, whose EmptyState already handles it.
     const dest = request.nextUrl.clone()
-    dest.pathname = '/home'
+    dest.pathname = '/dashboard'
+    const fips = await resolveDefaultFips(user.id)
+    if (fips) dest.searchParams.set('fips', fips)
     const redirectResponse = NextResponse.redirect(dest)
     supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
     return redirectResponse
