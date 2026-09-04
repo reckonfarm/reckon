@@ -33,6 +33,12 @@ import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
 import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
+// The operation's own cards — moved here from /home (shell pass, commit 3).
+import LogIt from './components/LogIt'
+import SeasonTotals from './components/SeasonTotals'
+import HayInventoryCard from './components/HayInventoryCard'
+import RecentlyLogged from './components/RecentlyLogged'
+import HerdValueCard from './components/HerdValueCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
@@ -506,12 +512,41 @@ export default async function DashboardPage({
               eager={{
                 news: (
                   <>
+                    {/* ── The operation (shell pass, commit 3: Today absorbed /home) ──
+                        The operator's own line in the ledger, then what the machines
+                        and the logs say — the /home hierarchy, in order. Every card is
+                        the same self-gating server component it was on /home (RLS-
+                        scoped reads that return nothing signed out → null). LogIt is
+                        the one client piece and never gated itself, so it takes the
+                        page's user: a public county page must not offer a Log it
+                        button that can only 401. */}
+                    {user && <LogIt />}
+
                     {/* Today's completed sessions — quiet, gone at midnight ranch
                         time (at breakfast the slate is clean; history lives in the
                         Jobs view). The live card above already carries in-progress. */}
                     <Suspense fallback={null}>
                       <TodayJobs />
                     </Suspense>
+
+                    <Suspense fallback={null}>
+                      <SeasonTotals />
+                    </Suspense>
+
+                    <Suspense fallback={null}>
+                      <HayInventoryCard />
+                    </Suspense>
+
+                    <Suspense fallback={null}>
+                      <RecentlyLogged />
+                    </Suspense>
+
+                    {/* Herd value — a card, not the hero, linking to /herd. NOTE: the
+                        always-on stack above also renders the herd anchor panel
+                        (HerdAnchorLoader) from the same herdAnchor — both show on Today
+                        now; which one stays is a separate call. */}
+                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
+
                     <div>
                       <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
                       <Suspense fallback={<ForecastPanelSkeleton />}>

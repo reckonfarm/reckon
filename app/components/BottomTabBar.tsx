@@ -129,11 +129,11 @@ export default function BottomTabBar() {
     },
   ]
 
-  // "My Operation" is the home-base anchor — /home, the ranch home (2026-08-09
-  // repositioning: live job, today's sessions, season totals, herd value, then
-  // county context). The county tool at /dashboard is a destination reached FROM
-  // home, so it no longer lights this anchor.
-  const opActive = pathname.startsWith('/home')
+  // "My Operation" is the home-base anchor — the county dashboard, whose Today
+  // view absorbed the ranch home (shell pass, commit 3: live job, today's
+  // sessions, season totals, hay, recently logged, herd value, then county
+  // context). /home is a redirect to it now.
+  const opActive = pathname.startsWith('/dashboard')
 
   const renderTab = (tab: Tab) => {
     const active = tab.match(pathname)
@@ -171,7 +171,7 @@ export default function BottomTabBar() {
 
         {/* Raised, prominent center anchor — "My Operation" (home base) */}
         <Link
-          href="/home"
+          href="/dashboard"
           aria-label="My Operation"
           aria-current={opActive ? 'page' : undefined}
           className="absolute left-1/2 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"
