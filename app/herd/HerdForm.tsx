@@ -6,7 +6,9 @@ import {
   LOT_CLASSES,
   LOT_CLASS_LABELS,
   LOT_FRAMES,
+  LOT_NAME_MAX,
   DEFAULT_FRAME,
+  lotLabel,
   type Lot,
   type LotClass,
   type LotFrame,
@@ -33,6 +35,7 @@ type Editing = 'new' | string | null
 // created_at and omit updated_at, so the server bumps only the edited lot's updated_at.
 interface LotPayload {
   id?: string
+  name?: string        // optional; the server trims, caps, and drops a blank one
   class: LotClass
   head_count: number
   avg_weight: number
@@ -60,6 +63,7 @@ export default function HerdForm() {
   const [errorMsg, setErrorMsg] = useState('')
 
   // Draft editor fields.
+  const [dName, setDName] = useState('')
   const [dClass, setDClass] = useState<LotClass | ''>('')
   const [dHead, setDHead] = useState('')
   const [dWeight, setDWeight] = useState('')
@@ -85,13 +89,14 @@ export default function HerdForm() {
   }, [])
 
   function resetDraft() {
-    setDClass(''); setDHead(''); setDWeight(''); setDUnit('lb')
+    setDName(''); setDClass(''); setDHead(''); setDWeight(''); setDUnit('lb')
     setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false)
   }
 
   function openAdd() { resetDraft(); setErrorMsg(''); setEditing('new') }
 
   function openEdit(lot: Lot) {
+    setDName(lot.name ?? '')
     setDClass(lot.class)
     setDHead(String(lot.head_count))
     setDWeight(String(lot.avg_weight))
@@ -112,6 +117,7 @@ export default function HerdForm() {
 
   function buildPayloadLot(): LotPayload {
     const lot: LotPayload = {
+      name: dName.trim(),
       class: dClass as LotClass,
       head_count: headNum,
       avg_weight: weightNum,
@@ -203,6 +209,17 @@ export default function HerdForm() {
               )
             })}
           </div>
+        </div>
+
+        <div className="mt-4">
+          <Field label="Name" hint="Optional — what you call this bunch. Left blank, the lot goes by its class.">
+            <Input
+              value={dName}
+              maxLength={LOT_NAME_MAX}
+              placeholder="Optional — e.g. Replacement heifers"
+              onChange={e => setDName(e.target.value)}
+            />
+          </Field>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -313,8 +330,10 @@ export default function HerdForm() {
       <Card key={lot.id} shadow="sm" className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-dm-sans text-base font-semibold text-ink">{LOT_CLASS_LABELS[lot.class]}</p>
+            <p className="font-dm-sans text-base font-semibold text-ink">{lotLabel(lot)}</p>
             <p className="mt-0.5 font-dm-sans text-sm text-body/70">
+              {/* A named lot keeps its class in view on the detail line. */}
+              {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
               <span className="tabular-price">{lot.head_count}</span> head ·{' '}
               <span className="tabular-price">{lot.avg_weight}</span> {lot.weight_unit} avg
             </p>

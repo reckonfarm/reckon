@@ -1,4 +1,4 @@
-import { lotToMarsKey, LOT_CLASS_LABELS, type Lot, type LotClass } from './herd'
+import { lotToMarsKey, LOT_CLASS_LABELS, lotLabel as lotName, type Lot, type LotClass } from './herd'
 import type { ResolveResult, RankedBarn, MarsPriceRow, ResolveTier } from './barn-resolver'
 
 // ─── HerdEstimate engine ─────────────────────────────────────────────────────────────
@@ -100,8 +100,10 @@ export interface HerdEstimate {
   note: string
 }
 
+// The lot's display line: its name (lib/herd lotLabel — the producer's name,
+// else the class label) plus the head and weight that price it.
 function lotLabel(lot: Lot): string {
-  return `${LOT_CLASS_LABELS[lot.class]} · ${lot.head_count} head · ${lot.avg_weight} ${lot.weight_unit}`
+  return `${lotName(lot)} · ${lot.head_count} head · ${lot.avg_weight} ${lot.weight_unit}`
 }
 
 interface Match { value: number; source: ValuationSource; exact: boolean }

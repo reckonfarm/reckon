@@ -30,6 +30,19 @@ export const LOT_CLASS_LABELS: Record<LotClass, string> = {
   old_cows:  'Old cows (cull)',
 }
 
+// Optional free-text lot name ("Replacement heifers", "The bulls at Watergap").
+// Trimmed, capped, never required — a lot without one is labeled by its class.
+export const LOT_NAME_MAX = 40
+
+// THE lot label, everywhere a lot is named to a person: the name when the
+// producer gave one, else the class label. One helper so the herd page, the
+// estimate, the outlook, the log sheet and the ledger lines can never
+// disagree about what a lot is called.
+export function lotLabel(lot: Pick<Lot, 'class'> & { name?: string }): string {
+  const name = lot.name?.trim()
+  return name ? name : LOT_CLASS_LABELS[lot.class]
+}
+
 export type MarsCommodity = 'Feeder Cattle' | 'Slaughter Cattle'
 export type MarsClass = 'Steers' | 'Heifers' | 'Cows' | 'Bulls'
 
@@ -102,6 +115,10 @@ export interface Lot {
   frame: LotFrame
   weaned: boolean
   sale_windows: SaleWindow[]
+  // OPTIONAL — a name the producer calls this bunch by (≤ LOT_NAME_MAX, trimmed).
+  // Absent on lots saved before it existed; absent when left blank. Display
+  // goes through lotLabel(), which falls back to the class label.
+  name?: string
 
   // Timestamped composition (data moat).
   created_at: string   // ISO-8601
@@ -247,6 +264,10 @@ export function normalizeLot(
   const sw = normalizeSaleWindows(raw.sale_windows, label)
   if (!sw.ok) return sw
 
+  // OPTIONAL name: passed through trimmed and capped; blank or non-string means
+  // no name (the key is left off, so a nameless lot's stored shape is unchanged).
+  const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, LOT_NAME_MAX) : ''
+
   return {
     ok: true,
     lot: {
@@ -258,6 +279,7 @@ export function normalizeLot(
       frame,
       weaned,
       sale_windows: sw.windows,
+      ...(name ? { name } : {}),
       // Lot edit timestamps are client-supplied (preserved if valid, else now()) — fine for
       // a producer editing their own private lots. NOTE: future AI-moat logging of decisions/
       // outcomes (what we showed, what the producer did) must use SERVER-authoritative
