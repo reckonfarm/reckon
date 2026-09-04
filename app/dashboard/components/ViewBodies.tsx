@@ -22,7 +22,7 @@ import type { Lot } from '@/lib/herd'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
-import type { County } from './CountySelector'
+import CountySelector, { type County } from './CountySelector'
 import { type OfficialMapRecord } from './OfficialMap'
 import RegionalMapLoader from './RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './RegionalMapClient'
@@ -359,6 +359,18 @@ export async function WeatherViewBody({
 
   return (
     <>
+      {/* Which county you're looking at (flow, commit 4) — signed in, the county
+          selector lives HERE, above the county-scoped weather, framed as changing
+          the county in view, not as the page's main control (the operation is the
+          subject up top). Signed out it isn't here: the public page keeps its
+          selector under the header. Switching keeps you on Weather. */}
+      {user && (
+        <div>
+          <p className={`${EYEBROW} mb-2`}>Looking at</p>
+          <CountySelector selectedCounty={selectedCounty} view="drought" />
+        </div>
+      )}
+
       {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
           summary). Weather view only (above the map). Hero renders from the reliable
           DB `latest`; the ribbon + summary come from the live 3-year USDM history and

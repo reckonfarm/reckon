@@ -375,13 +375,22 @@ export default async function DashboardPage({
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <ScrollToTop />
 
-        {/* ── County selector ───────────────────────────────────────────────── */}
-        <section className="mb-8">
-          <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
-            Select County
-          </label>
-          <CountySelector selectedCounty={selectedCounty} />
-        </section>
+        {/* ── County selector (flow, commit 4) ──────────────────────────────────
+               The public county page's whole job is picking a county, so signed
+               out it stays here, the page's main control. Signed in with a county
+               it leaves this slot — the operation is the subject — and lives in
+               the Weather view as "change the county you're looking at". The one
+               dependency: a signed-in person with NO county (bare /dashboard,
+               no home county) still needs a way to one, so it stays here for
+               them too, above the EmptyState that points at it. */}
+        {(!user || !selectedCounty) && (
+          <section className="mb-8">
+            <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
+              Select County
+            </label>
+            <CountySelector selectedCounty={selectedCounty} />
+          </section>
+        )}
 
         {/* ── National view (no county selected) ───────────────────────────── */}
         {!fips && <EmptyState />}
