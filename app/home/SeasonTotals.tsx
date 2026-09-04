@@ -5,7 +5,7 @@ import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
 import { BALE_MACHINE } from '@/lib/detections/detect-bales'
 import { computeFieldBoundaries } from '@/lib/jobs/boundary'
-import { fmtAcres, fmtDay, fmtDuration } from '@/lib/jobs/format'
+import { fmtAcres, fmtDay, fmtDuration, ranchYearStart } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
 
 // ─── Season totals — what the machines did, added up ───────────────────────────
@@ -22,8 +22,15 @@ import type { TrackPoint } from '@/lib/jobs/derive'
 //     ("measured on N fields").
 //   * Hours are working time (the deriver's duration), every included job.
 // A stat with nothing behind it doesn't render as a zero — it doesn't render.
-// Per-job boundary recompute is fine at today's job counts; if this ever gets
-// slow the acres move into the deriver as a stored column.
+//
+// Bounded reads (perf block, commit 3): the season is this ranch year, the
+// list is capped, and the jobs read carries only the columns the totals need
+// — never the GPS track. ACRES STILL NEED GEOMETRY: no stored acreage exists
+// on `jobs` (only bbox / stats / track; job_annotations.actual_acres is the
+// operator's own number, a different fact), so the track is read in a SECOND
+// query for exactly the jobs that made the cut (not dismissed, not minor),
+// and the boundary is computed per load as before. The honest end state is a
+// deriver-stored acres column; that's the deriver's change, not this one.
 
 interface SeasonJobRow {
   id: string
@@ -32,15 +39,20 @@ interface SeasonJobRow {
   duration_s: number
   event_count: number
   multi_field: boolean
-  track: TrackPoint[]
 }
+
+// Season row cap. PostgREST truncates at 1,000 silently; this says the number
+// out loud. A season is dozens of sessions, not hundreds.
+const SEASON_JOB_CAP = 500
 
 export default async function SeasonTotals() {
   const supabase = await createClient()
   const { data } = await supabase
     .from('jobs')
-    .select('id, started_at, ended_at, duration_s, event_count, multi_field, track')
+    .select('id, started_at, ended_at, duration_s, event_count, multi_field')
+    .gte('started_at', ranchYearStart())
     .order('started_at', { ascending: true })
+    .limit(SEASON_JOB_CAP)
 
   const jobs = (data ?? []) as unknown as SeasonJobRow[]
   if (jobs.length === 0) return null
@@ -53,6 +65,15 @@ export default async function SeasonTotals() {
   )
   if (included.length === 0) return null
 
+  // Track only for the included jobs — the one column the acres can't do without.
+  const { data: trackRows } = await supabase
+    .from('jobs')
+    .select('id, track')
+    .in('id', included.map(j => j.id))
+  const tracks = new Map<string, TrackPoint[]>(
+    ((trackRows ?? []) as { id: string; track: TrackPoint[] | null }[]).map(r => [r.id, r.track ?? []]),
+  )
+
   let bales = 0
   let acres = 0
   let fields = 0
@@ -63,12 +84,13 @@ export default async function SeasonTotals() {
     if (run?.outcome === 'detected' && annotations.get(j.id)?.machine === BALE_MACHINE) {
       bales += run.detection_count
     }
-    if (j.track.length >= 2) {
+    const track = tracks.get(j.id) ?? []
+    if (track.length >= 2) {
       // Multi-field sessions segment (same machinery as the job page): each
       // field's boundary is judged on its own points, and only CONFIRMED
       // fields join the total — one silent field never blocks its neighbors,
       // and never rides in on them either.
-      for (const f of computeFieldBoundaries(j.track, j.multi_field)) {
+      for (const f of computeFieldBoundaries(track, j.multi_field)) {
         if (f.boundary.status === 'confirmed' && f.boundary.acres != null) {
           acres += f.boundary.acres
           fields++

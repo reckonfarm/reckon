@@ -25,6 +25,16 @@ export function todayKey(nowMs: number = Date.now()): string {
   return dayKey(nowMs)
 }
 
+// The current ranch year's first instant, as an ISO timestamp — the date floor
+// the season-scoped ledger reads use (season totals, hay, recently logged).
+// "Season" here is the ranch calendar year (the same year the rain ledger keys
+// its year-to-date on), midnight Jan 1 in Denver: standard time on that date,
+// so the -07:00 offset is exact, never a DST guess.
+export function ranchYearStart(nowMs: number = Date.now()): string {
+  const year = dayKey(nowMs).slice(0, 4)
+  return new Date(`${year}-01-01T00:00:00-07:00`).toISOString()
+}
+
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', {
     timeZone: RANCH_TZ, hour: 'numeric', minute: '2-digit',
