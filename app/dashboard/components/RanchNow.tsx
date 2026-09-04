@@ -11,6 +11,7 @@ import { computeSweep } from '@/lib/jobs/sweep'
 import { computeEta } from '@/lib/jobs/eta'
 import { dayKey, todayKey, fmtDoneAt, fmtTime, fmtDuration, plural } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── The ranch, right now — live and today's jobs on the home surface ──────────
 // Two pieces, same doctrine as the LFP alert: LOUD when something is
@@ -177,7 +178,7 @@ export async function TodayJobs() {
 
   return (
     <div>
-      <p className="mb-3 font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/40">
+      <p className={`${EYEBROW} mb-3`}>
         Today on the ranch
       </p>
       <div className="space-y-3">

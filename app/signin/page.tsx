@@ -14,7 +14,10 @@ export default async function SignInPage({
 }) {
   const { next, mode } = await searchParams
   const nextValid = !!next && next.startsWith('/') && !next.startsWith('//')
-  const safeNext = nextValid ? next! : '/watchlist'
+  // The one signed-in landing: the county dashboard (middleware resolves the home
+  // county onto it). Was /watchlist — the fresh-sign-in default disagreed with the
+  // cold-open and already-signed-in paths (shell pass, commit 2).
+  const safeNext = nextValid ? next! : '/dashboard'
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

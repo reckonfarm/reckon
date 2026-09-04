@@ -5,6 +5,19 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { flagDisabled, flagEnabled } from '@/lib/flags'
 
+// ─── Bottom nav (mobile) — one flat row of routes (shell pass, commit 5) ────────
+// Today · My herd · Jobs · Devices · Profile (+ Messages behind its flag), evenly
+// spaced, no raised anchor and no notch. Today IS the operation now — the county
+// dashboard's Today view absorbed the ranch home — so a center button pointing
+// at the page you're already on was noise; it is a plain first tab that lights
+// on /dashboard like any other. Counties (the watchlist) left the bar; it is
+// reached from Profile. Devices keeps its slot: the hardware registry is where
+// a Scout gets paired and checked, a cab-side task.
+//
+// The four view tabs (DroughtCattleToggle) are the in-page navigation INSIDE
+// the dashboard; this bar is the route-level one. Two systems, deliberately:
+// this row never changes a view, the toggle never changes a route.
+
 export default function BottomTabBar() {
   const pathname = usePathname()
   const [unread, setUnread] = useState(0)
@@ -33,8 +46,21 @@ export default function BottomTabBar() {
     icon: (active: boolean) => React.ReactNode
   }
 
-  // Flanking items, in left-to-right order around the raised center anchor.
-  const leftTabs: Tab[] = [
+  const tabs: Tab[] = [
+    {
+      // The operation: the county dashboard with Today open. Bare /dashboard —
+      // middleware puts the home county on it. /home is a redirect here too.
+      href: '/dashboard',
+      label: 'Today',
+      match: p => p.startsWith('/dashboard') || p.startsWith('/home'),
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 10.5 12 3l9 7.5"/>
+          <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/>
+          <path d="M9.5 21v-6h5v6"/>
+        </svg>
+      ),
+    },
     {
       href: '/herd',
       label: 'My herd',
@@ -52,15 +78,13 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    // Jobs — the work-session ledger. Breaks the 2/2 flank balance to 3/2 on
-    // purpose: this is the Scout's payoff surface and the page a rancher opens
-    // from the cab, so it earns a tab over symmetry. Route glyph (track between
-    // two endpoints), hand-drawn to match the inline-SVG stroke style.
     {
+      // Jobs — the work-session ledger, the Scout's payoff surface and the page a
+      // rancher opens from the cab. Route glyph (track between two endpoints).
       href: '/jobs',
       label: 'Jobs',
-      match: (p: string) => p.startsWith('/jobs'),
-      icon: (active: boolean) => (
+      match: p => p.startsWith('/jobs'),
+      icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
           <circle cx="6" cy="19" r="2.5"/>
           <circle cx="18" cy="5" r="2.5"/>
@@ -68,14 +92,12 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    // Devices holds the slot Messages vacated (S2). Antenna/signal glyph,
-    // hand-drawn to match the inline-SVG stroke style of the other tabs (no
-    // icon lib).
     {
+      // Devices — antenna/signal glyph, same hand-drawn stroke style.
       href: '/devices',
       label: 'Devices',
-      match: (p: string) => p.startsWith('/devices'),
-      icon: (active: boolean) => (
+      match: p => p.startsWith('/devices'),
+      icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 13v8"/>
           <circle cx="12" cy="11" r="2"/>
@@ -86,8 +108,7 @@ export default function BottomTabBar() {
         </svg>
       ),
     },
-    // Messages tab rides the messaging flag; while it's off Devices above keeps
-    // the left flank at two (flex-1 balances the flanks around the center anchor).
+    // Messages rides the messaging flag.
     ...(flagEnabled('messaging')
       ? [{
           href: '/messages',
@@ -100,22 +121,6 @@ export default function BottomTabBar() {
           ),
         }]
       : []),
-  ]
-
-  // Hay Radar lives in the top header (SiteHeader), not here — keeping the bottom
-  // bar an even 2-left / 2-right around the centered My Operation anchor.
-  const rightTabs: Tab[] = [
-    {
-      href: '/watchlist',
-      label: 'Counties',
-      match: p => p.startsWith('/watchlist'),
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/>
-          <circle cx="12" cy="10" r="3"/>
-        </svg>
-      ),
-    },
     {
       href: '/profile',
       label: 'Profile',
@@ -129,72 +134,30 @@ export default function BottomTabBar() {
     },
   ]
 
-  // "My Operation" is the home-base anchor — /home, the ranch home (2026-08-09
-  // repositioning: live job, today's sessions, season totals, herd value, then
-  // county context). The county tool at /dashboard is a destination reached FROM
-  // home, so it no longer lights this anchor.
-  const opActive = pathname.startsWith('/home')
-
-  const renderTab = (tab: Tab) => {
-    const active = tab.match(pathname)
-    return (
-      <Link
-        key={tab.href}
-        href={tab.href}
-        className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[10px] font-dm-sans font-medium transition-colors min-h-[56px] ${
-          active ? 'text-forest-green' : 'text-forest-green/35 hover:text-forest-green/60'
-        }`}
-      >
-        {tab.href === '/messages' && unread > 0 && (
-          <span className="absolute top-1 right-[calc(50%-18px)] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[9px] font-semibold text-white">
-            {unread > 9 ? '9+' : unread}
-          </span>
-        )}
-        {tab.icon(active)}
-        {tab.label}
-      </Link>
-    )
-  }
-
-
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe">
-      <div className="relative flex items-stretch">
-        {/* Left flank (2 items) */}
-        <div className="flex flex-1">{leftTabs.map(renderTab)}</div>
-
-        {/* Reserved notch under the raised center anchor */}
-        <div className="w-[76px] shrink-0" aria-hidden />
-
-        {/* Right flank (2 items) */}
-        <div className="flex flex-1">{rightTabs.map(renderTab)}</div>
-
-        {/* Raised, prominent center anchor — "My Operation" (home base) */}
-        <Link
-          href="/home"
-          aria-label="My Operation"
-          aria-current={opActive ? 'page' : undefined}
-          className="absolute left-1/2 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"
-        >
-          <span
-            className={`flex h-14 w-14 -translate-y-4 items-center justify-center rounded-full bg-forest-green text-cream ring-4 ring-cream transition-shadow ${
-              opActive ? 'shadow-lg shadow-forest-green/40' : 'shadow-md shadow-forest-green/25'
-            }`}
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 10.5 12 3l9 7.5"/>
-              <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/>
-              <path d="M9.5 21v-6h5v6"/>
-            </svg>
-          </span>
-          <span
-            className={`-mt-2.5 mb-1.5 text-[10px] font-dm-sans font-semibold transition-colors ${
-              opActive ? 'text-forest-green' : 'text-forest-green/70'
-            }`}
-          >
-            My Operation
-          </span>
-        </Link>
+      <div className="flex items-stretch">
+        {tabs.map(tab => {
+          const active = tab.match(pathname)
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[11px] font-dm-sans transition-colors min-h-[56px] ${
+                active ? 'font-semibold text-forest-green' : 'font-medium text-forest-green/40 hover:text-forest-green/70'
+              }`}
+            >
+              {tab.href === '/messages' && unread > 0 && (
+                <span className="absolute top-1 right-[calc(50%-18px)] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[9px] font-semibold text-white">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+              {tab.icon(active)}
+              {tab.label}
+            </Link>
+          )
+        })}
       </div>
     </nav>
   )

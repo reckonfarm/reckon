@@ -2,13 +2,13 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult } from '@/lib/local-auction-service'
 import { marketDelta } from '@/lib/market-direction'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // Local auction — the nearest reporting barn's latest sale, steers by weight band
 // (index spec: Medium & Large 1, Per Cwt), receipts, and week-over-week deltas.
 // Boring layout, every state honest: fresh prices ≠ summer no-sale gap ≠ genuine
 // no-coverage ≠ outage. Freshness = the SALE date, always shown.
 
-const EYEBROW = 'text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide'
 
 function fmtDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {

@@ -77,9 +77,21 @@ export async function middleware(request: NextRequest) {
   // pathname === '/' (only the start_url), and no fips param (a bare app-open
   // redirects; an explicit /?fips=X share link is preserved). Carries the refreshed
   // auth cookies onto the redirect, exactly as the /dashboard branch below does.
-  if (user && request.nextUrl.pathname === '/' && !request.nextUrl.searchParams.has('fips')) {
+  if (
+    user &&
+    (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/home') &&
+    !request.nextUrl.searchParams.has('fips')
+  ) {
+    // ONE landing spot (shell pass, commit 2): the county dashboard with Today open,
+    // on the operation's home county — resolved here in the same hop so a cold
+    // open is a single redirect, not / → /dashboard → /dashboard?fips=. No home
+    // county → bare /dashboard, whose EmptyState already handles it. /home rides
+    // the same branch (commit 3): Today absorbed it, and a home-screen bookmark
+    // of /home must land in one hop with the refreshed session.
     const dest = request.nextUrl.clone()
-    dest.pathname = '/home'
+    dest.pathname = '/dashboard'
+    const fips = await resolveDefaultFips(user.id)
+    if (fips) dest.searchParams.set('fips', fips)
     const redirectResponse = NextResponse.redirect(dest)
     supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
     return redirectResponse

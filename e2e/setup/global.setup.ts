@@ -23,7 +23,7 @@ setup('create test users + authenticate (storageState)', async ({ browser }) => 
 
     // Programmatic sign-in via the magic-link callback → sets @supabase/ssr cookies.
     await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink`)
-    await page.waitForURL('**/watchlist', { timeout: 30_000 })
+    await page.waitForURL(u => u.pathname === '/dashboard', { timeout: 30_000 })
 
     // Give the account a display name so seller pages / threads render a name.
     const res = await context.request.patch('/api/profile', {

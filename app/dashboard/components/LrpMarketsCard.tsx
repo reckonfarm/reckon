@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LrpResult, LrpHeadline, LrpLadderRung } from '@/lib/lrp-service'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // Cattle markets card — USDA RMA Livestock Risk Protection (LRP) coverage-price floor.
 // Every figure comes from the LrpResult (read from the snapshot table); nothing is
@@ -13,7 +14,6 @@ import type { LrpResult, LrpHeadline, LrpLadderRung } from '@/lib/lrp-service'
 // ONLY from the real endorsement ladder; it never interpolates or invents a month, and
 // the basis-risk framing travels with every endorsement it shows.
 
-const EYEBROW = 'text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide'
 
 // Strip the leading RMA numeric code from a label, e.g. '810 Steers Weight 2' →
 // 'Steers Weight 2', '0801 Feeder Cattle' → 'Feeder Cattle'.

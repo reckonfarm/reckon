@@ -66,7 +66,7 @@ export default function ShareButton({
       type="button"
       onClick={onShare}
       aria-label="Share Dryline"
-      className="inline-flex items-center gap-1.5 rounded-lg border border-forest-green/15 px-3 py-1.5 font-dm-sans text-sm font-medium text-forest-green/70 transition-colors hover:bg-forest-green/5 hover:text-forest-green"
+      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-forest-green/15 px-3 py-1.5 font-dm-sans text-sm font-medium text-forest-green/70 transition-colors hover:bg-forest-green/5 hover:text-forest-green"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 3v13" />

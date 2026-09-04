@@ -29,8 +29,6 @@ import type { OwnPlace, OwnDevice } from './RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './LatestReadingCard'
 import PrecipVsNormalPanel from './RainfallPanelLoader'
 import RainByPlaceCard from './RainByPlaceCard'
-import ProgramStatus from './ProgramStatusLoader'
-import LfpHero from './LfpHero'
 import ForecastPanel from './ForecastPanel'
 import HayNearbyCards, { type NearbyHayCard } from './HayNearbyCards'
 import HayMapLoader from './HayMapLoader'
@@ -41,6 +39,7 @@ import NationalBeefCard from './NationalBeefCard'
 import MarketReadShell from './MarketReadShell'
 import JobsView, { JobsViewSkeleton } from './JobsView'
 import type { DashboardViewKey, ViewParams } from './DashboardViews'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -175,12 +174,11 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, pt, user, lfpPromise, precipPromise, forecastPromise,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
   nationalMap: OfficialMapRecord | null
-  pt: string | undefined
   user: { id: string } | null
   lfpPromise: Promise<LfpFetchOutcome>
   precipPromise: Promise<PrecipNormalResult>
@@ -191,8 +189,6 @@ export async function WeatherViewBody({
   let threeYearHistory: DroughtHistoryWeek[]        = []
   let stateMap: OfficialMapRecord | null            = null
   let lfpResult: LfpEligibilityResult | null          = null
-  let priorYearLfpResult: LfpEligibilityResult | null = null
-  let lfpUnavailable = false   // true only when the live USDM eligibility call failed/timed out
   let regionalMapUrl: string | null                 = null
   let hayNearbyCount: number                        = 0
   let hayPrimaryVariety: string | null              = null
@@ -205,7 +201,6 @@ export async function WeatherViewBody({
     historyRes,
     stateMapRes,
     lfpRes,
-    priorYearLfpRes,
     threeYearRaw,
     hayListingsRes,
   ] = await Promise.all([
@@ -230,14 +225,6 @@ export async function WeatherViewBody({
     // LFP eligibility — reuse the hoisted always-run promise (computed ONCE, shared
     // with the LFP alert). Same tagged { ok, result } outcome the destructure expects.
     lfpPromise,
-
-    // Prior year LFP eligibility — same forage period but year - 1
-    computeLfpEligibility(
-      selectedCounty.fips,
-      { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
-    )
-      // Prior-year comparison is non-critical context; absence is already handled.
-      .catch(() => null),
 
     // 3-year weekly drought history from USDM API (statisticsType=2 = actual per-category %)
     (() => {
@@ -278,8 +265,6 @@ export async function WeatherViewBody({
   ).reverse()
   stateMap           = stateMapRes.data as OfficialMapRecord | null
   lfpResult          = lfpRes.ok ? lfpRes.result : null
-  lfpUnavailable     = !lfpRes.ok
-  priorYearLfpResult = priorYearLfpRes
 
   if (selectedCounty.lat != null && selectedCounty.lon != null) {
     const buyer = { lat: selectedCounty.lat, lon: selectedCounty.lon }
@@ -385,7 +370,7 @@ export async function WeatherViewBody({
       {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
           boundary so the slow ACIS call never blocks the Weather view paint. */}
       <div>
-        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">Rainfall vs normal</p>
+        <p className={`${EYEBROW} mb-3`}>Rainfall vs normal</p>
         <Suspense fallback={<RainfallPanelSkeleton />}>
           <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
         </Suspense>
@@ -402,7 +387,7 @@ export async function WeatherViewBody({
       {/* 7-day forecast — the forward-looking weather cluster (with rainfall above).
           Compact swipe carousel; streamed behind Suspense like the rainfall panel. */}
       <div>
-        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">7-day forecast</p>
+        <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
         <Suspense fallback={<ForecastPanelSkeleton />}>
           <ForecastPanelAsync dataPromise={forecastPromise} />
         </Suspense>
@@ -441,14 +426,6 @@ export async function WeatherViewBody({
         />
       </DashboardAccordion>
 
-      {/* ── LFP status — the single contextual LFP card (A1 merged the old
-             TriggeredBanner into LfpHero): hero line per enforcement state, tracker,
-             and the signup CTA / pending FSA-office guidance. The detailed
-             "Eligibility math" accordion (calculator, tier ladder, CCC-853) is
-             untouched below. ── */}
-      {lfpResult && !lfpUnavailable && (
-        <LfpHero eligibility={lfpResult} countyName={selectedCounty.name} />
-      )}
 
       {!history.length && (
         <Card shadow="none" className="px-6 py-8 text-center">
@@ -467,7 +444,7 @@ export async function WeatherViewBody({
                 Rides the marketplace flag: no listings fetch, no card, no /hay CTA. */}
             {flagEnabled('marketplace') && (
             <Card shadow="none" className="px-5 py-4">
-              <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide mb-3">
+              <p className={`${EYEBROW} mb-3`}>
                 Hay nearby
               </p>
 
@@ -514,55 +491,6 @@ export async function WeatherViewBody({
 
           </div>
 
-          {/* LAYER 3 — Deep dive accordions. id = stable scroll target for the
-              hero's "View FSA checklist" link (the old #action-cards anchor only
-              exists while the accordion is open). */}
-          <div id="eligibility-math" className="scroll-mt-24 space-y-2 pt-2">
-
-            <DashboardAccordion
-              title="Eligibility math"
-              hashTarget="eligibility-math"
-              preview={
-                lfpUnavailable
-                  ? 'Estimate temporarily unavailable'
-                  : lfpOfficial && lfpResult
-                    ? `Tier ${lfpResult.maxTier} — ${lfpResult.payments} payment${lfpResult.payments !== 1 ? 's' : ''}`
-                    : lfpResult?.enforcement === 'pending_obbba'
-                      ? 'Meets new OBBBA threshold — pending FSA'
-                      : 'Not currently triggered'
-              }
-              previewAmount={lfpOfficial && bannerDefaultEstimate > 0 ? `~$${Math.round(bannerDefaultEstimate).toLocaleString()}` : undefined}
-              highlight={lfpOfficial}
-              defaultOpen={lfpUnavailable}
-            >
-              {lfpUnavailable ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="font-dm-sans text-sm font-semibold text-amber-800">
-                    LFP estimate temporarily unavailable
-                  </p>
-                  <p className="mt-1 font-dm-sans text-sm leading-relaxed text-amber-700">
-                    The U.S. Drought Monitor eligibility service isn&apos;t responding right now, so we
-                    can&apos;t compute your LFP tier or payment estimate.
-                    {latest ? ` Drought conditions above are current as of the week of ${formatDate(latest.week_date)}.` : ''}{' '}
-                    Check back shortly — this usually clears on its own.
-                  </p>
-                </div>
-              ) : lfpResult ? (
-                <ProgramStatus
-                  eligibility={lfpResult}
-                  priorYearEligibility={priorYearLfpResult}
-                  fips={selectedCounty.fips}
-                  countyName={selectedCounty.name}
-                />
-              ) : null}
-            </DashboardAccordion>
-
-            {/* The static "Forecast" accordion (CPC outlook images) was removed when
-                those outlooks became the map's "Drought Forecast" layer; that layer is
-                now PARKED with the rest of the moisture sprawl (North Star v3 §6,
-                inToggle:false in layers.ts) — nothing renders here by design. */}
-
-          </div>
 
           {/* Legal links (no site footer this pass) */}
           <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
@@ -695,7 +623,7 @@ export async function HayViewBody({
   return (
     <>
       <div className="space-y-4">
-        <p className="text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide">
+        <p className={EYEBROW}>
           Hay for sale near you
         </p>
 
@@ -910,7 +838,6 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
             selectedCounty={county}
             latest={latest}
             nationalMap={nationalMap}
-            pt={pt}
             user={user}
             lfpPromise={lfpPromise}
             precipPromise={precipPromise}

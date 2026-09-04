@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { flagEnabled } from '@/lib/flags'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -19,6 +20,16 @@ export default async function ProfilePage() {
             ? 'This is how buyers and sellers see you on the hay marketplace.'
             : 'Your operation, as Dryline knows it.'}
         </p>
+        {/* Counties left the bottom bar (shell pass, commit 5): the watchlist —
+            home county, watched counties, alert preferences — is reached from
+            here now, one tap, a real 44px target. */}
+        <Link
+          href="/watchlist"
+          className="mt-5 flex min-h-[52px] items-center justify-between rounded-xl border border-forest-green/15 bg-white px-5 font-dm-sans text-base font-medium text-forest-green transition-colors hover:bg-forest-green/5"
+        >
+          <span>Your counties</span>
+          <span aria-hidden className="text-forest-green/40">›</span>
+        </Link>
         <ProfileForm />
       </main>
     </>

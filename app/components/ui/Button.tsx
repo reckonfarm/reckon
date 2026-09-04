@@ -21,7 +21,7 @@ export function Button({
 }: { variant?: Variant; className?: string; children: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      className={`rounded-lg px-4 py-2.5 font-dm-sans text-sm font-semibold transition-colors ${VARIANTS[variant]} ${className}`}
+      className={`min-h-[44px] rounded-lg px-4 py-2.5 font-dm-sans text-sm font-semibold transition-colors ${VARIANTS[variant]} ${className}`}
       {...rest}
     >
       {children}

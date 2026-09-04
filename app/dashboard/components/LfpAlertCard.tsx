@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // Small, always-visible LFP status alert — the compact sibling of the crop-insurance
 // deadline card. Renders ONLY real computed values from the LFP eligibility engine
@@ -8,7 +9,6 @@ import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 // shows NO dollar figure — the payment estimate stays on the big drought-view LfpHero.
 // A failed/slow USDM fetch degrades to the honest "unavailable" line, never a false zero.
 
-const EYEBROW = 'text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide'
 
 // USDM severity chip for the triggered tier — the same calm tint/dot/text vocabulary as
 // the drought-view LfpHero. A real label for a real tier, never decoration.

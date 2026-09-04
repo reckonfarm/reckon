@@ -6,6 +6,7 @@ import { Segmented } from '@/app/components/ui/Segmented'
 import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData, VolumeRow } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -13,7 +14,6 @@ import type { OutlookData, OutlookLot } from '@/lib/outlook'
 // interactive bit. Honest throughout: unpriced lots show "—" not $0; accruing Trend metrics
 // show their honest "building" line, never a fake/zero delta.
 
-const EYEBROW = 'font-dm-sans text-xs font-medium uppercase tracking-wider text-muted/50'
 
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')

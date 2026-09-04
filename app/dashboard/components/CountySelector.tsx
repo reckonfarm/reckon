@@ -125,7 +125,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           <button
             onClick={clear}
             aria-label="Clear selection"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-forest-green/40 hover:text-rust transition-colors"
+            className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-forest-green/40 hover:text-rust transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -140,7 +140,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           {results.map(county => (
             <li key={county.fips}>
               <button
-                className="flex w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
+                className="flex min-h-[44px] w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
                 onMouseDown={e => { e.preventDefault(); select(county) }}
               >
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">

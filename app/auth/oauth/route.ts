@@ -18,7 +18,9 @@ export async function GET(request: Request) {
 
   // Guard against open redirects: only allow same-origin relative paths.
   const nextParam = searchParams.get('next')
-  const next = nextParam && nextParam.startsWith('/') ? nextParam : '/watchlist'
+  // Default landing = the county dashboard (middleware resolves the home county) —
+  // the one signed-in landing spot (shell pass, commit 2). Was /watchlist.
+  const next = nextParam && nextParam.startsWith('/') ? nextParam : '/dashboard'
 
   if (!code) {
     return NextResponse.redirect(`${origin}/signin?error=oauth`)

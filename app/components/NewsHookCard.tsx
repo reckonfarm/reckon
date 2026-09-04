@@ -113,7 +113,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
             <button
               onClick={() => setExpanded(!expanded)}
               aria-expanded={expanded}
-              className="w-full py-3 text-left font-dm-sans text-xs text-forest-green/50 transition-colors hover:text-forest-green"
+              className="min-h-[44px] w-full py-3 text-left font-dm-sans text-xs text-forest-green/50 transition-colors hover:text-forest-green"
             >
               {expanded ? 'Fewer headlines ↑' : 'More headlines ↓'}
             </button>

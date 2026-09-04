@@ -2,6 +2,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { NationalBeefResult, NationalMetricRead } from '@/lib/national-beef-service'
 import { marketDelta } from '@/lib/market-direction'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
 
 // National beef — the two benchmark reads a cow-calf operator anchors on: what fed
 // cattle brought (5-Area weekly weighted average, the LMR benchmark) and what feeder
@@ -10,7 +11,6 @@ import { marketDelta } from '@/lib/market-direction'
 // summary report is dashboard-only since Apr 2026 and exists on no API). Each metric
 // degrades independently to 'warming up' — a dead source never kills the card.
 
-const EYEBROW = 'text-xs font-dm-sans font-medium text-forest-green/40 uppercase tracking-wide'
 
 function fmtDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {

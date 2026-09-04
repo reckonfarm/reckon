@@ -100,7 +100,7 @@ async function main(): Promise<void> {
 
     await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink`)
     // The callback page verifies the OTP then router.replace('/watchlist').
-    await page.waitForURL('**/watchlist', { timeout: 30_000 })
+    await page.waitForURL(u => u.pathname === '/dashboard', { timeout: 30_000 })
 
     // Give the account a display name so /herd renders a name (best-effort).
     const res = await context.request.patch('/api/profile', {
