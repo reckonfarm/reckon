@@ -23,20 +23,23 @@ export default function DroughtCattleToggle() {
   // the 'news' key is the default view while its label reads "Today" — the label↔key
   // mismatches are deliberate (renaming the values would break deep links, the
   // heavy-fetch gate, and the auth redirect).
+  // Order (shell pass, commit 4): Today · Markets · Weather · Jobs — money and
+  // weather next to the day, the work ledger last. Matches VIEW_ORDER (the DOM
+  // order of the panels) exactly. Jobs: derived work sessions (replaced
+  // Activity 2026-08-09; stale ?view=activity deep links parse to it).
   const segments: { key: DashboardViewKey; label: string }[] = [
     { key: 'news',    label: 'Today' },
-    // Jobs — derived work sessions (replaced Activity 2026-08-09; the raw-event
-    // feed was a debug view, jobs are the product). Second position holds: the
-    // ranch's own record beats the outside world's on the home surface. Stale
-    // ?view=activity deep links parse to this view on the dashboard side.
-    { key: 'jobs',    label: 'Jobs' },
+    { key: 'markets', label: 'Markets' },
     { key: 'drought', label: 'Weather' },
+    { key: 'jobs',    label: 'Jobs' },
     // Hay segment rides the marketplace flag (the dashboard's ?view=hay parse is
     // gated on the same flag, so a stale deep link falls back to the default view).
     ...(flagEnabled('marketplace') ? [{ key: 'hay' as const, label: 'Hay' }] : []),
-    { key: 'markets', label: 'Markets' },
   ]
 
+  // This is the primary in-app navigation now (commit 4): 16px labels, 52px
+  // targets, and an active segment that reads at arm's length in sun — solid
+  // forest green with semibold white text; inactive segments stay quiet.
   return (
     <div className="flex w-full rounded-xl bg-forest-green/8 p-1" role="tablist" aria-label="County views">
       {segments.map(s => {
@@ -49,10 +52,10 @@ export default function DroughtCattleToggle() {
             aria-selected={isActive}
             onClick={() => ctx?.setView(s.key)}
             className={[
-              'flex-1 basis-0 inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-lg px-3 text-center font-dm-sans text-sm font-medium transition-colors',
+              'flex-1 basis-0 inline-flex min-h-[52px] items-center justify-center whitespace-nowrap rounded-lg px-2 text-center font-dm-sans text-base transition-colors',
               isActive
-                ? 'bg-forest-green text-white shadow-sm'
-                : 'text-forest-green/70 hover:bg-forest-green/5',
+                ? 'bg-forest-green font-semibold text-white shadow-md shadow-forest-green/25'
+                : 'font-medium text-forest-green/65 hover:bg-forest-green/5 hover:text-forest-green',
             ].join(' ')}
           >
             {s.label}

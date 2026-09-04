@@ -39,8 +39,10 @@ export interface ViewParams {
   pt?: string
 }
 
-// DOM order of the panels (the Hay entry is present only when the page includes it).
-export const VIEW_ORDER: readonly DashboardViewKey[] = ['news', 'jobs', 'drought', 'hay', 'markets']
+// DOM order of the panels — the same order as the tabs (shell pass, commit 4:
+// Today · Markets · Weather · Jobs; the Hay entry is present only when the
+// page includes it).
+export const VIEW_ORDER: readonly DashboardViewKey[] = ['news', 'markets', 'drought', 'jobs', 'hay']
 
 interface DashboardViewState {
   view: DashboardViewKey
