@@ -3,6 +3,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
+import { lotLabel, type Lot } from '@/lib/herd'
 
 // "Recently logged" — the last ten lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
@@ -22,7 +23,7 @@ type Row = {
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-function line(r: Row, placeName: (id: unknown) => string | null): string {
+function line(r: Row, placeName: (id: unknown) => string | null, lotName: (id: unknown) => string | null): string {
   const p = r.payload
   const at = placeName(p.place_id)
   const suffix = at ? ` at ${at}` : ''
@@ -33,7 +34,10 @@ function line(r: Row, placeName: (id: unknown) => string | null): string {
     }
     case 'hay_fed': {
       const bales = num(p.bales)
-      return bales == null ? `Hay fed${suffix}` : `Fed ${plural(bales, 'bale')}${suffix}`
+      // "to <lot>" only when the line carries a lot that still exists in the herd.
+      const to = lotName(p.herd_lot_id)
+      const who = to ? ` to ${to}` : ''
+      return bales == null ? `Hay fed${who}${suffix}` : `Fed ${plural(bales, 'bale')}${who}${suffix}`
     }
     case 'bales_stacked': {
       const count = num(p.count)
@@ -94,13 +98,26 @@ export default async function RecentlyLogged() {
   }
   const placeName = (id: unknown) => { const s = str(id); return s ? names.get(s) ?? null : null }
 
+  // Lot labels for hay_fed lines that name a lot — one RLS-scoped read of the
+  // caller's own herd, only when some line needs it; labeled by lotLabel (the
+  // producer's name, else the class), the same words the herd page uses.
+  const lotIds = new Set<string>()
+  for (const r of rows) { if (r.type === 'hay_fed') { const v = str(r.payload.herd_lot_id); if (v) lotIds.add(v) } }
+  const lotNames = new Map<string, string>()
+  if (lotIds.size > 0) {
+    const { data: profile } = await supabase.from('operation_profiles').select('herd').maybeSingle()
+    const lots = (profile?.herd as { lots?: Lot[] } | null)?.lots
+    for (const l of Array.isArray(lots) ? lots : []) if (lotIds.has(l.id)) lotNames.set(l.id, lotLabel(l))
+  }
+  const lotName = (id: unknown) => { const s = str(id); return s ? lotNames.get(s) ?? null : null }
+
   return (
     <Card shadow="none" className="px-5 py-4">
       <Heading level={5}>Recently logged</Heading>
       <ul className="mt-2 divide-y divide-forest-green/10">
         {rows.map(r => (
           <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="font-dm-sans text-sm text-forest-green">{line(r, placeName)}</span>
+            <span className="font-dm-sans text-sm text-forest-green">{line(r, placeName, lotName)}</span>
             <span className="shrink-0 font-dm-sans text-xs tabular-nums text-forest-green/55">
               {fmtDay(r.ts)} · {fmtTime(r.ts)}
             </span>

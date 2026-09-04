@@ -1,4 +1,4 @@
-import { lotToLrpType, LOT_CLASS_LABELS, type Lot } from './herd'
+import { lotToLrpType, lotLabel as lotName, type Lot } from './herd'
 import type { LrpMatrixResult, LrpLadderRung } from './lrp-service'
 
 // ─── Outlook bundle — "the forward floor per lot" ─────────────────────────────────────────
@@ -41,8 +41,10 @@ export interface OutlookData {
 
 const SOURCE = 'USDA RMA'
 
+// The lot's display line: its name (lib/herd lotLabel — the producer's name,
+// else the class label) plus the head and weight the ladder prices.
 function lotLabel(lot: Lot): string {
-  return `${LOT_CLASS_LABELS[lot.class]} · ${lot.head_count} head · ${lot.avg_weight} ${lot.weight_unit}`
+  return `${lotName(lot)} · ${lot.head_count} head · ${lot.avg_weight} ${lot.weight_unit}`
 }
 
 // raw 'MM/DD/YYYY' → epoch ms (null if unparseable → that rung is ignored, never NaN-sorted).

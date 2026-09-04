@@ -8,6 +8,7 @@ import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@/lib/manual-log'
+import { lotLabel, type Lot } from '@/lib/herd'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
 // each at most three visible fields, time defaults to now (change it behind a
@@ -23,6 +24,9 @@ import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@
 // log is never saved without the place the operator asked for.
 
 const LAST_PLACE_KEY = 'manual_log_last_place'
+// The last lot fed — its OWN key, never the place key: a place and a lot are
+// two different answers and one must never overwrite the other.
+const LAST_LOT_KEY = 'manual_log_last_lot'
 
 type Place = { id: string; name: string; kind: string }
 
@@ -46,6 +50,12 @@ function readLastPlace(): string {
 }
 function writeLastPlace(id: string) {
   try { if (id) localStorage.setItem(LAST_PLACE_KEY, id); else localStorage.removeItem(LAST_PLACE_KEY) } catch { /* private mode */ }
+}
+function readLastLot(): string {
+  try { return localStorage.getItem(LAST_LOT_KEY) ?? '' } catch { return '' }
+}
+function writeLastLot(id: string) {
+  try { if (id) localStorage.setItem(LAST_LOT_KEY, id); else localStorage.removeItem(LAST_LOT_KEY) } catch { /* private mode */ }
 }
 
 // One place slot: a chosen id, or a pending name the operator typed after
@@ -133,6 +143,10 @@ export default function LogIt() {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ManualEventType | null>(null)
   const [places, setPlaces] = useState<Place[]>([])
+  // Herd lots for the hay_fed picker: null = not fetched yet (fetched once, the
+  // first time Hay fed is picked — the other tiles never pay for it).
+  const [lots, setLots] = useState<Lot[] | null>(null)
+  const [lot, setLot] = useState('')            // hay_fed: herd lot id, '' = no lot
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -149,7 +163,28 @@ export default function LogIt() {
   const close = useCallback(() => {
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
+    setLots(null); setLot('')
   }, [])
+
+  // Lots load the first time Hay fed is picked (same promise-chain shape as the
+  // places load; no setState in the effect body). The last lot fed only applies
+  // if it still exists. A failed load leaves the picker at "No lot" — a log
+  // never blocks on choosing one.
+  useEffect(() => {
+    if (!open || type !== 'hay_fed' || lots !== null) return
+    let cancelled = false
+    fetch('/api/operation-profile')
+      .then(r => (r.ok ? r.json() : null))
+      .then((j: { profile?: { herd?: { lots?: Lot[] } } } | null) => {
+        if (cancelled) return
+        const list = Array.isArray(j?.profile?.herd?.lots) ? j!.profile!.herd!.lots! : []
+        setLots(list)
+        const last = readLastLot()
+        setLot(list.some(l => l.id === last) ? last : '')
+      })
+      .catch(() => { if (!cancelled) setLots([]) })
+    return () => { cancelled = true }
+  }, [open, type, lots])
 
   // Load places on open; the last-used place only applies if it still exists.
   useEffect(() => {
@@ -230,7 +265,7 @@ export default function LogIt() {
       if (when) body.ts = new Date(when).toISOString()
       switch (type) {
         case 'rain':          body.inches = num; body.place_id = placeId; break
-        case 'hay_fed':       body.bales = num; body.herd_lot_id = null; body.place_id = placeId; break
+        case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; break
         case 'bales_stacked': body.count = num; body.place_id = placeId; break
         case 'cattle_moved':
           body.head = num; body.from_place_id = fromId; body.to_place_id = toId
@@ -247,6 +282,7 @@ export default function LogIt() {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setError(json.error ?? 'Could not save'); return }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
+      if (type === 'hay_fed') writeLastLot(lot)
       close()
       router.refresh()
     } catch (err) {
@@ -267,6 +303,17 @@ export default function LogIt() {
   </>)
   if (type === 'hay_fed') fields = (<>
     <NumberField label="Bales" value={n1} onChange={setN1} max={10000} />
+    {/* Which bunch — optional; labeled the way the herd page labels them
+        (lotLabel: the name if given, else the class). Hidden until the herd
+        has lots: an empty herd gets no empty picker. */}
+    {lots && lots.length > 0 && (
+      <Field label="Fed to">
+        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)}>
+          <option value="">No lot</option>
+          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+        </Select>
+      </Field>
+    )}
     {placeField()}
   </>)
   if (type === 'bales_stacked') fields = (<>
