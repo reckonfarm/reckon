@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { flagDisabled, flagEnabled } from '@/lib/flags'
+import { HOME_COUNTY_CHANGED } from '@/app/dashboard/components/HomeCountyButton'
 
 // ─── Bottom nav (mobile) — four flank items around a raised "Operation" anchor ──
 // (layout, commit 1). Herd · Jobs  [Operation]  Devices · Profile. The anchor
@@ -42,16 +43,21 @@ export default function BottomTabBar() {
     return () => { cancelled = true }
   }, [pathname])
 
-  // The anchor's county — re-read on navigation so setting a home county on
-  // Weather updates the anchor without a reload. Promise-chain, no setState in
+  // The anchor's county — re-read on navigation, and again when the Set Home
+  // button on Weather announces a change (layout, commit 2), so the anchor
+  // resolves to the new county with no reload. Promise-chain, no setState in
   // the effect body (house rule).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/home-county')
-      .then(r => (r.ok ? r.json() : { fips: null }))
-      .then((d: { fips?: string | null }) => { if (!cancelled) setHomeFips(typeof d?.fips === 'string' && d.fips ? d.fips : null) })
-      .catch(() => { if (!cancelled) setHomeFips(null) })
-    return () => { cancelled = true }
+    const load = () => {
+      fetch('/api/home-county')
+        .then(r => (r.ok ? r.json() : { fips: null }))
+        .then((d: { fips?: string | null }) => { if (!cancelled) setHomeFips(typeof d?.fips === 'string' && d.fips ? d.fips : null) })
+        .catch(() => { if (!cancelled) setHomeFips(null) })
+    }
+    load()
+    window.addEventListener(HOME_COUNTY_CHANGED, load)
+    return () => { cancelled = true; window.removeEventListener(HOME_COUNTY_CHANGED, load) }
   }, [pathname])
 
   // Hide on auth pages

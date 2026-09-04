@@ -23,6 +23,8 @@ import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
 import CountySelector, { type County } from './CountySelector'
+import HomeCountyButton from './HomeCountyButton'
+import WatchlistButton from './WatchlistButton'
 import { type OfficialMapRecord } from './OfficialMap'
 import RegionalMapLoader from './RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './RegionalMapClient'
@@ -367,7 +369,16 @@ export async function WeatherViewBody({
       {user && (
         <div>
           <p className={`${EYEBROW} mb-2`}>Looking at</p>
-          <CountySelector selectedCounty={selectedCounty} view="drought" />
+          {/* Set Home and Watch sit beside the selector (layout, commit 2): the
+              county actions live where the county changes. They wrap under the
+              selector on a phone; the selector keeps its own max width. */}
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-[220px] flex-1">
+              <CountySelector selectedCounty={selectedCounty} view="drought" />
+            </div>
+            <HomeCountyButton countyFips={selectedCounty.fips} countyName={selectedCounty.name} />
+            <WatchlistButton countyId={selectedCounty.id} countyName={selectedCounty.name} />
+          </div>
         </div>
       )}
 
