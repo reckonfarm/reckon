@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { trackEvent } from '@/lib/analytics'
-import { navigateTo } from '@/lib/standalone-nav'
 
 export interface County {
   id: number
@@ -18,10 +16,25 @@ interface Props {
   // Route to push fips into — '/dashboard' (default) or '/cattle'. Lets the same
   // selector drive either peer view.
   basePath?: string
+  // View to keep across a switch (?view=…); omit for the default Today.
+  view?: string
 }
 
-export default function CountySelector({ selectedCounty, basePath = '/dashboard' }: Props) {
-  const router = useRouter()
+// A county switch is a HARD navigation on every platform (flow, commit 4).
+// Two reasons, both verified: (1) the iOS standalone WebView silently drops
+// the same-route ?fips= router.push (lib/standalone-nav.ts's original case);
+// (2) the App Router's prefetch cache: bare /dashboard is a middleware 307 to
+// the home county for a signed-in person, and once any prefetch has cached
+// that redirect under the /dashboard key, router.push('/dashboard?fips=X')
+// is served from it — the switch lands back on the home county with no
+// request at all (reproduced in Chromium and WebKit; blocking prefetches
+// fixed it). A county change is a real page change; one document load is
+// the honest price, and it sidesteps both traps with one code path.
+function go(url: string) {
+  window.location.assign(url)
+}
+
+export default function CountySelector({ selectedCounty, basePath = '/dashboard', view }: Props) {
   const [query, setQuery]     = useState('')
   const [results, setResults] = useState<County[]>([])
   const [loading, setLoading] = useState(false)
@@ -68,17 +81,15 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
-    // navigateTo (not router.push): the iOS standalone home-screen WebView
-    // silently drops the client-side router navigation here — same route,
-    // ?fips= change — so we hard-navigate in standalone, SPA-push everywhere
-    // else. See lib/standalone-nav.ts.
-    navigateTo(router, `${basePath}?fips=${county.fips}`)
+    // `view` keeps the caller's view across the switch (the Weather view's
+    // selector lands on the new county's Weather, not its Today).
+    go(`${basePath}?fips=${county.fips}${view ? `&view=${view}` : ''}`)
   }
 
   function clear() {
     setQuery('')
     setResults([])
-    navigateTo(router, basePath)
+    go(basePath)
   }
 
   // Close dropdown on outside click

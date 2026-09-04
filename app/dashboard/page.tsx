@@ -17,7 +17,7 @@ import { droughtSeverity } from '@/lib/drought-severity'
 import WatchlistButton from './components/WatchlistButton'
 // Lazy client islands (perf block, commit 4): the grazing-table picker and the
 // recharts rainfall graph load in their own chunks on first mount — see the two
-// loaders. Same pattern as HerdAnchorLoader / RegionalMapLoader.
+// loaders. Same pattern as RegionalMapLoader.
 import { type OfficialMapRecord } from './components/OfficialMap'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
 import { getLocalForecast, type LocalForecast } from '@/lib/nws'
@@ -45,8 +45,8 @@ import RecentlyLogged from './components/RecentlyLogged'
 import HerdValueCard from './components/HerdValueCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
+import { getRanch } from '@/lib/ranch-membership'
 import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
-import HerdAnchorLoader from './components/HerdAnchorLoader'
 import type { Lot } from '@/lib/herd'
 import { flagEnabled } from '@/lib/flags'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -129,23 +129,6 @@ function DeadlineQuietRow({ quietDeadline, countyName }: {
       <DeadlineCountdownCard result={quietDeadline} countyName={countyName} embedded />
     </ProgramStatusRow>
   )
-}
-
-// Conditions strip (B2′) — awaits the SAME always-started NWS forecast promise the
-// drought view consumes (computed once, no new fetch) inside a Suspense boundary whose
-// fallback is the chip-only strip (real USDM data, no placeholder), so the weather half
-// streams in without ever blocking the news/page paint.
-async function ConditionsStripAsync({
-  reading,
-  forecastPromise,
-  fips,
-}: {
-  reading: ({ week_date: string } & DroughtReading) | null
-  forecastPromise: Promise<LocalForecast | null>
-  fips: string
-}) {
-  const forecast = await forecastPromise
-  return <ConditionsStrip reading={reading} forecast={forecast} fips={fips} />
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -236,14 +219,23 @@ export default async function DashboardPage({
     fips
       ? (async () => {
           const { data: { user } } = await supabase.auth.getUser()
-          const profileResult = await getOperationProfile({ supabase, user })
-          return { user, profileResult }
-        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const } }))
-      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const } }),
+          // Profile and ranch (the outfit's name, flow commit 2) side by side —
+          // both need only the user; neither waits on the other.
+          const [profileResult, ranch] = await Promise.all([
+            getOperationProfile({ supabase, user }),
+            user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
+          ])
+          return { user, profileResult, ranch }
+        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }))
+      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }),
   ])
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
   const user = session.user
+  // The operation's name leads the page when the signed-in person's ranch has
+  // one; a blank name is no name (the county stays the subject, exactly as for
+  // a signed-out visitor). Never a placeholder.
+  const ranchName = session.ranch?.name || null
   const profileResult = session.profileResult
 
   // ── County lookup ────────────────────────────────────────────────────────────
@@ -358,20 +350,29 @@ export default async function DashboardPage({
   return (
     <div className="min-h-screen bg-cream">
 
-      <SiteHeader
-        center={selectedCounty ? `${selectedCounty.name}, ${selectedCounty.state}` : undefined}
-      />
+      {/* No county in the header centre (flow, commit 2): it was a third copy
+          of the fact the orientation bar and the selector already carry. */}
+      <SiteHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <ScrollToTop />
 
-        {/* ── County selector ───────────────────────────────────────────────── */}
-        <section className="mb-8">
-          <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
-            Select County
-          </label>
-          <CountySelector selectedCounty={selectedCounty} />
-        </section>
+        {/* ── County selector (flow, commit 4) ──────────────────────────────────
+               The public county page's whole job is picking a county, so signed
+               out it stays here, the page's main control. Signed in with a county
+               it leaves this slot — the operation is the subject — and lives in
+               the Weather view as "change the county you're looking at". The one
+               dependency: a signed-in person with NO county (bare /dashboard,
+               no home county) still needs a way to one, so it stays here for
+               them too, above the EmptyState that points at it. */}
+        {(!user || !selectedCounty) && (
+          <section className="mb-8">
+            <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
+              Select County
+            </label>
+            <CountySelector selectedCounty={selectedCounty} />
+          </section>
+        )}
 
         {/* ── National view (no county selected) ───────────────────────────── */}
         {!fips && <EmptyState />}
@@ -394,12 +395,23 @@ export default async function DashboardPage({
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               {/* Semantic h1 (the page's only heading — public county pages are the SEO
                   surface) at the compact text-lg size; !important beats the level-1 scale. */}
-              <Heading level={1} className="!text-lg !leading-snug">
-                {selectedCounty.name}, {selectedCounty.state}
-                <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
-                  FIPS {selectedCounty.fips}
-                </span>
-              </Heading>
+              {ranchName ? (
+                // A named outfit is the subject; the county reads as home base
+                // on a secondary line (flow, commit 2). Same h1 slot and size.
+                <div className="min-w-0">
+                  <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
+                  <p className="font-dm-sans text-xs text-forest-green/50">
+                    Home base · {selectedCounty.name}, {selectedCounty.state} · FIPS {selectedCounty.fips}
+                  </p>
+                </div>
+              ) : (
+                <Heading level={1} className="!text-lg !leading-snug">
+                  {selectedCounty.name}, {selectedCounty.state}
+                  <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
+                    FIPS {selectedCounty.fips}
+                  </span>
+                </Heading>
+              )}
               <div className="flex items-center gap-2">
                 <ShareButton
                   fips={selectedCounty.fips}
@@ -418,84 +430,10 @@ export default async function DashboardPage({
               </div>
             </div>
 
-            {/* ── B2′: conditions strip — weather leads on every open, in every tab.
-                   Drought chip (always-awaited `latest`) renders immediately; today's
-                   forecast streams in from the always-started NWS promise (no new
-                   fetch, News stays fast, default tab unchanged). Tapping opens the
-                   Weather tab via the toggle's exact link pattern. Renders nothing
-                   when there's no real data. ── */}
-            <Suspense
-              fallback={<ConditionsStrip reading={latest} forecast={null} fips={selectedCounty.fips} />}
-            >
-              <ConditionsStripAsync
-                reading={latest}
-                forecastPromise={forecastPromise}
-                fips={selectedCounty.fips}
-              />
-            </Suspense>
-
-            {/* A machine working RIGHT NOW — loud, in every view, carrying the
-                headline number for the job type (bale count / percent cut + ETA).
-                Null when nothing runs and for signed-out visitors (RLS returns
-                nothing): the always-on stack stays "the ranch right now or money
-                that demands action". */}
-            <Suspense fallback={null}>
-              <LiveJobCard />
-            </Suspense>
-
-            {/* Herd-value anchor (Slice 1). Market Read used to sit above it in
-                this always-on stack; it moved to the top of the Markets view
-                (2026-08-09) under the rule that finally named the layout: the
-                always-on stack is either THE RANCH RIGHT NOW or MONEY THAT
-                DEMANDS ACTION — weekly-to-quarterly national context is
-                neither. The anchor stays: it's the operation's own number. */}
-            {herdAnchor && (
-              <HerdAnchorLoader
-                estimate={herdAnchor.estimate}
-                trend={herdAnchor.trend}
-                outlook={herdAnchor.outlook}
-              />
-            )}
-
-            {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
-                building a D2 streak / data unavailable (an outage must speak — see
-                isLfpLoud). The clean no-trigger state renders nothing here and joins
-                the Program status row below instead. Streamed behind Suspense so the
-                slow USDM eligibility fetch never blocks the page/news paint; renders
-                in every view, persistent across the toggle, above the deadline card
-                (higher priority). */}
-            <Suspense fallback={<LfpAlertSkeleton />}>
-              <LfpCardAsync
-                dataPromise={lfpPromise}
-                priorYearPromise={priorYearPromise}
-                countyName={selectedCounty.name}
-                fips={selectedCounty.fips}
-              />
-            </Suspense>
-
-            {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
-                newly published row, or data_unavailable); quiet (none / far out) folds
-                into the Program status row below. Never gated behind a view; filters
-                to the user's crops when set, else shows all. */}
-            {isDeadlineLoud(deadlineResult) && (
-              <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
-            )}
-
-            {/* Program status — the quiet home (Block 2). ONE collapsed row for
-                whatever is quiet (LFP no-trigger line and/or far-out deadlines), full
-                cards one tap away. Its own Suspense slot BELOW the loud cards, fed by
-                the SAME lfpPromise, because LFP quietness is only known after the USDM
-                fetch resolves; quiet content is by definition non-urgent, so the late
-                paint costs nothing (null fallback — a quiet row has no skeleton).
-                Renders nothing when everything above is loud. */}
-            <DeadlineQuietRow
-              countyName={selectedCounty.name}
-              quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
-            />
-
-            {/* Peer-view toggle — Today ↔ Jobs ↔ Weather ↔ Markets (same county).
-                A tap is client state (DashboardViewProvider above), not a
-                navigation: no request, no re-render of anything above this line. */}
+            {/* Peer-view tabs — Today · Markets · Weather · Jobs — directly under the
+                orientation bar (flow, commit 3): everything county- and herd-scoped
+                now sits BELOW them, inside a view. A tap is client state
+                (DashboardViewProvider above), not a navigation. */}
             <DroughtCattleToggle />
 
             {/* The view bodies. Mount policy (perf block, commit 5): Today is
@@ -527,6 +465,61 @@ export default async function DashboardPage({
               eager={{
                 news: (
                   <>
+                    {/* ── B2′: conditions strip — weather leads the Today view (flow, commit 3: the stack moved under the tabs).
+                           Drought chip (always-awaited `latest`) renders immediately; today's
+                           forecast streams in from the always-started NWS promise (no new
+                           fetch, News stays fast, default tab unchanged). Tapping opens the
+                           Weather tab via the toggle's exact link pattern. Renders nothing
+                           when there's no real data. ── */}
+                    <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
+
+                    {/* A machine working RIGHT NOW — loud at the top of Today, carrying the
+                        headline number for the job type (bale count / percent cut + ETA).
+                        Null when nothing runs and for signed-out visitors (RLS returns
+                        nothing). */}
+                    <Suspense fallback={null}>
+                      <LiveJobCard />
+                    </Suspense>
+
+                    {/* Herd value: ONE surface (flow, commit 5) — the HerdValueCard below.
+                        The always-on HerdEstimatePanel island (HerdAnchorLoader) is gone;
+                        the full Now/Trend/Outlook panel lives on /herd, one tap away. */}
+
+                    {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
+                        building a D2 streak / data unavailable (an outage must speak — see
+                        isLfpLoud). The clean no-trigger state renders nothing here and joins
+                        the Program status row below instead. Streamed behind Suspense so the
+                        slow USDM eligibility fetch never blocks the page paint; Today only
+                        since flow commit 3, above the deadline card (higher priority). */}
+                    <Suspense fallback={<LfpAlertSkeleton />}>
+                      <LfpCardAsync
+                        dataPromise={lfpPromise}
+                        priorYearPromise={priorYearPromise}
+                        countyName={selectedCounty.name}
+                        fips={selectedCounty.fips}
+                      />
+                    </Suspense>
+
+                    {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
+                        newly published row, or data_unavailable); quiet (none / far out) folds
+                        into the Program status row below. Never gated behind a view; filters
+                        to the user's crops when set, else shows all. */}
+                    {isDeadlineLoud(deadlineResult) && (
+                      <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                    )}
+
+                    {/* Program status — the quiet home (Block 2). ONE collapsed row for
+                        whatever is quiet (LFP no-trigger line and/or far-out deadlines), full
+                        cards one tap away. Its own Suspense slot BELOW the loud cards, fed by
+                        the SAME lfpPromise, because LFP quietness is only known after the USDM
+                        fetch resolves; quiet content is by definition non-urgent, so the late
+                        paint costs nothing (null fallback — a quiet row has no skeleton).
+                        Renders nothing when everything above is loud. */}
+                    <DeadlineQuietRow
+                      countyName={selectedCounty.name}
+                      quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+                    />
+
                     {/* ── The operation (shell pass, commit 3: Today absorbed /home) ──
                         The operator's own line in the ledger, then what the machines
                         and the logs say — the /home hierarchy, in order. Every card is
@@ -556,10 +549,8 @@ export default async function DashboardPage({
                       <RecentlyLogged />
                     </Suspense>
 
-                    {/* Herd value — a card, not the hero, linking to /herd. NOTE: the
-                        always-on stack above also renders the herd anchor panel
-                        (HerdAnchorLoader) from the same herdAnchor — both show on Today
-                        now; which one stays is a separate call. */}
+                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
+                        surface on Today since flow commit 5). */}
                     {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
 
                     <div>

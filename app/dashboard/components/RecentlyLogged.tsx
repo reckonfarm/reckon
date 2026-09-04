@@ -5,13 +5,15 @@ import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
 
-// "Recently logged" — the last ten lines the operator wrote by hand, newest
+// "Recently logged" — the last three lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
 // directly (payload->>source = 'manual') on the user-scoped client — the 034
 // SELECT policy is the scope. If there are none the section does not render:
 // no empty state, no zero (summary never says more than the ledger does).
 
-const FEED_CAP = 10
+// Three lines (flow, commit 5; was ten): the ledger's most recent breath, not a
+// log. No "see all" — there is no full manual-log view to link to yet.
+const FEED_CAP = 3
 
 type Row = {
   id: string

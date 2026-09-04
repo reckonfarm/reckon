@@ -143,6 +143,12 @@ export default function BottomTabBar() {
             <Link
               key={tab.href}
               href={tab.href}
+              // Bare /dashboard is a middleware redirect (to the home county) for a
+              // signed-in person. Prefetching it caches that redirect, and the App
+              // Router then serves ANY later push to /dashboard?fips=… from the
+              // cached entry — the county selector silently lands back on the home
+              // county. No prefetch for that one tab; the others stay default.
+              prefetch={tab.href === '/dashboard' ? false : undefined}
               aria-current={active ? 'page' : undefined}
               className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[11px] font-dm-sans transition-colors min-h-[56px] ${
                 active ? 'font-semibold text-forest-green' : 'font-medium text-forest-green/40 hover:text-forest-green/70'

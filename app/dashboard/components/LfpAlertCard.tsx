@@ -10,13 +10,10 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 // A failed/slow USDM fetch degrades to the honest "unavailable" line, never a false zero.
 
 
-// USDM severity chip for the triggered tier — the same calm tint/dot/text vocabulary as
-// the drought-view LfpHero. A real label for a real tier, never decoration.
-function severity(maxTier: number): { label: string; dot: string; text: string; bg: string } {
-  if (maxTier >= 5) return { label: 'D4 Exceptional', dot: '#730000', text: '#730000', bg: 'rgba(115,0,0,0.07)' }
-  if (maxTier >= 3) return { label: 'D3 Extreme',     dot: '#E60000', text: '#B00000', bg: 'rgba(230,0,0,0.07)' }
-  return              { label: 'D2 Severe',           dot: '#FFAA00', text: '#8A5A00', bg: 'rgba(255,170,0,0.12)' }
-}
+// The USDM severity chip used to lead each body here; since flow commit 5 the
+// conditions strip at the top of Today is the ONE place the drought category
+// renders — this card states the LFP consequence (tier, payments, streak) and
+// its own as-of, never the chip again.
 
 function fmtAsOf(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -37,19 +34,11 @@ function FreshnessLine({ asOf }: { asOf: string }) {
   )
 }
 
-// Triggered — severity chip + the real monthly-payment count. NO dollar here.
+// Triggered — the real monthly-payment count. NO dollar here.
 function TriggeredBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
-  const sev = severity(eligibility.maxTier)
   const { payments, maxTier } = eligibility
   return (
     <div className="flex flex-col gap-2">
-      <span
-        className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
-        style={{ backgroundColor: sev.bg, color: sev.text }}
-      >
-        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sev.dot }} />
-        {sev.label}
-      </span>
       <p className="font-dm-sans text-sm text-forest-green/70">
         <span className="font-semibold text-forest-green">
           {payments} monthly payment{payments !== 1 ? 's' : ''} triggered
@@ -61,19 +50,11 @@ function TriggeredBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
 }
 
 // Pending — county meets OBBBA's new D2 threshold (≥4 consecutive weeks) but FSA hasn't
-// loaded the rule into the 2026 eligibility maps, so it is NOT officially triggered. Same
-// D2 severity chip (D2 Severe is true), but NO "triggered", NO payment count, NO dollar.
-function PendingBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
-  const sev = severity(eligibility.maxTier)
+// loaded the rule into the 2026 eligibility maps, so it is NOT officially triggered. NO
+// "triggered", NO payment count, NO dollar.
+function PendingBody() {
   return (
     <div className="flex flex-col gap-2">
-      <span
-        className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
-        style={{ backgroundColor: sev.bg, color: sev.text }}
-      >
-        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sev.dot }} />
-        {sev.label}
-      </span>
       <p className="font-dm-sans text-sm text-forest-green/70">
         Meets the new OBBBA D2 threshold — not yet official with FSA.
       </p>
@@ -157,7 +138,7 @@ export default function LfpAlertCard({
           {eligibility.enforcement === 'officially_eligible' ? (
             <TriggeredBody eligibility={eligibility} />
           ) : eligibility.enforcement === 'pending_obbba' ? (
-            <PendingBody eligibility={eligibility} />
+            <PendingBody />
           ) : eligibility.currentD2Streak > 0 ? (
             <BuildingBody eligibility={eligibility} />
           ) : (
