@@ -369,7 +369,7 @@ async function main() {
       await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB.slice(0, 140))
-      const placeHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).getAttribute('href').catch(() => null)
+      const placeHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
       record('2E: a line taps through to its place', placeHref === `/places/${placeId}`, String(placeHref))
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
