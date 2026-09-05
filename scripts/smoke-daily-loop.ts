@@ -287,7 +287,7 @@ async function main() {
     await logFeed(page, 2, { place: placeName })
     await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
     await page.goto('/places', { waitUntil: 'domcontentloaded' })
-    const placeLink = page.getByRole('link', { name: new RegExp(placeName) })
+    const placeLink = page.locator(`main a[href="/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
