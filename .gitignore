@@ -60,3 +60,6 @@ __pycache__/
 # QA screenshot harness (auth state + generated PNGs)
 /.qa/.auth/
 /.qa/screenshots/
+
+# smoke session cookies minted by scripts/smoke-signin.ts — never commit
+*cookie*.txt
