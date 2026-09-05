@@ -66,7 +66,7 @@ function heroHeadline(e: HerdEstimate): string {
 }
 // Every $1/cwt across the firm-priced per-cwt lots — exact arithmetic, or nothing.
 function heroSensitivity(e: HerdEstimate): string | null {
-  const lots = e.perLot.filter(l => l.value != null && !l.thin && l.source?.price_basis === 'cwt')
+  const lots = e.perLot.filter(l => l.value != null && l.source?.price_basis === 'cwt')
   const total = lots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
   return total > 0 ? `Every $1/cwt move is $${total.toLocaleString('en-US')} across ${lots.length === 1 ? 'this lot' : `these ${lots.length} lots`}.` : null
 }

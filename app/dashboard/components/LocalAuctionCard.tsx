@@ -108,7 +108,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
         <>
           {/* Scope — the barn, never a county. */}
           <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
-            {scopeLabel(result.pinned ? { kind: 'pinned', town: result.town } : { kind: 'nearby', town: result.town })}
+            {scopeLabel(result.pinned ? { kind: 'pinned', town: result.town.replace(/,\s*[A-Z]{2}$/, '') } : { kind: 'nearby', town: result.town.replace(/,\s*[A-Z]{2}$/, '') })}
           </p>
           <p className="mt-0.5 font-dm-sans text-[14px] text-forest-green/80">
             {result.barnName} · {result.miles} mi · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}

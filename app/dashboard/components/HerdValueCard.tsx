@@ -34,7 +34,9 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
   )
   const minFloor = floors.length > 0 ? Math.min(...floors.map(l => l.floor!.coverage_price)) : null
   const towns = [...new Set(estimate.perLot.filter(l => l.source).map(l => l.source!.town.replace(/,\s*[A-Z]{2}$/, '')))].join(' / ')
-  const cwtLots = estimate.perLot.filter(l => l.value != null && !l.thin && l.source?.price_basis === 'cwt')
+  // The sensitivity line is arithmetic on the LOT (head × weight), so a thin
+  // price reference does not withhold it — only a missing head or weight does.
+  const cwtLots = estimate.perLot.filter(l => l.value != null && l.source?.price_basis === 'cwt')
   const perDollar = cwtLots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
   const sensitivity = perDollar > 0 ? `Every $1/cwt move is $${perDollar.toLocaleString('en-US')} across ${cwtLots.length === 1 ? 'this lot' : `${cwtLots.length} lots`}.` : null
 
