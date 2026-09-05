@@ -16,6 +16,10 @@ import { dollarsPerCwtMove, scopeLabel } from '@/lib/market-scope'
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
 }
+// A thin reference reported one price (low = high): "~$X", never "$X–$X".
+function fmtThinRange(low: number, high: number): string {
+  return Math.round(low) === Math.round(high) ? `~${formatUSD(low)}` : `${formatUSD(low)}–${formatUSD(high)}`
+}
 
 function fmtShort(iso: string | null): string {
   if (!iso) return ''
@@ -42,7 +46,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
 
   return (
     <Link href="/herd" className="block">
-      <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
+      <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]" data-audit="herd-value-card">
         <p className={EYEBROW}>
           Herd value
         </p>
@@ -52,12 +56,12 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
               {estimate.total_priced > 0 ? formatUSD(estimate.total_priced) : ''}
               {estimate.thin_range && (
                 <span className={estimate.total_priced > 0 ? 'text-[17px] text-forest-green/80' : ''}>
-                  {estimate.total_priced > 0 ? ' + ' : ''}{formatUSD(estimate.thin_range.low)}–{formatUSD(estimate.thin_range.high)}
+                  {estimate.total_priced > 0 ? ' + ' : ''}{fmtThinRange(estimate.thin_range.low, estimate.thin_range.high)}
                 </span>
               )}
             </p>
             {/* Scope is the BARN the prices came from (Block 2.5 A2) — never the county. */}
-            <p className="mt-1 font-dm-sans text-[13px] text-forest-green/80">
+            <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
               {estimate.lots_priced} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} priced
               {towns && ` · ${scopeLabel({ kind: 'nearby', town: towns })}`}
               {estimate.as_of && ` · as of ${fmtShort(estimate.as_of)}`}
@@ -69,7 +73,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
           <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">{estimate.note}</p>
         )}
         {minFloor != null && (
-          <p className="mt-1 font-dm-sans text-[13px] text-forest-green/80">
+          <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
             LRP coverage available to explore for {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · reference coverage price from ${minFloor.toFixed(2)}/cwt · needs a purchased endorsement
           </p>
         )}

@@ -25,7 +25,7 @@ const fmtInt = (n: number) => n.toLocaleString('en-US')
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
-  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[12px] font-semibold ${tone}`}>{label}</span>
+  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[14px] font-semibold ${tone}`}>{label}</span>
 }
 
 // One band line: precise $/cwt only when the head count clears the floor.
@@ -44,11 +44,11 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
           )}
           {!thin && b.wowPct != null && b.wowPct !== 0 && (() => {
             const d = marketDelta(b.wowPct! > 0, true)
-            return <span className={`ml-2 text-[13px] font-semibold ${d.cls}`}>{d.arrow} {Math.abs(b.wowPct!).toFixed(1)}%</span>
+            return <span className={`ml-2 text-[15px] font-semibold ${d.cls}`}>{d.arrow} {Math.abs(b.wowPct!).toFixed(1)}%</span>
           })()}
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[13px] text-forest-green/80">
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
         <MatchChip label={label} />
         <span>{fmtInt(b.head)} head reported · sale {fmtDate(saleDate)}</span>
         {thin && <span>· under {THIN_HEAD_THRESHOLD} head, range shown</span>}
@@ -70,7 +70,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
           {thin ? <span className="text-forest-green/80">{fmtRange(c.priceLow, c.priceHigh, c.avgPrice)}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[13px] text-forest-green/80">
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
         <MatchChip label={matchLabel({ exactBracket: c.gradeKnown, headCount: c.head })} />
         <span>
           {fmtInt(c.head)} head · {c.rows} {c.rows === 1 ? 'lot' : 'lots'}
@@ -86,7 +86,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
 
 export default function LocalAuctionCard({ result }: { result: LocalAuctionResult }) {
   return (
-    <Card shadow="soft" className="p-4 sm:p-6">
+    <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
       <div className="mb-3">
         <p className={EYEBROW}>Cattle markets</p>
         <Heading level={5} className="mt-1">Auction reference</Heading>
@@ -131,13 +131,13 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
           )}
 
           {result.receipts != null && (
-            <p className="mt-3 font-dm-sans text-[13px] tabular-nums text-forest-green/80">
+            <p className="mt-3 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
               {fmtInt(result.receipts)} receipts
               {result.receiptsWeekAgo != null && ` · wk ago ${fmtInt(result.receiptsWeekAgo)}`}
               {result.receiptsYearAgo != null && ` · yr ago ${fmtInt(result.receiptsYearAgo)}`}
             </p>
           )}
-          <p className="mt-2 font-dm-sans text-[13px] text-forest-green/80">
+          <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
             $/cwt, head-weighted within each 100-lb band · Close match = same class and weight bracket with {THIN_HEAD_THRESHOLD}+ head · Limited evidence = fewer than {THIN_HEAD_THRESHOLD} head reported.
           </p>
         </>

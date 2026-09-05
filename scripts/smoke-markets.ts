@@ -121,6 +121,47 @@ async function main() {
       record('A2: Where I sell pin → "Where you sell — Miles City"', pin.ok() && /Where you sell — Miles City/.test(pinned), `PATCH ${pin.status()} · ${(pinned.match(/Where you sell — [A-Za-z ]+/) ?? [''])[0]}`)
     }
 
+    // ── Phone widths (Block 2.5 mobile audit): no horizontal scroll, 48 px targets,
+    //    15 px text floor inside the Markets cards, a full-width chart, a tappable point,
+    //    a tappable event marker — measured, not inferred from CSS. ──
+    const MEASURE = `(function(width){
+      var cards = Array.from(document.querySelectorAll('[data-audit="history-card"],[data-audit="auction-card"],[data-audit="herd-value-card"],[data-audit="since-card"],[data-audit="sell-pin"]'));
+      var overflowX = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      var small = []; var tiny = [];
+      cards.forEach(function(card){
+        Array.from(card.querySelectorAll('button, select, a[href]')).forEach(function(el){ var b = el.getBoundingClientRect(); if (b.height > 0 && b.height < 48) small.push((el.textContent||'').trim().slice(0,24) + ' ' + Math.round(b.height) + 'px') });
+        Array.from(card.querySelectorAll('p, span, li, label, text, tspan, option')).forEach(function(el){ var t = (el.textContent||'').trim(); var f = parseFloat(getComputedStyle(el).fontSize); if (t && f > 0 && f < 15 && el.tagName.toLowerCase() !== 'option') tiny.push(el.tagName.toLowerCase() + ' ' + f + 'px ' + t.slice(0,24)) });
+      });
+      var svg = document.querySelector('[data-audit="chart"] svg.recharts-surface');
+      var chartW = svg ? Math.round(svg.getBoundingClientRect().width) : 0;
+      var pts = document.querySelectorAll('[data-audit="point"]').length;
+      return { overflowX: overflowX, small: small.slice(0,8), smallCount: small.length, tiny: tiny.slice(0,8), tinyCount: tiny.length, chartW: chartW, pts: pts };
+    })`
+    for (const width of [320, 375, 390, 430]) {
+      const mctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const mp = await signIn(mctx)
+      await mp.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
+      await mp.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
+      await mp.waitForTimeout(1200)
+      const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; pts: number }
+      record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
+      record(`${width}px: every Markets control ≥ 48 px`, m.smallCount === 0, m.small.join(' | '))
+      record(`${width}px: no Markets text under 15 px`, m.tinyCount === 0, m.tiny.join(' | '))
+      record(`${width}px: chart takes the width`, m.chartW >= width - 48, `chart ${m.chartW}px of ${width}`)
+      // a point tap opens the detail panel; an event chip opens its source
+      const pt = mp.locator('[data-audit="point"]').first()
+      if (await pt.count()) { await pt.tap().catch(() => pt.click()); const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false); record(`${width}px: tapping a point opens its evidence`, detail) }
+      else record(`${width}px: tapping a point opens its evidence`, false, 'no points')
+      const chip = mp.getByRole('button', { name: /^▾/ }).first()
+      if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source`, src) }
+      else skip(`${width}px: tapping an event chip shows its source`, 'no events (migration 048?)')
+      if (width === 390 && process.env.SHOT_DIR) {
+        await mp.locator('[data-audit="history-card"]').screenshot({ path: `${process.env.SHOT_DIR}/markets-history-390.png` }).catch(() => {})
+        await mp.screenshot({ path: `${process.env.SHOT_DIR}/markets-full-390.png`, fullPage: true }).catch(() => {})
+      }
+      await mctx.close()
+    }
+
     // Herd page lot card
     await page.goto('/herd', { waitUntil: 'domcontentloaded' })
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})

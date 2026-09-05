@@ -50,7 +50,7 @@ export default async function MarketsSince({ localSlug, pinned }: { localSlug: s
   if (lines.length === 0) return <LastSeenPing surface="markets" />
 
   return (
-    <Card shadow="soft" className="p-4 sm:p-5">
+    <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-card">
       <LastSeenPing surface="markets" />
       <p className={EYEBROW}>{seen ? 'Since you last checked' : 'Since yesterday'}</p>
       <ul className="mt-2 space-y-1.5">
