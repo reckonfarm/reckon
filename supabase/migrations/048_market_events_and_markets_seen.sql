@@ -24,7 +24,7 @@ create table if not exists public.market_events (
   event_date   date        not null,
   title        text        not null,            -- short, factual: what happened
   description  text        not null,            -- one or two neutral sentences, no characterization
-  category     text        not null,            -- 'border' | 'trade' | 'usda_report' | 'policy' | 'weather'
+  category     text        not null,            -- 'border' | 'disease' | 'trade' | 'usda_report' | 'policy' | 'weather'
   source_name  text        not null,            -- 'USDA', 'USDA NASS', …
   source_url   text        not null,            -- the citation
   created_at   timestamptz not null default now(),
@@ -40,8 +40,8 @@ create policy "market events readable"
   to anon, authenticated
   using (true);
 
--- Seed — border and import decisions with USDA press releases as the source.
--- Descriptive only: what was announced and when.
+-- Seed — border decisions and the domestic detection, USDA / APHIS pages as the
+-- source. Descriptive only: what was announced, detected, or reopened, and when.
 insert into public.market_events (event_date, title, description, category, source_name, source_url) values
   ('2025-05-11', 'USDA suspends live cattle, horse, and bison imports through southern border ports',
    'USDA announced an immediate suspension of live cattle, horse, and bison imports through U.S. ports of entry along the southern border, citing the northward spread of New World screwworm in Mexico. The suspension was to be reviewed month by month.',
@@ -52,15 +52,21 @@ insert into public.market_events (event_date, title, description, category, sour
   ('2025-07-09', 'USDA closes southern border ports to livestock trade again',
    'USDA announced the closure of U.S. southern border ports to livestock trade following a further northward New World screwworm detection in Mexico, reversing the phased reopening announced June 30.',
    'border', 'USDA', 'https://www.usda.gov/about-usda/news/press-releases/2025/07/09/secretary-rollins-takes-decisive-action-and-shuts-down-us-southern-border-ports-livestock-trade-due'),
+  ('2026-06-03', 'USDA APHIS confirms New World screwworm in a calf in Zavala County, Texas',
+   'USDA APHIS confirmed a New World screwworm detection in a three-week-old calf in Zavala County, Texas — the first confirmed detection in U.S. livestock since the pest was eradicated from the United States in the 1960s. Additional detections in Texas and New Mexico were confirmed in the following weeks.',
+   'disease', 'USDA APHIS', 'https://www.aphis.usda.gov/news/agency-announcements/usda-confirms-presence-new-world-screwworm-united-states'),
   ('2026-07-24', 'USDA announces phased reopening of southern ports, beginning with Douglas, Arizona',
-   'USDA announced a coordinated, phased reopening of southern cattle ports contingent on Mexico''s adherence to a joint action plan, with the Douglas, Arizona, port to open first and every animal to receive a full USDA inspection.',
-   'border', 'USDA', 'https://www.usda.gov/about-usda/news/press-releases/2026/07/24/usda-announces-phased-reopening-southern-ports-livestock-trade')
+   'USDA announced a phased reopening of southern border ports to livestock trade: the Douglas, Arizona, port to open beginning August 24, 2026, with Santa Teresa and Columbus, New Mexico, to follow contingent on Mexico''s progress under the joint Action Plan. Every animal receives a full USDA inspection.',
+   'border', 'USDA', 'https://www.usda.gov/about-usda/news/press-releases/2026/07/24/usda-announces-phased-reopening-southern-ports-livestock-trade'),
+  ('2026-08-24', 'Douglas, AZ port reopens to Mexican cattle',
+   'USDA reopened the Douglas, Arizona, port to cattle imports from Mexico, the first in a phased reopening of southern ports.',
+   'border', 'USDA APHIS', 'https://www.aphis.usda.gov/animals/animal-health/livestock-and-poultry-disease/stop-screwworm/current-status')
 on conflict (event_date, title) do nothing;
 
 alter table public.ranch_members
   add column if not exists markets_seen_at timestamptz;
 
--- Verify — (a) expect 4 rows; (b) expect the column, nullable; (c) expect one SELECT policy on market_events.
+-- Verify — (a) expect 6 rows; (b) expect the column, nullable; (c) expect one SELECT policy on market_events.
 select event_date, title, source_url from public.market_events order by event_date;
 select column_name, is_nullable from information_schema.columns
  where table_schema = 'public' and table_name = 'ranch_members' and column_name = 'markets_seen_at';
