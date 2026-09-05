@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
+import { consequenceFor } from '@/lib/log-consequence'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -67,15 +68,25 @@ export async function POST(req: NextRequest) {
     })
     .select(EVENT_COLS)
     .single()
+  // The answer (Block 2C): what this entry means, read on the same client.
+  const answer = async () => {
+    let placeName: string | null = null
+    if (payload.place_id) {
+      const { data: place } = await supabase.from('places').select('name').eq('id', payload.place_id).maybeSingle()
+      placeName = (place as { name?: string } | null)?.name ?? null
+    }
+    return consequenceFor(supabase, body.type, payload as unknown as Record<string, unknown>, placeName)
+  }
+
   if (error) {
     // 23505 on the primary key = this exact entry already landed. Return it.
     if (error.code === '23505' && id) {
       const { data: existing } = await supabase.from('events').select(EVENT_COLS).eq('id', id).maybeSingle()
-      if (existing) return NextResponse.json({ event: existing, duplicate: true }, { status: 200 })
+      if (existing) return NextResponse.json({ event: existing, duplicate: true, consequence: await answer() }, { status: 200 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  return NextResponse.json({ event: row }, { status: 201 })
+  return NextResponse.json({ event: row, consequence: await answer() }, { status: 201 })
 }
 
 const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, payload, schema_version, ingested_at'
