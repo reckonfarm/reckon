@@ -108,7 +108,7 @@ async function main() {
     if (evErr) skip('B6/B7: event markers and Since you last checked', `migration 048 not applied (${evErr.message.slice(0, 50)})`)
     else {
       record('B6: event markers with a source link', /▾/.test(body), '')
-      record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/.test(body) && /(New .* report|latest local reference is from)/.test(body))
+      record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
     // Where I sell pin (needs migration 046)
