@@ -36,14 +36,19 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
   const items = useOutbox()
   const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
   const shown = item?.state ?? null
-  const refreshed = useRef<Set<string>>(new Set())
+  // Refresh the server-rendered ledgers once per entry that syncs WHILE this
+  // strip is mounted — never for entries that had already synced before it
+  // mounted (a page opened after a sync would otherwise refresh itself).
+  const refreshed = useRef<Set<string> | null>(null)
+  if (refreshed.current === null) refreshed.current = new Set(items.filter(i => i.state === 'synced').map(i => i.id))
   const [now, setNow] = useState(0)
 
   // Refresh the server-rendered ledgers once per synced entry.
   useEffect(() => {
+    const seen = refreshed.current!
     for (const i of items) {
-      if (i.state === 'synced' && !refreshed.current.has(i.id)) {
-        refreshed.current.add(i.id)
+      if (i.state === 'synced' && !seen.has(i.id)) {
+        seen.add(i.id)
         router.refresh()
       }
     }

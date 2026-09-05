@@ -288,7 +288,7 @@ async function main() {
     await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
     await page.goto('/places', { waitUntil: 'domcontentloaded' })
     const placeLink = page.getByRole('link', { name: new RegExp(placeName) })
-    record('2F: /places lists the place', await placeLink.count() > 0)
+    record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
     const bodyP = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
@@ -298,6 +298,8 @@ async function main() {
     record('2F: "Last feeding" chip answers', /Last recorded feeding: today .*2 bales/.test(chip), chip.slice(0, 100))
     const feedHere = page.getByRole('button', { name: 'Log feed here' })
     await feedHere.click()
+    // The place list loads when the sheet opens; the pre-filled value shows once its option exists.
+    await page.getByLabel('Where').locator('option', { hasText: placeName }).waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
     const prefilled = await page.getByLabel('Where').inputValue().catch(() => '')
     record('2F: "Log feed here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
     await page.getByRole('button', { name: 'Cancel' }).click()
