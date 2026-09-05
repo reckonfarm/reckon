@@ -167,22 +167,35 @@ function NumberField({ label, unit, value, onChange, step = '1', max, placeholde
 }) {
   return (
     <Field label={label}>
-      <div className="relative">
-        <Input
-          type="number"
-          inputMode={step === '1' ? 'numeric' : 'decimal'}
-          min={0}
-          max={max}
-          step={step}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="min-h-[64px] pr-20 text-[32px] font-semibold tabular-nums"
-          aria-describedby={undefined}
-        />
-        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-dm-sans text-[17px] font-medium text-forest-green/80">{unit}</span>
-      </div>
+      <UnitInput
+        unit={unit}
+        type="number"
+        inputMode={step === '1' ? 'numeric' : 'decimal'}
+        min={0}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
     </Field>
+  )
+}
+
+// Field wires id / invalid / aria into its ONE child, so the unit badge must
+// live inside a control that forwards those props to the real <input> —
+// wrapping in a bare div would leave the label pointing at nothing.
+function UnitInput({ unit, id, invalid, className = '', ...rest }: React.InputHTMLAttributes<HTMLInputElement> & { unit: string; invalid?: boolean }) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        invalid={invalid}
+        className={`min-h-[64px] pr-20 text-[32px] font-semibold tabular-nums ${className}`}
+        {...rest}
+      />
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-dm-sans text-[17px] font-medium text-forest-green/80">{unit}</span>
+    </div>
   )
 }
 
