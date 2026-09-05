@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
@@ -121,14 +122,21 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
     <Card shadow="none" className="px-5 py-4">
       {heading && <Heading level={5}>Recently logged</Heading>}
       <ul className={`${heading ? 'mt-2 ' : ''}divide-y divide-forest-green/10`}>
-        {rows.map(r => (
-          <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="font-dm-sans text-[17px] text-forest-green">{line(r, placeName, lotName)}</span>
-            <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
-              {fmtDay(r.ts)} · {fmtTime(r.ts)}
-            </span>
-          </li>
-        ))}
+        {rows.map(r => {
+          const pid = str(r.payload.place_id) ?? str(r.payload.to_place_id)
+          const linked = pid && names.has(pid)
+          return (
+            <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
+              <span className="font-dm-sans text-[17px] text-forest-green">
+                {line(r, placeName, lotName)}
+                {linked && <Link href={`/places/${pid}`} className="ml-2 font-semibold text-forest-green underline underline-offset-2">place →</Link>}
+              </span>
+              <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
+                {fmtDay(r.ts)} · {fmtTime(r.ts)}
+              </span>
+            </li>
+          )
+        })}
       </ul>
     </Card>
     </LedgerPanel>
