@@ -43,7 +43,9 @@ function fmtRate(n: number): string {
   return n >= 10 ? Math.round(n).toLocaleString() : n.toFixed(1)
 }
 
-export default async function HayInventoryCard() {
+// `heading` (views2, commit 5): inside the ledger tab strip the tab is the
+// label, so the card's own eyebrow is dropped; anywhere else it keeps it.
+export default async function HayInventoryCard({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
   // Season-scoped read (this ranch year, capped); the latest count still
   // anchors on-hand even when it predates the floor — see getHayLedger.
@@ -90,11 +92,13 @@ export default async function HayInventoryCard() {
   return (
     <LedgerPanel tab="hay" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      <p className={EYEBROW}>
-        Hay
-      </p>
+      {heading && (
+        <p className={EYEBROW}>
+          Hay
+        </p>
+      )}
       {stats.length > 0 && (
-        <div className={`mt-3 grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {stats.map(s => (
             <div key={s.label}>
               <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>

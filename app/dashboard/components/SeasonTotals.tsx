@@ -47,7 +47,9 @@ interface SeasonJobRow {
 // out loud. A season is dozens of sessions, not hundreds.
 const SEASON_JOB_CAP = 500
 
-export default async function SeasonTotals() {
+// `heading` (views2, commit 5): inside the ledger tab strip the tab is the
+// label, so the card's own eyebrow is dropped; anywhere else it keeps it.
+export default async function SeasonTotals({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
   const { data } = await supabase
     .from('jobs')
@@ -109,10 +111,12 @@ export default async function SeasonTotals() {
   return (
     <LedgerPanel tab="season" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      <p className={EYEBROW}>
-        This season
-      </p>
-      <div className={`mt-3 grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      {heading && (
+        <p className={EYEBROW}>
+          This season
+        </p>
+      )}
+      <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {stats.map(s => (
           <div key={s.label}>
             <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>

@@ -588,9 +588,9 @@ export default async function DashboardPage({
                         out there is nothing to ledger, so no strip. */}
                     {user && (
                       <LedgerTabs
-                        season={<Suspense fallback={<LedgerLoading />}><SeasonTotals /></Suspense>}
-                        hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard /></Suspense>}
-                        logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged /></Suspense>}
+                        season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
+                        hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
+                        logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
                       />
                     )}
                   </>

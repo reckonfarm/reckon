@@ -71,7 +71,9 @@ function line(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
   }
 }
 
-export default async function RecentlyLogged() {
+// `heading` (views2, commit 5): inside the ledger tab strip the tab is the
+// label, so the card's own title is dropped; anywhere else it keeps it.
+export default async function RecentlyLogged({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
   // Bounded: the manual types by name (an indexable predicate ahead of the
   // jsonb source check) and this ranch year as the floor — the season the
@@ -117,8 +119,8 @@ export default async function RecentlyLogged() {
   return (
     <LedgerPanel tab="logged" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      <Heading level={5}>Recently logged</Heading>
-      <ul className="mt-2 divide-y divide-forest-green/10">
+      {heading && <Heading level={5}>Recently logged</Heading>}
+      <ul className={`${heading ? 'mt-2 ' : ''}divide-y divide-forest-green/10`}>
         {rows.map(r => (
           <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
             <span className="font-dm-sans text-sm text-forest-green">{line(r, placeName, lotName)}</span>
