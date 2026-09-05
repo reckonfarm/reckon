@@ -19,8 +19,9 @@ import {
 // ring; warning border + message on error. 44px min target. Number inputs pick up the
 // `tabular-price` figure treatment so entered counts align.
 
+// 2D: inputs read at 17px and stand 48px tall — a lit cab at 5pm, a thumb in a glove.
 const CONTROL =
-  'w-full min-h-[44px] rounded-lg border bg-surface px-3 py-2.5 font-dm-sans text-sm text-ink ' +
+  'w-full min-h-[48px] rounded-lg border bg-surface px-3 py-2.5 font-dm-sans text-[17px] text-ink ' +
   'outline-none transition-colors placeholder:text-muted/40 ' +
   'focus:ring-2 focus:ring-accent/20 ' +
   'disabled:cursor-not-allowed disabled:opacity-50'

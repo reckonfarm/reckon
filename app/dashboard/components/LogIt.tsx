@@ -126,7 +126,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
             type="button"
             onClick={() => onChange(EMPTY_SLOT)}
             disabled={disabled}
-            className="shrink-0 px-1 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green"
+            className="min-h-[44px] shrink-0 px-2 font-dm-sans text-[15px] font-semibold text-forest-green/80 hover:text-forest-green"
           >
             Pick existing
           </button>
@@ -153,8 +153,12 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
   )
 }
 
-function NumberField({ label, value, onChange, step = '1', max, placeholder = '—' }: {
+// A quantity with its UNIT beside it, always (2D): bales, inches, head are
+// never bare numbers, and bale sizes are never silently equated. The number
+// itself is the biggest thing on the sheet.
+function NumberField({ label, unit, value, onChange, step = '1', max, placeholder = '—' }: {
   label: string
+  unit: string
   value: string
   onChange: (v: string) => void
   step?: string
@@ -163,16 +167,21 @@ function NumberField({ label, value, onChange, step = '1', max, placeholder = '�
 }) {
   return (
     <Field label={label}>
-      <Input
-        type="number"
-        inputMode={step === '1' ? 'numeric' : 'decimal'}
-        min={0}
-        max={max}
-        step={step}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
+      <div className="relative">
+        <Input
+          type="number"
+          inputMode={step === '1' ? 'numeric' : 'decimal'}
+          min={0}
+          max={max}
+          step={step}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="min-h-[64px] pr-20 text-[32px] font-semibold tabular-nums"
+          aria-describedby={undefined}
+        />
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-dm-sans text-[17px] font-medium text-forest-green/80">{unit}</span>
+      </div>
     </Field>
   )
 }
@@ -415,11 +424,11 @@ export default function LogIt() {
 
   let fields: ReactNode = null
   if (type === 'rain') fields = (<>
-    <NumberField label="Inches" value={n1} onChange={setN1} step="0.01" max={30} placeholder="0.00" />
+    <NumberField label="Rain" unit="inches" value={n1} onChange={setN1} step="0.01" max={30} placeholder="0.00" />
     {placeField()}
   </>)
   if (type === 'hay_fed') fields = (<>
-    <NumberField label="Bales" value={n1} onChange={setN1} max={10000} />
+    <NumberField label="Hay fed" unit="bales" value={n1} onChange={setN1} max={10000} />
     {/* Which bunch — optional; labeled the way the herd page labels them
         (lotLabel: the name if given, else the class). Hidden until the herd
         has lots: an empty herd gets no empty picker. */}
@@ -434,22 +443,22 @@ export default function LogIt() {
     {placeField()}
   </>)
   if (type === 'bales_stacked') fields = (<>
-    <NumberField label="Bales" value={n1} onChange={setN1} max={10000} />
+    <NumberField label="Stacked" unit="bales" value={n1} onChange={setN1} max={10000} />
     {placeField('Stacked at')}
   </>)
   if (type === 'cattle_moved') fields = (<>
-    <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
+    <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} />
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
   </>)
   if (type === 'hay_inventory') fields = (<>
-    <NumberField label="Bales on hand" value={n1} onChange={setN1} max={100000} placeholder="0" />
+    <NumberField label="On hand" unit="bales" value={n1} onChange={setN1} max={100000} placeholder="0" />
     <Field label="As of" hint="The day you counted.">
       <Input type="date" value={asOf || todayKey()} max={todayKey()} onChange={e => setAsOf(e.target.value)} />
     </Field>
   </>)
   if (type === 'cattle_worked') fields = (<>
-    <NumberField label="Head" value={n1} onChange={setN1} max={20000} />
+    <NumberField label="Worked" unit="head" value={n1} onChange={setN1} max={20000} />
     <Field label="What">
       <Input value={what} onChange={e => setWhat(e.target.value)} maxLength={80} placeholder="pregged, vaccinated, weaned…" />
     </Field>
@@ -487,7 +496,7 @@ export default function LogIt() {
               <button
                 type="button"
                 onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
-                className="px-1 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green"
+                className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green/80 hover:text-forest-green"
               >
                 {type ? 'Back' : 'Close'}
               </button>
@@ -500,10 +509,10 @@ export default function LogIt() {
                     key={t}
                     type="button"
                     onClick={() => setType(t)}
-                    className="min-h-[72px] rounded-lg border border-forest-green/15 bg-white px-3 py-3 text-left transition-colors hover:bg-forest-green/5"
+                    className="min-h-[84px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5"
                   >
-                    <span className="block font-dm-sans text-base font-semibold text-forest-green">{MANUAL_EVENT_LABELS[t]}</span>
-                    <span className="mt-0.5 block font-dm-sans text-xs text-forest-green/55">{TILE_HINT[t]}</span>
+                    <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{MANUAL_EVENT_LABELS[t]}</span>
+                    <span className="mt-1 block font-dm-sans text-[15px] text-forest-green/80">{TILE_HINT[t]}</span>
                   </button>
                 ))}
               </div>
@@ -525,12 +534,12 @@ export default function LogIt() {
                     />
                   </Field>
                 ) : (
-                  <p className="font-dm-sans text-xs text-forest-green/60">
+                  <p className="font-dm-sans text-[15px] text-forest-green/80">
                     Now ·{' '}
                     <button
                       type="button"
                       onClick={() => { setWhen(toLocalInput(new Date())); setEditWhen(true) }}
-                      className="font-semibold text-forest-green/70 underline-offset-2 hover:text-forest-green hover:underline"
+                      className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2 hover:text-forest-green/80"
                     >
                       change time
                     </button>
@@ -538,11 +547,11 @@ export default function LogIt() {
                 )}
 
                 {error && (
-                  <p className="font-dm-sans text-sm font-medium text-warning" role="alert">{error}</p>
+                  <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>
                 )}
 
                 <div className="flex items-center gap-3">
-                  <Button type="submit" disabled={busy} className="flex-1 min-h-[44px]">
+                  <Button type="submit" disabled={busy} className="flex-1 min-h-[56px] text-[17px]">
                     {busy ? 'Saving…' : 'Save'}
                   </Button>
                   <button

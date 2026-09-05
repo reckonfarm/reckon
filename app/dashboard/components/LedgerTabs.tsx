@@ -51,7 +51,7 @@ export function LedgerPanel({ tab, empty, children }: { tab: LedgerTab; empty: b
 // The Suspense fallback for a ledger body while it streams — a line, so the
 // open tab is never a blank panel.
 export function LedgerLoading() {
-  return <p className="px-1 py-3 font-dm-sans text-sm text-forest-green/45">Adding it up…</p>
+  return <p className="px-1 py-3 font-dm-sans text-sm text-forest-green/80">Adding it up…</p>
 }
 
 export default function LedgerTabs({ season, hay, logged }: Record<LedgerTab, ReactNode>) {
@@ -77,7 +77,7 @@ export default function LedgerTabs({ season, hay, logged }: Record<LedgerTab, Re
                 aria-controls={`ledger-${t}`}
                 onClick={() => setActive(t)}
                 className={`min-h-[44px] flex-1 rounded-lg px-2 font-dm-sans text-sm transition-colors ${
-                  isActive ? 'bg-forest-green font-semibold text-cream' : 'font-medium text-forest-green/60 hover:text-forest-green'
+                  isActive ? 'bg-forest-green font-semibold text-cream' : 'font-medium text-forest-green/80 hover:text-forest-green'
                 }`}
               >
                 {LABELS[t]}

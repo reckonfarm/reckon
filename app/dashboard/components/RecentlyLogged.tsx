@@ -123,8 +123,8 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
       <ul className={`${heading ? 'mt-2 ' : ''}divide-y divide-forest-green/10`}>
         {rows.map(r => (
           <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="font-dm-sans text-sm text-forest-green">{line(r, placeName, lotName)}</span>
-            <span className="shrink-0 font-dm-sans text-xs tabular-nums text-forest-green/55">
+            <span className="font-dm-sans text-[17px] text-forest-green">{line(r, placeName, lotName)}</span>
+            <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
               {fmtDay(r.ts)} · {fmtTime(r.ts)}
             </span>
           </li>
