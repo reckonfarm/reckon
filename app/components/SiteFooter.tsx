@@ -8,12 +8,12 @@ import { OPERATOR_NAME, contactLine } from '@/lib/legal'
 export default function SiteFooter() {
   return (
     <footer className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
-      <p className="text-center font-dm-sans text-xs text-forest-green/40">
-        <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
+      <p className="text-center font-dm-sans text-xs text-forest-green/80">
+        <Link href="/terms" className="underline hover:text-forest-green">Terms</Link>
         {' · '}
-        <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
+        <Link href="/privacy" className="underline hover:text-forest-green">Privacy Policy</Link>
       </p>
-      <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/40">
+      <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/80">
         {OPERATOR_NAME} · {contactLine()}
       </p>
     </footer>

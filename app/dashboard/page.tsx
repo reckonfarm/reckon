@@ -38,6 +38,8 @@ import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
+import RepeatLastFeeding from './components/RepeatLastFeeding'
+import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
@@ -218,18 +220,20 @@ export default async function DashboardPage({
     fips
       ? db.from('counties').select('id, fips, name, state, lat, lon').eq('fips', fips).single()
       : Promise.resolve(null),
-    fips
-      ? (async () => {
-          const { data: { user } } = await supabase.auth.getUser()
-          // Profile and ranch (the outfit's name, flow commit 2) side by side —
-          // both need only the user; neither waits on the other.
-          const [profileResult, ranch] = await Promise.all([
-            getOperationProfile({ supabase, user }),
-            user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
-          ])
-          return { user, profileResult, ranch }
-        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }))
-      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }),
+    // The session resolves county or not (Block 2): a member with no home
+    // county lands on the bare dashboard and must still get their ledger.
+    // Without a session cookie getUser is a local no-op, so the public
+    // no-county page pays nothing.
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      // Profile and ranch (the outfit's name, flow commit 2) side by side —
+      // both need only the user; neither waits on the other.
+      const [profileResult, ranch] = await Promise.all([
+        getOperationProfile({ supabase, user }),
+        user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
+      ])
+      return { user, profileResult, ranch }
+    })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null })),
   ])
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
@@ -377,6 +381,29 @@ export default async function DashboardPage({
                dependency: a signed-in person with NO county (bare /dashboard,
                no home county) still needs a way to one, so it stays here for
                them too, above the EmptyState that points at it. */}
+        {/* ── The private ledger, county or not (Block 2, pilot blocker) ──
+            A member of a ranch logs from here whether or not a home county
+            is set: county selection is for the public drought / program /
+            weather / market tools, never a gate on the ledger. Same
+            self-gating, RLS-scoped components as the county view's Today. */}
+        {user && !selectedCounty && !fips && (
+          <div className="mx-auto mb-8 max-w-2xl space-y-4">
+            <Suspense fallback={null}>
+              <SinceYouWereHere />
+            </Suspense>
+            <Suspense fallback={null}>
+              <RepeatLastFeeding />
+            </Suspense>
+            <LogIt />
+            <div id="ledgers" />
+            <LedgerTabs
+              season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
+              hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
+              logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
+            />
+          </div>
+        )}
+
         {(!user || !selectedCounty) && (
           <section className="mb-8">
             <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
@@ -387,7 +414,7 @@ export default async function DashboardPage({
         )}
 
         {/* ── National view (no county selected) ───────────────────────────── */}
-        {!fips && <EmptyState />}
+        {!fips && <EmptyState signedIn={!!user} />}
 
         {fips && !selectedCounty && (
           <p className="text-sm text-forest-green/60 font-dm-sans">
@@ -502,6 +529,23 @@ export default async function DashboardPage({
                         Hay · Recently logged. Money and the operator's own line
                         first; the machines; the herd; the sky; the news; then the
                         season ledgers at the bottom. Same components, same gates. */}
+                    {/* Repeat last feeding (Block 2B) — above everything on the
+                        signed-in Today: the ten-second path. Renders nothing until a
+                        feeding has been logged. */}
+                    {user && (
+                      <>
+                        {/* Since you last checked (Block 2E) — what the other people
+                            on the ranch put in the ledger since this person's last
+                            visit. Absent when nothing is new. */}
+                        <Suspense fallback={null}>
+                          <SinceYouWereHere />
+                        </Suspense>
+                        <Suspense fallback={null}>
+                          <RepeatLastFeeding />
+                        </Suspense>
+                      </>
+                    )}
+
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
 
                     {/* Herd value lives on Markets (views2, commit 2) — one surface,
@@ -587,6 +631,9 @@ export default async function DashboardPage({
                         signed-in Today (deferring them is a separate decision). Signed
                         out there is nothing to ledger, so no strip. */}
                     {user && (
+                      <div id="ledgers" />
+                    )}
+                    {user && (
                       <LedgerTabs
                         season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
                         hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
@@ -649,7 +696,7 @@ export default async function DashboardPage({
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-forest-green/8 mx-auto">
@@ -659,10 +706,12 @@ function EmptyState() {
         </svg>
       </div>
       <Heading level={3}>
-        Select a county to begin
+        {signedIn ? 'Pick a county for the county tools' : 'Select a county to begin'}
       </Heading>
-      <p className="mt-2 max-w-xs text-sm text-forest-green/60 font-dm-sans">
-        Search above to view drought conditions and weekly history for any US county.
+      <p className="mt-2 max-w-xs text-[15px] text-forest-green/80 font-dm-sans">
+        {signedIn
+          ? 'Drought, program, weather, and market tools are by county. Your ledger above is here either way.'
+          : 'Search above to view drought conditions and weekly history for any US county.'}
       </p>
     </div>
   )
