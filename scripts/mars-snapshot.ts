@@ -316,11 +316,44 @@ async function main() {
       report_date: snap.report_date, as_of: snap.as_of, source: 'USDA MARS',
       rows: snap.rows, row_count: snap.row_count,
     }))
-    const { error: histErr } = await db
-      .from('mars_price_history')
-      .upsert(history, { onConflict: 'slug_id,report_date' })
-    if (histErr) console.error('[mars-snapshot] history append failed (snapshot unaffected):', histErr.message)
-    else console.log(`[mars-snapshot] history: ${history.length} barn-date row(s) appended/updated ✓`)
+    // Block 2.5 B2 — never overwrite an observation. For each barn-date: no row → insert
+    // revision 1; identical rows → nothing; changed rows → insert revision n+1 and mark the
+    // prior row superseded_by the new id. Falls back to the old upsert until migration 047
+    // adds the revision columns (detected by the column error), so a stale DB never blocks
+    // the snapshot.
+    let appended = 0, unchanged = 0, revised = 0
+    for (const h of history) {
+      const { data: prior, error: priorErr } = await db
+        .from('mars_price_history')
+        .select('id, revision, rows')
+        .eq('slug_id', h.slug_id).eq('report_date', h.report_date)
+        .is('superseded_by', null)
+        .order('revision', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (priorErr && /revision|superseded_by/.test(priorErr.message)) {
+        const { error: legacyErr } = await db.from('mars_price_history').upsert(history, { onConflict: 'slug_id,report_date' })
+        if (legacyErr) console.error('[mars-snapshot] history upsert (pre-047) failed:', legacyErr.message)
+        else console.log(`[mars-snapshot] history (pre-047 upsert): ${history.length} barn-date row(s) ✓ — run migration 047 to keep revisions`)
+        appended = -1
+        break
+      }
+      if (priorErr) { console.error('[mars-snapshot] history read failed:', priorErr.message); continue }
+      if (prior && JSON.stringify(prior.rows) === JSON.stringify(h.rows)) { unchanged++; continue }
+      const revision = prior ? (prior.revision as number) + 1 : 1
+      const { data: inserted, error: insErr } = await db
+        .from('mars_price_history')
+        .insert({ ...h, revision })
+        .select('id')
+        .single()
+      if (insErr) { console.error('[mars-snapshot] history insert failed:', insErr.message); continue }
+      if (prior) {
+        const { error: supErr } = await db.from('mars_price_history').update({ superseded_by: inserted.id }).eq('id', prior.id)
+        if (supErr) console.error('[mars-snapshot] superseded_by update failed:', supErr.message)
+        revised++
+      } else appended++
+    }
+    if (appended >= 0) console.log(`[mars-snapshot] history: ${appended} new, ${revised} revised (prior rows kept), ${unchanged} unchanged ✓`)
   } catch (err) {
     console.error('[mars-snapshot] history append threw (snapshot unaffected):', err instanceof Error ? err.message : err)
   }
