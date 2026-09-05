@@ -7,7 +7,6 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
@@ -1536,7 +1535,6 @@ export default function HayPage() {
         </div>
 
       </main>
-    <SiteFooter />
     </>
   )
 }

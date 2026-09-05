@@ -8,7 +8,6 @@ import { Heading } from '@/app/components/ui/Heading'
 import { createClient } from '@/lib/supabase-browser'
 import { trackEvent } from '@/lib/analytics'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListingDetail, HayCounty } from '@/lib/types/hay'
 import { deliveredCost, FREIGHT_RATE_PER_TON_MILE, ROAD_CIRCUITY_FACTOR } from '@/lib/freight'
@@ -350,7 +349,6 @@ export default function HayDetailPage() {
             ← Back to Hay Network
           </Link>
         </main>
-        <SiteFooter />
       </>
     )
   }
@@ -768,8 +766,6 @@ export default function HayDetailPage() {
         <MarketplaceDisclaimer className="mt-6 border-t border-forest-green/10 pt-4" />
 
       </main>
-
-      <SiteFooter />
 
       {/* ── Review modal ─────────────────────────────────────────────────────── */}
       {showReview && (

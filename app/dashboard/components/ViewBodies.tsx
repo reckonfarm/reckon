@@ -512,12 +512,6 @@ export async function WeatherViewBody({
           </div>
 
 
-          {/* Legal links (no site footer this pass) */}
-          <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
-            <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
-            {' · '}
-            <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
-          </p>
         </>
       )}
     </>

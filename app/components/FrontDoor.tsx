@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
 import CountySearch from '@/app/components/CountySearch'
 import { Card } from '@/app/components/ui/Card'
 import { resolveBarns } from '@/lib/barn-resolver'
@@ -230,7 +229,6 @@ export default async function FrontDoor() {
           </section>
         </div>
       </main>
-      <SiteFooter />
     </>
   )
 }

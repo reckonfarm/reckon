@@ -7,6 +7,7 @@ import FeedbackWidget from '@/app/components/FeedbackWidget'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { flagEnabled } from '@/lib/flags'
+import SiteFooter from '@/app/components/SiteFooter';
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -77,6 +78,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-cream text-forest-green">
         <InAppBrowserBanner />
         {children}
+        <SiteFooter />
         <BottomTabBar />
         <FeedbackWidget />
         <Analytics />

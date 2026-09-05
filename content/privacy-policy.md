@@ -1,63 +1,73 @@
 # Dryline — Privacy Policy
 
 **Effective date:** June 2, 2026
-**Last updated:** July 27, 2026
+**Last updated:** September 5, 2026
 
 This Privacy Policy explains how Dryline ("Dryline," "we," "us") collects, uses, and shares information when you use dryline.farm and related services (the "Service"). By using the Service, you agree to this policy.
 
 ## 1. Who we are
-The Service is operated by [[ENTITY — Montana LLC formation pending confirmation]], based in Winnett, Montana. You can reach us at [[CONTACT EMAIL — business email setup pending]].
+{{OPERATOR}} We are based in Winnett, Montana. You can reach us {{CONTACT}}.
 
 ## 2. Information we collect
 
 **Information you give us:**
 - **Account information** — your email address and a password, or you may sign in with a one-time email code or with Google. Authentication is handled through Supabase. If you sign in with Google, Google shares your email address with us; we do not receive your Google password.
-- **Profile and operation details** you choose to enter — for example, a display name, a short bio, your home county, and ranch/operation information.
+- **Ranch records** — the records you and the people on your ranch enter or that your registered devices report: your ranch name and home county, places and fields, devices, events and readings, jobs, feeding, hay, rain, herd and operation details, and similar entries. These records belong to you (see Section 4).
 - **Communications** — feedback you submit through our in-app feedback widget (which also records the page you were on and your browser type to help us reproduce issues).
 
 **Information collected automatically:**
 - **Usage and device data** — pages viewed, features used, approximate location derived from IP, and browser/device type, collected through Vercel Web Analytics and Vercel Speed Insights to understand and improve the Service.
-- **Cookies** — we use a small number of cookies, mainly to keep you signed in. See Section 6.
+- **Device readings** — hardware you register with Dryline (tank sensors, field trackers, and similar) reports readings, timestamps, and, where the device has a GPS fix, coordinates, into your ranch ledger.
+- **Cookies** — we use a small number of cookies, mainly to keep you signed in. See Section 7.
+
+**Voice recordings** — if a voice entry feature is enabled for your account, a recording is processed to text so the text can be saved as a record. The audio is not retained beyond that processing.
 
 We do **not** collect government identifiers (such as Social Security or FSA farm numbers), bank or payment-card numbers, or sensitive financial account information through the Service.
 
 ## 3. How we use information
 We use information to:
 - create and maintain your account and keep you signed in;
-- provide the Service's features — drought information and LFP eligibility indicators and estimates;
-- send you transactional messages (sign-in codes, account notices) and the email alerts you ask for (drought/LFP alerts for counties on your watchlist);
+- keep your ranch records and show you summaries built from them;
+- show public county reference information — drought, USDA program indicators and estimates, weather, and markets;
+- send you transactional messages (sign-in codes, account notices) and the email alerts you ask for;
 - operate, secure, debug, and improve the Service using analytics and your feedback;
 - comply with law and enforce our Terms of Service.
 
-## 4. How we share information
+## 4. Your ranch records
+Your ranch records belong to you. We use them only to provide and improve the Service to you. We do not sell them, and we do not share them with third parties except the processors needed to run the Service (Section 5). Everyone you add to your ranch can see that ranch's records; other ranches cannot. You can export your records at any time by contacting us.
+
+## 5. How we share information
 We do not sell your personal information. We share it only:
-- **With service providers** who process data on our behalf: **Supabase** (authentication and database), **Vercel** (hosting, plus Vercel Web Analytics and Speed Insights), **Resend** (email delivery), and **Google** (only when you choose to sign in with Google). These providers may use your information only to provide services to us. When you view a map, map tiles are served by **OpenStreetMap**, which receives your device's IP address as part of loading those images.
+- **With processors** who handle data on our behalf, by category:
+{{PROCESSORS}}
+  These providers may use your information only to provide services to us. No payment processor is in use; if one is added, this policy will be updated first.
 - **For legal reasons** — to comply with law, respond to lawful requests, or protect the rights, safety, and property of Dryline, our users, or others.
 - **In a business transfer** — if we are involved in a merger, acquisition, or sale of assets, subject to this policy.
 
-## 5. Data from public sources
-The Service displays data from public sources such as the U.S. Drought Monitor, NOAA, and the National Weather Service. That data is about geographic areas, not about you, and is governed by those sources' own terms.
+## 6. Data from public sources
+The Service displays data from public sources such as the U.S. Drought Monitor, NOAA, the National Weather Service, USDA, and market reports. That data is about geographic areas and markets, not about you, and is governed by those sources' own terms.
 
-## 6. Cookies
+## 7. Cookies
 We use cookies primarily to keep you signed in (Supabase session cookies). You can control cookies through your browser settings; disabling them may affect sign-in and some features.
 
-## 7. Data retention
-We keep account information for as long as your account is active and as needed to provide the Service. You may request deletion of your account and associated personal data (see Section 9). We may retain limited information as required by law or for legitimate business purposes (e.g., security logs). Our providers (Supabase, Vercel, Resend, Google) may store and process data in the United States or other countries.
+## 8. Data retention
+We keep your account information and ranch records for as long as your account exists. When you ask us to delete your account, we delete your account and its records from the live database within 30 days. {{BACKUP_RETENTION}} We may retain limited information as required by law or for legitimate business purposes (for example, security logs). Our processors may store and process data in the United States or other countries.
 
-## 8. Security
-We use reasonable administrative, technical, and physical safeguards to protect your information. No method of transmission or storage is fully secure, and we cannot guarantee absolute security.
+## 9. Security
+We use reasonable administrative, technical, and physical safeguards to protect your information, including per-ranch access controls in the database. No method of transmission or storage is fully secure, and we cannot guarantee absolute security.
 
-## 9. Your choices and rights
-- **Access / update** — you can view and update your account information in the Service.
-- **Deletion** — you can request deletion of your account and personal data by contacting [[CONTACT EMAIL — business email setup pending]].
-- **Email** — you can stop email alerts in your profile/watchlist settings or via the link in those emails; you may still receive transactional messages tied to your account.
-- **State privacy rights** — depending on where you live (e.g., California and other states), you may have additional rights to access, delete, correct, or opt out of certain processing. To exercise them, contact [[CONTACT EMAIL — business email setup pending]].
+## 10. Your choices and rights
+- **Access / update** — you can view and update your account information and ranch records in the Service.
+- **Export** — you can ask for a copy of your ranch records at any time.
+- **Deletion** — you can request deletion of your account and personal data by contacting us (Section 13).
+- **Email** — you can stop email alerts in your profile settings or via the link in those emails; you may still receive transactional messages tied to your account.
+- **State privacy rights** — depending on where you live (e.g., California and other states), you may have additional rights to access, delete, correct, or opt out of certain processing. To exercise them, contact us (Section 13).
 
-## 10. Children
+## 11. Children
 The Service is intended for adults (18+) and is not directed to children. We do not knowingly collect information from anyone under 13.
 
-## 11. Changes
+## 12. Changes
 We may update this policy. We'll post the new effective date and, for material changes, provide reasonable notice.
 
-## 12. Contact
-Questions? Contact Dryline at [[CONTACT EMAIL — business email setup pending]] or 588 Kiehl Ranch Road, Winnett, Montana 59087.
+## 13. Contact
+{{OPERATOR_NAME}}. Reach us {{CONTACT}}.
