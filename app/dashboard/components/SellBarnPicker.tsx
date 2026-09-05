@@ -48,7 +48,7 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
       <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">
         Pins the barn you haul to. Prices are still that barn&apos;s report — the pin only picks which report you see first.
       </p>
-      {error && <p role="alert" className="mt-1 font-dm-sans text-[14px] font-medium text-warning">{error}</p>}
+      {error && <p role="alert" className="mt-1 font-dm-sans text-[15px] font-medium text-warning">{error}</p>}
     </div>
   )
 }

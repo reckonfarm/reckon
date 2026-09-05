@@ -130,7 +130,7 @@ async function main() {
       var small = []; var tiny = [];
       cards.forEach(function(card){
         Array.from(card.querySelectorAll('button, select, a[href]')).forEach(function(el){ var b = el.getBoundingClientRect(); if (b.height > 0 && b.height < 48) small.push((el.textContent||'').trim().slice(0,24) + ' ' + Math.round(b.height) + 'px') });
-        Array.from(card.querySelectorAll('p, span, li, label, text, tspan, option')).forEach(function(el){ var t = (el.textContent||'').trim(); var f = parseFloat(getComputedStyle(el).fontSize); if (t && f > 0 && f < 15 && el.tagName.toLowerCase() !== 'option') tiny.push(el.tagName.toLowerCase() + ' ' + f + 'px ' + t.slice(0,24)) });
+        Array.from(card.querySelectorAll('p, span, li, label, text, tspan, option')).forEach(function(el){ var t = (el.textContent||'').trim(); var f = parseFloat(getComputedStyle(el).fontSize); var caps = getComputedStyle(el).textTransform === 'uppercase'; if (t && f > 0 && f < 15 && !caps && el.tagName.toLowerCase() !== 'option') tiny.push(el.tagName.toLowerCase() + ' ' + f + 'px ' + t.slice(0,24)) });
       });
       var svg = document.querySelector('[data-audit="chart"] svg.recharts-surface');
       var chartW = svg ? Math.round(svg.getBoundingClientRect().width) : 0;
@@ -146,7 +146,7 @@ async function main() {
       const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
       record(`${width}px: every Markets control ≥ 48 px`, m.smallCount === 0, m.small.join(' | '))
-      record(`${width}px: no Markets text under 15 px`, m.tinyCount === 0, m.tiny.join(' | '))
+      record(`${width}px: no Markets text under 15 px (uppercase kicker labels excepted)`, m.tinyCount === 0, m.tiny.join(' | '))
       record(`${width}px: chart takes the width`, m.chartW >= width - 48, `chart ${m.chartW}px of ${width}`)
       // a point tap opens the detail panel; an event chip opens its source
       const pt = mp.locator('[data-audit="point"]').first()

@@ -18,7 +18,7 @@ import { dollarsPerCwtMove, fmtRange, matchLabel, scopeLabel, sensitivityLine, T
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
-  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[14px] font-semibold ${tone}`}>{label}</span>
+  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
 }
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
@@ -99,7 +99,7 @@ function LotCard({ l }: { l: LotValuation }) {
                   ? <>{fmtRange(src!.avg_price_min, src!.avg_price_max, src!.avg_price)}/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'} range</>
                   : <><span className="tabular-price">${src!.avg_price}</span>/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'}</>}
               </p>
-              {sens && <p className="mt-1 font-dm-sans text-[14px] font-medium text-forest-green">{sens}</p>}
+              {sens && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sens}</p>}
             </>
           ) : (
             <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">{l.reason}</p>

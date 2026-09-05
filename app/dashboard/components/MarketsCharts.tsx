@@ -209,7 +209,10 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   ]
 
   return (
-    <Card shadow="soft" className="p-4 sm:p-6" data-audit="history-card">
+    // On a phone the card bleeds to the screen edges and pads 12 px, so the
+    // chart takes the width; from sm it sits in the stack like every other card.
+    <div className="-mx-4 sm:mx-0">
+    <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
       <p className={EYEBROW}>Cattle markets · history</p>
       <div className="mt-3 space-y-3">
         <ChipRow<View> label="Chart" value={view} onChange={v => { setView(v); setPickedDot(null) }} options={[
@@ -396,5 +399,6 @@ export default function MarketsCharts(p: MarketsChartsProps) {
       {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} />}
       {picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} />}
     </Card>
+    </div>
   )
 }

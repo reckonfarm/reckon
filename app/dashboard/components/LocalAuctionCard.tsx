@@ -25,7 +25,7 @@ const fmtInt = (n: number) => n.toLocaleString('en-US')
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
-  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[14px] font-semibold ${tone}`}>{label}</span>
+  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
 }
 
 // One band line: precise $/cwt only when the head count clears the floor.
@@ -110,7 +110,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
           <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
             {scopeLabel(result.pinned ? { kind: 'pinned', town: result.town.replace(/,\s*[A-Z]{2}$/, '') } : { kind: 'nearby', town: result.town.replace(/,\s*[A-Z]{2}$/, '') })}
           </p>
-          <p className="mt-0.5 font-dm-sans text-[14px] text-forest-green/80">
+          <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">
             {result.barnName} · {result.miles} mi · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}
             {result.beyondHaul && !result.pinned && ' · beyond typical haul, shown for reference'}
           </p>

@@ -67,7 +67,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
               {estimate.as_of && ` · as of ${fmtShort(estimate.as_of)}`}
               {estimate.lots_thin > 0 && ` · ${estimate.lots_thin} on thin evidence`}
             </p>
-            {sensitivity && <p className="mt-1 font-dm-sans text-[14px] font-medium text-forest-green">{sensitivity}</p>}
+            {sensitivity && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sensitivity}</p>}
           </>
         ) : (
           <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">{estimate.note}</p>
