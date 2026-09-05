@@ -8,6 +8,7 @@ import { computeFieldBoundaries } from '@/lib/jobs/boundary'
 import { fmtAcres, fmtDay, fmtDuration, ranchYearStart } from '@/lib/jobs/format'
 import type { TrackPoint } from '@/lib/jobs/derive'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { LedgerPanel } from './LedgerTabs'
 
 // ─── Season totals — what the machines did, added up ───────────────────────────
 // Bales, acres, hours across the working list (dismissed sessions and minor
@@ -46,7 +47,9 @@ interface SeasonJobRow {
 // out loud. A season is dozens of sessions, not hundreds.
 const SEASON_JOB_CAP = 500
 
-export default async function SeasonTotals() {
+// `heading` (views2, commit 5): inside the ledger tab strip the tab is the
+// label, so the card's own eyebrow is dropped; anywhere else it keeps it.
+export default async function SeasonTotals({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
   const { data } = await supabase
     .from('jobs')
@@ -56,7 +59,7 @@ export default async function SeasonTotals() {
     .limit(SEASON_JOB_CAP)
 
   const jobs = (data ?? []) as unknown as SeasonJobRow[]
-  if (jobs.length === 0) return null
+  if (jobs.length === 0) return <LedgerPanel tab="season" empty />
 
   const annotations = await fetchAnnotations(supabase, jobs.map(j => j.id))
   const runs = await fetchRunsForJobs(supabase, jobs.map(j => j.id))
@@ -64,7 +67,7 @@ export default async function SeasonTotals() {
   const included = jobs.filter(j =>
     annotations.get(j.id)?.dismissed_at == null && (!isMinorJob(j) || isInProgress(j))
   )
-  if (included.length === 0) return null
+  if (included.length === 0) return <LedgerPanel tab="season" empty />
 
   // Track only for the included jobs — the one column the acres can't do without.
   const { data: trackRows } = await supabase
@@ -106,11 +109,14 @@ export default async function SeasonTotals() {
   stats.push({ value: fmtDuration(seconds), label: 'working time' })
 
   return (
+    <LedgerPanel tab="season" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      <p className={EYEBROW}>
-        This season
-      </p>
-      <div className={`mt-3 grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+      {heading && (
+        <p className={EYEBROW}>
+          This season
+        </p>
+      )}
+      <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {stats.map(s => (
           <div key={s.label}>
             <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>
@@ -123,5 +129,6 @@ export default async function SeasonTotals() {
         Since {fmtDay(included[0].started_at)} · read straight off the machine.
       </p>
     </Card>
+    </LedgerPanel>
   )
 }

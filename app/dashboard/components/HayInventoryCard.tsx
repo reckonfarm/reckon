@@ -3,6 +3,7 @@ import { Card } from '@/app/components/ui/Card'
 import { getHayLedger } from '@/lib/hay/queries'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { LedgerPanel } from './LedgerTabs'
 
 // ─── Hay — what you stacked, what you fed, what's left if you counted ─────────
 // Same shape as SeasonTotals: a self-contained server component on the
@@ -42,12 +43,14 @@ function fmtRate(n: number): string {
   return n >= 10 ? Math.round(n).toLocaleString() : n.toFixed(1)
 }
 
-export default async function HayInventoryCard() {
+// `heading` (views2, commit 5): inside the ledger tab strip the tab is the
+// label, so the card's own eyebrow is dropped; anywhere else it keeps it.
+export default async function HayInventoryCard({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
   // Season-scoped read (this ranch year, capped); the latest count still
   // anchors on-hand even when it predates the floor — see getHayLedger.
   const { entries, summary } = await getHayLedger(supabase, { since: ranchYearStart() })
-  if (entries.length === 0) return null
+  if (entries.length === 0) return <LedgerPanel tab="hay" empty />
 
   const { stacked, fed, burnRate, onHand, runOut, range } = summary
 
@@ -76,7 +79,7 @@ export default async function HayInventoryCard() {
   if (fed) {
     stats.push({ value: fed.bales.toLocaleString(), label: 'fed', sub: `${entriesWord(fed.entries)} · ${plural(fed.days, 'day')}` })
   }
-  if (stats.length === 0 && !burnRate) return null
+  if (stats.length === 0 && !burnRate) return <LedgerPanel tab="hay" empty />
 
   let rateLine: string | null = null
   if (runOut.date) {
@@ -87,12 +90,15 @@ export default async function HayInventoryCard() {
   }
 
   return (
+    <LedgerPanel tab="hay" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      <p className={EYEBROW}>
-        Hay
-      </p>
+      {heading && (
+        <p className={EYEBROW}>
+          Hay
+        </p>
+      )}
       {stats.length > 0 && (
-        <div className={`mt-3 grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {stats.map(s => (
             <div key={s.label}>
               <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>
@@ -111,5 +117,6 @@ export default async function HayInventoryCard() {
         </p>
       )}
     </Card>
+    </LedgerPanel>
   )
 }

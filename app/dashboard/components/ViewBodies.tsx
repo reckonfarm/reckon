@@ -19,6 +19,10 @@ import { getLatestCropCondition, type CropResult } from '@/lib/crop-service'
 import { getCattleCycle, type CycleResult } from '@/lib/cattle-cycle-service'
 import { flagEnabled } from '@/lib/flags'
 import type { Lot } from '@/lib/herd'
+import { getHerdAnchor } from '@/lib/herd-anchor'
+import { resolveBarns } from '@/lib/barn-resolver'
+import { getHomeCountyFips } from '@/lib/concierge-service'
+import HerdValueCard from './HerdValueCard'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
@@ -722,13 +726,28 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, hasHerd,
+  selectedCounty, lots, homeFips, supabase,
 }: {
   selectedCounty: CountyRow
-  // The Market Read gate (signed-in with a herd) — resolved by whoever renders
-  // the body: the page from its herd anchor, the deferred loader from the profile.
-  hasHerd: boolean
+  // The herd anchor is THIS body's (views2, commit 2): the profile's lots, the
+  // home county, and the user-scoped client come from whoever renders it —
+  // the page (eager ?view=markets) or the deferred loader — and the anchor is
+  // computed here, once, for both paths. hasHerd = the anchor exists.
+  lots: Lot[]
+  homeFips: string | null
+  supabase: Awaited<ReturnType<typeof createClient>>
 }) {
+  // Barns for the county in view, resolved ONCE: the Local auction card reads
+  // them, and when the county in view is the home county the herd anchor
+  // reuses them instead of resolving the same barns a second time. A different
+  // home county resolves its own set, concurrently.
+  const viewedBarns = resolveBarns(selectedCounty.fips)
+  const canAnchor = lots.length > 0 && !!homeFips
+  const anchorPromise = canAnchor
+    ? (homeFips === selectedCounty.fips ? viewedBarns : resolveBarns(homeFips!))
+        .then(resolved => getHerdAnchor({ lots, homeFips: homeFips!, supabase, resolved }))
+        .catch(() => null)
+    : Promise.resolve(null)
   // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
   // for it. getLatestLrp is a fast Supabase SELECT (the RMA fetch is the offline seed,
   // not a request-path call), so a direct await is fine — no Suspense needed. 'MT' is the
@@ -752,26 +771,33 @@ export async function MarketsViewBody({
   let crop: CropResult = { status: 'none' }
   let cycle: CycleResult = { status: 'none' }
 
-  const [lrpRes, localRes, nationalRes, chips] = await Promise.all([
+  // The chips are fetched alongside the anchor on the same precondition (lots +
+  // home county) and rendered only if the anchor actually resolved, so the
+  // Market Read gate stays "the anchor exists" without a serial hop.
+  const [lrpRes, localRes, nationalRes, chips, anchor] = await Promise.all([
     getLatestLrp('MT'),
-    getLocalAuctionRead(selectedCounty.fips),
+    viewedBarns.then(resolved => getLocalAuctionRead(selectedCounty.fips, resolved)),
     getNationalBeef(),
-    hasHerd
+    canAnchor
       ? Promise.all([getLatestCornSettle(), getFeedingRegionMoisture(), getLatestCropCondition(), getCattleCycle()])
       : Promise.resolve(null),
+    anchorPromise,
   ])
   lrpResult = lrpRes
   localAuction = localRes
   nationalBeef = nationalRes
   if (chips) [corn, moisture, crop, cycle] = chips
+  const hasHerd = anchor != null
 
   return (
     <>
       {/* Market Read leads the view its chips belong to — the missing
-          header for the cards below. Gate unchanged in the move
-          (signed-in with a herd): relocation only, nobody's
-          visibility changed. */}
+          header for the cards below. Gate: the herd anchor exists
+          (signed in, lots, home county). */}
       {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+      {/* Herd value — the one herd surface on the dashboard, here between the
+          read and the cash it's priced at (views2, commit 2; was on Today). */}
+      {anchor && <HerdValueCard anchor={anchor} />}
       <LocalAuctionCard result={localAuction} />
       <NationalBeefCard result={nationalBeef} />
       <LrpMarketsCard result={lrpResult} />
@@ -808,16 +834,22 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
         </Suspense>
       )
     case 'markets': {
-      // The Market Read gate — signed-in with a herd — from the profile itself.
-      let hasHerd = false
+      // The herd anchor's inputs — lots from the profile, the home county —
+      // read here, side by side, exactly as the page head reads them.
+      let lots: Lot[] = []
+      let homeFips: string | null = null
       if (user) {
-        const profile = await getOperationProfile({ supabase, user })
+        const [profile, hf] = await Promise.all([
+          getOperationProfile({ supabase, user }),
+          getHomeCountyFips(user.id).catch(() => null),
+        ])
         const herd = profile.status === 'ok' ? (profile.profile.herd as { lots?: Lot[] } | null) : null
-        hasHerd = Array.isArray(herd?.lots) && herd!.lots.length > 0
+        lots = Array.isArray(herd?.lots) ? herd!.lots : []
+        homeFips = hf
       }
       return (
         <Suspense fallback={<JobsViewSkeleton />}>
-          <MarketsViewBody selectedCounty={county} hasHerd={hasHerd} />
+          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} />
         </Suspense>
       )
     }
