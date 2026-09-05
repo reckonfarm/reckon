@@ -155,7 +155,14 @@ async function main() {
       record(`${width}px: chart takes the width`, m.chartW >= m.cardInner - 2 && m.cardW >= width - 40, `chart ${m.chartW}px in a ${m.cardW}px card (inner ${m.cardInner}) of ${width}`)
       // a point tap opens the detail panel; an event chip opens its source
       const pt = mp.locator('[data-audit="point"]').first()
-      if (await pt.count()) { await pt.tap().catch(() => pt.click()); const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false); record(`${width}px: tapping a point opens its evidence`, detail) }
+      if (await pt.count()) {
+        await pt.tap().catch(() => pt.click())
+        const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false)
+        record(`${width}px: tapping a point opens its evidence`, detail)
+        await mp.waitForTimeout(400)
+        const lingering = await mp.locator('.recharts-tooltip-wrapper:visible').count()
+        record(`${width}px: no tooltip lingers over the chart after the tap`, lingering === 0, `${lingering} tooltip(s)`)
+      }
       else record(`${width}px: tapping a point opens its evidence`, false, 'no points')
       const chip = mp.getByRole('button', { name: /^▾/ }).first()
       if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source`, src) }

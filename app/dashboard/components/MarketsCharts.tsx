@@ -161,12 +161,13 @@ function useHoverable(): boolean {
   return hover
 }
 
-function ObservationChart({ seriesList, unit, events, step, onPick }: {
+function ObservationChart({ seriesList, unit, events, step, onPick, picked }: {
   seriesList: { name: string; color: string; dots: Dot[] }[]
   unit: string
   events: MarketEvent[]
   step: boolean
   onPick: (d: Dot) => void
+  picked: boolean          // a point's panel is open — the tooltip is forced off so it never lingers over the chart
 }) {
   const hoverable = useHoverable()
   const all = seriesList.flatMap(s => s.dots)
@@ -181,7 +182,7 @@ function ObservationChart({ seriesList, unit, events, step, onPick }: {
           <XAxis type="number" dataKey="t" domain={[x0 - 86_400_000 * 2, x1 + 86_400_000 * 2]} ticks={ticks}
             tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} interval="preserveStartEnd" minTickGap={48} />
           <YAxis type="number" dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-          {hoverable && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
+          {hoverable && !picked && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
           <EventMarkers events={events} x0={x0 - 86_400_000 * 2} x1={x1 + 86_400_000 * 2} />
           {seriesList.map(s => (
             <Line key={`step-${s.name}`} data={s.dots} dataKey="v" type="stepAfter" stroke={s.color} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} name={`${s.name} (carried forward)`} />
@@ -281,7 +282,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                   ...(priorYears.length ? [{ name: `${priorYears[priorYears.length - 1]}`, color: GRAY, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === priorYears[priorYears.length - 1]) }) }] : []),
                   { name: `${currentYear}`, color: FOREST, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === currentYear) }) },
                 ]}
-                unit={unit} events={p.events} step={step} onPick={setPickedDot}
+                unit={unit} events={p.events} step={step} onPick={setPickedDot} picked={!!pickedDot}
               />
               <Note>
                 {priorYears.length === 0
@@ -319,7 +320,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
             ]
             return (
               <>
-                <ObservationChart seriesList={list} unit={unit} events={p.events} step={step} onPick={setPickedDot} />
+                <ObservationChart seriesList={list} unit={unit} events={p.events} step={step} onPick={setPickedDot} picked={!!pickedDot} />
                 <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[15px]" data-audit="legend">
                   {list.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
                 </ul>
@@ -378,7 +379,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                       <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
                       {axis(feeder.map(d => d.t))}
                       <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-                      {hoverable && <Tooltip content={<PointTip unit="$/cwt" />} />}
+                      {hoverable && !pickedDot && <Tooltip content={<PointTip unit="$/cwt" />} />}
                       <EventMarkers events={p.events} x0={x0} x1={x1} />
                       <Line data={feeder} dataKey="v" type="stepAfter" stroke={FOREST} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
                       <Scatter data={feeder} dataKey="v" fill={FOREST} shape={<EvidenceDot fill={FOREST} onPick={setPickedDot} />} isAnimationActive={false} />
