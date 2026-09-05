@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
+import { LedgerPanel } from './LedgerTabs'
 import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
@@ -84,7 +85,7 @@ export default async function RecentlyLogged() {
     .order('ts', { ascending: false })
     .limit(FEED_CAP)
   const rows = (data ?? []) as Row[]
-  if (rows.length === 0) return null
+  if (rows.length === 0) return <LedgerPanel tab="logged" empty />
 
   // Resolve place names in one query; unknown ids just print without a place.
   const ids = new Set<string>()
@@ -114,6 +115,7 @@ export default async function RecentlyLogged() {
   const lotName = (id: unknown) => { const s = str(id); return s ? lotNames.get(s) ?? null : null }
 
   return (
+    <LedgerPanel tab="logged" empty={false}>
     <Card shadow="none" className="px-5 py-4">
       <Heading level={5}>Recently logged</Heading>
       <ul className="mt-2 divide-y divide-forest-green/10">
@@ -127,5 +129,6 @@ export default async function RecentlyLogged() {
         ))}
       </ul>
     </Card>
+    </LedgerPanel>
   )
 }

@@ -41,6 +41,7 @@ import LogIt from './components/LogIt'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
+import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getRanch } from '@/lib/ranch-membership'
@@ -578,19 +579,20 @@ export default async function DashboardPage({
                         county page must not offer a Log it button that can only 401. */}
                     {user && <LogIt />}
 
-                    {/* The season ledgers, at the bottom (layout, commit 3). Each is
-                        the same self-gating server component it was on /home. */}
-                    <Suspense fallback={null}>
-                      <SeasonTotals />
-                    </Suspense>
-
-                    <Suspense fallback={null}>
-                      <HayInventoryCard />
-                    </Suspense>
-
-                    <Suspense fallback={null}>
-                      <RecentlyLogged />
-                    </Suspense>
+                    {/* The three ledgers as tabs (views2, commit 4) — This season ·
+                        Hay · Recently logged — directly under Log it. Each body is the
+                        same self-gating server component it was, streamed behind its own
+                        Suspense into the client strip and kept mounted (hidden) — a tab
+                        tap costs zero requests, and all three still fetch on every
+                        signed-in Today (deferring them is a separate decision). Signed
+                        out there is nothing to ledger, so no strip. */}
+                    {user && (
+                      <LedgerTabs
+                        season={<Suspense fallback={<LedgerLoading />}><SeasonTotals /></Suspense>}
+                        hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard /></Suspense>}
+                        logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged /></Suspense>}
+                      />
+                    )}
                   </>
                 ),
                 ...(view === 'jobs'
