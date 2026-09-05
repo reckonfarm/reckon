@@ -39,6 +39,7 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
+import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
@@ -507,9 +508,17 @@ export default async function DashboardPage({
                         signed-in Today: the ten-second path. Renders nothing until a
                         feeding has been logged. */}
                     {user && (
-                      <Suspense fallback={null}>
-                        <RepeatLastFeeding />
-                      </Suspense>
+                      <>
+                        {/* Since you last checked (Block 2E) — what the other people
+                            on the ranch put in the ledger since this person's last
+                            visit. Absent when nothing is new. */}
+                        <Suspense fallback={null}>
+                          <SinceYouWereHere />
+                        </Suspense>
+                        <Suspense fallback={null}>
+                          <RepeatLastFeeding />
+                        </Suspense>
+                      </>
                     )}
 
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
@@ -596,6 +605,9 @@ export default async function DashboardPage({
                         tap costs zero requests, and all three still fetch on every
                         signed-in Today (deferring them is a separate decision). Signed
                         out there is nothing to ledger, so no strip. */}
+                    {user && (
+                      <div id="ledgers" />
+                    )}
                     {user && (
                       <LedgerTabs
                         season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
