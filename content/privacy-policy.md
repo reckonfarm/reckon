@@ -51,7 +51,7 @@ The Service displays data from public sources such as the U.S. Drought Monitor, 
 We use cookies primarily to keep you signed in (Supabase session cookies). You can control cookies through your browser settings; disabling them may affect sign-in and some features.
 
 ## 8. Data retention
-We keep your account information and ranch records for as long as your account exists. When you ask us to delete your account, we delete your account and its records from the live database within 30 days. {{BACKUP_RETENTION}} We may retain limited information as required by law or for legitimate business purposes (for example, security logs). Our processors may store and process data in the United States or other countries.
+We keep your account information and ranch records for as long as your account exists. When you ask us to delete your account, active records are deleted within 30 days of your request. {{BACKUP_RETENTION}} We may retain limited information as required by law or for legitimate business purposes (for example, security logs). Our processors may store and process data in the United States or other countries.
 
 ## 9. Security
 We use reasonable administrative, technical, and physical safeguards to protect your information, including per-ranch access controls in the database. No method of transmission or storage is fully secure, and we cannot guarantee absolute security.

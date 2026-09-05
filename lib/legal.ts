@@ -17,12 +17,11 @@ export const CONTACT_EMAIL = 'reckon.farm@gmail.com'
 export const MAILING_ADDRESS = '588 Kiehl Ranch Road, Winnett, Montana 59087'
 
 /**
- * Days after account deletion within which the provider's database backups
- * purge the deleted records. Null until read from the Supabase project's
- * backup settings (plan-dependent) — the policy names the number only when
- * it is known, never a guess.
+ * Days after account deletion within which residual copies in the provider's
+ * encrypted daily backups purge. Supabase Pro: daily backups, 7-day retention
+ * (PK confirmed the upgrade 2026-09-05). Null would name no number.
  */
-export const BACKUP_RETENTION_DAYS: number | null = null
+export const BACKUP_RETENTION_DAYS: number | null = 7
 
 /** Processors, by category. Payments is absent because no payment processor is live. */
 export const PROCESSORS: readonly { category: string; name: string; purpose: string }[] = [
@@ -48,7 +47,7 @@ function contactPhrase(): string {
 function retentionPhrase(): string {
   return BACKUP_RETENTION_DAYS === null
     ? 'Copies in our database provider\'s backups are purged on its standard backup rotation after that.'
-    : `Copies in our database provider's backups are purged within a further ${BACKUP_RETENTION_DAYS} days.`
+    : `Residual copies in encrypted daily backups purge within a further ${BACKUP_RETENTION_DAYS} days.`
 }
 
 function processorList(): string {
