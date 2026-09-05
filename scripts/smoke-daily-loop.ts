@@ -99,7 +99,8 @@ async function seed() {
   userIdB = b.user.id
   const { error: mbErr } = await admin.from('ranch_members').insert({ ranch_id: ranchId, user_id: userIdB, role: 'member' })
   if (mbErr) throw new Error(`member B: ${mbErr.message}`)
-  await admin.from('profiles').upsert({ id: userIdB, email: EMAIL_B, home_county_fips: HOME_FIPS })
+  // B deliberately has NO home county (the November onboarding case): the ledger must still be there.
+  await admin.from('profiles').upsert({ id: userIdB, email: EMAIL_B })
   const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, county_fips: HOME_FIPS })
   if (oErr) throw new Error(`operation_profile: ${oErr.message}`)
   // /home resolves the home county from profiles.home_county_fips (lib/concierge-service).
@@ -342,15 +343,28 @@ async function main() {
     record('2B: Change opens the sheet pre-filled', changed === '2', `bales "${changed}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
 
+    // ── a member with NO home county: /home must still put Log it in front of them, and a feeding must save ──
+    const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    const pageB = await signIn(ctxB, EMAIL_B)
+    await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
+    await pageB.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    const urlB = pageB.url().replace(BASE, '')
+    const logItB = await pageB.getByRole('button', { name: /^Log it/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+    record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
+    const beforeB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
+    await logFeed(pageB, 1)
+    const seqB = await watchStates(pageB, 'Synced to ranch', 20_000, 'Fed 1 bale')
+    const afterB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
+    record('no home county: a feed event saves and syncs', seqB.includes('Synced to ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
+
     // ── 2E: the second person sees what A did; a visit clears it; A never sees A ──
     const { error: colErr } = await admin.from('ranch_members').select('last_seen_at').limit(1)
     if (colErr) {
       skip('2E: since-you-were-here for member B', `migration 044 not applied (${colErr.message.slice(0, 60)})`)
+      await ctxB.close()
     } else {
       const ownBlock = await page.getByText('Since you last checked').count() + await page.getByText('Since yesterday').count()
       record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
-      const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
-      const pageB = await signIn(ctxB, EMAIL_B)
       await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')

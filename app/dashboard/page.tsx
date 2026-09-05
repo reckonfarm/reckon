@@ -379,6 +379,29 @@ export default async function DashboardPage({
                dependency: a signed-in person with NO county (bare /dashboard,
                no home county) still needs a way to one, so it stays here for
                them too, above the EmptyState that points at it. */}
+        {/* ── The private ledger, county or not (Block 2, pilot blocker) ──
+            A member of a ranch logs from here whether or not a home county
+            is set: county selection is for the public drought / program /
+            weather / market tools, never a gate on the ledger. Same
+            self-gating, RLS-scoped components as the county view's Today. */}
+        {user && !selectedCounty && !fips && (
+          <div className="mx-auto mb-8 max-w-2xl space-y-4">
+            <Suspense fallback={null}>
+              <SinceYouWereHere />
+            </Suspense>
+            <Suspense fallback={null}>
+              <RepeatLastFeeding />
+            </Suspense>
+            <LogIt />
+            <div id="ledgers" />
+            <LedgerTabs
+              season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
+              hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
+              logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
+            />
+          </div>
+        )}
+
         {(!user || !selectedCounty) && (
           <section className="mb-8">
             <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
@@ -389,7 +412,7 @@ export default async function DashboardPage({
         )}
 
         {/* ── National view (no county selected) ───────────────────────────── */}
-        {!fips && <EmptyState />}
+        {!fips && <EmptyState signedIn={!!user} />}
 
         {fips && !selectedCounty && (
           <p className="text-sm text-forest-green/60 font-dm-sans">
@@ -671,7 +694,7 @@ export default async function DashboardPage({
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-forest-green/8 mx-auto">
@@ -681,10 +704,12 @@ function EmptyState() {
         </svg>
       </div>
       <Heading level={3}>
-        Select a county to begin
+        {signedIn ? 'Pick a county for the county tools' : 'Select a county to begin'}
       </Heading>
-      <p className="mt-2 max-w-xs text-sm text-forest-green/60 font-dm-sans">
-        Search above to view drought conditions and weekly history for any US county.
+      <p className="mt-2 max-w-xs text-[15px] text-forest-green/80 font-dm-sans">
+        {signedIn
+          ? 'Drought, program, weather, and market tools are by county. Your ledger above is here either way.'
+          : 'Search above to view drought conditions and weekly history for any US county.'}
       </p>
     </div>
   )
