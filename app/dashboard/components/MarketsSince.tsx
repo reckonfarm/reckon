@@ -14,7 +14,10 @@ import LastSeenPing from './LastSeenPing'
 // legitimate state. Nothing here manufactures movement; there is no "prices
 // moved" line, only "a new report is in".
 
-const DOW = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' })
+// Date-only values render at ranch noon so the shared formatter never slides
+// a UTC midnight back to the previous evening (the hay card's convention).
+const day = (iso: string) => fmtDay(`${iso}T12:00:00-06:00`)
+const DOW = (iso: string) => new Date(`${iso}T12:00:00-06:00`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/Denver' })
 
 export default async function MarketsSince({ localSlug, pinned }: { localSlug: string | null; pinned: boolean }) {
   const supabase = await createClient()
@@ -39,11 +42,11 @@ export default async function MarketsSince({ localSlug, pinned }: { localSlug: s
   if (barn) {
     const town = BARN_GEO[barn.slug_id]?.town.replace(/,\s*[A-Z]{2}$/, '') ?? barn.barn_name
     lines.push(isNew(barn.ingested_at)
-      ? `New ${town} report — ${DOW(barn.report_date)}, sale of ${fmtDay(barn.report_date)}${pinned ? ' (your pinned market)' : ''}`
-      : `Your latest local reference is from ${DOW(barn.report_date)} (${fmtDay(barn.report_date)})`)
+      ? `New ${town} report — ${DOW(barn.report_date)}, sale of ${day(barn.report_date)}${pinned ? ' (your pinned market)' : ''}`
+      : `Your latest local reference is from ${DOW(barn.report_date)} (${day(barn.report_date)})`)
   }
-  if (nat) lines.push(isNew(nat.ingested_at) ? `New national feeder summary — week ending ${fmtDay(nat.week_ending)}` : `No new national feeder summary since week ending ${fmtDay(nat.week_ending)}`)
-  if (lrp) lines.push(isNew(lrp.created_at) ? `New LRP coverage prices — effective ${fmtDay(lrp.effective_date)}` : `LRP coverage prices unchanged since ${fmtDay(lrp.effective_date)}`)
+  if (nat) lines.push(isNew(nat.ingested_at) ? `New national feeder summary — week ending ${day(nat.week_ending)}` : `No new national feeder summary since week ending ${day(nat.week_ending)}`)
+  if (lrp) lines.push(isNew(lrp.created_at) ? `New LRP coverage prices — effective ${day(lrp.effective_date)}` : `LRP coverage prices unchanged since ${day(lrp.effective_date)}`)
   if (lines.length === 0) return <LastSeenPing surface="markets" />
 
   return (
