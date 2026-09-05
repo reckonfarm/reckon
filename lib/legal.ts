@@ -11,8 +11,8 @@ export const OPERATOR =
 /** Short legal name for the footer line. */
 export const OPERATOR_NAME = 'Montana Cast Iron Solutions LLC, doing business as Dryline'
 
-/** Business contact address. PK supplies the value; do not invent one. */
-export const CONTACT_EMAIL = ''
+/** Business contact address. Interim Gmail until a dryline.farm mailbox exists — one-constant swap. */
+export const CONTACT_EMAIL = 'reckon.farm@gmail.com'
 
 export const MAILING_ADDRESS = '588 Kiehl Ranch Road, Winnett, Montana 59087'
 
