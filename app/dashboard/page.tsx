@@ -543,15 +543,11 @@ export default async function DashboardPage({
                     />
 
                     {/* ── The operation (shell pass, commit 3: Today absorbed /home) ──
-                        The operator's own line in the ledger, then what the machines
-                        and the logs say — the /home hierarchy, in order. Every card is
-                        the same self-gating server component it was on /home (RLS-
-                        scoped reads that return nothing signed out → null). LogIt is
-                        the one client piece and never gated itself, so it takes the
-                        page's user: a public county page must not offer a Log it
-                        button that can only 401. */}
-                    {user && <LogIt />}
-
+                        What the machines say, then the sky and the news, then the
+                        operator's own line in the ledger (Log it, views2 commit 3) and
+                        the ledgers it feeds. Every card is the same self-gating server
+                        component it was on /home (RLS-scoped reads that return nothing
+                        signed out → null). */}
                     {/* A machine working RIGHT NOW, carrying the headline number for
                         the job type (bale count / percent cut + ETA). Null when nothing
                         runs and for signed-out visitors (RLS returns nothing). */}
@@ -575,6 +571,12 @@ export default async function DashboardPage({
                       </Suspense>
                     </div>
                     <NewsHookCard fips={selectedCounty.fips} />
+
+                    {/* Log it — the primary action, directly above the ledgers its
+                        saves feed (views2, commit 3). LogIt is the one client piece
+                        and never gated itself, so it takes the page's user: a public
+                        county page must not offer a Log it button that can only 401. */}
+                    {user && <LogIt />}
 
                     {/* The season ledgers, at the bottom (layout, commit 3). Each is
                         the same self-gating server component it was on /home. */}

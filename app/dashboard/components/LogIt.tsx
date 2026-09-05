@@ -344,7 +344,7 @@ export default function LogIt() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-sm font-semibold text-white transition-colors hover:bg-forest-green/90"
+        className="min-h-[52px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-base font-semibold text-white shadow-sm shadow-forest-green/20 transition-colors hover:bg-forest-green/90"
       >
         Log it
       </button>
