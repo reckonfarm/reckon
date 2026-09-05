@@ -1,14 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
-import { useRouter } from 'next/navigation'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
+import { enqueue, newEventId } from '@/lib/outbox'
+import SaveStatus from './SaveStatus'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
 // each at most three visible fields, time defaults to now (change it behind a
@@ -27,6 +28,44 @@ const LAST_PLACE_KEY = 'manual_log_last_place'
 // The last lot fed — its OWN key, never the place key: a place and a lot are
 // two different answers and one must never overwrite the other.
 const LAST_LOT_KEY = 'manual_log_last_lot'
+// A half-filled sheet survives an app switch (Block 2A): every keystroke is
+// mirrored here and the sheet reopens on it. Cleared on save or an explicit
+// Cancel/discard — never by an accident.
+const DRAFT_KEY = 'manual_log_draft_v1'
+
+// Other surfaces (Repeat last, a place page) open the sheet pre-filled by
+// dispatching this event with a Draft — no prop plumbing across the server
+// boundary. `open: true` opens the sheet; without it the draft just waits.
+export const LOGIT_OPEN_EVENT = 'dryline:logit-open'
+export interface Draft {
+  type: ManualEventType | null
+  n1?: string
+  what?: string
+  place?: string        // existing place id
+  fromPlace?: string
+  toPlace?: string
+  lot?: string
+  when?: string
+  asOf?: string
+}
+export function openLogIt(draft: Draft) {
+  try { window.dispatchEvent(new CustomEvent(LOGIT_OPEN_EVENT, { detail: draft })) } catch { /* SSR */ }
+}
+function readDraft(): Draft | null {
+  try { const raw = localStorage.getItem(DRAFT_KEY); return raw ? (JSON.parse(raw) as Draft) : null } catch { return null }
+}
+// A tiny external store so "is there a draft?" is read through
+// useSyncExternalStore (server: false; client: the truth) — no setState in an
+// effect, no hydration mismatch.
+const draftListeners = new Set<() => void>()
+function writeDraft(d: Draft | null) {
+  try { if (d && d.type) localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); else localStorage.removeItem(DRAFT_KEY) } catch { /* private mode */ }
+  for (const l of draftListeners) l()
+}
+function subscribeDraft(l: () => void) { draftListeners.add(l); return () => { draftListeners.delete(l) } }
+function useHasDraft(): boolean {
+  return useSyncExternalStore(subscribeDraft, () => !!readDraft()?.type, () => false)
+}
 
 type Place = { id: string; name: string; kind: string }
 
@@ -138,8 +177,24 @@ function NumberField({ label, value, onChange, step = '1', max, placeholder = '�
   )
 }
 
+// One plain line for the status strip and the outbox: what was saved.
+function describe(
+  type: ManualEventType, n: number, what: string,
+  lot: string | null, place: string | null, from: string | null, to: string | null,
+): string {
+  const at = place ? ` at ${place}` : ''
+  const bales = (k: number) => `${k} ${k === 1 ? 'bale' : 'bales'}`
+  switch (type) {
+    case 'rain':          return `${Number.isFinite(n) ? n.toFixed(2) : '?'}" of rain${at}`
+    case 'hay_fed':       return `Fed ${bales(n)}${lot ? ` to ${lot}` : ''}${at}`
+    case 'bales_stacked': return `Stacked ${bales(n)}${at}`
+    case 'cattle_moved':  return `Moved ${n} head${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
+    case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
+    case 'hay_inventory': return `${bales(n)} on hand${at}`
+  }
+}
+
 export default function LogIt() {
-  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ManualEventType | null>(null)
   const [places, setPlaces] = useState<Place[]>([])
@@ -160,11 +215,54 @@ export default function LogIt() {
   const [editWhen, setEditWhen] = useState(false)
   const [asOf, setAsOf] = useState('')      // hay_inventory: 'YYYY-MM-DD', '' = today
 
+  const hasDraft = useHasDraft()
+
   const close = useCallback(() => {
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
     setLots(null); setLot('')
+    writeDraft(null)
   }, [])
+
+  // Apply a Draft to the fields (restore after an app switch, or a pre-fill
+  // from Repeat last / a place page).
+  const applyDraft = useCallback((d: Draft, andOpen: boolean) => {
+    setType(d.type)
+    setN1(d.n1 ?? ''); setWhat(d.what ?? '')
+    setPlace(d.place ? { id: d.place, newName: null } : EMPTY_SLOT)
+    setFromPlace(d.fromPlace ? { id: d.fromPlace, newName: null } : EMPTY_SLOT)
+    setToPlace(d.toPlace ? { id: d.toPlace, newName: null } : EMPTY_SLOT)
+    setLot(d.lot ?? ''); setWhen(d.when ?? ''); setEditWhen(!!d.when); setAsOf(d.asOf ?? '')
+    setError(null)
+    if (andOpen) setOpen(true)
+  }, [])
+
+  // Another surface asked for the sheet, pre-filled.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent<Draft>).detail
+      if (d && d.type) { writeDraft(d); applyDraft(d, true) }
+    }
+    window.addEventListener(LOGIT_OPEN_EVENT, onOpen)
+    return () => window.removeEventListener(LOGIT_OPEN_EVENT, onOpen)
+  }, [applyDraft])
+
+  // Mirror every change into the draft while a type is chosen.
+  useEffect(() => {
+    if (!open || !type) return
+    writeDraft({
+      type, n1, what,
+      place: place.newName === null ? place.id : undefined,
+      fromPlace: fromPlace.newName === null ? fromPlace.id : undefined,
+      toPlace: toPlace.newName === null ? toPlace.id : undefined,
+      lot, when: editWhen ? when : undefined, asOf,
+    })
+  }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf])
+
+  const openSheet = () => {
+    const d = readDraft()
+    if (d && d.type) applyDraft(d, true); else setOpen(true)
+  }
 
   // Lots load the first time Hay fed is picked (same promise-chain shape as the
   // places load; no setState in the effect body). The last lot fed only applies
@@ -180,7 +278,7 @@ export default function LogIt() {
         const list = Array.isArray(j?.profile?.herd?.lots) ? j!.profile!.herd!.lots! : []
         setLots(list)
         const last = readLastLot()
-        setLot(list.some(l => l.id === last) ? last : '')
+        setLot(prev => prev && list.some(l => l.id === prev) ? prev : (list.some(l => l.id === last) ? last : ''))
       })
       .catch(() => { if (!cancelled) setLots([]) })
     return () => { cancelled = true }
@@ -197,7 +295,7 @@ export default function LogIt() {
         const list: Place[] = j.places ?? []
         setPlaces(list)
         const last = readLastPlace()
-        setPlace(list.some(p => p.id === last) ? { id: last, newName: null } : EMPTY_SLOT)
+        setPlace(prev => prev.id || prev.newName !== null ? prev : (list.some(p => p.id === last) ? { id: last, newName: null } : EMPTY_SLOT))
       })
       .catch(() => { /* offline: select still offers blank + new */ })
     return () => { cancelled = true }
@@ -274,19 +372,28 @@ export default function LogIt() {
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; break
         case 'hay_inventory': body.bales = num; body.as_of = asOf || todayKey(); body.place_id = placeId; break
       }
-      const res = await fetch('/api/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) { setError(json.error ?? 'Could not save'); return }
+      if (!Number.isFinite(num) && type !== 'rain') { setError('Enter a number'); return }
+
+      // Block 2A: the entry is saved ON THIS PHONE first, under an id minted
+      // here and now; the outbox uploads it (and retries with the same id).
+      // A refused local write is the one failure that means "not saved".
+      const placeName = (id: string | null) => places.find(p => p.id === id)?.name ?? null
+      const lotName = lots?.find(l => l.id === lot)
+      body.id = newEventId()
+      const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId))
+      try {
+        enqueue(body, label)
+      } catch {
+        setError("Couldn't save — try again. This phone refused to store the entry.")
+        return
+      }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
       if (type === 'hay_fed') writeLastLot(lot)
       close()
-      router.refresh()
     } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : 'No connection — try again')
+      const msg = err instanceof Error && err.message ? err.message : ''
+      // Creating a NEW place needs the server; an existing place saves offline.
+      setError(msg && !/fetch|network|load failed/i.test(msg) ? msg : 'No connection — a new place needs one. Pick an existing place, or try again.')
     } finally {
       setBusy(false)
     }
@@ -341,13 +448,16 @@ export default function LogIt() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="min-h-[52px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-base font-semibold text-white shadow-sm shadow-forest-green/20 transition-colors hover:bg-forest-green/90"
-      >
-        Log it
-      </button>
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={openSheet}
+          className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white shadow-sm shadow-forest-green/20 transition-colors hover:bg-forest-green/90"
+        >
+          {hasDraft && !open ? 'Log it · finish your unsaved entry' : 'Log it'}
+        </button>
+        <SaveStatus />
+      </div>
 
       {open && (
         <div
@@ -427,9 +537,9 @@ export default function LogIt() {
                   </Button>
                   <button
                     type="button"
-                    onClick={close}
+                    onClick={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }}
                     disabled={busy}
-                    className="px-2 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green disabled:opacity-50"
+                    className="min-h-[48px] px-3 font-dm-sans text-[15px] font-semibold text-forest-green/70 hover:text-forest-green disabled:opacity-50"
                   >
                     Cancel
                   </button>

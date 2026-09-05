@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import { flagDisabled, flagEnabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
+import { hasUnsynced } from '@/lib/outbox'
 
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
 // overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
@@ -46,6 +47,8 @@ export default function SiteHeader({ center }: Props) {
   }, [user])
 
   async function signOut() {
+    // Block 2A: anything still on the phone would be orphaned by a sign-out.
+    if (hasUnsynced() && !window.confirm('Some entries have not synced to the ranch yet. Sign out anyway and lose them?')) return
     const supabase = createClient()
     await supabase.auth.signOut()
   }
