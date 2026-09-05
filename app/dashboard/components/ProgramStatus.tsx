@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LfpEligibilityResult, LfpTierStatus } from '@/lib/lfp-eligibility'
+import { deadlineFor, fmtDeadlineLong, fmtVerifiedMonth, isUrgent } from '@/lib/programDates'
 import {
   estimatePayment,
   PAYMENT_RATES_2026,
@@ -223,8 +224,12 @@ function ActionCards({ year, currentYear }: {
   currentYear: number
 }) {
   const programYear = year === 'current' ? currentYear : currentYear - 1
-  const deadlineYear = programYear + 1
-  const signupClosed = year === 'prior'
+  // The deadline is keyed on the LOSS year and read from lib/programDates.ts —
+  // never derived from the calendar. No verified row → honest FSA-office copy.
+  const deadline = deadlineFor('LFP', programYear)
+  const signupClosed = deadline
+    ? deadline.deadline < new Date().toISOString().slice(0, 10)
+    : year === 'prior'
 
   return (
     <div id="action-cards" className="space-y-2">
@@ -312,13 +317,21 @@ function ActionCards({ year, currentYear }: {
             <p className="text-xs font-semibold text-forest-green font-dm-sans">
               4. File by the deadline
             </p>
-            {signupClosed ? (
+            {!deadline ? (
               <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
-                Applications for {programYear} losses were due March 1, {deadlineYear}. Contact your FSA office if you have not yet enrolled.
+                Ask your FSA office for the application deadline for {programYear} losses.
+              </p>
+            ) : signupClosed ? (
+              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+                Applications for {programYear} losses were due {fmtDeadlineLong(deadline.deadline)}. Contact your FSA office if you have not yet enrolled.
+              </p>
+            ) : isUrgent(deadline) ? (
+              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+                Applications for {programYear} losses are due by {fmtDeadlineLong(deadline.deadline)}. Do not wait — FSA offices get busy as the deadline approaches.
               </p>
             ) : (
               <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
-                Applications for {programYear} losses are due by March 1, {deadlineYear}. Do not wait — FSA offices get busy as the deadline approaches.
+                Applications for {programYear} losses are due {fmtDeadlineLong(deadline.deadline)} · verified {fmtVerifiedMonth(deadline)}.
               </p>
             )}
           </div>

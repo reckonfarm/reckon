@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createServiceClient } from './supabase'
+import { PROGRAM_DATES, programYearOf } from './programDates'
 
 // ─── RMA deadline service (read path) ────────────────────────────────────────────
 //
@@ -65,6 +66,9 @@ function precedenceKey(r: DeadlineRow): string {
 // PROGRAM_AGENCY in DeadlineCountdownCard.tsx.
 const PROGRAM_LEVEL = new Set(['fsa_acreage', 'rma_acreage', 'lfp'])
 
+// Table slugs whose dates are governed by lib/programDates.ts, not the table.
+const PROGRAM_DATE_SLUGS = new Set(PROGRAM_DATES.map(d => d.program.toLowerCase()))
+
 // ─── Quiet-card visibility (Block 2: silence is a feature) ───────────────────────
 //
 // The full deadline card renders only when there is something actionable; otherwise it
@@ -85,6 +89,9 @@ export function isDeadlineLoud(result: UpcomingDeadlinesResult): boolean {
   if (result.deadlines[0].daysUntil <= DEADLINE_LOUD_WINDOW_DAYS) return true
   const today = new Date().toISOString().slice(0, 10)
   return result.deadlines.some(d => {
+    // Rows governed by lib/programDates.ts are VERIFIED dates, not newly
+    // published ones — re-verifying them must not make the card loud.
+    if (PROGRAM_DATE_SLUGS.has(d.crop_or_program)) return false
     if (!d.as_of) return false
     const age = daysBetween(d.as_of, today)
     return age >= 0 && age <= DEADLINE_NEWLY_PUBLISHED_DAYS
@@ -129,6 +136,26 @@ export async function getUpcomingDeadlines(
     }
 
     let rows = (data ?? []) as DeadlineRow[]
+
+    // 2b) LFP + PRF come from lib/programDates.ts, THE single source of truth
+    //     (Block 1): drop whatever the table says for those two programs and
+    //     splice in the verified rows, so a stale seed can never leak a wrong
+    //     date onto the dashboard. Past dates are filtered exactly like the
+    //     table's (>= today); order is restored below.
+    rows = rows.filter(r => !PROGRAM_DATE_SLUGS.has(r.crop_or_program))
+    for (const pd of PROGRAM_DATES) {
+      if (pd.deadline < today) continue
+      rows.push({
+        county_fips:     null,
+        crop_or_program: pd.program.toLowerCase(),
+        deadline_type:   pd.program === 'LFP' ? 'application' : 'sales_closing',
+        deadline_date:   pd.deadline,
+        crop_year:       programYearOf(pd),
+        source:          pd.program === 'LFP' ? 'USDA FSA' : 'USDA RMA',
+        as_of:           pd.verifiedAt,
+      })
+    }
+    rows.sort((a, b) => a.deadline_date.localeCompare(b.deadline_date))
 
     // 4) County-override precedence: drop the statewide row when a county-specific row
     //    exists for the same crop/type/year.
