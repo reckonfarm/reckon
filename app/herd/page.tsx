@@ -71,7 +71,7 @@ export default async function HerdPage() {
             <p className="font-dm-sans text-sm font-semibold text-ink">Set your home county to value your herd</p>
             <p className="mt-1 font-dm-sans text-sm text-muted/70">
               Your HerdEstimate uses the nearest cattle auction to your operation.{' '}
-              <Link href="/dashboard" className="text-accent underline hover:text-accent/80">Set your home county</Link>{' '}
+              <Link href="/dashboard" prefetch={false} className="text-accent underline hover:text-accent/80">Set your home county</Link>{' '}
               and it&rsquo;ll show up here.
             </p>
           </Card>

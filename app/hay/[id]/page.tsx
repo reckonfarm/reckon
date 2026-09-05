@@ -695,6 +695,7 @@ export default function HayDetailPage() {
           <p className="text-sm font-dm-sans text-forest-green/80">{droughtContextText}</p>
           <Link
             href={`/dashboard?fips=${county?.fips ?? ''}`}
+            prefetch={false}
             className="mt-2 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-forest-green/70"
           >
             View {county?.name ?? ''} drought dashboard →

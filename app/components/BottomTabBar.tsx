@@ -15,12 +15,13 @@ import { HOME_COUNTY_CHANGED } from '@/app/dashboard/components/HomeCountyButton
 // /dashboard gets prefetched; for a signed-in person that response is the
 // middleware's 307 to the home county, the router caches the redirected tree
 // under the /dashboard key, and later pushes to /dashboard?fips=… get served
-// from it. So the anchor's href is the RESOLVED county URL
-// (/dashboard?fips=<home>) whenever the home county is known, prefetch is off
-// on it regardless, and when there is no home county yet the tap is a hard
-// navigation to bare /dashboard so the redirect never enters the router
-// cache. The home county is read once per navigation from /api/home-county
-// (same cadence as the unread badge); signed out it's a 401 → null.
+// from it. So the anchor is a PLAIN <a> (nav-fixes, commit 1) — the router
+// never prefetches it — whose href is the RESOLVED county URL
+// (/dashboard?fips=<home>) once the home county is known, else bare
+// /dashboard, which a full navigation resolves through the middleware
+// exactly like the landing. The home county is read once per navigation from
+// /api/home-county (same cadence as the unread badge); signed out it's a
+// 401 → null.
 //
 // The four view tabs (DroughtCattleToggle) are the in-page navigation INSIDE
 // the dashboard; this bar is the route-level one. Two systems, deliberately:
@@ -182,13 +183,15 @@ export default function BottomTabBar() {
         <div className="flex flex-1">{rightTabs.map(renderTab)}</div>
 
         {/* Raised center anchor — "Operation": the dashboard on the home county.
-            prefetch={false} always (see the trap note up top); with no home county
-            known the tap hard-navigates so bare /dashboard's redirect never enters
-            the router cache. */}
-        <Link
+            A PLAIN <a>, never a <Link> (nav-fixes, commit 1): a Link here was
+            prefetched on production the moment it mounted — before the home
+            county resolved its href was bare /dashboard, and prefetch={false}
+            did not stop it. A plain anchor is never prefetched by the router,
+            so the middleware redirect can't enter the router cache from here;
+            the tap is a full navigation (the same thing the landing does), on
+            every platform including the installed PWA. */}
+        <a
           href={anchorHref}
-          prefetch={false}
-          onClick={homeFips ? undefined : e => { e.preventDefault(); window.location.assign('/dashboard') }}
           aria-label="Operation"
           aria-current={opActive ? 'page' : undefined}
           className="absolute left-1/2 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center"
@@ -211,7 +214,7 @@ export default function BottomTabBar() {
           >
             Operation
           </span>
-        </Link>
+        </a>
       </div>
     </nav>
   )

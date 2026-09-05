@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useLinkStatus } from 'next/link'
 import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 import { useDashboardView } from '@/app/dashboard/components/DashboardViews'
@@ -81,10 +80,15 @@ export default function ConditionsStrip({
   const chip = sev.level != null ? CHIP[sev.level] : NO_DROUGHT_CHIP
   const chipLabel = sev.level != null ? `D${sev.level} ${SEVERITY_SHORT[sev.level]}` : 'No drought'
 
+  // A plain <a>, not a <Link> (nav-fixes, commit 1). The tap is an in-page
+  // view switch (setView below); the href is the same URL for a no-JS or
+  // out-of-provider fallback. As a <Link> it was prefetched, and Next's
+  // segment cache retries a route-tree prefetch for a URL WITH search params
+  // as the bare pathname (segment-cache/scheduler.js pingRoute) — i.e. bare
+  // /dashboard, whose middleware 307 is the flow-4a router-cache trap.
   return (
-    <Link
+    <a
       href={`/dashboard?fips=${fips}&view=drought`}
-      scroll={false}
       onClick={dashboardView ? e => { e.preventDefault(); dashboardView.setView('drought') } : undefined}
       className="flex min-h-[44px] flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"
     >
@@ -108,6 +112,6 @@ export default function ConditionsStrip({
         <span className="text-xs text-forest-green/50">Weather</span>
         <TapStatus />
       </span>
-    </Link>
+    </a>
   )
 }
