@@ -99,6 +99,21 @@ function UnavailableCard() {
   )
 }
 
+// Format an ISO instant in the forecast's own local time: take the UTC offset
+// from an NWS period's startTime ("…T18:00:00-06:00"), shift the instant by it,
+// and format in UTC. Pure arithmetic — identical on the server and in any
+// browser, and it reads as the county's clock rather than the viewer's. An
+// unparseable offset formats as UTC (still identical on both sides).
+function fmtInForecastZone(iso: string, offsetFrom: string): string | null {
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  const m = /([+-])(\d{2}):(\d{2})$/.exec(offsetFrom)
+  const offsetMin = m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0
+  return new Date(t + offsetMin * 60_000).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
+  })
+}
+
 export default function ForecastPanel({ data }: { data: LocalForecast | null }) {
   const [open, setOpen] = useState<number | null>(null)
 
@@ -107,11 +122,12 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
   const days = buildDays(data.periods)
   if (days.length === 0) return <UnavailableCard />
 
-  const updated = data.updateTime
-    ? new Date(data.updateTime).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-      })
-    : null
+  // The "updated" clock is printed in the FORECAST's own local time — the UTC
+  // offset the NWS periods carry — never the running clock's zone (nav-fixes,
+  // commit 2). Formatting with the default zone hydration-mismatched on
+  // production: the server (UTC) wrote "9:26 PM" and a Mountain browser wrote
+  // "3:26 PM" for the same instant, React error #418 on every public Today.
+  const updated = data.updateTime ? fmtInForecastZone(data.updateTime, data.periods[0]?.startTime ?? '') : null
 
   return (
     <Card className="p-4 sm:p-5">
