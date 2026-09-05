@@ -63,6 +63,7 @@ async function teardown(label: string) {
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
   }
   n += (await admin.from('ranches').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
@@ -83,6 +84,9 @@ async function seed() {
   if (pErr) throw new Error(`place: ${pErr.message}`)
   const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, county_fips: HOME_FIPS })
   if (oErr) throw new Error(`operation_profile: ${oErr.message}`)
+  // /home resolves the home county from profiles.home_county_fips (lib/concierge-service).
+  const { error: hErr } = await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS })
+  if (hErr) throw new Error(`profile: ${hErr.message}`)
 }
 
 async function signIn(ctx: BrowserContext): Promise<Page> {
@@ -91,19 +95,41 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
   if (!tokenHash) throw new Error(`generateLink: ${link.error?.message}`)
   const page = await ctx.newPage()
   page.on('dialog', d => void d.accept())
-  await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/dashboard`)
-  await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 })
+  if (process.env.DEBUG_SIGNIN) {
+    page.on('response', r => { if (r.request().isNavigationRequest() || /auth/.test(r.url()) || r.status() >= 400) console.log(`   ${r.status()} ${r.url().replace(BASE, '').slice(0, 110)}  set-cookie=${(r.headers()['set-cookie'] ?? '').split(';')[0].slice(0, 40)}`) })
+    page.on('console', m => { if (m.type() === 'error') console.log(`   console.error ${m.text().slice(0, 140)}`) })
+    page.on('pageerror', e => console.log(`   pageerror ${e.message.slice(0, 140)}`))
+  }
+  // The callback exchanges the token for a session cookie and hands off to
+  // /dashboard client-side; on a cold preview that hand-off can be slow, so
+  // give it a moment, then go there directly and check the header for the
+  // signed-in email — the cookie is what matters, not the hand-off.
+  await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
+  await page.waitForURL(u => u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  if (process.env.DEBUG_SIGNIN) {
+    await page.waitForTimeout(6000)
+    console.log('   after callback:', page.url().replace(BASE, ''), (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
+    console.log('   cookies:', (await ctx.cookies()).map(c => `${c.name.slice(0, 28)}@${c.domain}${c.secure ? ' secure' : ''} ${c.sameSite}`).join(' | '))
+  }
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+  // The header paints "Sign in" first and swaps to the email once the browser
+  // client has read the session — wait for the swap, not the first paint.
+  await page.locator('header').getByText(EMAIL).waitFor({ timeout: 20_000 }).catch(async () => {
+    const header = await page.locator('header').innerText().catch(() => '')
+    throw new Error(`sign-in did not stick (header: ${header.replace(/\s+/g, ' ').slice(0, 120)})`)
+  })
   return page
 }
 
 // Watch the SaveStatus strip and collect the distinct sequence of state
 // labels it shows, until `until` appears or the time runs out.
 const STATES = ['Saved on this phone', 'Waiting to sync', 'Synced to ranch', "Couldn't save — try again"]
-async function watchStates(page: Page, until: string, timeoutMs: number): Promise<string[]> {
+async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
     const text = await page.locator('[role="status"]').first().innerText().catch(() => '')
+    if (label && !text.includes(label)) { await page.waitForTimeout(50); continue }   // still showing the previous entry
     const s = STATES.find(x => text.includes(x))
     if (s && seen[seen.length - 1] !== s) seen.push(s)
     if (s === until) break
@@ -117,8 +143,10 @@ async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean } 
   await page.getByRole('button', { name: /Hay fed/ }).click()
   await page.getByLabel('Bales').fill(String(bales))
   const save = page.getByRole('button', { name: 'Save', exact: true })
-  if (opts.doubleTap) { await Promise.all([save.click(), save.click({ force: true }).catch(() => {})]) }
-  else await save.click()
+  if (opts.doubleTap) {
+    // Two clicks in the same tick, straight at the DOM — faster than a thumb.
+    await save.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click() })
+  } else await save.click()
 }
 
 async function outbox(page: Page): Promise<{ id: string; state: string; body: Record<string, unknown> }[]> {
@@ -153,10 +181,12 @@ async function main() {
     const homeUrl = page.url().replace(BASE, '')
     const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
     record('/home renders the home county Today stack', homeUrl.includes(`fips=${HOME_FIPS}`) && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
-    for (const fips of ['30069', '30027']) {
+    for (const [fips, county] of [['30069', 'Petroleum'], ['30027', 'Fergus']]) {
       await page.goto(`/dashboard?fips=${fips}`, { waitUntil: 'domcontentloaded' })
       const h1 = await page.locator('h1').first().innerText().catch(() => '')
-      record(`/dashboard?fips=${fips} renders`, /County/.test(h1), h1.slice(0, 40))
+      const body = await page.locator('body').innerText().catch(() => '')
+      // h1 is the ranch name for a member (flow, Block 7); the county sits on the home-base line.
+      record(`/dashboard?fips=${fips} renders`, h1.trim().length > 0 && body.includes(county), `h1 "${h1.slice(0, 30)}" · ${county}: ${body.includes(county)}`)
     }
     const t = Date.now()
     const r = await page.request.get('/api/counties?search=Fergus')
@@ -166,7 +196,7 @@ async function main() {
     // ── 2A: online save, four states in order, one row under the client id ──
     await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await logFeed(page, 4)
-    const seq1 = await watchStates(page, 'Synced to ranch', 20_000)
+    const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
@@ -183,12 +213,11 @@ async function main() {
     // ── airplane mode ──
     await ctx.setOffline(true)
     await logFeed(page, 3)
-    const seqOff = await watchStates(page, 'Waiting to sync', 8_000)
-    await page.waitForTimeout(1500)
-    const stillWaiting = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Waiting to sync')
-    record('offline save: Saved on this phone → Waiting to sync, and stays', seqOff[0] === 'Saved on this phone' && stillWaiting, seqOff.join(' → '))
+    const seqOff = await watchStates(page, 'Synced to ranch', 4_000, 'Fed 3 bales')   // must NOT reach synced
+    const stillLocal = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Saved on this phone')
+    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Synced to ranch') && stillLocal, seqOff.join(' → '))
     await ctx.setOffline(false)
-    const seqOn = await watchStates(page, 'Synced to ranch', 45_000)
+    const seqOn = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 3 bales')
     const ob2 = await outbox(page)
     const id2 = ob2.find(i => (i.body as { bales?: number }).bales === 3)?.id ?? ''
     record('reconnect → Synced to ranch, exactly one row', seqOn.includes('Synced to ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}`)
@@ -196,7 +225,7 @@ async function main() {
     // ── force-quit mid-save: kill the page while offline, reopen ──
     await ctx.setOffline(true)
     await logFeed(page, 5)
-    await watchStates(page, 'Waiting to sync', 8_000)
+    await watchStates(page, 'Saved on this phone', 8_000, 'Fed 5 bales')
     const ob3 = await outbox(page)
     const id3 = ob3.find(i => (i.body as { bales?: number }).bales === 5)?.id ?? ''
     await page.close()                               // the "force quit"
@@ -204,13 +233,13 @@ async function main() {
     page = await ctx.newPage()
     page.on('dialog', d => void d.accept())
     await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    const seqFq = await watchStates(page, 'Synced to ranch', 45_000)
+    const seqFq = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 5 bales')
     record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Synced to ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
 
     // ── double-tap Save → one row ──
     const before = await feedRows()
     await logFeed(page, 6, { doubleTap: true })
-    await watchStates(page, 'Synced to ranch', 20_000)
+    await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
     await page.waitForTimeout(1000)
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 

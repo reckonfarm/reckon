@@ -31,7 +31,10 @@ function useSequenced(item: OutboxItem | null): OutboxState | null {
       lastAt.current = Date.now()
       setShown(prev => {
         if (target === null) return null
-        if (fresh || prev === null || prev === target || target === 'failed' || prev === 'failed') return target
+        // A fresh entry always opens on its first state, however fast the
+        // network moved it on — the sequence is never skipped.
+        if (fresh) return target === 'failed' ? 'failed' : 'local'
+        if (prev === null || prev === target || target === 'failed' || prev === 'failed') return target
         // Advance one state at a time along local → queued → synced.
         const i = ORDER.indexOf(prev), j = ORDER.indexOf(target)
         return j > i ? ORDER[i + 1] : target
