@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Scatter, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from 'recharts'
@@ -57,6 +57,8 @@ function measureValue(price: number, measure: Measure, band: string, lot: Market
 const measureUnit = (m: Measure, band: string, lot: MarketsChartsProps['lot']) =>
   m === 'cwt' ? '$/cwt' : m === 'head' ? `$/head at ${midWeight(band)} lb` : lot ? `value of ${lot.label}` : '$/cwt'
 const fmtMoney = (n: number) => n >= 1000 ? `$${Math.round(n).toLocaleString('en-US')}` : `$${n.toFixed(n >= 100 ? 0 : 2)}`
+// "$430/cwt", "$2,365/head at 550 lb", "$126,500 (value of Steers · 300 head)"
+const fmtWithUnit = (n: number, unit: string) => unit.startsWith('$/') ? `${fmtMoney(n)}${unit.slice(1)}` : `${fmtMoney(n)} (${unit})`
 
 // One observation as the chart sees it.
 interface Dot { t: number; v: number; head: number; thin: boolean; p: AuctionPoint; series: string }
@@ -67,7 +69,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
   if (!d.p) return null
   return (
     <div className="rounded-lg border border-forest-green/15 bg-white px-3 py-2 font-dm-sans text-[15px] text-forest-green shadow-sm">
-      <p className="font-semibold">{fmtMoney(d.v)} {unit}</p>
+      <p className="font-semibold">{fmtWithUnit(d.v, unit)}</p>
       <p>Sale {fmtDayYear(d.p.date)} · {d.p.cls} {bandLabel(d.p.band)}</p>
       <p>{d.p.head.toLocaleString('en-US')} head reported{d.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
       <p>{d.p.barn} · USDA AMS report {d.p.reportId}{d.p.revision && d.p.revision > 1 ? ` · rev ${d.p.revision}` : ''}</p>
@@ -146,6 +148,19 @@ function ChipRow<T extends string>({ label, value, onChange, options }: { label:
 }
 
 // ── The time-axis observation chart used by Compare and (single-series) Year ──
+// On a touch device the hover tooltip would linger over the chart after a
+// tap and duplicate the evidence panel — so it only exists where hover does.
+function useHoverable(): boolean {
+  const [hover, setHover] = useState(true)
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover)')
+    const apply = () => setHover(mq.matches)
+    apply(); mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+  return hover
+}
+
 function ObservationChart({ seriesList, unit, events, step, onPick }: {
   seriesList: { name: string; color: string; dots: Dot[] }[]
   unit: string
@@ -153,6 +168,7 @@ function ObservationChart({ seriesList, unit, events, step, onPick }: {
   step: boolean
   onPick: (d: Dot) => void
 }) {
+  const hoverable = useHoverable()
   const all = seriesList.flatMap(s => s.dots)
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
@@ -165,7 +181,7 @@ function ObservationChart({ seriesList, unit, events, step, onPick }: {
           <XAxis type="number" dataKey="t" domain={[x0 - 86_400_000 * 2, x1 + 86_400_000 * 2]} ticks={ticks}
             tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} interval="preserveStartEnd" minTickGap={48} />
           <YAxis type="number" dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-          <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />
+          {hoverable && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
           <EventMarkers events={events} x0={x0 - 86_400_000 * 2} x1={x1 + 86_400_000 * 2} />
           {seriesList.map(s => (
             <Line key={`step-${s.name}`} data={s.dots} dataKey="v" type="stepAfter" stroke={s.color} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} name={`${s.name} (carried forward)`} />
@@ -187,6 +203,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [step, setStep] = useState(true)
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
+  const hoverable = useHoverable()
   const [pickedDot, setPickedDot] = useState<Dot | null>(null)   // a tapped point's evidence, readable below the chart
 
   const bandsAvailable = useMemo(() => [...new Set(p.auction.filter(s => s.cls === cls).map(s => s.band))].sort(), [p.auction, cls])
@@ -247,7 +264,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {pickedDot && pickedDot.p && (
         <div role="status" aria-live="polite" className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
-          <p className="font-semibold">{fmtMoney(pickedDot.v)} {unit} · sale {fmtDayYear(pickedDot.p.date)}</p>
+          <p className="font-semibold">{fmtWithUnit(pickedDot.v, unit)} · sale {fmtDayYear(pickedDot.p.date)}</p>
           <p>{pickedDot.p.cls} {bandLabel(pickedDot.p.band)} · {pickedDot.p.head.toLocaleString('en-US')} head reported{pickedDot.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
           <p>{pickedDot.p.barn} · USDA AMS report {pickedDot.p.reportId}{pickedDot.p.low != null && pickedDot.p.high != null ? ` · range $${pickedDot.p.low}–${pickedDot.p.high}/cwt` : ''}</p>
           <button type="button" onClick={() => setPickedDot(null)} className="mt-1 min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Close</button>
@@ -361,7 +378,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                       <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
                       {axis(feeder.map(d => d.t))}
                       <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-                      <Tooltip content={<PointTip unit="$/cwt" />} />
+                      {hoverable && <Tooltip content={<PointTip unit="$/cwt" />} />}
                       <EventMarkers events={p.events} x0={x0} x1={x1} />
                       <Line data={feeder} dataKey="v" type="stepAfter" stroke={FOREST} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
                       <Scatter data={feeder} dataKey="v" fill={FOREST} shape={<EvidenceDot fill={FOREST} onPick={setPickedDot} />} isAnimationActive={false} />
