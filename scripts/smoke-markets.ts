@@ -134,8 +134,12 @@ async function main() {
       });
       var svg = document.querySelector('[data-audit="chart"] svg.recharts-surface');
       var chartW = svg ? Math.round(svg.getBoundingClientRect().width) : 0;
+      var hc = document.querySelector('[data-audit="history-card"]');
+      var cardW = hc ? Math.round(hc.getBoundingClientRect().width) : 0;
+      var cs = hc ? getComputedStyle(hc) : null;
+      var cardInner = hc ? Math.round(cardW - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth)) : 0;
       var pts = document.querySelectorAll('[data-audit="point"]').length;
-      return { overflowX: overflowX, small: small.slice(0,8), smallCount: small.length, tiny: tiny.slice(0,8), tinyCount: tiny.length, chartW: chartW, pts: pts };
+      return { overflowX: overflowX, small: small.slice(0,8), smallCount: small.length, tiny: tiny.slice(0,8), tinyCount: tiny.length, chartW: chartW, cardW: cardW, cardInner: cardInner, pts: pts };
     })`
     for (const width of [320, 375, 390, 430]) {
       const mctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
@@ -143,11 +147,12 @@ async function main() {
       await mp.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
       await mp.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
       await mp.waitForTimeout(1200)
-      const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; pts: number }
+      const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; cardW: number; cardInner: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
       record(`${width}px: every Markets control ≥ 48 px`, m.smallCount === 0, m.small.join(' | '))
       record(`${width}px: no Markets text under 15 px (uppercase kicker labels excepted)`, m.tinyCount === 0, m.tiny.join(' | '))
-      record(`${width}px: chart takes the width`, m.chartW >= width - 48, `chart ${m.chartW}px of ${width}`)
+      // The chart fills its card, and the card fills the page but for the 16 px gutters.
+      record(`${width}px: chart takes the width`, m.chartW >= m.cardInner - 2 && m.cardW >= width - 40, `chart ${m.chartW}px in a ${m.cardW}px card (inner ${m.cardInner}) of ${width}`)
       // a point tap opens the detail panel; an event chip opens its source
       const pt = mp.locator('[data-audit="point"]').first()
       if (await pt.count()) { await pt.tap().catch(() => pt.click()); const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false); record(`${width}px: tapping a point opens its evidence`, detail) }
