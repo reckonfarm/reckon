@@ -38,6 +38,7 @@ import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
+import RepeatLastFeeding from './components/RepeatLastFeeding'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
@@ -502,6 +503,15 @@ export default async function DashboardPage({
                         Hay · Recently logged. Money and the operator's own line
                         first; the machines; the herd; the sky; the news; then the
                         season ledgers at the bottom. Same components, same gates. */}
+                    {/* Repeat last feeding (Block 2B) — above everything on the
+                        signed-in Today: the ten-second path. Renders nothing until a
+                        feeding has been logged. */}
+                    {user && (
+                      <Suspense fallback={null}>
+                        <RepeatLastFeeding />
+                      </Suspense>
+                    )}
+
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
 
                     {/* Herd value lives on Markets (views2, commit 2) — one surface,

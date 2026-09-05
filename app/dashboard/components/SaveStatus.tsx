@@ -58,10 +58,12 @@ function Dot({ state }: { state: OutboxState }) {
   return <span aria-hidden className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${color} ${state === 'queued' ? 'animate-pulse' : ''}`} />
 }
 
-export default function SaveStatus() {
+// `itemId` pins the strip to one entry (Repeat last shows the entry it just
+// made, with its undo, right where the tap happened); default = the latest.
+export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
   const router = useRouter()
   const items = useOutbox()
-  const item = items.length ? items[items.length - 1] : null
+  const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
   const shown = useSequenced(item)
   const refreshed = useRef<Set<string>>(new Set())
   const [now, setNow] = useState(0)
