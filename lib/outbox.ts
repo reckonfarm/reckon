@@ -48,7 +48,8 @@ export interface OutboxItem {
   state: OutboxState
   attempts: number
   lastError?: string
-  holdUntil?: number                // ms epoch; no upload before this (undo window)
+  holdUntil?: number                // ms epoch; no upload before this (dwell, or the undo window)
+  undoable?: boolean                // an explicit undo window was asked for (Repeat last)
   syncedAt?: number
   consequence?: Consequence         // what the server said it meant (2C)
   serverId?: string
@@ -65,6 +66,11 @@ const KEY = 'dryline_outbox_v1'
 const SYNCED_TTL_MS = 6 * 60 * 60 * 1000   // synced entries linger for the status line, then drop
 const RETRY_TIMER_MS = 20_000
 const MAX_ITEMS = 200
+// Minimum dwell in each state, enforced HERE so the four states are real
+// stored states that every surface sees in order — never a render-side trick.
+// 'local' holds at least this long before the first upload; 'queued' holds at
+// least this long before 'synced' is written.
+export const MIN_DWELL_MS = 600
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +132,7 @@ export function hasUnsynced(): boolean { return pendingCount() > 0 }
  */
 export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0): OutboxItem {
   const id = typeof body.id === 'string' && body.id ? body.id : newEventId()
+  const hold = Math.max(holdMs, MIN_DWELL_MS)
   const item: OutboxItem = {
     id,
     body: { ...body, id },
@@ -133,17 +140,18 @@ export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0
     createdAt: Date.now(),
     state: 'local',
     attempts: 0,
-    holdUntil: holdMs > 0 ? Date.now() + holdMs : undefined,
+    holdUntil: Date.now() + hold,
+    undoable: holdMs > 0,
   }
   write([...read(), item])            // throws → caller shows "Couldn't save"
-  scheduleFlush(holdMs)
+  scheduleFlush(hold)
   return item
 }
 
 /** Undo: drop an entry that has not left the phone. False if it already has. */
 export function cancel(id: string): boolean {
   const item = read().find(i => i.id === id)
-  if (!item || item.state === 'synced' || inFlight === id) return false
+  if (!item || item.state !== 'local' || inFlight === id) return false
   try { write(read().filter(i => i.id !== id)) } catch { /* keep */ }
   return true
 }
@@ -173,9 +181,12 @@ let timer: ReturnType<typeof setTimeout> | null = null
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504])
 
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
 async function uploadOne(item: OutboxItem): Promise<void> {
   inFlight = item.id
-  update(item.id, { state: 'queued', attempts: item.attempts + 1 })
+  const queuedAt = Date.now()
+  update(item.id, { state: 'queued', attempts: item.attempts + 1, holdUntil: undefined })
   try {
     const res = await fetch('/api/log', {
       method: 'POST',
@@ -188,6 +199,7 @@ async function uploadOne(item: OutboxItem): Promise<void> {
         ? { lines: ((json as { consequence: { lines: unknown[] } }).consequence.lines).filter((l): l is string => typeof l === 'string') }
         : undefined
       const serverId = (json as { event?: { id?: string } }).event?.id
+      await sleep(Math.max(0, MIN_DWELL_MS - (Date.now() - queuedAt)))   // 'queued' is seen before 'synced'
       update(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId })
       return
     }

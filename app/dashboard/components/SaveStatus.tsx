@@ -2,49 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxItem, type OutboxState } from '@/lib/outbox'
+import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState } from '@/lib/outbox'
 
 // ─── Save status — the honest answer to "did that save?" (Block 2A) ───────────
 // Sits directly under Log it. Shows the most recent entry's state in the four
-// words the outbox defines, never skipping one: each state is held on screen
-// for at least MIN_SHOW_MS even when the network is fast, so "Saved on this
-// phone → Waiting to sync → Synced to ranch" is always seen in order.
+// words the outbox defines. The outbox holds each state for a minimum dwell,
+// so "Saved on this phone → Waiting to sync → Synced to ranch" is always seen
+// in order even on a fast network.
 // Pending count when more than one is waiting; Retry / Discard on a refusal;
 // Undo while an entry is still held on the phone (2B); the consequence lines
 // once the server has said what the entry meant (2C). When the latest entry
 // syncs, the page refreshes once so the ledgers below pick it up.
 
-const MIN_SHOW_MS = 700
-const ORDER: OutboxState[] = ['local', 'queued', 'synced']
-
-function useSequenced(item: OutboxItem | null): OutboxState | null {
-  const [shown, setShown] = useState<OutboxState | null>(null)
-  const lastId = useRef<string | null>(null)
-  const lastAt = useRef<number>(0)
-
-  useEffect(() => {
-    const target = item?.state ?? null
-    const fresh = item?.id !== lastId.current
-    const wait = fresh ? 0 : Math.max(0, MIN_SHOW_MS - (Date.now() - lastAt.current))
-    const t = setTimeout(() => {
-      lastId.current = item?.id ?? null
-      lastAt.current = Date.now()
-      setShown(prev => {
-        if (target === null) return null
-        // A fresh entry always opens on its first state, however fast the
-        // network moved it on — the sequence is never skipped.
-        if (fresh) return target === 'failed' ? 'failed' : 'local'
-        if (prev === null || prev === target || target === 'failed' || prev === 'failed') return target
-        // Advance one state at a time along local → queued → synced.
-        const i = ORDER.indexOf(prev), j = ORDER.indexOf(target)
-        return j > i ? ORDER[i + 1] : target
-      })
-    }, wait)
-    return () => clearTimeout(t)
-  }, [item, shown])
-
-  return shown
-}
+// The outbox enforces the minimum dwell per state (MIN_DWELL_MS), so the
+// strip is a pure function of the stored state — nothing to sequence here.
 
 const TONE: Record<OutboxState, string> = {
   local:  'bg-forest-green/[0.06] text-forest-green',
@@ -64,7 +35,7 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
   const router = useRouter()
   const items = useOutbox()
   const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
-  const shown = useSequenced(item)
+  const shown = item?.state ?? null
   const refreshed = useRef<Set<string>>(new Set())
   const [now, setNow] = useState(0)
 
@@ -80,14 +51,14 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
 
   // A clock, ticked in an effect (never read in render): drives the undo
   // countdown and the "old news" cutoff below.
-  const holding = !!(item && item.holdUntil && item.state !== 'synced')
+  const holding = !!(item && item.undoable && item.holdUntil && item.state === 'local')
   useEffect(() => {
     const tick = () => setNow(Date.now())
     const t = setInterval(tick, holding ? 250 : 30_000)
     const first = setTimeout(tick, 0)
     return () => { clearInterval(t); clearTimeout(first) }
   }, [holding, item?.id])
-  const held = item && item.holdUntil && now > 0 && item.holdUntil > now && item.state !== 'synced' ? item : null
+  const held = item && item.undoable && item.holdUntil && now > 0 && item.holdUntil > now && item.state === 'local' ? item : null
 
   if (!item || !shown) return null
   // A synced entry older than a few minutes has said its piece.
