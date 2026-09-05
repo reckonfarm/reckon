@@ -8,19 +8,20 @@ import { useEffect } from 'react'
 // it was, and the block shows the same news next time.
 const DWELL_MS = 4000
 
-export default function LastSeenPing() {
+export default function LastSeenPing({ surface }: { surface?: 'markets' } = {}) {
   useEffect(() => {
+    const url = surface ? `/api/seen?surface=${surface}` : '/api/seen'
     let timer: ReturnType<typeof setTimeout> | null = null
     let done = false
     const arm = () => {
       if (done || document.visibilityState !== 'visible') return
-      timer = setTimeout(() => { done = true; fetch('/api/seen', { method: 'POST' }).catch(() => {}) }, DWELL_MS)
+      timer = setTimeout(() => { done = true; fetch(url, { method: 'POST' }).catch(() => {}) }, DWELL_MS)
     }
     const disarm = () => { if (timer) { clearTimeout(timer); timer = null } }
     const onVis = () => { if (document.visibilityState === 'visible') arm(); else disarm() }
     arm()
     document.addEventListener('visibilitychange', onVis)
     return () => { disarm(); document.removeEventListener('visibilitychange', onVis) }
-  }, [])
+  }, [surface])
   return null
 }

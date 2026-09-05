@@ -48,6 +48,8 @@ import type { DashboardViewKey, ViewParams } from './DashboardViews'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { signHayPhotosForRows } from '@/lib/hay-photos'
 import SellBarnPicker from './SellBarnPicker'
+import MarketsHistory from './MarketsHistory'
+import MarketsSince from './MarketsSince'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -802,8 +804,16 @@ export async function MarketsViewBody({
       {/* Herd value — the one herd surface on the dashboard, here between the
           read and the cash it's priced at (views2, commit 2; was on Today). */}
       {anchor && <HerdValueCard anchor={anchor} />}
+      {homeFips && (
+        <Suspense fallback={null}>
+          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} />
+        </Suspense>
+      )}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
       <LocalAuctionCard result={localAuction} />
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} />
+      </Suspense>
       <NationalBeefCard result={nationalBeef} />
       <LrpMarketsCard result={lrpResult} />
     </>
