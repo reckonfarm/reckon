@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Card } from '@/app/components/ui/Card'
 import type { HerdAnchor } from '@/lib/herd-anchor'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { dollarsPerCwtMove, scopeLabel } from '@/lib/market-scope'
 
 // ─── Herd value — a card, not the hero (2026-08-09 repositioning) ──────────────
 // One number (this week's estimate at the nearest auction) plus the LRP floor
@@ -32,6 +33,10 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
     l => l.state === 'priced' && l.floor != null
   )
   const minFloor = floors.length > 0 ? Math.min(...floors.map(l => l.floor!.coverage_price)) : null
+  const towns = [...new Set(estimate.perLot.filter(l => l.source).map(l => l.source!.town.replace(/,\s*[A-Z]{2}$/, '')))].join(' / ')
+  const cwtLots = estimate.perLot.filter(l => l.value != null && !l.thin && l.source?.price_basis === 'cwt')
+  const perDollar = cwtLots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
+  const sensitivity = perDollar > 0 ? `Every $1/cwt move is $${perDollar.toLocaleString('en-US')} across ${cwtLots.length === 1 ? 'this lot' : `${cwtLots.length} lots`}.` : null
 
   return (
     <Link href="/herd" className="block">
@@ -42,20 +47,28 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
         {priced ? (
           <>
             <p className="mt-1.5 font-fraunces text-2xl font-semibold tabular-nums text-forest-green">
-              {formatUSD(estimate.total_priced)}
+              {estimate.total_priced > 0 ? formatUSD(estimate.total_priced) : ''}
+              {estimate.thin_range && (
+                <span className={estimate.total_priced > 0 ? 'text-[17px] text-forest-green/80' : ''}>
+                  {estimate.total_priced > 0 ? ' + ' : ''}{formatUSD(estimate.thin_range.low)}–{formatUSD(estimate.thin_range.high)}
+                </span>
+              )}
             </p>
-            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+            {/* Scope is the BARN the prices came from (Block 2.5 A2) — never the county. */}
+            <p className="mt-1 font-dm-sans text-[13px] text-forest-green/80">
               {estimate.lots_priced} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} priced
-              {estimate.county_name && ` · ${estimate.county_name} auction`}
+              {towns && ` · ${scopeLabel({ kind: 'nearby', town: towns })}`}
               {estimate.as_of && ` · as of ${fmtShort(estimate.as_of)}`}
+              {estimate.lots_thin > 0 && ` · ${estimate.lots_thin} on thin evidence`}
             </p>
+            {sensitivity && <p className="mt-1 font-dm-sans text-[14px] font-medium text-forest-green">{sensitivity}</p>}
           </>
         ) : (
-          <p className="mt-1.5 font-dm-sans text-sm text-forest-green/60">{estimate.note}</p>
+          <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">{estimate.note}</p>
         )}
         {minFloor != null && (
-          <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-            LRP floor under {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · from ${minFloor.toFixed(2)}/cwt
+          <p className="mt-1 font-dm-sans text-[13px] text-forest-green/80">
+            LRP coverage available to explore for {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · reference coverage price from ${minFloor.toFixed(2)}/cwt · needs a purchased endorsement
           </p>
         )}
       </Card>

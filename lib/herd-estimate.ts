@@ -1,5 +1,6 @@
 import { lotToMarsKey, LOT_CLASS_LABELS, lotLabel as lotName, type Lot, type LotClass } from './herd'
 import type { ResolveResult, RankedBarn, MarsPriceRow, ResolveTier } from './barn-resolver'
+import { isThin } from './market-scope'
 
 // ─── HerdEstimate engine ─────────────────────────────────────────────────────────────
 // PURE: takes a Herd's lots + the resolver's tiered barns (each carrying its priced rows) and
@@ -79,6 +80,11 @@ export interface ValuationSource {
   avg_price_min: number | null // matched-bracket range (Trend's price spread); null on the class-avg path
   avg_price_max: number | null
   exact_bracket: boolean
+  // Block 2.5 A3/A5 — the evidence behind the figure, and whether it is a
+  // CULL (slaughter) price. A rancher's bulls and cows priced off Slaughter
+  // Cattle rows are salvage value, never breeding value; the label says so.
+  head_count: number | null      // reported head behind the matched row (class-avg path: summed)
+  cull: boolean
 }
 
 export interface LotValuation {
@@ -87,12 +93,20 @@ export interface LotValuation {
   value: number | null   // dollars; null = unpriced
   reason: string | null  // unpriced reason, or a note when priced via class-avg fallback; null when exact
   source: ValuationSource | null
+  // Block 2.5 — the lot's own facts, for the sensitivity line (exact arithmetic).
+  head_count: number
+  avg_weight_lb: number
+  thin: boolean          // priced off fewer reported head than THIN_HEAD_THRESHOLD → range, not a figure
+  value_low: number | null   // thin lots: the reported price range applied to the lot
+  value_high: number | null
 }
 
 export interface HerdEstimate {
   perLot: LotValuation[]
-  total_priced: number
-  lots_priced: number
+  total_priced: number       // sum over priced lots that are NOT thin
+  lots_priced: number        // priced lots, thin or not
+  lots_thin: number          // of those, priced off a thin reference (excluded from total_priced)
+  thin_range: { low: number; high: number } | null   // the thin lots' combined range
   lots_total: number
   tier: ResolveTier
   as_of: string | null
@@ -151,6 +165,7 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
           matched: `${row.commodity} / ${row.class} / ${row.frame ?? 'N/A'} / ${row.weight_break_low}-${row.weight_break_high} brk`,
           price_unit: row.price_unit, price_basis: basis, avg_price: row.avg_price!,
           avg_price_min: row.avg_price_min, avg_price_max: row.avg_price_max, exact_bracket: true,
+          head_count: row.head_count, cull: eqi(row.commodity, 'Slaughter Cattle'),
         },
       }
     }
@@ -177,6 +192,7 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
         price_unit: basis === 'cwt' ? 'Per Cwt (class avg)' : 'Per Unit (class avg)',
         price_basis: basis, avg_price: price,
         avg_price_min: null, avg_price_max: null, exact_bracket: false,
+        head_count: totHead > 0 ? totHead : null, cull: eqi(step.commodity, 'Slaughter Cattle'),
       },
     }
   }
@@ -190,11 +206,12 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
 
   for (const lot of lots) {
     const label = lotLabel(lot)
+    const wLb = lotToMarsKey(lot).avgWeightLb
     if (pricingBarns.length === 0) {
       const reason = resolved.tier === 'nearest-comp' && resolved.nearest_comp
         ? `No fresh auction in haul range — nearest comparable ${resolved.nearest_comp.town} ~${resolved.nearest_comp.miles}mi`
         : 'No fresh nearby auction'
-      perLot.push({ lotId: lot.id, label, value: null, reason, source: null })
+      perLot.push({ lotId: lot.id, label, value: null, reason, source: null, head_count: lot.head_count, avg_weight_lb: wLb, thin: false, value_low: null, value_high: null })
       continue
     }
     const m = matchLot(lot, pricingBarns)
@@ -202,19 +219,30 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
       perLot.push({
         lotId: lot.id, label, value: null,
         reason: `No ${LOT_CLASS_LABELS[lot.class]} price row at ${pricingBarns[0].town} this week`,
-        source: null,
+        source: null, head_count: lot.head_count, avg_weight_lb: wLb, thin: false, value_low: null, value_high: null,
       })
       continue
     }
+    // Thin reference (Block 2.5 A3): the figure is withheld; the reported range is applied to the lot instead.
+    const thin = isThin(m.source.head_count)
+    const lo = m.source.avg_price_min ?? m.source.avg_price
+    const hi = m.source.avg_price_max ?? m.source.avg_price
     perLot.push({
       lotId: lot.id, label, value: m.value,
       reason: m.exact ? null : 'class average — no exact frame/weight bracket this week',
-      source: m.source,
+      source: m.source, head_count: lot.head_count, avg_weight_lb: wLb, thin,
+      value_low: thin ? valueOf(m.source.price_basis, lo, wLb, lot.head_count) : null,
+      value_high: thin ? valueOf(m.source.price_basis, hi, wLb, lot.head_count) : null,
     })
   }
 
   const priced = perLot.filter(l => l.value != null)
-  const total_priced = priced.reduce((s, l) => s + (l.value ?? 0), 0)
+  const firm = priced.filter(l => !l.thin)
+  const thinLots = priced.filter(l => l.thin)
+  const total_priced = firm.reduce((s, l) => s + (l.value ?? 0), 0)
+  const thin_range = thinLots.length
+    ? { low: thinLots.reduce((s, l) => s + (l.value_low ?? 0), 0), high: thinLots.reduce((s, l) => s + (l.value_high ?? 0), 0) }
+    : null
   const as_of = priced.map(l => l.source!.report_date).filter(Boolean).sort().at(-1) ?? null
   const lots_priced = priced.length
   const lots_total = lots.length
@@ -229,5 +257,5 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
     note = `${lots_priced} of ${lots_total} lot${lots_total > 1 ? 's' : ''} priced off ${towns}${as_of ? ` (as of ${as_of})` : ''}.`
   }
 
-  return { perLot, total_priced, lots_priced, lots_total, tier: resolved.tier, as_of, county_name: resolved.county_name, note }
+  return { perLot, total_priced, lots_priced, lots_thin: thinLots.length, thin_range, lots_total, tier: resolved.tier, as_of, county_name: resolved.county_name, note }
 }

@@ -7,6 +7,7 @@ import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData, VolumeRow } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { dollarsPerCwtMove, fmtRange, matchLabel, scopeLabel, sensitivityLine, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -15,6 +16,10 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 // show their honest "building" line, never a fake/zero delta.
 
 
+function MatchChip({ label }: { label: string }) {
+  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
+  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[12px] font-semibold ${tone}`}>{label}</span>
+}
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
 }
@@ -46,33 +51,61 @@ function heroSubline(e: HerdEstimate): string {
   if (e.lots_priced === 0) return e.note
   const towns = [...new Set(e.perLot.filter(l => l.source).map(l => l.source!.town.replace(/,\s*[A-Z]{2}$/, '')))].join(' / ')
   const lots = `${e.lots_priced} of ${e.lots_total} lot${e.lots_total === 1 ? '' : 's'} priced`
-  return `${towns} cash · as of ${fmtShort(e.as_of)} · ${lots}`
+  const thin = e.lots_thin > 0 ? ` · ${e.lots_thin} on thin evidence (range, not a figure)` : ''
+  return `${scopeLabel({ kind: 'nearby', town: towns })} · as of ${fmtShort(e.as_of)} · ${lots}${thin}`
 }
 
 function heroHeadline(e: HerdEstimate): string {
-  if (e.lots_priced > 0) return formatUSD(e.total_priced)
+  if (e.lots_priced > 0) {
+    // Thin references never add a precise figure to the total (Block 2.5 A3).
+    if (e.total_priced > 0 && e.thin_range) return `${formatUSD(e.total_priced)} + ${formatUSD(e.thin_range.low)}–${formatUSD(e.thin_range.high)}`
+    if (e.thin_range) return `${formatUSD(e.thin_range.low)}–${formatUSD(e.thin_range.high)}`
+    return formatUSD(e.total_priced)
+  }
   return e.tier === 'local' ? 'No matching prices this week' : 'No nearby auction this week'
+}
+// Every $1/cwt across the firm-priced per-cwt lots — exact arithmetic, or nothing.
+function heroSensitivity(e: HerdEstimate): string | null {
+  const lots = e.perLot.filter(l => l.value != null && !l.thin && l.source?.price_basis === 'cwt')
+  const total = lots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
+  return total > 0 ? `Every $1/cwt move is $${total.toLocaleString('en-US')} across ${lots.length === 1 ? 'this lot' : `these ${lots.length} lots`}.` : null
 }
 
 function LotCard({ l }: { l: LotValuation }) {
   const priced = l.value != null && l.source != null
+  const src = l.source
+  const label = src ? matchLabel({ exactBracket: src.exact_bracket, headCount: src.head_count }) : null
+  const sens = src?.price_basis === 'cwt' ? sensitivityLine(l.head_count, l.avg_weight_lb) : null
   return (
     <Card shadow="sm" className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-dm-sans text-sm font-semibold text-ink">{l.label}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-ink">{l.label}</p>
           {priced ? (
-            <p className="mt-0.5 font-dm-sans text-xs text-muted/70">
-              {l.source!.barn_name} · {fmtShort(l.source!.report_date)} ·{' '}
-              <span className="tabular-price">${l.source!.avg_price}</span>/{l.source!.price_basis === 'cwt' ? 'cwt' : 'hd'}
-              {!l.source!.exact_bracket && <span className="text-muted/55"> · class avg</span>}
-            </p>
+            <>
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[13px] text-forest-green/80">
+                <MatchChip label={label!} />
+                {src!.cull && <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">Cull price — salvage, not breeding value</span>}
+              </p>
+              <p className="mt-1 font-dm-sans text-[13px] text-forest-green/80">
+                {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · sale {fmtShort(src!.report_date)} · USDA AMS report {src!.slug_id}
+              </p>
+              <p className="font-dm-sans text-[13px] text-forest-green/80">
+                {src!.mars_class ?? 'class'}{src!.exact_bracket ? ` · ${src!.matched.split(' / ').slice(-1)[0]}` : ' · class average, no exact bracket'} · {src!.head_count != null ? `${src!.head_count.toLocaleString('en-US')} head reported` : 'head count not reported'} ·{' '}
+                {l.thin
+                  ? <>{fmtRange(src!.avg_price_min, src!.avg_price_max, src!.avg_price)}/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'} range</>
+                  : <><span className="tabular-price">${src!.avg_price}</span>/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'}</>}
+              </p>
+              {sens && <p className="mt-1 font-dm-sans text-[14px] font-medium text-forest-green">{sens}</p>}
+            </>
           ) : (
-            <p className="mt-0.5 font-dm-sans text-xs text-muted/60">{l.reason}</p>
+            <p className="mt-0.5 font-dm-sans text-[13px] text-forest-green/80">{l.reason}</p>
           )}
         </div>
-        <p className="shrink-0 font-dm-sans text-base font-semibold tabular-price text-ink">
-          {priced ? formatUSD(l.value!) : '—'}
+        <p className="shrink-0 text-right font-dm-sans text-[17px] font-semibold tabular-price text-ink">
+          {!priced ? '—' : l.thin
+            ? <><span className="block text-[13px] font-medium text-forest-green/80">under {THIN_HEAD_THRESHOLD} head</span>{formatUSD(l.value_low!)}–{formatUSD(l.value_high!)}</>
+            : formatUSD(l.value!)}
         </p>
       </div>
     </Card>
@@ -294,6 +327,7 @@ export default function HerdEstimatePanel({ estimate, trend, outlook }: { estima
           {heroHeadline(estimate)}
         </p>
         <p className="mt-2 font-dm-sans text-sm text-muted/70">{heroSubline(estimate)}</p>
+        {heroSensitivity(estimate) && <p className="mt-2 font-dm-sans text-[15px] font-medium text-forest-green">{heroSensitivity(estimate)}</p>}
       </div>
 
       <Segmented<'now' | 'trend' | 'outlook'>

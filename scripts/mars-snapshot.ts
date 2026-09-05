@@ -110,6 +110,13 @@ interface PriceRow {
   lot_desc: string | null
   weight_break_low: number | null
   weight_break_high: number | null
+  // Block 2.5 A5 — cull cows and bulls kept distinct: the grade ("Breaker 75-80%",
+  // "Boner 80-85%", "Lean 85-90%"), the dressing ("High" / "Average" / "Low") and the
+  // yield grade travel with the row. Null on rows captured before 2026-09-05.
+  quality_grade: string | null
+  dressing: string | null
+  yield_grade: string | null
+  muscle_grade: string | null
 }
 function mapRow(r: Raw): PriceRow {
   return {
@@ -130,7 +137,15 @@ function mapRow(r: Raw): PriceRow {
     lot_desc:           str(r.lot_desc),
     weight_break_low:   toNum(r.weight_break_low),
     weight_break_high:  toNum(r.weight_break_high),
+    quality_grade:      naNull(str(r.quality_grade_name)),
+    dressing:           naNull(str(r.dressing)),
+    yield_grade:        naNull(str(r.yield_grade)),
+    muscle_grade:       naNull(str(r.muscle_grade)),
   }
+}
+// MARS writes 'N/A' where a field does not apply — that is absence, not a grade.
+function naNull(v: string | null): string | null {
+  return v == null || /^n\/?a$/i.test(v.trim()) ? null : v
 }
 
 interface BarnSnapshot {
