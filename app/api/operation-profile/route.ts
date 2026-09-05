@@ -7,6 +7,7 @@ import {
   type Json,
 } from '@/lib/operation-profile-service'
 import { normalizeHerd } from '@/lib/herd'
+import { BARN_GEO } from '@/lib/barn-geo'
 
 // Thin verification route over the operation_profiles data layer. The auth + RLS
 // scoping live entirely in lib/operation-profile-service.ts, which uses the user-scoped
@@ -50,6 +51,15 @@ export async function PATCH(req: NextRequest) {
 
   // crops stays generic jsonb — accept an object, array, or null (reject bare primitives so
   // a stray string/number can't land in the column). Not typed yet.
+  // Block 2.5 A2 — the "where I sell" pin: null, or one of the barns we carry.
+  if ('sell_barn_slug' in body) {
+    const val = (body as Record<string, unknown>).sell_barn_slug
+    if (val !== null && !(typeof val === 'string' && val in BARN_GEO)) {
+      return NextResponse.json({ error: `sell_barn_slug must be null or one of ${Object.keys(BARN_GEO).join(', ')}` }, { status: 400 })
+    }
+    input.sell_barn_slug = val as string | null
+  }
+
   if ('crops' in body) {
     const val = (body as Record<string, unknown>).crops
     if (val !== null && typeof val !== 'object') {

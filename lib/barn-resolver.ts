@@ -17,7 +17,10 @@ export type { MarsPriceRow, BarnSnapshot, RankedBarn, ResolveTier, ResolveResult
 // Thin read wrapper — county centroid + fresh barns, then rank. Degrades honestly: missing
 // centroid or any read error → regional-only (never throws, never fakes a local barn). The
 // HerdEstimate layers regional/national (the LRP national floor) context in every tier.
-export async function resolveBarns(countyFips: string): Promise<ResolveResult> {
+// `pin` (Block 2.5 A2): the person's "where I sell" barn slug. When that barn
+// has a fresh report it is hoisted to local[0] whatever the distance; when its
+// report is stale it stays in `stale` and the card says so under the pin label.
+export async function resolveBarns(countyFips: string, pin?: string | null): Promise<ResolveResult> {
   try {
     const db = createServiceClient()
     const [countyRes, snapRes] = await Promise.all([
@@ -41,6 +44,14 @@ export async function resolveBarns(countyFips: string): Promise<ResolveResult> {
 
     const barns = (snapRes.data ?? []) as BarnSnapshot[]
     const core = rankFreshBarns({ lat, lon }, barns, Date.now())
+    if (pin) {
+      const hit = core.ranked.find(b => b.slug_id === pin)
+      if (hit) {
+        const local = [hit, ...core.local.filter(b => b.slug_id !== pin)]
+        return { county_fips: countyFips, county_name: countyName, centroid: { lat, lon }, ...core, local, tier: 'local', nearest_comp: null, pinned: pin, summary: `Pinned ${hit.town} — ${core.summary}` }
+      }
+      return { county_fips: countyFips, county_name: countyName, centroid: { lat, lon }, ...core, pinned: pin }
+    }
     return { county_fips: countyFips, county_name: countyName, centroid: { lat, lon }, ...core }
   } catch (err) {
     console.error('[barn-resolver] read failed:', err instanceof Error ? err.message : err)

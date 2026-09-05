@@ -47,6 +47,7 @@ import JobsView, { JobsViewSkeleton } from './JobsView'
 import type { DashboardViewKey, ViewParams } from './DashboardViews'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { signHayPhotosForRows } from '@/lib/hay-photos'
+import SellBarnPicker from './SellBarnPicker'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -722,9 +723,10 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots, homeFips, supabase,
+  selectedCounty, lots, homeFips, supabase, sellBarn = null,
 }: {
   selectedCounty: CountyRow
+  sellBarn?: string | null   // Block 2.5 A2 — the "where I sell" pin (operation_profiles.sell_barn_slug)
   // The herd anchor is THIS body's (views2, commit 2): the profile's lots, the
   // home county, and the user-scoped client come from whoever renders it —
   // the page (eager ?view=markets) or the deferred loader — and the anchor is
@@ -737,10 +739,10 @@ export async function MarketsViewBody({
   // them, and when the county in view is the home county the herd anchor
   // reuses them instead of resolving the same barns a second time. A different
   // home county resolves its own set, concurrently.
-  const viewedBarns = resolveBarns(selectedCounty.fips)
+  const viewedBarns = resolveBarns(selectedCounty.fips, sellBarn)
   const canAnchor = lots.length > 0 && !!homeFips
   const anchorPromise = canAnchor
-    ? (homeFips === selectedCounty.fips ? viewedBarns : resolveBarns(homeFips!))
+    ? (homeFips === selectedCounty.fips ? viewedBarns : resolveBarns(homeFips!, sellBarn))
         .then(resolved => getHerdAnchor({ lots, homeFips: homeFips!, supabase, resolved }))
         .catch(() => null)
     : Promise.resolve(null)
@@ -781,6 +783,12 @@ export async function MarketsViewBody({
   ])
   lrpResult = lrpRes
   localAuction = localRes
+  // The barns we carry, for the "Where I sell" pin — every geocoded barn, fresh or stale.
+  const resolvedView = await viewedBarns
+  const barnOptions = [...resolvedView.ranked, ...resolvedView.stale]
+    .map(b => ({ slug: b.slug_id, name: b.barn_name, town: b.town.replace(/,\s*[A-Z]{2}$/, '') }))
+    .filter((o, i, arr) => arr.findIndex(x => x.slug === o.slug) === i)
+    .sort((a, b) => a.name.localeCompare(b.name))
   nationalBeef = nationalRes
   if (chips) [corn, moisture, crop, cycle] = chips
   const hasHerd = anchor != null
@@ -794,6 +802,7 @@ export async function MarketsViewBody({
       {/* Herd value — the one herd surface on the dashboard, here between the
           read and the cash it's priced at (views2, commit 2; was on Today). */}
       {anchor && <HerdValueCard anchor={anchor} />}
+      {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
       <LocalAuctionCard result={localAuction} />
       <NationalBeefCard result={nationalBeef} />
       <LrpMarketsCard result={lrpResult} />
@@ -834,6 +843,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
       // read here, side by side, exactly as the page head reads them.
       let lots: Lot[] = []
       let homeFips: string | null = null
+      let sellBarn: string | null = null
       if (user) {
         const [profile, hf] = await Promise.all([
           getOperationProfile({ supabase, user }),
@@ -842,10 +852,11 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
         const herd = profile.status === 'ok' ? (profile.profile.herd as { lots?: Lot[] } | null) : null
         lots = Array.isArray(herd?.lots) ? herd!.lots : []
         homeFips = hf
+        sellBarn = profile.status === 'ok' ? profile.profile.sell_barn_slug ?? null : null
       }
       return (
         <Suspense fallback={<JobsViewSkeleton />}>
-          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} />
+          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} />
         </Suspense>
       )
     }

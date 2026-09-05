@@ -673,7 +673,7 @@ export default async function DashboardPage({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null} />
                       </Suspense>
                     ) }
                   : {}),
