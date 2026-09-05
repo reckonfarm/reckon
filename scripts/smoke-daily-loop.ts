@@ -44,19 +44,23 @@ if (!URL_ || !SERVICE) throw new Error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERV
 const BYPASS = BASE.includes('vercel.app') ? process.env.VERCEL_BYPASS : undefined
 
 const EMAIL = 'smoke-daily-loop@dryline.farm'
+const EMAIL_B = 'smoke-daily-loop-b@dryline.farm'
 const PREFIX = 'SMOKE-DAILY-LOOP'
 const HOME_FIPS = '30069'
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
-const results: { check: string; pass: boolean; detail: string }[] = []
+const results: { check: string; pass: boolean; detail: string; skip?: boolean }[] = []
 const record = (check: string, pass: boolean, detail = '') => { results.push({ check, pass, detail }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${check}${detail ? ` — ${detail}` : ''}`) }
+const skip = (check: string, detail: string) => { results.push({ check, pass: true, detail, skip: true }); console.log(`SKIP  ${check} — ${detail}`) }
 
 let userId = ''
+let userIdB = ''
 let ranchId = ''
+let placeId = ''
 
 async function teardown(label: string) {
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
-  const ids = (users?.users ?? []).filter(u => u.email === EMAIL).map(u => u.id)
+  const ids = (users?.users ?? []).filter(u => u.email === EMAIL || u.email === EMAIL_B).map(u => u.id)
   let n = 0
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
@@ -80,17 +84,31 @@ async function seed() {
   ranchId = ranch.id as string
   const { error: mErr } = await admin.from('ranch_members').insert({ ranch_id: ranchId, user_id: userId, role: 'owner' })
   if (mErr) throw new Error(`member: ${mErr.message}`)
-  const { error: pErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} West stack`, kind: 'stackyard' })
+  const { data: placeRow, error: pErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} West stack`, kind: 'stackyard' }).select('id').single()
   if (pErr) throw new Error(`place: ${pErr.message}`)
+  placeId = placeRow.id as string
+  // A counted baseline of 200 bales as of today, so the 2C answer can say what is left.
+  const { error: bErr } = await admin.from('events').insert({
+    user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_inventory', ts: new Date().toISOString(),
+    payload: { source: 'manual', schema_version: 1, place_id: null, bales: 200, as_of: new Date().toISOString().slice(0, 10) }, schema_version: 1,
+  })
+  if (bErr) throw new Error(`baseline: ${bErr.message}`)
+  // Member B on the same ranch (2E: the second person).
+  const { data: b, error: uErr } = await admin.auth.admin.createUser({ email: EMAIL_B, email_confirm: true, user_metadata: { smoke: true } })
+  if (uErr || !b.user) throw new Error(`createUser B: ${uErr?.message}`)
+  userIdB = b.user.id
+  const { error: mbErr } = await admin.from('ranch_members').insert({ ranch_id: ranchId, user_id: userIdB, role: 'member' })
+  if (mbErr) throw new Error(`member B: ${mbErr.message}`)
+  await admin.from('profiles').upsert({ id: userIdB, email: EMAIL_B, home_county_fips: HOME_FIPS })
   const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, county_fips: HOME_FIPS })
   if (oErr) throw new Error(`operation_profile: ${oErr.message}`)
   // /home resolves the home county from profiles.home_county_fips (lib/concierge-service).
-  const { error: hErr } = await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS })
+  const { error: hErr } = await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS, display_name: 'Smoke A' })
   if (hErr) throw new Error(`profile: ${hErr.message}`)
 }
 
-async function signIn(ctx: BrowserContext): Promise<Page> {
-  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
+async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
+  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email })
   const tokenHash = link.data?.properties?.hashed_token
   if (!tokenHash) throw new Error(`generateLink: ${link.error?.message}`)
   const page = await ctx.newPage()
@@ -114,7 +132,7 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
   // The header paints "Sign in" first and swaps to the email once the browser
   // client has read the session — wait for the swap, not the first paint.
-  await page.locator('header').getByText(EMAIL).waitFor({ timeout: 20_000 }).catch(async () => {
+  await page.locator('header').getByText(email).waitFor({ timeout: 20_000 }).catch(async () => {
     const header = await page.locator('header').innerText().catch(() => '')
     throw new Error(`sign-in did not stick (header: ${header.replace(/\s+/g, ' ').slice(0, 120)})`)
   })
@@ -143,10 +161,11 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
 }
 const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
-async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean } = {}) {
+async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string } = {}) {
   await page.getByRole('button', { name: /^Log it/ }).click()
   await page.getByRole('button', { name: /Hay fed/ }).click()
-  await page.getByLabel('Bales').fill(String(bales))
+  await page.getByLabel('Hay fed').fill(String(bales))
+  if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
   const save = page.getByRole('button', { name: 'Save', exact: true })
   if (opts.doubleTap) {
     // Two clicks in the same tick, straight at the DOM — faster than a thumb.
@@ -203,6 +222,9 @@ async function main() {
     await logFeed(page, 4)
     const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
+    const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    record('2C: the answer — recorded, remaining from the count, no invented runway',
+      /4 bales recorded/.test(strip1) && /196 bales on hand \(from your count of 200/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
     record('exactly one row under the client-minted id', !!id1 && (await rowsFor(id1)) === 1 && (await feedRows()) === 1, `id ${id1.slice(0, 8)}… rows=${id1 ? await rowsFor(id1) : '-'} feeds=${await feedRows()}`)
@@ -252,13 +274,80 @@ async function main() {
     // ── half-typed sheet survives a reload ──
     await page.getByRole('button', { name: /^Log it/ }).click()
     await page.getByRole('button', { name: /Hay fed/ }).click()
-    await page.getByLabel('Bales').fill('7')
+    await page.getByLabel('Hay fed').fill('7')
     await page.reload({ waitUntil: 'domcontentloaded' })
     const btn = await page.getByRole('button', { name: /^Log it/ }).innerText().catch(() => '')
     await page.getByRole('button', { name: /^Log it/ }).click()
-    const restored = await page.getByLabel('Bales').inputValue().catch(() => '')
+    const restored = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('half-typed sheet survives a reload', /finish/.test(btn) && restored === '7', `button "${btn}" · bales "${restored}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // ── 2F: a feeding AT the place, then the place page answers ──
+    const placeName = `${PREFIX} West stack`
+    await logFeed(page, 2, { place: placeName })
+    await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+    await page.goto('/places', { waitUntil: 'domcontentloaded' })
+    const placeLink = page.getByRole('link', { name: new RegExp(placeName) })
+    record('2F: /places lists the place', await placeLink.count() > 0)
+    await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+    const h1p = await page.locator('h1').first().innerText().catch(() => '')
+    const bodyP = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
+    record('2F: place page opens with its memory', h1p === placeName && /Last recorded feeding: today .*2 bales/.test(bodyP), `h1 "${h1p}" · ${(bodyP.match(/Last recorded feeding:[^·]*·[^L]{0,40}/) ?? [''])[0]}`)
+    await page.getByRole('tab', { name: 'Last feeding' }).click()
+    const chip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    record('2F: "Last feeding" chip answers', /Last recorded feeding: today .*2 bales/.test(chip), chip.slice(0, 100))
+    const feedHere = page.getByRole('button', { name: 'Log feed here' })
+    await feedHere.click()
+    const prefilled = await page.getByLabel('Where').inputValue().catch(() => '')
+    record('2F: "Log feed here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // ── 2B: repeat last — two taps from a cold open, undo, one row ──
+    const beforeRepeat = await feedRows()
+    await page.goto('/home', { waitUntil: 'domcontentloaded' })
+    await page.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    const same = page.getByRole('button', { name: 'Same today' })
+    await same.waitFor({ timeout: 20_000 }).catch(() => {})
+    const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    record('2B: Repeat last feeding card shows the last feeding', await same.count() > 0 && /2 bales/.test(cardText) && cardText.includes(placeName), cardText.slice(0, 100))
+    await same.click()                                                   // tap 2
+    const undo = page.getByRole('button', { name: /^Undo/ })
+    const sawUndo = await undo.waitFor({ timeout: 5_000 }).then(() => true).catch(() => false)
+    const seqRepeat = await watchStates(page, 'Synced to ranch', 30_000, 'Fed 2 bales')
+    record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Synced to ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
+    // Undo within the window: nothing leaves the phone.
+    const beforeUndo = await feedRows()
+    await page.getByRole('button', { name: 'Same today' }).click()
+    await page.getByRole('button', { name: /^Undo/ }).click()
+    await page.waitForTimeout(13_000)
+    record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: 'Same today' }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
+    await page.getByRole('button', { name: 'Change' }).click()
+    const changed = await page.getByLabel('Hay fed').inputValue().catch(() => '')
+    record('2B: Change opens the sheet pre-filled', changed === '2', `bales "${changed}"`)
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // ── 2E: the second person sees what A did; a visit clears it; A never sees A ──
+    const { error: colErr } = await admin.from('ranch_members').select('last_seen_at').limit(1)
+    if (colErr) {
+      skip('2E: since-you-were-here for member B', `migration 044 not applied (${colErr.message.slice(0, 60)})`)
+    } else {
+      const ownBlock = await page.getByText('Since you last checked').count() + await page.getByText('Since yesterday').count()
+      record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
+      const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const pageB = await signIn(ctxB, EMAIL_B)
+      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB.slice(0, 140))
+      const placeHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).getAttribute('href').catch(() => null)
+      record('2E: a line taps through to its place', placeHref === `/places/${placeId}`, String(placeHref))
+      await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
+      await pageB.reload({ waitUntil: 'domcontentloaded' })
+      await pageB.waitForTimeout(3_000)
+      const after = await pageB.getByText('Since you last checked').count() + await pageB.getByText('Since yesterday').count()
+      record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
+      await ctxB.close()
+    }
 
     // ── no page errors / 5xx during the run is not tracked here; the invariant smoke covers it ──
   } finally {
@@ -266,7 +355,8 @@ async function main() {
     await teardown('finish')
   }
   const fails = results.filter(r => !r.pass).length
-  console.log(`\n${results.length - fails} PASS · ${fails} FAIL${fails ? '  — BLOCKED' : ''}\n`)
+  const skips = results.filter(r => r.skip).length
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}\n`)
   process.exit(fails ? 1 : 0)
 }
 
