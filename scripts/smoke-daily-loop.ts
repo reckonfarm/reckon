@@ -173,6 +173,20 @@ async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; p
   } else await save.click()
 }
 
+// innerText can throw mid-navigation (execution context destroyed) and the
+// catch would read as an empty page; read until two consecutive reads agree.
+async function stableText(page: Page, selector: string, timeoutMs = 10_000): Promise<string> {
+  let last = ''
+  const t0 = Date.now()
+  while (Date.now() - t0 < timeoutMs) {
+    const text = (await page.locator(selector).first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    if (text && text === last) return text
+    last = text
+    await page.waitForTimeout(250)
+  }
+  return last
+}
+
 async function outbox(page: Page): Promise<{ id: string; state: string; body: Record<string, unknown> }[]> {
   return page.evaluate(() => { try { return JSON.parse(localStorage.getItem('dryline_outbox_v1') ?? '[]') } catch { return [] } })
 }
@@ -290,8 +304,8 @@ async function main() {
     const placeLink = page.locator(`main a[href="/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+    const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
-    const bodyP = (await page.locator('body').innerText()).replace(/\s+/g, ' ')
     record('2F: place page opens with its memory', h1p === placeName && /Last recorded feeding: today .*2 bales/.test(bodyP), `h1 "${h1p}" · ${(bodyP.match(/Last recorded feeding:[^·]*·[^L]{0,40}/) ?? [''])[0]}`)
     await page.getByRole('tab', { name: 'Last feeding' }).click()
     const chip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
