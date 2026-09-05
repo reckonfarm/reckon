@@ -124,19 +124,24 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
 // Watch the SaveStatus strip and collect the distinct sequence of state
 // labels it shows, until `until` appears or the time runs out.
 const STATES = ['Saved on this phone', 'Waiting to sync', 'Synced to ranch', "Couldn't save — try again"]
+let lastWatch: string[] = []   // raw strip texts seen by the last watch, for FAIL details
 async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
+  const raw: string[] = []
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
-    const text = await page.locator('[role="status"]').first().innerText().catch(() => '')
+    const text = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    if (raw[raw.length - 1] !== text) raw.push(text)
     if (label && !text.includes(label)) { await page.waitForTimeout(50); continue }   // still showing the previous entry
     const s = STATES.find(x => text.includes(x))
     if (s && seen[seen.length - 1] !== s) seen.push(s)
     if (s === until) break
     await page.waitForTimeout(50)
   }
+  lastWatch = raw
   return seen
 }
+const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean } = {}) {
   await page.getByRole('button', { name: /^Log it/ }).click()
@@ -211,16 +216,17 @@ async function main() {
     } else record('replaying the same id is answered duplicate, no second row', false, 'outbox item not found')
 
     // ── airplane mode ──
+    await page.waitForTimeout(2500)   // let the post-sync refresh settle
     await ctx.setOffline(true)
     await logFeed(page, 3)
     const seqOff = await watchStates(page, 'Synced to ranch', 4_000, 'Fed 3 bales')   // must NOT reach synced
     const stillLocal = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Saved on this phone')
-    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Synced to ranch') && stillLocal, seqOff.join(' → '))
+    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Synced to ranch') && stillLocal, seqOff.join(' → ') + rawSeen())
     await ctx.setOffline(false)
     const seqOn = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 3 bales')
     const ob2 = await outbox(page)
     const id2 = ob2.find(i => (i.body as { bales?: number }).bales === 3)?.id ?? ''
-    record('reconnect → Synced to ranch, exactly one row', seqOn.includes('Synced to ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}`)
+    record('reconnect → Synced to ranch, exactly one row', seqOn.includes('Synced to ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}` + rawSeen())
 
     // ── force-quit mid-save: kill the page while offline, reopen ──
     await ctx.setOffline(true)

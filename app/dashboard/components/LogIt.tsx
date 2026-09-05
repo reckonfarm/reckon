@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
@@ -204,6 +204,12 @@ export default function LogIt() {
   const [lot, setLot] = useState('')            // hay_fed: herd lot id, '' = no lot
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Two guards a thumb can't beat: a synchronous in-flight ref (React's
+  // disabled state lands a render later than a second tap in the same tick),
+  // and ONE event id per sheet, minted the moment a type is picked — so even
+  // two racing submits carry the same id and the server keeps one row.
+  const submitting = useRef(false)
+  const eventId = useRef<string | null>(null)
 
   // Fields — strings until submit, like ActualsCard.
   const [n1, setN1] = useState('')          // inches | bales | count | head
@@ -218,6 +224,7 @@ export default function LogIt() {
   const hasDraft = useHasDraft()
 
   const close = useCallback(() => {
+    eventId.current = null
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
     setLots(null); setLot('')
@@ -352,6 +359,8 @@ export default function LogIt() {
 
   const submit = async () => {
     if (!type) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true); setError(null)
     try {
       const placeId = type === 'cattle_moved' ? null : await resolveSlot(place, setPlace)
@@ -379,7 +388,7 @@ export default function LogIt() {
       // A refused local write is the one failure that means "not saved".
       const placeName = (id: string | null) => places.find(p => p.id === id)?.name ?? null
       const lotName = lots?.find(l => l.id === lot)
-      body.id = newEventId()
+      body.id = eventId.current ?? (eventId.current = newEventId())
       const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId))
       try {
         enqueue(body, label)
@@ -395,6 +404,7 @@ export default function LogIt() {
       // Creating a NEW place needs the server; an existing place saves offline.
       setError(msg && !/fetch|network|load failed/i.test(msg) ? msg : 'No connection — a new place needs one. Pick an existing place, or try again.')
     } finally {
+      submitting.current = false
       setBusy(false)
     }
   }
@@ -476,7 +486,7 @@ export default function LogIt() {
               <Heading level={5}>{type ? MANUAL_EVENT_LABELS[type] : 'Log it'}</Heading>
               <button
                 type="button"
-                onClick={type ? () => { setType(null); setError(null) } : close}
+                onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
                 className="px-1 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green"
               >
                 {type ? 'Back' : 'Close'}
