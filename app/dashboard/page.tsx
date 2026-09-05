@@ -220,18 +220,20 @@ export default async function DashboardPage({
     fips
       ? db.from('counties').select('id, fips, name, state, lat, lon').eq('fips', fips).single()
       : Promise.resolve(null),
-    fips
-      ? (async () => {
-          const { data: { user } } = await supabase.auth.getUser()
-          // Profile and ranch (the outfit's name, flow commit 2) side by side —
-          // both need only the user; neither waits on the other.
-          const [profileResult, ranch] = await Promise.all([
-            getOperationProfile({ supabase, user }),
-            user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
-          ])
-          return { user, profileResult, ranch }
-        })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }))
-      : Promise.resolve({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null }),
+    // The session resolves county or not (Block 2): a member with no home
+    // county lands on the bare dashboard and must still get their ledger.
+    // Without a session cookie getUser is a local no-op, so the public
+    // no-county page pays nothing.
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      // Profile and ranch (the outfit's name, flow commit 2) side by side —
+      // both need only the user; neither waits on the other.
+      const [profileResult, ranch] = await Promise.all([
+        getOperationProfile({ supabase, user }),
+        user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
+      ])
+      return { user, profileResult, ranch }
+    })().catch(() => ({ user: null, profileResult: { status: 'unauthenticated' as const }, ranch: null })),
   ])
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
