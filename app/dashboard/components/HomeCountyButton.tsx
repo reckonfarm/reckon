@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { trackEvent } from '@/lib/analytics'
 
@@ -9,11 +10,19 @@ interface Props {
   countyName: string
 }
 
+// Fired on window after the home county changes (set or cleared) so surfaces
+// that resolved it on their own — the bottom bar's Operation anchor — re-read
+// it without a navigation. The orientation line is server-rendered and follows
+// through router.refresh() below.
+export const HOME_COUNTY_CHANGED = 'dryline:home-county'
+
 // Designate this county as the user's Home — the one the dashboard opens to by
 // default (see app/dashboard/page.tsx). Exactly one Home per user; setting a new
 // one replaces the old. Independent of the watchlist. Hidden for signed-out
-// visitors (the Watch button already carries the sign-in prompt next to it).
+// visitors. Lives on the Weather view beside the county selector (layout,
+// commit 2), where changing counties already lives.
 export default function HomeCountyButton({ countyFips, countyName }: Props) {
+  const router = useRouter()
   const [authed, setAuthed] = useState<boolean | null>(null) // null = loading
   const [isHome, setIsHome] = useState(false)
   const [busy, setBusy]     = useState(false)
@@ -49,10 +58,18 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
 
   async function toggle() {
     setBusy(true)
+    // After either write: tell the bottom bar (event) and re-render the
+    // server-side orientation line (refresh keeps client view state — the
+    // open view and its loaded bodies stay put).
+    const announce = () => {
+      window.dispatchEvent(new Event(HOME_COUNTY_CHANGED))
+      router.refresh()
+    }
     if (isHome) {
       // Already home → clear it
-      await fetch('/api/home-county', { method: 'DELETE' }).catch(() => {})
+      const res = await fetch('/api/home-county', { method: 'DELETE' }).catch(() => null)
       setIsHome(false)
+      if (res?.ok) announce()
     } else {
       const res = await fetch('/api/home-county', {
         method: 'POST',
@@ -64,6 +81,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
         trackEvent('home_county_set', { fips: countyFips })
         setJustSet(true)
         setTimeout(() => setJustSet(false), 3000)
+        announce()
       }
     }
     setBusy(false)

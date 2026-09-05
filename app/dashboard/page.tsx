@@ -33,7 +33,6 @@ import ProgramStatus from './components/ProgramStatusLoader'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
-import HomeCountyButton from './components/HomeCountyButton'
 import NewsHookCard from '@/app/components/NewsHookCard'
 import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
@@ -64,6 +63,10 @@ export const dynamic = 'force-dynamic'
 // filtering. Only a plain array of strings is trusted; any other shape (object array,
 // null, etc.) → null, which the deadline service reads as "show all". Never throws on
 // an unexpected jsonb shape.
+// The operation's county for the orientation line (layout, commit 2): name +
+// state + fips, nothing more — read once, shared with the herd-anchor chain.
+interface HomeCounty { fips: string; name: string; state: string }
+
 function cropsToStringArray(crops: unknown): string[] | null {
   if (!Array.isArray(crops)) return null
   const strings = crops.filter((c): c is string => typeof c === 'string')
@@ -277,6 +280,9 @@ export default async function DashboardPage({
   // all leave herdAnchor null → nothing renders, and any failure degrades to null so the
   // public county view below never blocks.
   let herdAnchor: HerdAnchor | null = null
+  // The signed-in person's home county — the operation's county — for the
+  // orientation line under the ranch name. Null signed out or when none is set.
+  let homeCounty: HomeCounty | null = null
   if (selectedCounty) {
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
     const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[] } | null) : null
@@ -288,7 +294,12 @@ export default async function DashboardPage({
     // the Latest Reading chrome card, independent of which view is open), the
     // deadlines, and the herd-anchor chain. Only the chain is serial, and only
     // because the anchor genuinely needs the profile's lots + home county first.
-    const [{ data: latestRow }, deadlineRes, anchor] = await Promise.all([
+    // The home county is read ONCE per request (layout, commit 2): the herd
+    // anchor chain and the orientation line share it. Signed out → null, no read.
+    const homeFipsPromise: Promise<string | null> = user
+      ? getHomeCountyFips(user.id).catch(() => null)
+      : Promise.resolve(null)
+    const [{ data: latestRow }, deadlineRes, anchor, home] = await Promise.all([
       db
         .from('drought_data')
         .select('week_date, d0, d1, d2, d3, d4')
@@ -298,14 +309,24 @@ export default async function DashboardPage({
         .maybeSingle(),
       getUpcomingDeadlines(selectedCounty.fips, crops),
       lots.length > 0 && profileUserId
-        ? getHomeCountyFips(profileUserId)
+        ? homeFipsPromise
             .then(homeFips => (homeFips ? getHerdAnchor({ lots, homeFips, supabase }) : null))
             .catch(() => null)
         : Promise.resolve(null),
+      // The operation's county for the orientation line. When it's the county in
+      // view the row is already here; only a DIFFERENT home county costs a read
+      // (one indexed fips lookup, chained on the fips, concurrent with the rest).
+      homeFipsPromise.then(async (hf): Promise<HomeCounty | null> => {
+        if (!hf) return null
+        if (hf === selectedCounty.fips) return { fips: selectedCounty.fips, name: selectedCounty.name, state: selectedCounty.state }
+        const { data } = await db.from('counties').select('fips, name, state').eq('fips', hf).maybeSingle()
+        return (data as HomeCounty | null) ?? null
+      }).catch(() => null),
     ])
     latest = latestRow as DroughtReading | null
     deadlineResult = deadlineRes
     herdAnchor = anchor
+    homeCounty = home
   }
 
   // LFP eligibility — HOISTED to the always-run path (was Drought-only) so the LFP alert
@@ -396,12 +417,22 @@ export default async function DashboardPage({
               {/* Semantic h1 (the page's only heading — public county pages are the SEO
                   surface) at the compact text-lg size; !important beats the level-1 scale. */}
               {ranchName ? (
-                // A named outfit is the subject; the county reads as home base
-                // on a secondary line (flow, commit 2). Same h1 slot and size.
+                // A named outfit is the subject (flow, commit 2); the secondary
+                // line is the OPERATION's county — the home county, the one the
+                // landing and the bottom anchor resolve to — not whichever county
+                // is in view (layout, commit 2; the old line read "Home base ·"
+                // and showed the county in view, which was wrong whenever they
+                // differed). A different county in view is named after it; no
+                // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
                   <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
-                  <p className="font-dm-sans text-xs text-forest-green/50">
-                    Home base · {selectedCounty.name}, {selectedCounty.state} · FIPS {selectedCounty.fips}
+                  <p className="font-dm-sans text-xs text-forest-green/50" data-testid="operation-line">
+                    {homeCounty
+                      ? `Operation · ${homeCounty.name}, ${homeCounty.state} · FIPS ${homeCounty.fips}`
+                      : 'Operation · No home county set'}
+                    {(!homeCounty || homeCounty.fips !== selectedCounty.fips) && (
+                      <> · Viewing {selectedCounty.name}, {selectedCounty.state}</>
+                    )}
                   </p>
                 </div>
               ) : (
@@ -419,14 +450,17 @@ export default async function DashboardPage({
                   droughtLabel={shareDrought.level != null ? shareDrought.label : null}
                   surface="dashboard"
                 />
-                <HomeCountyButton
-                  countyFips={selectedCounty.fips}
-                  countyName={selectedCounty.name}
-                />
-                <WatchlistButton
-                  countyId={selectedCounty.id}
-                  countyName={selectedCounty.name}
-                />
+                {/* Set Home and Watch left this bar for the Weather view, beside
+                    the county selector, where changing counties already lives
+                    (layout, commit 2): signed in, the bar is the operation + Share.
+                    Signed out is unchanged — the Watch slot is the sign-in prompt
+                    it always was. */}
+                {!user && (
+                  <WatchlistButton
+                    countyId={selectedCounty.id}
+                    countyName={selectedCounty.name}
+                  />
+                )}
               </div>
             </div>
 
@@ -471,15 +505,13 @@ export default async function DashboardPage({
                            fetch, News stays fast, default tab unchanged). Tapping opens the
                            Weather tab via the toggle's exact link pattern. Renders nothing
                            when there's no real data. ── */}
+                    {/* Today's order (layout, commit 3), top to bottom: conditions
+                        strip · LFP card · deadlines · Log it · live job · today's
+                        jobs · herd value · 7-day forecast · headlines · This season ·
+                        Hay · Recently logged. Money and the operator's own line
+                        first; the machines; the herd; the sky; the news; then the
+                        season ledgers at the bottom. Same components, same gates. */}
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-
-                    {/* A machine working RIGHT NOW — loud at the top of Today, carrying the
-                        headline number for the job type (bale count / percent cut + ETA).
-                        Null when nothing runs and for signed-out visitors (RLS returns
-                        nothing). */}
-                    <Suspense fallback={null}>
-                      <LiveJobCard />
-                    </Suspense>
 
                     {/* Herd value: ONE surface (flow, commit 5) — the HerdValueCard below.
                         The always-on HerdEstimatePanel island (HerdAnchorLoader) is gone;
@@ -530,6 +562,13 @@ export default async function DashboardPage({
                         button that can only 401. */}
                     {user && <LogIt />}
 
+                    {/* A machine working RIGHT NOW, carrying the headline number for
+                        the job type (bale count / percent cut + ETA). Null when nothing
+                        runs and for signed-out visitors (RLS returns nothing). */}
+                    <Suspense fallback={null}>
+                      <LiveJobCard />
+                    </Suspense>
+
                     {/* Today's completed sessions — quiet, gone at midnight ranch
                         time (at breakfast the slate is clean; history lives in the
                         Jobs view). The live card above already carries in-progress. */}
@@ -537,6 +576,22 @@ export default async function DashboardPage({
                       <TodayJobs />
                     </Suspense>
 
+                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
+                        surface on Today since flow commit 5). */}
+                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
+
+                    {/* 7-day forecast — Today ONLY since layout commit 3 (its Weather
+                        copy was cut: one carousel, one place). Streamed behind Suspense. */}
+                    <div>
+                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
+                      <Suspense fallback={<ForecastPanelSkeleton />}>
+                        <ForecastPanelAsync dataPromise={forecastPromise} />
+                      </Suspense>
+                    </div>
+                    <NewsHookCard fips={selectedCounty.fips} />
+
+                    {/* The season ledgers, at the bottom (layout, commit 3). Each is
+                        the same self-gating server component it was on /home. */}
                     <Suspense fallback={null}>
                       <SeasonTotals />
                     </Suspense>
@@ -548,18 +603,6 @@ export default async function DashboardPage({
                     <Suspense fallback={null}>
                       <RecentlyLogged />
                     </Suspense>
-
-                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
-                        surface on Today since flow commit 5). */}
-                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
-
-                    <div>
-                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-                      <Suspense fallback={<ForecastPanelSkeleton />}>
-                        <ForecastPanelAsync dataPromise={forecastPromise} />
-                      </Suspense>
-                    </div>
-                    <NewsHookCard fips={selectedCounty.fips} />
                   </>
                 ),
                 ...(view === 'jobs'
@@ -579,7 +622,6 @@ export default async function DashboardPage({
                           user={user}
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
-                          forecastPromise={forecastPromise}
                         />
                       </Suspense>
                     ) }
