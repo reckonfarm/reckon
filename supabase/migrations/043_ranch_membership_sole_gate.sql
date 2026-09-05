@@ -192,7 +192,9 @@ create policy "member detections readable"
   using (ranch_id in (select ranch_id from public.ranch_members where user_id = auth.uid()));
 
 -- 8) Verify (paste back) -----------------------------------------------------
--- (a) Expect exactly 18 rows, every policyname starting "member ", every
+-- (a) Expect exactly 16 rows (4 places + 4 devices + 2 events + 1 jobs +
+--     3 job_annotations + 1 detection_runs + 1 detections), every
+--     policyname starting "member ", every
 --     roles = {authenticated}, and no qual/with_check containing
 --     "user_id = auth.uid()" followed by OR.
 select tablename, policyname, cmd, roles,
