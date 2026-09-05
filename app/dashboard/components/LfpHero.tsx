@@ -5,6 +5,7 @@ import { getLfpDelta } from '@/lib/lfp-delta'
 import LfpDisclaimer from '@/app/components/LfpDisclaimer'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
+import { nextDeadline, isUrgent, fmtDeadlineLong, fmtVerifiedMonth } from '@/lib/programDates'
 
 // ─── LFP hero — THE single contextual LFP card of the drought view ─────────────
 // A1 absorbed the old TriggeredBanner into this card: one hero line per enforcement
@@ -57,11 +58,21 @@ function fmtAsOf(iso: string): string {
   })
 }
 
-// Long form for the signup-closes date (the old banner's format, kept verbatim).
-function fmtLong(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  })
+// The LFP application deadline line under the triggered CTA. Reads
+// lib/programDates.ts ONLY — never the grazing period (its end date is when
+// grazing stops, not when FSA stops taking applications; the two were confused
+// before Block 1). Urgent phrasing only inside the 60-day window; otherwise the
+// plain date with the month it was last verified. No row → honest FSA-office copy.
+function LfpDeadlineLine() {
+  const d = nextDeadline('LFP')
+  if (!d) {
+    return <>Ask your FSA office for this year&apos;s application deadline.</>
+  }
+  const lossYear = d.lossYear ?? ''
+  if (isUrgent(d)) {
+    return <>Don&apos;t wait — applications for {lossYear} losses are due {fmtDeadlineLong(d.deadline)}.</>
+  }
+  return <>Applications for {lossYear} losses are due {fmtDeadlineLong(d.deadline)} · verified {fmtVerifiedMonth(d)}.</>
 }
 
 // "Find your county FSA office" — USDA service-center locator. Shown on the pending
@@ -277,7 +288,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
               Tier {maxTier} triggered — FSA signup is open now.
             </p>
             <p className="mt-0.5 font-dm-sans text-xs text-forest-green/60">
-              Don&apos;t wait — FSA signup closes {fmtLong(eligibility.grazingPeriod.endDate)}.
+              <LfpDeadlineLine />
             </p>
           </div>
           <a

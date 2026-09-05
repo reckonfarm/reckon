@@ -5,7 +5,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
+import { signHayPhotosForRows } from '@/lib/hay-photos'
 
 const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {
   1: { label: 'D1', cls: 'bg-yellow-100 text-yellow-800 ring-yellow-200' },
@@ -129,6 +129,9 @@ export default async function SellerPage(
   ])
 
   const listings = (listingsData ?? []) as unknown as ListingRow[]
+  // Private bucket: sign every listing photo once (1 h URLs) before render.
+  const signedPhotos = await signHayPhotosForRows(listings)
+  for (const l of listings) l.photo_urls = signedPhotos.get(l) ?? []
   const reviews  = (reviewsData ?? []) as unknown as ReviewRow[]
 
   // Drought tier (highest D1–D4 with coverage > 0) per listing county
@@ -359,7 +362,6 @@ export default async function SellerPage(
         )}
 
       </main>
-    <SiteFooter />
     </>
   )
 }

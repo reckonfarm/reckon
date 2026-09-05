@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import { OPERATOR_NAME, contactLine } from '@/lib/legal'
 
-// Site-wide footer for public pages (homepage, hay marketplace, seller profiles).
-// Mirrors the legal-link strip used in the dashboard footer so the links to the
-// Terms and Privacy Policy are reachable everywhere, not just behind sign-in.
+// Site-wide footer — mounted ONCE in app/layout.tsx so the operator name and
+// contact (lib/legal.ts) plus the Terms / Privacy links reach every page,
+// public or signed-in. Pages must not mount it themselves (duplicate footers).
+// pb-24 clears the fixed bottom tab bar.
 export default function SiteFooter() {
   return (
     <footer className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
@@ -10,6 +12,9 @@ export default function SiteFooter() {
         <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
         {' · '}
         <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
+      </p>
+      <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/40">
+        {OPERATOR_NAME} · {contactLine()}
       </p>
     </footer>
   )

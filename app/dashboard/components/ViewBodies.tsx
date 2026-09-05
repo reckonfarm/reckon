@@ -46,6 +46,7 @@ import MarketReadShell from './MarketReadShell'
 import JobsView, { JobsViewSkeleton } from './JobsView'
 import type { DashboardViewKey, ViewParams } from './DashboardViews'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { signHayPhotosForRows } from '@/lib/hay-photos'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -512,12 +513,6 @@ export async function WeatherViewBody({
           </div>
 
 
-          {/* Legal links (no site footer this pass) */}
-          <p className="text-xs text-forest-green/40 font-dm-sans text-center pt-2">
-            <Link href="/terms" className="underline hover:text-forest-green/70">Terms</Link>
-            {' · '}
-            <Link href="/privacy" className="underline hover:text-forest-green/70">Privacy Policy</Link>
-          </p>
         </>
       )}
     </>
@@ -601,6 +596,7 @@ export async function HayViewBody({
       }
     }
 
+    const signedPhotos = await signHayPhotosForRows(ranked.map(r => r.row))
     hayNearbyCards = ranked.map(({ row, county, miles }): NearbyHayCard => ({
       id:              row.id,
       hayType:         row.hay_type,
@@ -616,7 +612,7 @@ export async function HayViewBody({
         row.hay_test_tdn_pct      != null ||
         row.hay_test_rfv          != null ||
         row.hay_test_moisture_pct != null,
-      photoUrls:       row.photo_urls ?? [],
+      photoUrls:       signedPhotos.get(row) ?? [],
       description:     row.description,
       countyName:      county.name,
       state:           county.state,

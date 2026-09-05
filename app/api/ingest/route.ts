@@ -89,7 +89,7 @@ const MAX_BATCH_RECORDS = 64 // one courier upload batch; the courier chunks the
 // "never had a fix", not a reading from the past.
 const MIN_CREDIBLE_UNIX_TIME = 1577836800 // 2020-01-01T00:00:00Z
 
-type CourierDevice = { id: string; user_id: string; hardware_id: string; type: string | null }
+type CourierDevice = { id: string; user_id: string; hardware_id: string; type: string | null; ranch_id: string | null }
 
 // Resolve the bearer: the shared secret, or a device token (sha256 → 033's
 // devices.token_hash). Returns 'secret' | the matched device row | null.
@@ -107,10 +107,23 @@ async function resolveAuth(
   const token_hash = createHash('sha256').update(bearer).digest('hex')
   const { data: device } = await db
     .from('devices')
-    .select('id, user_id, hardware_id, type')
+    .select('id, user_id, hardware_id, type, ranch_id')
     .eq('token_hash', token_hash)
     .maybeSingle()
   return device ?? null
+}
+
+// A device token may report only for hardware on ITS OWN ranch (or for itself).
+// Ranch is resolved server-side from the devices table on both ends — never
+// from the payload. During the ranch_id-nullable transition an unstamped side
+// falls back to same-owner. The shared INGEST_SECRET is PK-flashed firmware and
+// carries no device identity, so it has nothing to compare against.
+type TargetDevice = { id: string; user_id: string; ranch_id: string | null }
+function sameRanch(authed: 'secret' | CourierDevice, target: TargetDevice): boolean {
+  if (authed === 'secret') return true
+  if (authed.id === target.id) return true
+  if (authed.ranch_id && target.ranch_id) return authed.ranch_id === target.ranch_id
+  return authed.user_id === target.user_id
 }
 
 export async function POST(request: NextRequest) {
@@ -188,10 +201,12 @@ export async function POST(request: NextRequest) {
   if (deviceErr) {
     return Response.json({ error: deviceErr.message }, { status: 500 })
   }
-  if (!device) {
+  if (!device || !sameRanch(authed, device)) {
     // Fail LOUD: non-2xx keeps the device retrying, the id lands in the logs,
     // and the reading is never silently dropped. No auto-provisioning — an
     // unknown device has no owner to assign, and auto-create is a spoof door.
+    // A token from another ranch gets the SAME 404: hardware it can't see
+    // does not exist for it (no cross-ranch existence oracle).
     return Response.json({ error: 'unknown hardware_id', hardware_id }, { status: 404 })
   }
 
@@ -319,7 +334,8 @@ async function handleBatch(
   if (deviceErr) {
     return Response.json({ error: deviceErr.message }, { status: 500 })
   }
-  if (!device) {
+  if (!device || !sameRanch(authed, device)) {
+    // Same 404 for unknown AND other-ranch hardware (see the single path).
     return Response.json({ error: 'unknown hardware_id', hardware_id }, { status: 404 })
   }
 

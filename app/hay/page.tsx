@@ -7,7 +7,6 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
 import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
@@ -384,8 +383,9 @@ export default function HayPage() {
           .from('hay-photos')
           .upload(path, compressed, { contentType: 'image/jpeg', upsert: false })
         if (error) { failed.push(file); continue }
-        const { data: { publicUrl } } = supabase.storage.from('hay-photos').getPublicUrl(path)
-        urls.push(publicUrl)
+        // The bucket is PRIVATE: store the storage path; every read signs it
+        // server-side for an hour (lib/hay-photos.ts). Never a public URL.
+        urls.push(path)
       } catch {
         failed.push(file)
       }
@@ -1536,7 +1536,6 @@ export default function HayPage() {
         </div>
 
       </main>
-    <SiteFooter />
     </>
   )
 }

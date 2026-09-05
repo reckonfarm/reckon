@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { matchNewListing } from '@/lib/hay-radar-service'
 import { routeDemand } from '@/lib/demand-routing-service'
 import { flagDisabled } from '@/lib/flags'
+import { signHayPhotosForRows } from '@/lib/hay-photos'
 
 interface CountyRow {
   id:    number
@@ -102,6 +103,9 @@ export async function GET() {
     }
   }
 
+  // Private bucket: one signing call for every photo in the response (1 h URLs).
+  const signedPhotos = await signHayPhotosForRows(listings as unknown as { photo_urls?: string[] | null }[])
+
   return Response.json(
     listings.map(l => {
       const row = l as typeof l & { user_id: string }
@@ -128,7 +132,7 @@ export async function GET() {
         hay_test_tdn_pct:       row.hay_test_tdn_pct,
         hay_test_rfv:          row.hay_test_rfv,
         hay_test_moisture_pct: row.hay_test_moisture_pct,
-        photo_urls:            (row as unknown as { photo_urls: string[] | null }).photo_urls ?? [],
+        photo_urls:            signedPhotos.get(l as unknown as { photo_urls?: string[] | null }) ?? [],
         claim_status:          (row as unknown as { claim_status: string | null }).claim_status ?? null,
         sold_at:               (row as unknown as { sold_at: string | null }).sold_at ?? null,
         counties:              row.counties,

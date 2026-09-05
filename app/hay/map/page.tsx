@@ -1,7 +1,6 @@
 import { createServiceClient } from '@/lib/supabase'
 import HayMapLoader from './HayMapLoader'
 import SiteHeader from '@/app/components/SiteHeader'
-import SiteFooter from '@/app/components/SiteFooter'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +32,6 @@ export default async function HayMapPage() {
     <>
       <SiteHeader />
       <HayMapLoader listings={[]} />
-      <SiteFooter />
     </>
   )
 
@@ -90,7 +88,6 @@ export default async function HayMapPage() {
     <>
       <SiteHeader />
       <HayMapLoader listings={listings} />
-      <SiteFooter />
     </>
   )
 }

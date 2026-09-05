@@ -25,6 +25,7 @@
 
 // @next/env must load before anything reads process.env (mirrors seed-counties.ts).
 import { loadEnvConfig } from '@next/env'
+import { PROGRAM_DATES, programYearOf } from '../lib/programDates'
 loadEnvConfig(process.cwd())
 
 // ─── Seed rows (inline — the only source of truth for this seed) ──────────────────
@@ -53,34 +54,32 @@ interface DeadlineRow {
 
 const AS_OF = '2026-07-27'
 
-const ROWS: DeadlineRow[] = [
+// LFP application + PRF sales closing / acreage reporting come from
+// lib/programDates.ts — THE single source of truth (Block 1). This seed only
+// carries them into the table; the dashboard overrides the table from that file
+// anyway (lib/rma-deadline-service.ts), so the two can never disagree on screen.
+const PROGRAM_ROWS: DeadlineRow[] = PROGRAM_DATES.flatMap(pd => {
+  const base = {
+    state: 'MT', county_fips: null, crop_year: programYearOf(pd), as_of: pd.verifiedAt,
+    deadline_date: pd.deadline,
+  }
+  if (pd.program === 'LFP') {
+    return [{
+      ...base, crop_or_program: 'lfp', deadline_type: 'application', source: 'USDA FSA',
+      notes: `CCC-853 for ${pd.lossYear} grazing-year losses; March 1 following the loss year (${pd.source})`,
+    }]
+  }
   // PRF carries BOTH obligations, same day by design — PM-21-051 set sales closing AND
   // acreage reporting to Dec 1. Both CONFIRMED (standing policy, not an annual notice).
-  {
-    state: 'MT', county_fips: null,
-    crop_or_program: 'prf', deadline_type: 'sales_closing',
-    deadline_date: '2026-12-01', crop_year: 2027,
-    source: 'USDA RMA', as_of: AS_OF,
-    notes: 'Dec 1 standing date per RMA bulletin PM-21-051 (2022 and succeeding crop years)',
-  },
-  {
-    state: 'MT', county_fips: null,
-    crop_or_program: 'prf', deadline_type: 'acreage_reporting',
-    deadline_date: '2026-12-01', crop_year: 2027,
-    source: 'USDA RMA', as_of: AS_OF,
-    notes: 'Dec 1 standing date per RMA bulletin PM-21-051 (2022 and succeeding crop years)',
-  },
-  // LFP application for the PRIOR grazing year — statutory 30 days after calendar year
-  // end (CCC-853). crop_year is the LOSS year (2026), not the deadline's calendar year:
-  // "the year the date belongs to". PROGRAM-LEVEL (every rancher with grazing losses
-  // files; never crop-filtered) — see PROGRAM_LEVEL in lib/rma-deadline-service.ts.
-  {
-    state: 'MT', county_fips: null,
-    crop_or_program: 'lfp', deadline_type: 'application',
-    deadline_date: '2027-01-30', crop_year: 2026,
-    source: 'USDA FSA', as_of: AS_OF,
-    notes: 'CCC-853 for 2026 grazing-year losses; statutory 30 days after calendar year end',
-  },
+  const notes = 'Dec 1 standing date per RMA bulletin PM-21-051 (2022 and succeeding crop years)'
+  return [
+    { ...base, crop_or_program: 'prf', deadline_type: 'sales_closing',     source: 'USDA RMA', notes },
+    { ...base, crop_or_program: 'prf', deadline_type: 'acreage_reporting', source: 'USDA RMA', notes },
+  ]
+})
+
+const ROWS: DeadlineRow[] = [
+  ...PROGRAM_ROWS,
   {
     state: 'MT', county_fips: null,
     crop_or_program: 'spring_wheat', deadline_type: 'sales_closing',

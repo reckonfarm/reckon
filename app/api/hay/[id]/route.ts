@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
 import { flagDisabled } from '@/lib/flags'
+import { signHayPhotos } from '@/lib/hay-photos'
 
 // GET /api/hay/[id] — single listing with drought tier, seller trust info,
 // and the viewer's relationship to the deal (claim / sold / review state).
@@ -174,7 +175,7 @@ export async function GET(
     hay_test_tdn_pct:       row.hay_test_tdn_pct,
     hay_test_rfv:          row.hay_test_rfv,
     hay_test_moisture_pct: row.hay_test_moisture_pct,
-    photo_urls:            (row as unknown as { photo_urls: string[] | null }).photo_urls ?? [],
+    photo_urls:            await signHayPhotos((row as unknown as { photo_urls: string[] | null }).photo_urls),
     counties:              row.counties,
     mine:                  isOwner,
     droughtTier,

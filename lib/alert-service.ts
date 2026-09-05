@@ -3,6 +3,7 @@ import { createServiceClient } from './supabase'
 import { computeLfpEligibility, defaultGrazingPeriod, type GrazingPeriod } from './lfp-eligibility'
 import { getGrazingPeriods } from './grazing-periods'
 import { sendDroughtAlert } from './email'
+import { resolveRanchId } from './ranch-membership'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,8 +270,14 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
       // device_id null (no emitter); dedup_key makes a re-run of the same week
       // ledger-idempotent. A failed ledger write must never block the alert
       // loop — the email already went; surface it in the cron result instead.
+      // ranch_id comes from the person's membership (server-side, service
+      // role), never from anything in the alert payload — a ranch-scoped
+      // ledger row a fellow member can see. Null (no membership) stays
+      // owner-visible via the user_id leg, same as an unstamped device.
+      const ranchId = await resolveRanchId(db, userId)
       const { error: ledgerErr } = await db.from('events').insert({
         user_id:   userId,
+        ranch_id:  ranchId,
         device_id: null,
         type:      'alert',
         ts:        new Date().toISOString(),

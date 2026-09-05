@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { Metadata } from 'next'
 import SiteHeader from '@/app/components/SiteHeader'
 import { renderMarkdown } from '@/lib/markdown'
+import { fillLegal } from '@/lib/legal'
 
 export const metadata: Metadata = { title: 'Privacy Policy' }
 
@@ -21,7 +22,7 @@ export default async function PrivacyPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-        <article className="pb-16">{renderMarkdown(md)}</article>
+        <article className="pb-16">{renderMarkdown(fillLegal(md))}</article>
       </main>
     </>
   )
