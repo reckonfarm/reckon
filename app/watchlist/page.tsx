@@ -112,7 +112,7 @@ export default function WatchlistPage() {
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
               <p className="text-sm text-forest-green/60 font-dm-sans">
                 No counties watched yet.{' '}
-                <Link href="/dashboard" className="underline hover:text-forest-green">
+                <Link href="/dashboard" prefetch={false} className="underline hover:text-forest-green">
                   Search for a county
                 </Link>{' '}
                 and click Watch to track its drought status.
@@ -178,6 +178,7 @@ export default function WatchlistPage() {
                         </button>
                         <Link
                           href={`/dashboard?fips=${entry.county.fips}`}
+                          prefetch={false}
                           className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"
                         >
                           View Dashboard →
