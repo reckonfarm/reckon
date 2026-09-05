@@ -10,7 +10,7 @@ import { hasUnsynced } from '@/lib/outbox'
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
 // overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
 // "Markets" on the homepage, nothing on most pages.)
-const TAGLINE = 'Ranch Intelligence for Cattle Country'
+const TAGLINE = 'Your ranch, on the record.'
 
 interface Props {
   center?: React.ReactNode
