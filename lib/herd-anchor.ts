@@ -1,7 +1,7 @@
 import 'server-only'
 import type { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
-import { resolveBarns } from '@/lib/barn-resolver'
+import { resolveBarns, type ResolveResult } from '@/lib/barn-resolver'
 import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
 import { buildTrend, type TrendData, type HerdHistoryRow, type PriceHistoryRow } from '@/lib/trend'
 import { getLrpMatrix } from '@/lib/lrp-service'
@@ -28,10 +28,13 @@ export async function getHerdAnchor(input: {
   lots: Lot[]
   homeFips: string
   supabase: ServerSupabaseClient
+  // Already-resolved barns for homeFips (views2, commit 2) — the Markets body
+  // shares one resolution with the Local auction card when the counties match.
+  resolved?: ResolveResult
 }): Promise<HerdAnchor> {
   const { lots, homeFips, supabase } = input
 
-  const resolved = await resolveBarns(homeFips)
+  const resolved = input.resolved ?? await resolveBarns(homeFips)
   const estimate = estimateHerd({ lots }, resolved)
 
   // Trend reads (additive — degrade honestly; never block the estimate above). Herd history

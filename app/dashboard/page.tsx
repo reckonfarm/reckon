@@ -41,11 +41,9 @@ import LogIt from './components/LogIt'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
-import HerdValueCard from './components/HerdValueCard'
 import { createClient } from '@/lib/supabase-server'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getRanch } from '@/lib/ranch-membership'
-import { getHerdAnchor, type HerdAnchor } from '@/lib/herd-anchor'
 import type { Lot } from '@/lib/herd'
 import { flagEnabled } from '@/lib/flags'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -272,22 +270,20 @@ export default async function DashboardPage({
   // profile or a crops jsonb that isn't a clean string array → null → show all county/
   // state deadlines.
   let deadlineResult: UpcomingDeadlinesResult = { status: 'none' }
-  // Operation zone (Block 2, Slice 1) — the herd-value anchor for a signed-in user with a
-  // herd. Gated on the SAME profile result the deadline read uses (no new auth call).
-  // userId comes from the profile row; homeFips via the existing service-role
-  // home-county helper; the page's user-scoped client keeps the herd_estimate_history
-  // read inside getHerdAnchor RLS-scoped to the owner. Anon / no-herd / no-home-county
-  // all leave herdAnchor null → nothing renders, and any failure degrades to null so the
-  // public county view below never blocks.
-  let herdAnchor: HerdAnchor | null = null
+  // The herd-value anchor is no longer computed here (views2, commit 2): the
+  // Markets body owns it, on both of its render paths, and nothing on Today
+  // reads it. The head keeps only what Today shows.
   // The signed-in person's home county — the operation's county — for the
   // orientation line under the ranch name. Null signed out or when none is set.
   let homeCounty: HomeCounty | null = null
+  // The profile's lots — an input the eager Markets body needs for its herd
+  // anchor (views2, commit 2: the anchor chain itself left this head; nothing
+  // on Today reads it any more).
+  let lots: Lot[] = []
   if (selectedCounty) {
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
     const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[] } | null) : null
-    const lots = Array.isArray(herd?.lots) ? herd!.lots : []
-    const profileUserId = profileResult.status === 'ok' ? profileResult.profile.user_id : null
+    lots = Array.isArray(herd?.lots) ? herd!.lots : []
 
     // Second parallel stage — the three reads that need the county but not each
     // other: the cheap latest reading (drives the shared Share label + heading and
@@ -299,7 +295,7 @@ export default async function DashboardPage({
     const homeFipsPromise: Promise<string | null> = user
       ? getHomeCountyFips(user.id).catch(() => null)
       : Promise.resolve(null)
-    const [{ data: latestRow }, deadlineRes, anchor, home] = await Promise.all([
+    const [{ data: latestRow }, deadlineRes, home] = await Promise.all([
       db
         .from('drought_data')
         .select('week_date, d0, d1, d2, d3, d4')
@@ -308,11 +304,6 @@ export default async function DashboardPage({
         .limit(1)
         .maybeSingle(),
       getUpcomingDeadlines(selectedCounty.fips, crops),
-      lots.length > 0 && profileUserId
-        ? homeFipsPromise
-            .then(homeFips => (homeFips ? getHerdAnchor({ lots, homeFips, supabase }) : null))
-            .catch(() => null)
-        : Promise.resolve(null),
       // The operation's county for the orientation line. When it's the county in
       // view the row is already here; only a DIFFERENT home county costs a read
       // (one indexed fips lookup, chained on the fips, concurrent with the rest).
@@ -325,7 +316,6 @@ export default async function DashboardPage({
     ])
     latest = latestRow as DroughtReading | null
     deadlineResult = deadlineRes
-    herdAnchor = anchor
     homeCounty = home
   }
 
@@ -513,9 +503,9 @@ export default async function DashboardPage({
                         season ledgers at the bottom. Same components, same gates. */}
                     <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
 
-                    {/* Herd value: ONE surface (flow, commit 5) — the HerdValueCard below.
-                        The always-on HerdEstimatePanel island (HerdAnchorLoader) is gone;
-                        the full Now/Trend/Outlook panel lives on /herd, one tap away. */}
+                    {/* Herd value lives on Markets (views2, commit 2) — one surface,
+                        between the Market Read and the cash it's priced at; the full
+                        Now/Trend/Outlook panel is on /herd. Nothing herd-scoped here. */}
 
                     {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
                         building a D2 streak / data unavailable (an outage must speak — see
@@ -576,10 +566,6 @@ export default async function DashboardPage({
                       <TodayJobs />
                     </Suspense>
 
-                    {/* Herd value — a card, not the hero, linking to /herd (the one herd
-                        surface on Today since flow commit 5). */}
-                    {herdAnchor && <HerdValueCard anchor={herdAnchor} />}
-
                     {/* 7-day forecast — Today ONLY since layout commit 3 (its Weather
                         copy was cut: one carousel, one place). Streamed behind Suspense. */}
                     <div>
@@ -636,7 +622,7 @@ export default async function DashboardPage({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} hasHerd={!!herdAnchor} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} />
                       </Suspense>
                     ) }
                   : {}),

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createServiceClient } from './supabase'
-import { resolveBarns, type MarsPriceRow, type RankedBarn } from './barn-resolver'
+import { resolveBarns, type MarsPriceRow, type RankedBarn, type ResolveResult } from './barn-resolver'
 
 // ─── Local auction read (Markets view) ───────────────────────────────────────────
 //
@@ -92,9 +92,12 @@ function bandAverages(rows: MarsPriceRow[]): Map<string, { avg: number; lo: numb
   return out
 }
 
-export async function getLocalAuctionRead(countyFips: string): Promise<LocalAuctionResult> {
+// `preResolved` (views2, commit 2): the Markets body resolves the county's
+// barns once and hands the same result here and to the herd anchor when the
+// county in view is the home county — one resolution per render, not two.
+export async function getLocalAuctionRead(countyFips: string, preResolved?: ResolveResult): Promise<LocalAuctionResult> {
   try {
-    const resolved = await resolveBarns(countyFips)
+    const resolved = preResolved ?? await resolveBarns(countyFips)
 
     // The resolver never throws — it degrades to regional-only with a summary string.
     // Distinguish its two known failure summaries (outage) from genuine absence so an
