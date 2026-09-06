@@ -1,54 +1,111 @@
 @import "tailwindcss";
 
 @theme {
+  /* ═══ DRYLINE DESIGN TOKENS — Phase A, A0 (2026-09-06) ═══════════════════════
+     This block is THE token file. Three families below are new and complete:
+     text-color roles (opaque — no opacity modifier on readable text, ever),
+     type roles (a component asks for a JOB, not a number), and the spacing /
+     radius / shadow scales. Legacy tokens further down stay until A1/A4 have
+     converted their callers; each says what replaces it.
+     MIRROR — lib/brand-colors.ts carries the JS copy of every color here for
+     Leaflet / canvas / inline styles. Keep the two in sync. */
+
+  /* ── Text and surface colors (contrast measured on canvas #FDFBF7) ──────────
+     ink            12.05:1  primary answers, body, navigation
+     secondary-ink   6.26:1  dates, sources, supporting text — the ONLY quieter text
+     brand          10.72:1  selected controls, primary actions (as text on canvas)
+     control-border  4.20:1  input / control boundary — never text
+     attention       6.57:1  a planning conflict, always with a label or icon
+     danger          5.97:1  a deficit or error — never a decorative accent
+     weather         6.65:1  weather data marks and their links
+     rule                    separators only; never the sole boundary of an input */
+  --color-canvas:         #FDFBF7;
+  --color-surface:        #FFFFFF;
+  --color-ink:            #20392E;
+  --color-secondary-ink:  #526257;
+  --color-brand:          #1B4332;
+  --color-on-brand:       #FFFFFF;
+  --color-rule:           #D3DAD2;
+  --color-control-border: #6E7D71;
+  --color-attention:      #8A4B08;
+  --color-danger:         #9A4B24;
+  --color-weather:        #225F87;
+
+  /* ── Spacing — the scale is 4 · 8 · 12 · 16 · 24 · 32 · 48 px ──────────────
+     Tailwind's numeric steps already yield exactly these (p-1 p-2 p-3 p-4 p-6 p-8
+     p-12); no other step is used. The named tokens are the layout jobs. */
+  --spacing-gutter:         16px;   /* phone page gutter */
+  --spacing-gutter-wide:    20px;   /* 390 px and wider, when it does not squeeze content */
+  --spacing-gutter-desktop: 24px;
+  --spacing-section:        24px;   /* between sections */
+  --spacing-group:          16px;   /* inside a group */
+  --spacing-label:           8px;   /* label to its control */
+  --spacing-surface:        20px;   /* main surface padding */
+
+  /* ── Radii — three values, not nine (A4 retires the legacy rounded-* names) ── */
+  --radius-control:  8px;      /* inputs, buttons */
+  --radius-surface: 12px;      /* the task surface */
+  --radius-pill:    9999px;    /* a compact status pill only */
+
+  /* ── Shadow — overlays only. Ordinary rows and primary buttons carry none. ── */
+  --shadow-overlay: 0 8px 24px rgba(27, 67, 50, 0.12);
+
+  /* ── Fonts ── */
+  --font-fraunces: var(--font-fraunces);
+  --font-dm-sans: var(--font-dm-sans);
+
+  /* ── Drought categories (documented palette, always with a visible legend) ── */
   --color-usdm-d0: #FFFF00;
   --color-usdm-d1: #FCD37F;
   --color-usdm-d2: #FFAA00;
   --color-usdm-d3: #E60000;
   --color-usdm-d4: #730000;
+
+  /* ── Markets direction — a label or sign always travels with the color ── */
+  --color-up:   #2D6A4F;   /* positive delta — a lighter forest, deliberately not a neon gain-green */
+  --color-down: #8B3A2B;   /* negative delta — brand rust, never the danger state */
+
+  /* ── LEGACY (retired by A1 / A4 — do not add new callers) ──────────────────
+     cream        → canvas          forest-green (as text) → ink or brand
+     body, muted  → ink / secondary-ink        accent → brand
+     line         → rule (callers use border-line/10 today; A4 re-points them)
+     warning      → danger          rust (as text) → danger or down
+     shadow-card, shadow-pop → none on ordinary surfaces; overlay for overlays */
   --color-cream: #FDFBF7;
   --color-forest-green: #1B4332;
   --color-rust: #8B3A2B;
-
-  /* ── Semantic roles (modernize sprint, commit 1) ──────────────────────────────
-     Role-based aliases so a commit re-points ONE token instead of sweeping 52 files.
-     ink is a warm near-black for headlines (re-pointed from forest-green) — it reads
-     premium on the cream canvas; body/muted stay forest-green for now (a later commit
-     decides those). surface = the de-facto bg-white card; line = the hairline border
-     (used as border-line/10 = today's border-forest-green/10); accent = brand green.
-     warning is the degraded/error state — a DISTINCT role from brand --color-rust
-     (#8B3A2B), kept at its current #C2410C so nothing moves.
-     MIRROR — the JS-side copy of these values lives in lib/brand-colors.ts (for
-     Leaflet/canvas/inline-style code that can't use classes). Keep the two in sync. */
-  --color-ink: #1C1917;
   --color-body: #1B4332;
   --color-muted: #1B4332;
   --color-line: #1B4332;
-  --color-surface: #ffffff;
   --color-accent: #1B4332;
   --color-warning: #C2410C;
-
-  /* ── Markets direction + elevation (HerdEstimate sprint) ────────────────────
-     The ONE place boldness is spent is the Fraunces HerdEstimate number; these tokens
-     dress its delta and the surfaces around it — everything else stays quiet.
-       up   = a lighter forest (positive) — brand-calm, deliberately NOT a neon gain-green.
-       down = brand rust (#8B3A2B) — a warm loss tone, NOT the #C2410C error 'warning'.
-     MIRROR up/down in lib/brand-colors.ts (the JS copy for canvas/inline styles).
-     --shadow-card = resting card elevation (quiet, two-layer); --shadow-pop = a tight
-     lift for small interactive surfaces (the Segmented thumb, popovers). */
-  --color-up: #2D6A4F;
-  --color-down: #8B3A2B;
   --shadow-card: 0 1px 2px rgba(27, 67, 50, 0.05), 0 4px 14px rgba(27, 67, 50, 0.06);
   --shadow-pop: 0 1px 1px rgba(27, 67, 50, 0.06), 0 2px 6px rgba(27, 67, 50, 0.12);
-
-  --font-fraunces: var(--font-fraunces);
-  --font-dm-sans: var(--font-dm-sans);
 
   --animate-spin: initial;
   --animate-ping: initial;
   --animate-pulse: initial;
   --animate-bounce: initial;
 }
+
+/* ═══ TYPE ROLES — the second half of the token file ══════════════════════════
+   A component asks for a job. Each role fixes family, size, line height, and
+   weight; numbers add tabular lining figures. Nothing below 14 px exists, and
+   meta (14 px) is only for genuinely secondary metadata — never for anything a
+   rancher needs to read. `display` is 40/44 and grows to 52/56 from `sm:`
+   (sm:type-display-lg). Color is NOT part of a role: pair with text-ink or
+   text-secondary-ink. */
+@utility type-display        { font-family: var(--font-fraunces), Georgia, serif; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.01em; }
+@utility type-display-lg     { font-family: var(--font-fraunces), Georgia, serif; font-size: 52px; line-height: 56px; font-weight: 600; letter-spacing: -0.01em; }
+@utility type-page-heading   { font-family: var(--font-fraunces), Georgia, serif; font-size: 28px; line-height: 34px; font-weight: 600; }
+@utility type-section-heading{ font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 22px; line-height: 28px; font-weight: 600; }
+@utility type-main-number    { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 40px; line-height: 44px; font-weight: 600; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
+@utility type-secondary-number{ font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 24px; line-height: 30px; font-weight: 600; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
+@utility type-body           { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 18px; line-height: 27px; font-weight: 400; }
+@utility type-input          { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 18px; line-height: 24px; font-weight: 400; }
+@utility type-button         { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 17px; line-height: 24px; font-weight: 600; }
+@utility type-support        { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 24px; font-weight: 400; }
+@utility type-meta           { font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 20px; font-weight: 500; }
 
 /* Dense price-number treatment — DM Sans tabular (lining) figures, lightly tracked, for
    every aligned $/cwt, $/ton, and head-count column. We stay on DM Sans rather than add a
