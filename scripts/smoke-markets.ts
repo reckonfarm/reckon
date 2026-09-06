@@ -187,14 +187,18 @@ async function main() {
       await kSheet.waitFor({ timeout: 5_000 }).catch(() => {})
       const k1 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
       await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(300)
       const k2 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
-      record('2.6H: Enter picks the focused point and ArrowRight moves to the next sale', !!k1 && !!k2 && (pts.length === 1 || k2 !== k1), `${k1 ?? '∅'} → ${k2 ?? '∅'}`)
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(300)
+      const k3 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      record('2.6H: Enter picks the focused point; ArrowRight walks sale by sale', !!k1 && !!k2 && !!k3 && (pts.length === 1 || (k2 !== k1 && (pts.length === 2 || k3 !== k2))), `${k1 ?? '∅'} → ${k2 ?? '∅'} → ${k3 ?? '∅'}`)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       // The list: one 48 px row per sale, in date order.
       await page.locator('[data-audit="sales-list-toggle"]').click()
       const rows = page.locator('[data-audit="sales-list"] li button')
       const n = await rows.count()
-      const heights = await rows.evaluateAll('els => els.map(e => e.getBoundingClientRect().height)') as number[]
+      const heights = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="sales-list"] li button')).map(function(e){ return e.getBoundingClientRect().height })`) as number[]
       const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
       record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
       await page.locator('[data-audit="sales-list-toggle"]').click()
@@ -212,7 +216,7 @@ async function main() {
       const sheetEvidence = (await page.locator('[data-audit="point-sheet"] [data-audit="report-evidence"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       record('2.6I: the evidence line reads "Barn · Mon D · N head · Report ↗"', /^.+ · [A-Z][a-z]{2} \d{1,2} · [\d,]+ head( · rev \d+)? · Report ↗$/.test(sheetEvidence), sheetEvidence)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
-      const hrefs = await page.locator('[data-audit="report-link"]').evaluateAll('els => els.map(e => e.getAttribute("href"))') as string[]
+      const hrefs = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="report-link"]')).map(function(e){ return e.getAttribute('href') })`) as string[]
       record('2.6I: every report link points at the USDA AMS report page for its slug', hrefs.length > 0 && hrefs.every(h => /^https:\/\/mymarketnews\.ams\.usda\.gov\/viewReport\/\d+$/.test(h)), [...new Set(hrefs)].join(' '))
       record('2.6I: no bare "USDA AMS report N" text is left on the page', !/USDA AMS report \d+/.test(await text(page)))
       const probe = await page.request.get(hrefs[0] ?? 'https://mymarketnews.ams.usda.gov/viewReport/1777', { timeout: 20_000 }).catch(() => null)

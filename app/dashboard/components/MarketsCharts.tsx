@@ -93,8 +93,8 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
 // the chart, and every point is a keyboard-reachable button with a text label.
 const pointRadius = (head: number) => head < THIN_HEAD_THRESHOLD ? 3 : head < 100 ? 4.5 : 6
 const pointLabel = (d: Dot, unit: string) => `Sale ${fmtDayYear(d.p.date)} · ${fmtWithUnit(d.v, unit)} · ${d.p.head.toLocaleString('en-US')} head · ${d.p.barn}`
-function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: string; unit?: string; pickedKey?: string | null; onPick?: (d: Dot) => void; onStep?: (d: Dot, dir: -1 | 1) => void }) {
-  const { cx, cy, payload, fill, unit = '$/cwt', pickedKey, onPick, onStep } = props
+function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: string; unit?: string; pickedKey?: string | null; onPick?: (d: Dot) => void; onKeyPick?: (d: Dot) => void; onStep?: (d: Dot, dir: -1 | 1) => void }) {
+  const { cx, cy, payload, fill, unit = '$/cwt', pickedKey, onPick, onKeyPick, onStep } = props
   if (cx == null || cy == null || !payload?.p) return null
   const r = pointRadius(payload.head)
   const color = fill ?? FOREST
@@ -103,7 +103,7 @@ function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: st
     <g role="button" tabIndex={0} aria-label={pointLabel(payload, unit)} aria-pressed={selected} data-audit="point" data-idx={payload.idx}
       onClick={() => onPick?.(payload)}
       onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick?.(payload) }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (onKeyPick ?? onPick)?.(payload) }
         else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onStep?.(payload, 1) }
         else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onStep?.(payload, -1) }
       }}
@@ -275,13 +275,22 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
   const x0 = domain ? domain[0] : ticks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : ticks[ticks.length - 1] + 86_400_000 * 2
+  // Keyboard on a point: the pick re-renders the chart, and the focused <g> can be
+  // replaced under the caret — so focus is put back on the picked point AFTER the
+  // render, by its index, or the next arrow would go nowhere.
+  const focusPoint = (idx: number) => {
+    window.setTimeout(() => {
+      const el = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${idx}"]`) as HTMLElement | null
+      el?.focus()
+    }, 60)
+  }
+  const onKeyPick = (d: Dot) => { onPick(d); focusPoint(d.idx) }
   const onStep = (d: Dot, dir: -1 | 1) => {
-    const n = ordered[d.idx + dir]
+    const i = ordered.findIndex(x => dotKey(x) === dotKey(d))
+    const n = ordered[(i < 0 ? d.idx : i) + dir]
     if (!n) return
     onPick(n)
-    // Move keyboard focus with the selection so the next arrow keeps walking.
-    const root = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${n.idx}"]`) as HTMLElement | null
-    root?.focus()
+    focusPoint(n.idx)
   }
   return (
     <div className="w-full" data-audit="chart">
@@ -297,7 +306,7 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
             <Line key={`step-${s.name}`} data={s.dots} dataKey="v" type="stepAfter" stroke={s.color} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} name={`${s.name} (carried forward)`} />
           ))}
           {seriesList.map(s => (
-            <Scatter key={s.name} data={s.dots} dataKey="v" fill={s.color} name={s.name} shape={<EvidenceDot fill={s.color} unit={unit} pickedKey={pickedKey} onPick={onPick} onStep={onStep} />} isAnimationActive={false} />
+            <Scatter key={s.name} data={s.dots} dataKey="v" fill={s.color} name={s.name} shape={<EvidenceDot fill={s.color} unit={unit} pickedKey={pickedKey} onPick={onPick} onKeyPick={onKeyPick} onStep={onStep} />} isAnimationActive={false} />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
