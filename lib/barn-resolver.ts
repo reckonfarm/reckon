@@ -11,7 +11,7 @@ import { rankFreshBarns, type BarnSnapshot, type ResolveResult } from './barn-ge
 // RLS: mars_price_snapshots is RLS-on-with-no-policies (service-role only). resolveBarns is
 // server-side ONLY (don't import it into a client component); the secret is protected as
 // lib/supabase relies on (SUPABASE_SERVICE_ROLE_KEY is non-public, stripped from client bundles).
-export { FRESH_DAYS, HAUL_RADIUS_MI, BARN_GEO, rankFreshBarns } from './barn-geo'
+export { FRESH_DAYS, HAUL_RADIUS_MI, DISCOVERY_RADIUS_MI, DISTANCE_BASIS, BARN_GEO, rankFreshBarns } from './barn-geo'
 export type { MarsPriceRow, BarnSnapshot, RankedBarn, ResolveTier, ResolveResult } from './barn-geo'
 
 // Thin read wrapper — county centroid + fresh barns, then rank. Degrades honestly: missing

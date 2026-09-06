@@ -31,13 +31,18 @@ export function isThin(headCount: number | null | undefined): boolean {
 export type Scope =
   | { kind: 'nearby'; town: string }
   | { kind: 'pinned'; town: string }
+  | { kind: 'reference'; town: string; miles: number }   // beyond the discovery radius: town WITH state + straight-line miles
   | { kind: 'regional'; region: string }
   | { kind: 'national' }
+
+/** Block 2.6I — the public USDA AMS MyMarketNews page for a report slug (the latest issue of that report). */
+export const reportUrl = (slug: string) => `https://mymarketnews.ams.usda.gov/viewReport/${encodeURIComponent(slug)}`
 
 export function scopeLabel(s: Scope): string {
   switch (s.kind) {
     case 'nearby':   return `Nearby auction reference — ${s.town}`
     case 'pinned':   return `Where you sell — ${s.town}`
+    case 'reference': return `Regional reference — ${s.town} · ~${s.miles.toLocaleString('en-US')} mi`
     case 'regional': return `Regional comparison — ${s.region}`
     case 'national': return 'National benchmark'
   }
@@ -71,4 +76,21 @@ export function cullGrade(qualityGrade: string | null | undefined): CullGrade {
 export function fmtRange(lo: number | null, hi: number | null, avg: number): string {
   const l = lo ?? avg, h = hi ?? avg
   return l === h ? `~$${Math.round(l)}` : `$${Math.round(l)}–${Math.round(h)}`
+}
+
+/**
+ * Block 2.6G — thin evidence said plainly. When the source low equals the source
+ * high there is ONE reported price, and the line says exactly that ("All 4 head
+ * reported at $387.50/cwt"); only a real spread is called a range. Never "range
+ * shown" beside a single figure.
+ */
+export function thinEvidence(
+  lo: number | null | undefined, hi: number | null | undefined, avg: number, head: number, basis: 'cwt' | 'hd' = 'cwt',
+): { figure: string; note: string; single: boolean } {
+  const l = lo ?? avg, h = hi ?? avg
+  if (Math.round(l * 100) === Math.round(h * 100)) {
+    const price = `$${avg.toFixed(2)}/${basis}`
+    return { figure: `$${avg.toFixed(2)}`, note: `All ${head.toLocaleString('en-US')} head reported at ${price}`, single: true }
+  }
+  return { figure: `$${Math.round(l)}–${Math.round(h)}`, note: `under ${THIN_HEAD_THRESHOLD} head · reported range $${Math.round(l)}–$${Math.round(h)}/${basis}, not one price`, single: false }
 }

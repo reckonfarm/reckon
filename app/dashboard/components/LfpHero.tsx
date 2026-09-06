@@ -332,7 +332,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
         <LfpEstimateNote />
         <LfpDisclaimer />
         <p className="font-dm-sans text-xs text-forest-green/40">
-          Drought data as of {fmtAsOf(dataAsOf)}.
+          Drought data {dataAsOf ? `as of ${fmtAsOf(dataAsOf)}` : '— no current reading on file'}.
         </p>
       </div>
     </Card>

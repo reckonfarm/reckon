@@ -10,9 +10,9 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 // Every figure comes from the LrpResult (read from the snapshot table); nothing is
 // fabricated. The BASIS-RISK line is mandatory and sits directly under the number — the
 // price is a national CME index floor, never the producer's local cash, and the card
-// must never show the number without that framing. The sale-window picker below is built
-// ONLY from the real endorsement ladder; it never interpolates or invents a month, and
-// the basis-risk framing travels with every endorsement it shows.
+// must never show the number without that framing. The term picker below is built ONLY
+// from the real endorsement ladder; it never interpolates or invents a date, and picking a
+// term moves the hero with it (Block 2.6C) — the card never shows two different floors.
 
 
 // Strip the leading RMA numeric code from a label, e.g. '810 Steers Weight 2' →
@@ -30,18 +30,6 @@ function fmtDate(s: string): string {
   })
 }
 
-// The sale month derived from a rung's end date (same MM/DD/YYYY parse as fmtDate). `chip`
-// is the compact picker label (e.g. "Oct ’26"); `long` is the prose month ("October").
-// A producer selling around then picks the endorsement that ENDS in that month.
-function endMonth(raw: string): { chip: string; long: string } {
-  const us = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-  const iso = us ? `${us[3]}-${us[1]}-${us[2]}` : raw
-  const d = new Date(`${iso}T00:00:00`)
-  const mon = d.toLocaleDateString('en-US', { month: 'short' })
-  const yy = d.toLocaleDateString('en-US', { year: '2-digit' })
-  return { chip: `${mon} ’${yy}`, long: d.toLocaleDateString('en-US', { month: 'long' }) }
-}
-
 // The mandatory basis-risk framing, factored so it can never drift between the hero and
 // the picked-rung detail. It governs EVERY price the card shows.
 function BasisRiskLine() {
@@ -53,105 +41,82 @@ function BasisRiskLine() {
   )
 }
 
-// Sale-window picker — built ONLY from the real ladder. No interpolation, no fabricated
-// months; default (nothing picked) leaves the hero on the headline endorsement.
-function SaleWindowPicker({ headlineWeeks, ladder }: { headlineWeeks: number; ladder: LrpLadderRung[] }) {
-  const [sel, setSel] = useState<number | null>(null)
-  const picked = sel != null ? ladder[sel] : null
-
+// Block 2.6C — the term picker. Built ONLY from the real ladder (no interpolation, no
+// invented dates). Every chip is unambiguous: the endorsement's end DATE and its length,
+// "Dec 3, 2026 · 13 wk" — two December rungs can no longer read the same. Picking a term
+// moves the hero, the premium line, and the end date together; nothing below the hero
+// ever shows a different floor from the one above it.
+function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: number | null; onSel: (i: number | null) => void }) {
   return (
     <div className="mt-4 border-t border-forest-green/10 pt-3">
       <p className="font-dm-sans text-[15px] font-medium text-forest-green/80">
-        Selling later? Pick your sale month — the floor shifts with the endorsement window.
+        Selling later? Pick the endorsement that ends nearest your sale date — the floor and premium above follow the pick.
       </p>
-
       <div className="mt-2 flex flex-wrap gap-1.5">
         {ladder.map((r, i) => (
           <button
-            key={r.endorsement_end_date}
+            key={`${r.endorsement_end_date}-${r.endorsement_length_weeks}`}
             type="button"
-            onClick={() => setSel(sel === i ? null : i)}
+            onClick={() => onSel(sel === i ? null : i)}
             aria-pressed={sel === i}
+            data-audit="lrp-term"
+            data-floor={r.coverage_price.toFixed(2)}
+            data-weeks={r.endorsement_length_weeks}
             className={`min-h-[48px] rounded-md border px-4 font-dm-sans text-[16px] font-medium tabular-nums transition-colors ${
               sel === i
                 ? 'border-forest-green bg-forest-green text-cream'
                 : 'border-forest-green/15 text-forest-green/65 hover:bg-forest-green/5'
             }`}
           >
-            {endMonth(r.endorsement_end_date).chip}
+            {fmtDate(r.endorsement_end_date)} · {r.endorsement_length_weeks} wk
           </button>
         ))}
       </div>
-
-      {/* Honest tradeoff — always shown with the picker, never lost when a month is picked. */}
-      <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
-        Longer coverage = lower floor, higher premium.
-      </p>
-
-      {picked && (
-        <div className="mt-2.5 rounded-lg border border-forest-green/15 bg-forest-green/[0.03] px-3 py-2">
-          <p className="font-dm-sans text-sm leading-relaxed text-forest-green">
-            Selling in {endMonth(picked.endorsement_end_date).long}? {picked.endorsement_length_weeks}-wk
-            endorsement —{' '}
-            <span className="font-semibold tabular-nums">${picked.coverage_price.toFixed(2)}/cwt</span> floor
-            {picked.producer_premium_per_cwt > 0 && (
-              <>, <span className="tabular-nums">${picked.producer_premium_per_cwt.toFixed(2)}/cwt</span> premium</>
-            )}
-            , ends {fmtDate(picked.endorsement_end_date)}.
-          </p>
-          {/* Basis-risk travels with the picked rung — a different endorsement is STILL the
-              national index floor, never local cash. */}
-          <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">
-            Still the CME national index floor — not your local cash price.
-          </p>
-        </div>
-      )}
-
-      {!picked && (
-        <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
-          Showing the {headlineWeeks}-wk floor by default.
-        </p>
-      )}
     </div>
   )
 }
 
 function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) {
+  const [sel, setSel] = useState<number | null>(null)
+  const picked = sel != null ? ladder[sel] ?? null : null
   const commodity = stripCode(lrp.commodity) || 'feeder cattle'
   const type      = stripCode(lrp.lrp_type)
   const pct       = Math.round(lrp.coverage_level * 100)
+  // The rung on show — the headline endorsement until a term is picked. One object feeds
+  // the hero, the subline, and the premium line, so they can only ever agree.
+  const shown = picked
+    ? { floor: picked.coverage_price, premium: picked.producer_premium_per_cwt, weeks: picked.endorsement_length_weeks, ends: picked.endorsement_end_date }
+    : { floor: lrp.coverage_price, premium: lrp.producer_premium_per_cwt, weeks: lrp.endorsement_length_weeks, ends: lrp.endorsement_end_date }
 
   return (
     <>
-      {/* Hero: the real headline coverage price — unchanged by the picker below. */}
-      <p className="font-fraunces text-4xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-5xl">
-        ${lrp.coverage_price.toFixed(2)}
+      <p className="font-fraunces text-4xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-5xl" data-audit="lrp-hero">
+        ${shown.floor.toFixed(2)}
         <span className="ml-1 font-dm-sans text-lg font-medium text-forest-green/80"> /cwt</span>
       </p>
 
-      <p className="mt-2 font-dm-sans text-sm text-forest-green/80">
+      <p className="mt-2 font-dm-sans text-sm text-forest-green/80" data-audit="lrp-subline">
         LRP price floor · {commodity}{type ? ` (${type})` : ''}
-        {lrp.endorsement_length_weeks ? ` · ${lrp.endorsement_length_weeks}-wk endorsement` : ''}
+        {shown.weeks ? ` · ${shown.weeks}-wk endorsement` : ''}
         {pct ? ` · ${pct}% coverage` : ''}
       </p>
 
       {/* BASIS-RISK FRAMING — required, clear (not buried). Governs the hero AND the picker. */}
       <BasisRiskLine />
 
-      {/* Compact real detail: producer premium + endorsement end date. */}
-      <p className="mt-3 font-dm-sans text-sm text-forest-green/80">
-        {lrp.producer_premium_per_cwt > 0 && (
-          <>${lrp.producer_premium_per_cwt.toFixed(2)}/cwt premium after subsidy</>
-        )}
-        {lrp.producer_premium_per_cwt > 0 && lrp.endorsement_end_date ? ' · ' : ''}
-        {lrp.endorsement_end_date && <>coverage ends {fmtDate(lrp.endorsement_end_date)}</>}
+      {/* Real detail for the rung on show: producer premium + endorsement end date. */}
+      <p className="mt-3 font-dm-sans text-sm text-forest-green/80" data-audit="lrp-detail">
+        {shown.premium > 0 && <>${shown.premium.toFixed(2)}/cwt premium after subsidy</>}
+        {shown.premium > 0 && shown.ends ? ' · ' : ''}
+        {shown.ends && <>coverage ends {fmtDate(shown.ends)}</>}
+        {picked
+          ? <> · {picked.endorsement_length_weeks}-wk endorsement picked</>
+          : lrp.endorsement_length_weeks ? <> · showing the {lrp.endorsement_length_weeks}-wk endorsement by default</> : null}
       </p>
 
-      {/* Sale-window picker — only when the ladder is real; otherwise the card is exactly
-          today's headline-only view (no empty/broken control). */}
-      {ladder.length > 0 && (
-        <SaleWindowPicker headlineWeeks={lrp.endorsement_length_weeks} ladder={ladder} />
-      )}
+      {/* Term picker — only when the ladder is real; otherwise the card is exactly the
+          headline-only view (no empty/broken control). */}
+      {ladder.length > 0 && <TermPicker ladder={ladder} sel={sel} onSel={setSel} />}
 
       {/* Stale note — show the data, but never as "today". */}
       {lrp.stale && (

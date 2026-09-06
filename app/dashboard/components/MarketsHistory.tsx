@@ -11,6 +11,8 @@ import MarketsChartsLoader from './MarketsChartsLoader'
 export default async function MarketsHistory({ resolved, lots }: { resolved: ResolveResult; lots: Lot[] }) {
   const slugs = [...new Set([...resolved.ranked, ...resolved.stale].map(b => b.slug_id))]
   const localBarn = resolved.local[0] ?? resolved.nearest_comp ?? null
+  // Block 2.6A — a barn beyond the discovery radius is a regional reference, never "Nearby".
+  const isReference = resolved.local.length === 0 && !!resolved.nearest_comp
   const [auction, n500, n700, corn, cycle, events] = await Promise.all([
     getAuctionSeries(slugs),
     getNationalSeries('feeder_steer_500'),
@@ -27,7 +29,11 @@ export default async function MarketsHistory({ resolved, lots }: { resolved: Res
     <MarketsChartsLoader
       auction={auction}
       localSlug={localBarn?.slug_id ?? null}
-      localLabel={localBarn ? scopeLabel(resolved.pinned === localBarn.slug_id ? { kind: 'pinned', town } : { kind: 'nearby', town }) : 'No nearby barn'}
+      localLabel={localBarn
+        ? scopeLabel(resolved.pinned === localBarn.slug_id ? { kind: 'pinned', town }
+          : isReference ? { kind: 'reference', town: localBarn.town, miles: localBarn.miles }
+          : { kind: 'nearby', town })
+        : 'No nearby barn'}
       national={{ feeder_steer_500: n500, feeder_steer_700: n700 }}
       corn={corn}
       cycle={cycle}

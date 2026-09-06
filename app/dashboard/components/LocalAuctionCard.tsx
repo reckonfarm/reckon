@@ -3,7 +3,9 @@ import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { fmtRange, isThin, matchLabel, scopeLabel, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { isThin, matchLabel, scopeLabel, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
+import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
 // Every figure here is an AUCTION result with its scope named — the barn, never
@@ -22,6 +24,9 @@ function bandLabel(band: string): string {
   return `${lo}–${lo + 99} lb`
 }
 const fmtInt = (n: number) => n.toLocaleString('en-US')
+const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
+// The one no-local sentence, shared by the no-coverage state and the regional-reference state.
+const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
@@ -32,13 +37,14 @@ function MatchChip({ label }: { label: string }) {
 function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: string }) {
   const thin = isThin(b.head)
   const label = matchLabel({ exactBracket: true, headCount: b.head })
+  const ev = thin ? thinEvidence(b.priceLow, b.priceHigh, b.avgPrice, b.head) : null
   return (
     <li className="py-2">
       <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
         <span className="text-forest-green">{cls} {bandLabel(b.band)}</span>
         <span className="shrink-0 tabular-nums">
-          {thin ? (
-            <span className="font-semibold text-forest-green/80">{fmtRange(b.priceLow, b.priceHigh, b.avgPrice)}</span>
+          {ev ? (
+            <span className="font-semibold text-forest-green/80">{ev.figure}</span>
           ) : (
             <span className="font-semibold text-ink">${b.avgPrice.toFixed(2)}</span>
           )}
@@ -51,7 +57,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
         <MatchChip label={label} />
         <span>{fmtInt(b.head)} head reported · sale {fmtDate(saleDate)}</span>
-        {thin && <span>· under {THIN_HEAD_THRESHOLD} head, range shown</span>}
+        {ev && <span>· {ev.note}</span>}
       </p>
     </li>
   )
@@ -59,6 +65,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
 
 function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; saleDate: string }) {
   const thin = isThin(c.head)
+  const ev = thin ? thinEvidence(c.priceLow, c.priceHigh, c.avgPrice, c.head) : null
   const name = kind === 'cows'
     ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows (grade not captured)')
     : (c.gradeKnown && c.grade !== 'All' ? `Slaughter bulls · yield ${c.grade}` : 'Slaughter bulls')
@@ -67,7 +74,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
       <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
         <span className="text-forest-green">{name}</span>
         <span className="shrink-0 tabular-nums font-semibold">
-          {thin ? <span className="text-forest-green/80">{fmtRange(c.priceLow, c.priceHigh, c.avgPrice)}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
+          {ev ? <span className="text-forest-green/80">{ev.figure}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
         </span>
       </div>
       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
@@ -78,7 +85,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
           {c.dressing ? ` · ${c.dressing.toLowerCase()} dressing` : ''}
           {' · '}sale {fmtDate(saleDate)}
         </span>
-        {thin && <span>· under {THIN_HEAD_THRESHOLD} head, range shown</span>}
+        {ev && <span>· {ev.note}</span>}
       </p>
     </li>
   )
@@ -96,7 +103,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
         <p className="font-dm-sans text-[16px] text-forest-green/80">Auction data temporarily unavailable — check back shortly.</p>
       )}
       {result.status === 'no_coverage' && (
-        <p className="font-dm-sans text-[16px] text-forest-green/80">No reporting auction within haul distance — Montana barns today, expanding.</p>
+        <p className="font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE} — Montana barns today, expanding.</p>
       )}
       {result.status === 'no_recent_sale' && (
         <p className="font-dm-sans text-[16px] text-forest-green/80">
@@ -106,13 +113,21 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
 
       {result.status === 'ok' && (
         <>
+          {/* Block 2.6A — beyond the discovery radius the card says so FIRST, then offers
+              the barn as a regional reference with its state and straight-line miles. */}
+          {result.beyondHaul && !result.pinned && (
+            <p className="mb-2 font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE}.</p>
+          )}
           {/* Scope — the barn, never a county. */}
           <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
-            {scopeLabel(result.pinned ? { kind: 'pinned', town: result.town.replace(/,\s*[A-Z]{2}$/, '') } : { kind: 'nearby', town: result.town.replace(/,\s*[A-Z]{2}$/, '') })}
+            {scopeLabel(
+              result.pinned ? { kind: 'pinned', town: shortTown(result.town) }
+              : result.beyondHaul ? { kind: 'reference', town: result.town, miles: result.miles }
+              : { kind: 'nearby', town: shortTown(result.town) },
+            )}
           </p>
           <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">
-            {result.barnName} · {result.miles} mi · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}
-            {result.beyondHaul && !result.pinned && ' · beyond typical haul, shown for reference'}
+            <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
 
           <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">

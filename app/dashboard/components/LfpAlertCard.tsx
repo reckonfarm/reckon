@@ -26,10 +26,12 @@ function countyLabel(name: string): string {
   return /\bcounty$/i.test(n) ? n : `${n} County`
 }
 
-function FreshnessLine({ asOf }: { asOf: string }) {
+// Block 2.6D — the as-of is the county's latest observation; with none on file the
+// line says so rather than borrowing a date from anywhere else.
+function FreshnessLine({ asOf }: { asOf: string | null }) {
   return (
     <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
-      U.S. Drought Monitor · as of {fmtAsOf(asOf)}
+      U.S. Drought Monitor · {asOf ? `as of ${fmtAsOf(asOf)}` : 'no current reading on file'}
     </p>
   )
 }
@@ -135,7 +137,12 @@ export default function LfpAlertCard({
         </p>
       ) : (
         <>
-          {eligibility.enforcement === 'officially_eligible' ? (
+          {eligibility.periodStatus === 'not_started' ? (
+            // Block 2.6D — a period that has not begun has no status yet; say that, not "no trigger".
+            <p className="font-dm-sans text-sm text-forest-green/70">
+              The LFP grazing period for {countyLabel(countyName)} ({fmtAsOf(eligibility.grazingPeriod.startDate)} – {fmtAsOf(eligibility.grazingPeriod.endDate)}) hasn&apos;t started — status applies once it begins.
+            </p>
+          ) : eligibility.enforcement === 'officially_eligible' ? (
             <TriggeredBody eligibility={eligibility} />
           ) : eligibility.enforcement === 'pending_obbba' ? (
             <PendingBody />

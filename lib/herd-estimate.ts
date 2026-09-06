@@ -1,6 +1,7 @@
 import { lotToMarsKey, LOT_CLASS_LABELS, lotLabel as lotName, type Lot, type LotClass } from './herd'
 import type { ResolveResult, RankedBarn, MarsPriceRow, ResolveTier } from './barn-resolver'
 import { isThin } from './market-scope'
+import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from './barn-geo'
 
 // ─── HerdEstimate engine ─────────────────────────────────────────────────────────────
 // PURE: takes a Herd's lots + the resolver's tiered barns (each carrying its priced rows) and
@@ -209,7 +210,7 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
     const wLb = lotToMarsKey(lot).avgWeightLb
     if (pricingBarns.length === 0) {
       const reason = resolved.tier === 'nearest-comp' && resolved.nearest_comp
-        ? `No fresh auction in haul range — nearest comparable ${resolved.nearest_comp.town} ~${resolved.nearest_comp.miles}mi`
+        ? `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} — regional reference ${resolved.nearest_comp.town} ~${resolved.nearest_comp.miles} mi`
         : 'No fresh nearby auction'
       perLot.push({ lotId: lot.id, label, value: null, reason, source: null, head_count: lot.head_count, avg_weight_lb: wLb, thin: false, value_low: null, value_high: null })
       continue

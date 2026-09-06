@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createServiceClient } from './supabase'
-import { resolveBarns, type MarsPriceRow, type RankedBarn, type ResolveResult } from './barn-resolver'
+import { resolveBarns, DISCOVERY_RADIUS_MI, type MarsPriceRow, type RankedBarn, type ResolveResult } from './barn-resolver'
 import { cullGrade } from './market-scope'
 
 // ─── Local auction read (Markets view) ───────────────────────────────────────────
@@ -13,7 +13,8 @@ import { cullGrade } from './market-scope'
 //
 // HONEST RESULT (discriminated, never fabricate):
 //   • { status: 'ok', ... }          → a fresh barn priced cattle; beyondHaul=true means
-//                                      the nearest FRESH barn is outside HAUL_RADIUS_MI
+//                                      the nearest FRESH barn is outside DISCOVERY_RADIUS_MI
+//                                      (a regional reference, never labeled nearby)
 //                                      (shown with its real distance, labeled).
 //   • { status: 'no_recent_sale' }   → barns exist but none has a fresh sale (Montana
 //                                      summer schedules) — last sale date shown, never
@@ -78,9 +79,6 @@ export type LocalAuctionResult =
 // Cattle · Steers · Medium and Large frame · muscle grade 1 · Per Cwt, which also
 // excludes per-head bred/pair lots). Same filter the national OKC parse uses.
 const BANDS = ['400', '500', '600', '700'] as const
-
-// Beyond-haul reference cap: 2× HAUL_RADIUS_MI (= 300 mi). See the comment at use.
-const NEAREST_COMP_MAX_MI = 300
 
 function bandOf(w: number | null): string | null {
   if (w == null) return null
@@ -177,19 +175,17 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
       return { status: 'data_unavailable' }
     }
 
-    // A beyond-haul barn is still a useful reference for a NEARBY county (e.g. 160 mi in
-    // eastern MT) but absurd across the country — cap the reach at 2× the haul radius;
-    // past that, the honest answer is no_coverage, not "your nearest barn is 1,700 mi".
-    const comp =
-      resolved.nearest_comp && resolved.nearest_comp.miles <= NEAREST_COMP_MAX_MI
-        ? resolved.nearest_comp
-        : null
-    const barn: RankedBarn | null = resolved.local[0] ?? comp
+    // Block 2.6A: a fresh barn beyond the discovery radius is offered as a REGIONAL
+    // REFERENCE at any distance (beyondHaul=true → the card says no auction is within
+    // the radius and labels the reference with its state and ~miles, never "Nearby").
+    // The old 300-mile cap let the card say "no coverage" while the history chart,
+    // fed by the same resolver, labeled the same far barn "Nearby" on the same page.
+    const barn: RankedBarn | null = resolved.local[0] ?? resolved.nearest_comp
     if (!barn) {
-      // No FRESH barn in reach. If a stale barn exists WITHIN the same reach this is
-      // the honest summer-gap state (last sale shown); a far-away stale barn is still
+      // No FRESH barn anywhere. If a stale barn exists WITHIN the discovery radius this
+      // is the honest summer-gap state (last sale shown); a far-away stale barn is still
       // no_coverage — "no recent sale at Miles City" is nonsense for a Georgia county.
-      const staleBarn = resolved.stale.find(b => b.miles <= NEAREST_COMP_MAX_MI) ?? null
+      const staleBarn = resolved.stale.find(b => b.miles <= DISCOVERY_RADIUS_MI) ?? null
       if (staleBarn) {
         return { status: 'no_recent_sale', barnName: staleBarn.barn_name, town: staleBarn.town, lastSale: staleBarn.report_date }
       }

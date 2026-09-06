@@ -7,7 +7,8 @@ import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData, VolumeRow } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { dollarsPerCwtMove, fmtRange, matchLabel, scopeLabel, sensitivityLine, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import ReportEvidence from '@/app/components/ReportEvidence'
+import { dollarsPerCwtMove, matchLabel, scopeLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -91,12 +92,12 @@ function LotCard({ l }: { l: LotValuation }) {
                 {src!.cull && <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">Cull price — salvage, not breeding value</span>}
               </p>
               <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
-                {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · sale {fmtShort(src!.report_date)} · USDA AMS report {src!.slug_id}
+                {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · <ReportEvidence barn={src!.barn_name} date={src!.report_date} head={src!.head_count} slug={src!.slug_id} />
               </p>
               <p className="font-dm-sans text-[15px] text-forest-green/80">
                 {src!.mars_class ?? 'class'}{src!.exact_bracket ? ` · ${src!.matched.split(' / ').slice(-1)[0]}` : ' · class average, no exact bracket'} · {src!.head_count != null ? `${src!.head_count.toLocaleString('en-US')} head reported` : 'head count not reported'} ·{' '}
                 {l.thin
-                  ? <>{fmtRange(src!.avg_price_min, src!.avg_price_max, src!.avg_price)}/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'} range</>
+                  ? (() => { const ev = thinEvidence(src!.avg_price_min, src!.avg_price_max, src!.avg_price, src!.head_count ?? 0, src!.price_basis === 'cwt' ? 'cwt' : 'hd'); return ev.single ? <>{ev.note}</> : <>{ev.figure}/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'} reported range, not one price</> })()
                   : <><span className="tabular-price">${src!.avg_price}</span>/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'}</>}
               </p>
               {sens && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sens}</p>}

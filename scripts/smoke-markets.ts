@@ -9,6 +9,15 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
+//   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
+//   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
+//   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
+//   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
+//   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
+//   • Block 2.6B: chart title unit = axis unit for every view × measure
+//   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
+//     "Nearby" label; the no-coverage sentence and a Nearby label never co-occur
 // Teardown before and after. Exit 1 on any FAIL.
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/smoke-markets.ts
@@ -89,25 +98,169 @@ async function main() {
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
     await page.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
+    // The chart card is server-rendered before it is hydrated; a click that lands in
+    // between is dropped. Wait for the network to go quiet and a beat more.
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+    await page.waitForTimeout(1500)
     const body = await text(page)
 
     record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
     record('A3: match labels present', /Close match|Broader reference|Limited evidence/.test(body), (body.match(/Close match|Broader reference|Limited evidence/) ?? [''])[0])
-    record('A3: a thin reference says so and shows a range', !/Limited evidence/.test(body) || /under 20 head, range shown/.test(body))
+    record('A3: a thin reference says so — one price or a real range', !/Limited evidence/.test(body) || /All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt, not one price/.test(body), (body.match(/All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt[^.]*/) ?? [''])[0])
+    // Block 2.6G — never "range" beside a single price.
+    record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /Culls · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
     record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
+    // Block 2.6E — steps default OFF and the copy follows the state.
+    const stepBtn = page.getByRole('button', { name: /carried-forward steps/ })
+    const stepCopy = page.locator('[data-audit="step-copy"]')
+    record('2.6E: carried-forward steps default OFF', /^Show carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Nothing is drawn between them/.test(await stepCopy.innerText()), (await stepBtn.innerText()).trim())
+    await stepBtn.click()
+    await page.getByRole('button', { name: /^Hide carried-forward steps/ }).waitFor({ timeout: 5_000 }).catch(() => {})
+    record('2.6E: copy follows the state when steps are shown', /^Hide carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Dashed steps only carry the last sale forward/.test(await stepCopy.innerText()))
+    await stepBtn.click()
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
     record('B5: no correlation number anywhere', !/R²|R\^2|correlation|explains \d+%/i.test(body))
     const svgPoints = await page.locator('svg circle').count()
     record('B3: observations render as points', svgPoints > 0, `${svgPoints} circles`)
+
+    // ── Block 2.6B — title unit = axis unit in every view × measure ──
+    // The chart title and the "Vertical axis · …" caption read the same `unit`;
+    // this walks every combination and checks the two RENDERED strings agree.
+    for (const v of ['This year', 'Local · national', 'Corn'] as const) {
+      await page.getByRole('radio', { name: v, exact: true }).click()
+      for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
+        if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
+          await page.getByRole('button', { name: /More ▾/ }).click()
+          await page.getByRole('radio', { name: m, exact: true }).waitFor({ timeout: 5_000 }).catch(() => {})
+        }
+        await page.getByRole('radio', { name: m, exact: true }).click()
+        await page.locator('[data-audit="axis-unit"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+        const titles = await page.locator('[data-audit="chart-title"]').allInnerTexts()
+        const axes = (await page.locator('[data-audit="axis-unit"]').allInnerTexts()).map(t => t.replace(/^Vertical axis · /, '').trim())
+        const agree = titles.length > 0 && titles.length === axes.length && titles.every((t, i) => t.trim().endsWith(axes[i]))
+        record(`2.6B ${v} × ${m}: title unit = axis unit`, agree, `${titles.map((t, i) => `"${t.split(' · ').slice(-1)[0]}" vs "${axes[i] ?? '∅'}"`).join('; ')}`)
+      }
+    }
+    await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
+    await page.getByRole('radio', { name: 'This year', exact: true }).click()
+
+    // ── Block 2.6H — points, the selection strip, the sheet, keyboard, the list ──
+    {
+      await page.getByRole('radio', { name: 'This year', exact: true }).click()
+      await page.locator('[data-audit="selection-strip"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+      const pts = await page.evaluate(`(function(){
+        return Array.from(document.querySelectorAll('[data-audit="chart"] [data-audit="point"]')).map(function(g){
+          var c = g.querySelectorAll('circle'); var dot = c[c.length - 1];
+          return { role: g.getAttribute('role'), tab: g.getAttribute('tabindex'), label: g.getAttribute('aria-label') || '', r: parseFloat(dot.getAttribute('r')), sw: parseFloat(dot.getAttribute('stroke-width')), fill: dot.getAttribute('fill') };
+        });
+      })()`) as { role: string | null; tab: string | null; label: string; r: number; sw: number; fill: string }[]
+      record('2.6H: every point group has role, tabindex, and a text label', pts.length > 0 && pts.every(x => x.role === 'button' && x.tab === '0' && /^Sale [A-Z][a-z]{2} \d{1,2}, \d{4} · \$/.test(x.label)), pts[0]?.label ?? 'no points')
+      record('2.6H: point size is 6 / 9 / 12 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [3, 4.5, 6].includes(x.r) && x.sw === 2 && (x.r !== 3 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
+      const strip = page.locator('[data-audit="selection-strip"]').first()
+      await strip.scrollIntoViewIfNeeded().catch(() => {})
+      const sb = await strip.boundingBox()
+      record('2.6H: a 48 px selection strip under the chart (role slider)', !!sb && sb.height >= 48 && (await strip.getAttribute('role')) === 'slider', `${sb?.height ?? 0}px`)
+      if (sb) {
+        await strip.click({ position: { x: sb.width * 0.3, y: sb.height / 2 } })
+        const sheet = page.locator('[data-audit="point-sheet"]')
+        await sheet.waitFor({ timeout: 5_000 }).catch(() => {})
+        const opened = await sheet.isVisible().catch(() => false)
+        const first = opened ? (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1] : undefined
+        const nb = await page.locator('[data-audit="point-next"]').boundingBox({ timeout: 3_000 }).catch(() => null), pb = await page.locator('[data-audit="point-prev"]').boundingBox({ timeout: 3_000 }).catch(() => null)
+        record('2.6H: tapping the strip picks the nearest sale and opens the sheet with 48 px Previous / Next', opened && !!nb && nb.height >= 48 && !!pb && pb.height >= 48, `${first ?? 'no sheet'} · next ${nb?.height ?? 0}px · prev ${pb?.height ?? 0}px`)
+        const nextBtn = page.locator('[data-audit="point-next"]')
+        if (opened && !(await nextBtn.isDisabled())) {
+          await nextBtn.click()
+          const second = (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+          record('2.6H: Next walks to the following sale', !!second && second !== first && Date.parse(second) > Date.parse(first!), `${first} → ${second}`)
+        } else skip('2.6H: Next walks to the following sale', 'only one sale on the chart')
+        await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      }
+      // Keyboard: Enter on a focused point opens the sheet; ArrowRight moves the pick.
+      const firstPt = page.locator('[data-audit="chart"] [data-audit="point"]').first()
+      await firstPt.focus()
+      await page.keyboard.press('Enter')
+      const kSheet = page.locator('[data-audit="point-sheet"]')
+      await kSheet.waitFor({ timeout: 5_000 }).catch(() => {})
+      await page.waitForTimeout(300)
+      const k1 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(300)
+      const k2 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(300)
+      const k3 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      record('2.6H: Enter picks the focused point; ArrowRight walks sale by sale', !!k1 && !!k2 && !!k3 && (pts.length === 1 || (k2 !== k1 && (pts.length === 2 || k3 !== k2))), `${k1 ?? '∅'} → ${k2 ?? '∅'} → ${k3 ?? '∅'}`)
+      await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      // The list: one 48 px row per sale, in date order.
+      await page.locator('[data-audit="sales-list-toggle"]').click()
+      const rows = page.locator('[data-audit="sales-list"] li button')
+      const n = await rows.count()
+      const heights = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="sales-list"] li button')).map(function(e){ return e.getBoundingClientRect().height })`) as number[]
+      const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
+      record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
+      await page.locator('[data-audit="sales-list-toggle"]').click()
+    }
+
+    // ── Block 2.6I — every price-bearing component links to its report ──
+    {
+      const linkIn = async (sel: string) => page.locator(`${sel} [data-audit="report-link"]`).count()
+      const auctionLinks = await linkIn('[data-audit="auction-card"]'), herdLinks = await linkIn('[data-audit="herd-value-card"]')
+      record('2.6I: the auction card links to its report', auctionLinks >= 1, `${auctionLinks} link(s)`)
+      record('2.6I: the herd value card links to each barn it priced at', herdLinks >= 1, `${herdLinks} link(s)`)
+      await page.locator('[data-audit="chart"] [data-audit="point"]').first().focus(); await page.keyboard.press('Enter')
+      const sheetLinks = await linkIn('[data-audit="point-sheet"]')
+      record('2.6I: a picked point links to its report', sheetLinks >= 1, `${sheetLinks} link(s)`)
+      const sheetEvidence = (await page.locator('[data-audit="point-sheet"] [data-audit="report-evidence"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      record('2.6I: the evidence line reads "Barn · Mon D · N head · Report ↗"', /^.+ · [A-Z][a-z]{2} \d{1,2} · [\d,]+ head( · rev \d+)? · Report ↗$/.test(sheetEvidence), sheetEvidence)
+      await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      const hrefs = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="report-link"]')).map(function(e){ return e.getAttribute('href') })`) as string[]
+      record('2.6I: every report link points at the USDA AMS report page for its slug', hrefs.length > 0 && hrefs.every(h => /^https:\/\/mymarketnews\.ams\.usda\.gov\/viewReport\/\d+$/.test(h)), [...new Set(hrefs)].join(' '))
+      record('2.6I: no bare "USDA AMS report N" text is left on the page', !/USDA AMS report \d+/.test(await text(page)))
+      const probe = await page.request.get(hrefs[0] ?? 'https://mymarketnews.ams.usda.gov/viewReport/1777', { timeout: 20_000 }).catch(() => null)
+      if (probe && probe.status() === 200) record('2.6I: the report page answers 200', true, hrefs[0])
+      else skip('2.6I: the report page answers 200', `USDA answered ${probe ? probe.status() : 'no response'} — their platform, not ours (eWAPS maintenance on 2026-09-06)`)
+    }
+
+    // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
+    if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
+    else {
+      const lrpText = await text(page, '[data-audit="lrp-hero"] >> xpath=ancestor::*[contains(@class,"rounded")][1]').catch(() => '')
+      record('2.6C: the monotonic sentence is gone', !/Longer coverage = lower floor/.test(body) && !/Longer coverage = lower floor/.test(lrpText))
+      const terms = page.locator('[data-audit="lrp-term"]')
+      const labels = (await terms.allInnerTexts()).map(t => t.trim())
+      record('2.6C: every term chip reads "Mon D, YYYY · N wk" and no two read the same', labels.length > 0 && labels.every(l => /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d+ wk$/.test(l)) && new Set(labels).size === labels.length, labels.slice(0, 4).join(' | '))
+      const idx = Math.min(labels.length - 1, 2)
+      const chip = terms.nth(idx)
+      const floor = await chip.getAttribute('data-floor'), weeks = await chip.getAttribute('data-weeks')
+      await chip.click()
+      const hero = (await page.locator('[data-audit="lrp-hero"]').innerText()).replace(/\s+/g, ' ').trim()
+      const sub = await page.locator('[data-audit="lrp-subline"]').innerText()
+      record('2.6C: picking a term moves the headline with it', hero.startsWith(`$${floor}`) && new RegExp(`${weeks}-wk endorsement`).test(sub), `${labels[idx]} → ${hero} · ${sub.trim()}`)
+      await chip.click()
+    }
 
     // Event markers + Since (need migration 048)
     const { error: evErr } = await admin.from('market_events').select('id').limit(1)
     if (evErr) skip('B6/B7: event markers and Since you last checked', `migration 048 not applied (${evErr.message.slice(0, 50)})`)
     else {
       record('B6: event markers with a source link', /▾/.test(body), '')
+      // Block 2.6F — years on every closed chip, chronological, only in-period by default.
+      const chips = (await page.locator('[data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
+      const chipDates = chips.map(t => Date.parse(t))
+      record('2.6F: every closed event chip carries its year', chips.length > 0 && chips.every(t => /\b\d{4}$/.test(t)), chips.join(' | '))
+      record('2.6F: event chips run in date order', chipDates.every((d, i) => i === 0 || d >= chipDates[i - 1]))
+      // The chart's dashed marker lines are filtered by the same period as the chips:
+      // chips shown = markers drawn is the fact that the default list is in-period.
+      const markers = await page.locator('[data-audit="chart"] .recharts-reference-line').count()
+      record('2.6F: default chips are the events on the chart; the rest sit behind a disclosure', chips.length === markers && (await page.locator('[data-audit="event-more"]').count()) === 1, `${chips.length} chips · ${markers} markers · ${(await page.locator('[data-audit="event-more"]').allInnerTexts()).join('') || 'no disclosure'}`)
+      await page.locator('[data-audit="event-more"]').click().catch(() => {})
+      const outside = (await page.locator('[data-audit="event-outside"] [data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
+      record('2.6F: the disclosure opens the out-of-period events, dated with years', outside.length > 0 && outside.every(t => /\b\d{4}$/.test(t)), outside.join(' | '))
+      await page.locator('[data-audit="event-more"]').click().catch(() => {})
       record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
@@ -157,7 +310,7 @@ async function main() {
       const pt = mp.locator('[data-audit="point"]').first()
       if (await pt.count()) {
         await pt.tap().catch(() => pt.click())
-        const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false)
+        const detail = await mp.locator('[data-audit="point-sheet"]').first().isVisible().catch(() => false)
         record(`${width}px: tapping a point opens its evidence`, detail)
         await mp.waitForTimeout(400)
         const lingering = await mp.locator('.recharts-tooltip-wrapper:visible').count()
@@ -180,6 +333,45 @@ async function main() {
     const herd = await text(page)
     record('A4: herd page lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
     record('A2: herd page scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
+    record('2.6I: the herd page lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
+
+    // ── Block 2.6A — out-of-state counties: never "Nearby", never contradicting ──
+    // Signed OUT (the public county view the audit walked). A county with no supported
+    // auction inside the discovery radius says so, and any barn it still names is a
+    // "Regional reference — Town, ST · ~N mi". The no-coverage sentence and a Nearby
+    // label never share a page.
+    const pub = await browser.newContext({ baseURL: BASE, viewport: { width: 420, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    try {
+      for (const [fips, name] of [['48375', 'Potter TX'], ['31041', 'Custer NE'], ['19153', 'Polk IA'], ['41039', 'Lane OR']] as const) {
+        const pp = await pub.newPage()
+        await pp.goto(`/dashboard?fips=${fips}&view=markets`, { waitUntil: 'domcontentloaded' })
+        await pp.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
+        await pp.getByText(/carried-forward steps|No nearby barn|Regional reference/).first().waitFor({ timeout: 45_000 }).catch(() => {})
+        const b = await text(pp)
+        const nearby = /Nearby auction reference|Nearby —/.test(b)
+        const noLocal = /No reporting auction within \d+ approx\. straight-line miles/.test(b)
+        const ref = /Regional reference — [A-Za-z .'-]+, [A-Z]{2} · ~[\d,]+ mi/.test(b)
+        record(`2.6A ${name}: no "Nearby" label`, !nearby)
+        record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
+        record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
+        await pp.close()
+      }
+      // ── Block 2.6D — no displayed "as of" date is in the future (Today view, five counties) ──
+      const todayMs = Date.now() + 86_400_000   // a day of slack for the viewer's zone
+      for (const [fips, name] of [['48375', 'Potter TX'], ['31041', 'Custer NE'], ['19153', 'Polk IA'], ['41039', 'Lane OR'], [HOME_FIPS, 'Petroleum MT']] as const) {
+        const pp = await pub.newPage()
+        await pp.goto(`/dashboard?fips=${fips}`, { waitUntil: 'domcontentloaded' })
+        await pp.getByText(/U\.S\. Drought Monitor · /).first().waitFor({ timeout: 45_000 }).catch(() => {})
+        const b = await text(pp)
+        const asOfs = [...b.matchAll(/as of ([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})/g)].map(m => m[1])
+        const future = asOfs.filter(d => Date.parse(d) > todayMs)
+        record(`2.6D ${name}: no displayed "as of" date is in the future`, asOfs.length > 0 && future.length === 0, future.length ? `FUTURE: ${future.join(', ')}` : `${asOfs.length} as-of dates, latest ${asOfs.sort((x, y) => Date.parse(x) - Date.parse(y)).slice(-1)[0]}`)
+        if (fips === '48375') record('2.6D Potter TX: a grazing period that has not begun says so', /hasn’t started|hasn't started/.test(b) && !/No D2\+ drought trigger/.test(b), (b.match(/grazing period[^.]*\./i) ?? [''])[0].slice(0, 120))
+        await pp.close()
+      }
+    } finally {
+      await pub.close()
+    }
   } finally {
     await browser.close()
     await teardown('finish')
