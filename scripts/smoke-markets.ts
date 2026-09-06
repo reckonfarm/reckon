@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
 //   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
 //   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
 //   • Block 2.6B: chart title unit = axis unit for every view × measure
@@ -134,6 +135,24 @@ async function main() {
     }
     await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
     await page.getByRole('radio', { name: 'This year', exact: true }).click()
+
+    // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
+    if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
+    else {
+      const lrpText = await text(page, '[data-audit="lrp-hero"] >> xpath=ancestor::*[contains(@class,"rounded")][1]').catch(() => '')
+      record('2.6C: the monotonic sentence is gone', !/Longer coverage = lower floor/.test(body) && !/Longer coverage = lower floor/.test(lrpText))
+      const terms = page.locator('[data-audit="lrp-term"]')
+      const labels = (await terms.allInnerTexts()).map(t => t.trim())
+      record('2.6C: every term chip reads "Mon D, YYYY · N wk" and no two read the same', labels.length > 0 && labels.every(l => /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d+ wk$/.test(l)) && new Set(labels).size === labels.length, labels.slice(0, 4).join(' | '))
+      const idx = Math.min(labels.length - 1, 2)
+      const chip = terms.nth(idx)
+      const floor = await chip.getAttribute('data-floor'), weeks = await chip.getAttribute('data-weeks')
+      await chip.click()
+      const hero = (await page.locator('[data-audit="lrp-hero"]').innerText()).replace(/\s+/g, ' ').trim()
+      const sub = await page.locator('[data-audit="lrp-subline"]').innerText()
+      record('2.6C: picking a term moves the headline with it', hero.startsWith(`$${floor}`) && new RegExp(`${weeks}-wk endorsement`).test(sub), `${labels[idx]} → ${hero} · ${sub.trim()}`)
+      await chip.click()
+    }
 
     // Event markers + Since (need migration 048)
     const { error: evErr } = await admin.from('market_events').select('id').limit(1)
