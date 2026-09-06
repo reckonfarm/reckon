@@ -271,21 +271,21 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
   domain?: [number, number] // a shared time domain (the Corn view lays two charts on one axis)
 }) {
   const hoverable = useHoverable()
-  // Keyboard on a point: the pick re-renders the chart and the focused <g> can be
-  // replaced under the caret. The wanted index is noted in the handler and focus is
-  // put back in the commit that follows — before any further keystroke is processed.
-  const wantFocus = useRef<number | null>(null)
-  useEffect(() => {
-    if (wantFocus.current == null) return
-    const el = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${wantFocus.current}"]`) as HTMLElement | null
-    wantFocus.current = null
-    el?.focus()
-  })
+  // Keyboard on a point: a pick re-renders the chart and recharts REPLACES the
+  // point's <g> (measured on the preview: the focused node is gone at +0 ms and
+  // focus has fallen to <body>). The swap happens after React's commit, in
+  // recharts' own layout pass, so a commit-time effect fires too early; focus is
+  // put back on the picked point by index on the next tick, and once more a
+  // beat later in case layout ran late.
   const all = seriesList.flatMap(s => s.dots)
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
   const x0 = domain ? domain[0] : ticks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : ticks[ticks.length - 1] + 86_400_000 * 2
-  const focusPoint = (idx: number) => { wantFocus.current = idx }
+  const focusPoint = (idx: number) => {
+    const go = () => (document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${idx}"]`) as HTMLElement | null)?.focus()
+    window.setTimeout(go, 0)
+    window.setTimeout(go, 100)
+  }
   const onKeyPick = (d: Dot) => { onPick(d); focusPoint(d.idx) }
   const onStep = (d: Dot, dir: -1 | 1) => {
     const i = ordered.findIndex(x => dotKey(x) === dotKey(d))
