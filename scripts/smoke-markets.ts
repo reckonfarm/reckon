@@ -99,7 +99,9 @@ async function main() {
     record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
     record('A3: match labels present', /Close match|Broader reference|Limited evidence/.test(body), (body.match(/Close match|Broader reference|Limited evidence/) ?? [''])[0])
-    record('A3: a thin reference says so and shows a range', !/Limited evidence/.test(body) || /under 20 head, range shown/.test(body))
+    record('A3: a thin reference says so — one price or a real range', !/Limited evidence/.test(body) || /All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt, not one price/.test(body), (body.match(/All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt[^.]*/) ?? [''])[0])
+    // Block 2.6G — never "range" beside a single price.
+    record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /Culls · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
     record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))

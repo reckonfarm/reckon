@@ -3,7 +3,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { fmtRange, isThin, matchLabel, scopeLabel, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { isThin, matchLabel, scopeLabel, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
 
 // ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
@@ -36,13 +36,14 @@ function MatchChip({ label }: { label: string }) {
 function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: string }) {
   const thin = isThin(b.head)
   const label = matchLabel({ exactBracket: true, headCount: b.head })
+  const ev = thin ? thinEvidence(b.priceLow, b.priceHigh, b.avgPrice, b.head) : null
   return (
     <li className="py-2">
       <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
         <span className="text-forest-green">{cls} {bandLabel(b.band)}</span>
         <span className="shrink-0 tabular-nums">
-          {thin ? (
-            <span className="font-semibold text-forest-green/80">{fmtRange(b.priceLow, b.priceHigh, b.avgPrice)}</span>
+          {ev ? (
+            <span className="font-semibold text-forest-green/80">{ev.figure}</span>
           ) : (
             <span className="font-semibold text-ink">${b.avgPrice.toFixed(2)}</span>
           )}
@@ -55,7 +56,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
         <MatchChip label={label} />
         <span>{fmtInt(b.head)} head reported · sale {fmtDate(saleDate)}</span>
-        {thin && <span>· under {THIN_HEAD_THRESHOLD} head, range shown</span>}
+        {ev && <span>· {ev.note}</span>}
       </p>
     </li>
   )
@@ -63,6 +64,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
 
 function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; saleDate: string }) {
   const thin = isThin(c.head)
+  const ev = thin ? thinEvidence(c.priceLow, c.priceHigh, c.avgPrice, c.head) : null
   const name = kind === 'cows'
     ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows (grade not captured)')
     : (c.gradeKnown && c.grade !== 'All' ? `Slaughter bulls · yield ${c.grade}` : 'Slaughter bulls')
@@ -71,7 +73,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
       <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
         <span className="text-forest-green">{name}</span>
         <span className="shrink-0 tabular-nums font-semibold">
-          {thin ? <span className="text-forest-green/80">{fmtRange(c.priceLow, c.priceHigh, c.avgPrice)}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
+          {ev ? <span className="text-forest-green/80">{ev.figure}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
         </span>
       </div>
       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
@@ -82,7 +84,7 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
           {c.dressing ? ` · ${c.dressing.toLowerCase()} dressing` : ''}
           {' · '}sale {fmtDate(saleDate)}
         </span>
-        {thin && <span>· under {THIN_HEAD_THRESHOLD} head, range shown</span>}
+        {ev && <span>· {ev.note}</span>}
       </p>
     </li>
   )

@@ -7,7 +7,7 @@ import {
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { AuctionSeries, AuctionPoint, NationalPoint, CornPoint, CyclePoint, MarketEvent } from '@/lib/markets/series'
-import { THIN_HEAD_THRESHOLD, scopeLabel } from '@/lib/market-scope'
+import { THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
 
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
 // RULES, enforced here and nowhere else:
@@ -60,6 +60,13 @@ const fmtMoney = (n: number) => n >= 1000 ? `$${Math.round(n).toLocaleString('en
 // "$430/cwt", "$2,365/head at 550 lb", "$126,500 (value of Steers · 300 head)"
 const fmtWithUnit = (n: number, unit: string) => unit.startsWith('$/') ? `${fmtMoney(n)}${unit.slice(1)}` : `${fmtMoney(n)} (${unit})`
 
+// Block 2.6G — the reported spread, or the plain fact that there was one price.
+const spreadLine = (pt: AuctionPoint) => {
+  if (pt.low == null || pt.high == null) return ''
+  const ev = thinEvidence(pt.low, pt.high, pt.price, pt.head)
+  return ev.single ? (pt.thin ? ev.note : `One reported price, $${pt.price.toFixed(2)}/cwt`) : `Reported range $${pt.low}–$${pt.high}/cwt`
+}
+
 // One observation as the chart sees it.
 interface Dot { t: number; v: number; head: number; thin: boolean; p: AuctionPoint; series: string }
 
@@ -73,7 +80,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
       <p>Sale {fmtDayYear(d.p.date)} · {d.p.cls} {bandLabel(d.p.band)}</p>
       <p>{d.p.head.toLocaleString('en-US')} head reported{d.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
       <p>{d.p.barn} · USDA AMS report {d.p.reportId}{d.p.revision && d.p.revision > 1 ? ` · rev ${d.p.revision}` : ''}</p>
-      {d.p.low != null && d.p.high != null && <p>Range ${d.p.low}–${d.p.high}/cwt</p>}
+      {d.p.low != null && d.p.high != null && <p>{spreadLine(d.p)}</p>}
     </div>
   )
 }
@@ -317,7 +324,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <div role="status" aria-live="polite" className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
           <p className="font-semibold">{fmtWithUnit(pickedDot.v, unit)} · sale {fmtDayYear(pickedDot.p.date)}</p>
           <p>{pickedDot.p.cls} {bandLabel(pickedDot.p.band)} · {pickedDot.p.head.toLocaleString('en-US')} head reported{pickedDot.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
-          <p>{pickedDot.p.barn} · USDA AMS report {pickedDot.p.reportId}{pickedDot.p.low != null && pickedDot.p.high != null ? ` · range $${pickedDot.p.low}–${pickedDot.p.high}/cwt` : ''}</p>
+          <p>{pickedDot.p.barn} · USDA AMS report {pickedDot.p.reportId}{spreadLine(pickedDot.p) ? ` · ${spreadLine(pickedDot.p)}` : ''}</p>
           <button type="button" onClick={() => setPickedDot(null)} className="mt-1 min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Close</button>
         </div>
       )}
