@@ -5,6 +5,7 @@ import { flagEnabled } from '@/lib/flags'
 import SiteHeader from '@/app/components/SiteHeader'
 import ProfileForm from './ProfileForm'
 import RanchNameCard from './RanchNameCard'
+import RanchPeopleCard from './RanchPeopleCard'
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -24,6 +25,8 @@ export default async function ProfilePage() {
         {/* The outfit's name first (flow, commit 2) — the operation's identity;
             absent entirely for a person with no ranch membership. */}
         <RanchNameCard />
+        {/* Who is on the ranch, open invitations, and "Add someone" (Phase A2). */}
+        <RanchPeopleCard />
         {/* Counties left the bottom bar (shell pass, commit 5): the watchlist —
             home county, watched counties, alert preferences — is reached from
             here now, one tap, a real 44px target. */}
