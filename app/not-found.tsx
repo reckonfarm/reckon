@@ -15,7 +15,7 @@ export default function NotFound() {
               </span>
             </span>
             <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
-              Ranch Intelligence for Cattle Country
+              Your ranch, on the record.
             </span>
           </Link>
         </div>

@@ -24,25 +24,25 @@ const dmSans = DM_Sans({
 // One flag-gated description for all three metadata surfaces (default, OG, Twitter) —
 // mirrors app/page.tsx and app/manifest.ts so no surface can advertise a flagged-off feature.
 const siteDescription = flagEnabled('marketplace')
-  ? "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, cattle market data, and a hay marketplace, bringing your operation's conditions, markets, and money together in one place."
-  : "Dryline is ranch intelligence for cattle country — drought monitoring, LFP payment estimates, and cattle market data, bringing your operation's conditions, markets, and money together in one place."
+  ? "Dryline is a shared feeding record for your ranch — log the feed from your phone, see what's left, and leave the next person a clear handoff. County drought, program, weather, and market references included."
+  : "Dryline is a shared feeding record for your ranch — log the feed from your phone, see what's left, and leave the next person a clear handoff. County drought, program, weather, and market references included."
 
 export const metadata: Metadata = {
   title: {
-    default: 'Dryline — Ranch Intelligence for Cattle Country',
+    default: 'Dryline — Your ranch, on the record.',
     template: '%s — Dryline',
   },
   description: siteDescription,
   openGraph: {
     type: 'website',
     siteName: 'Dryline',
-    title: 'Dryline — Ranch Intelligence for Cattle Country',
+    title: 'Dryline — Your ranch, on the record.',
     description: siteDescription,
     images: [{ url: '/og-image.svg', width: 1200, height: 630, alt: 'Dryline' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Dryline — Ranch Intelligence for Cattle Country',
+    title: 'Dryline — Your ranch, on the record.',
     description: siteDescription,
   },
   // /favicon.ico is provided by the app/favicon.ico file convention (auto-linked).

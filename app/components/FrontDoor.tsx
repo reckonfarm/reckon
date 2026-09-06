@@ -1,232 +1,124 @@
 import Link from 'next/link'
-import { headers } from 'next/headers'
+import Image from 'next/image'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
-import CountySearch from '@/app/components/CountySearch'
 import { Card } from '@/app/components/ui/Card'
-import { resolveBarns } from '@/lib/barn-resolver'
-import { estimateHerd, type HerdEstimate } from '@/lib/herd-estimate'
-import type { Lot } from '@/lib/herd'
+import { BARN_GEO } from '@/lib/barn-geo'
+import { scopeLabel } from '@/lib/market-scope'
 
-// ─── Front door — the signed-out homepage (the acquisition front door) ───────────────────────
-// The Apple-restraint redesign of the Markets surface — the signed-out front door, rendered at
-// both / and /markets-preview. (Replaced the prior MarketsHome funnel.)
+// ─── Front door — the signed-out homepage (Block 2.5, Part C) ─────────────────
+// Dryline is a private ranch ledger. The page leads with the ledger, shows a
+// real screen of it, and asks for a pilot — not a purchase (billing is not
+// live, hay accounting is not built). Every line below describes behavior
+// that ships today: feed logging, repeat-last, offline save states, place
+// history, since-you-were-here. The county drought / program / weather /
+// market tools keep a plain-text door and a small honest Markets module; they
+// are not the hero.
 //
-// THE HOOK is UNIVERSAL + NO-SIGNUP: the county dashboard is already public, so the CountySearch
-// (hero action) → /dashboard?fips=X gives any visitor their drought status + estimated FSA/LFP
-// payment + LRP price floor, free. THE PAYOFF is the HerdEstimate, shown as ONE clearly-labeled
-// Example herd valued at this week's REAL Billings auction prices (never fabricated, never implied
-// as theirs) → "sign up to value your own herd." Auction pricing is MT-now/expanding; the example
-// is the honest demonstration of it.
-//
-// Every server query degrades to empty/honest and NEVER throws.
+// The screenshot is a real capture of the production ledger, taken on a
+// named fictional ranch ("Dry Creek Ranch") — never a mockup, never a real
+// operation's data. Every server read degrades to nothing and never throws.
 
-interface DriestChip { name: string; state: string; fips: string; tier: number }
-
-async function getDriestChips(limit: number, stateFilter?: string): Promise<DriestChip[]> {
+async function latestLocalReference(): Promise<{ scope: string; town: string; saleDate: string; reportId: string } | null> {
   try {
     const db = createServiceClient()
-    const { data: weekRow } = await db
-      .from('drought_data').select('week_date').order('week_date', { ascending: false }).limit(1).single()
-    if (!weekRow) return []
-
-    let query = db
-      .from('drought_data')
-      .select('d1, d2, d3, d4, counties!inner(fips, name, state)')
-      .eq('week_date', weekRow.week_date)
-      .gt('d1', 0)
-    if (stateFilter) query = query.eq('counties.state', stateFilter)
-
-    const { data } = await query
-      .order('d4', { ascending: false }).order('d3', { ascending: false })
-      .order('d2', { ascending: false }).order('d1', { ascending: false })
-      .limit(limit)
-    if (!data) return []
-
-    return data
-      .map(row => {
-        const c = row.counties as unknown as { fips: string; name: string; state: string } | null
-        const d4 = row.d4 ?? 0, d3 = row.d3 ?? 0, d2 = row.d2 ?? 0
-        const tier = d4 > 0 ? 4 : d3 > 0 ? 3 : d2 > 0 ? 2 : 1
-        return { name: c?.name ?? 'Unknown', state: c?.state ?? '', fips: c?.fips ?? '', tier }
-      })
-      .filter(c => c.fips)
-  } catch {
-    return []
-  }
-}
-
-// Example herd — a sample MT herd valued at this week's REAL Billings auction prices, labeled
-// "Example", NEVER implied as the visitor's. Yellowstone County (Billings) = 30111. A single
-// clean lot keeps the payoff restrained; honest degradation: no fresh prices → no number.
-const EXAMPLE_FIPS = '30111'
-const EXAMPLE_LOTS: Lot[] = [{
-  id: 'example-steers',
-  class: 'steers',
-  head_count: 300,
-  avg_weight: 550,
-  weight_unit: 'lb',
-  frame: 'Medium and Large',
-  weaned: true,
-  sale_windows: [],
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-}]
-
-async function getExampleEstimate(): Promise<HerdEstimate | null> {
-  try {
-    const resolved = await resolveBarns(EXAMPLE_FIPS)
-    return estimateHerd({ lots: EXAMPLE_LOTS }, resolved)
+    const { data } = await db.from('mars_price_snapshots').select('slug_id, report_date').order('report_date', { ascending: false }).limit(1).maybeSingle()
+    if (!data) return null
+    const town = BARN_GEO[data.slug_id as string]?.town.replace(/,\s*[A-Z]{2}$/, '') ?? 'Montana'
+    return { scope: scopeLabel({ kind: 'nearby', town }), town, saleDate: data.report_date as string, reportId: data.slug_id as string }
   } catch {
     return null
   }
 }
 
-function formatUSD(n: number): string {
-  return '$' + Math.round(n).toLocaleString('en-US')
-}
-function fmtShort(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(`${iso}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-const CHIP_LIMIT = 4
-
-// The REAL USDM ramp (globals.css @theme) — the chip dots speak the same color language
-// as every drought surface in the app, not a lookalike palette. tier is 1–4 (the chip
-// query requires d1 > 0), so d1 is the floor, not a fallback for "no drought".
-const TIER_DOT = (tier: number) =>
-  tier === 4 ? 'var(--color-usdm-d4)' : tier === 3 ? 'var(--color-usdm-d3)' : tier === 2 ? 'var(--color-usdm-d2)' : 'var(--color-usdm-d1)'
+const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
 export default async function FrontDoor() {
-  const headersList = await headers()
-  const visitorRegion = headersList.get('x-vercel-ip-country-region') ?? ''
-  const visitorState = visitorRegion.length === 2 ? visitorRegion : ''
-
-  const [driestChipsLocal, driestChipsNational, example] = await Promise.all([
-    visitorState ? getDriestChips(CHIP_LIMIT, visitorState) : Promise.resolve([]),
-    getDriestChips(CHIP_LIMIT),
-    getExampleEstimate(),
-  ])
-  const driestChips = driestChipsLocal.length >= 2 ? driestChipsLocal : driestChipsNational
-  const chipsLabel =
-    driestChipsLocal.length >= 2 && visitorState ? `Driest counties in ${visitorState} right now` : 'Driest counties right now'
-
-  const examplePriced = example != null && example.lots_priced > 0
-  const exampleTown = example?.perLot.find(l => l.source)?.source?.town.replace(/,\s*[A-Z]{2}$/, '') ?? 'Billings'
+  const ref = await latestLocalReference()
 
   return (
     <>
       <SiteHeader />
       <main className="min-h-screen bg-cream">
-        <div className="mx-auto max-w-3xl px-4 py-16 sm:py-24">
+        <div className="mx-auto max-w-3xl px-4 py-14 sm:py-20">
 
-          {/* ── Hero — the bold Fraunces line + quiet sub + the county action ─────────── */}
+          {/* ── 1. Mark + the one line ─────────────────────────────────────── */}
           <section className="text-center">
-            <h1 className="font-fraunces text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl">
-              Know what the drought owes you.
+            <p className="font-fraunces text-[17px] font-medium tracking-tight text-forest-green">Your ranch, on the record.</p>
+
+            {/* ── 2. Headline · 3. Subhead — only what ships ─────────────────── */}
+            <h1 className="mt-4 font-fraunces text-[40px] font-semibold leading-[1.08] tracking-tight text-ink sm:text-[52px]">
+              Know what got fed.<br />Know what&rsquo;s on hand.
             </h1>
-            <p className="mx-auto mt-5 max-w-xl font-dm-sans text-base leading-relaxed text-muted/70 sm:text-lg">
-              Type your county for this week&rsquo;s drought status, your estimated FSA drought payment,
-              and a price floor for your cattle. Free, no account needed.
+            <p className="mx-auto mt-5 max-w-xl font-dm-sans text-[17px] leading-relaxed text-forest-green/80 sm:text-[18px]">
+              A shared feeding record for your ranch. Log the feed from your phone, see what&rsquo;s left,
+              and leave the next person a clear handoff. Works with no signal and no hardware.
             </p>
+          </section>
 
-            <div className="mx-auto mt-8 max-w-md text-left">
-              <CountySearch />
-              <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/40">
-                Drought · estimated FSA/LFP payment · LRP price floor — for any U.S. county
-              </p>
-            </div>
+          {/* ── 4. One real screen — the answer line and the save states ───── */}
+          <section className="mt-10">
+            <Card shadow="soft" className="overflow-hidden p-0">
+              <Image
+                src="/landing/ledger-answer.png"
+                alt="The Dryline ledger after a feeding is logged: the entry reads Synced to ranch, then the answer — 4 bales recorded, 196 bales on hand from the last count, 4 fed since."
+                width={732}
+                height={475}
+                priority
+                className="h-auto w-full"
+              />
+            </Card>
+            <p className="mt-2 text-center font-dm-sans text-[13px] text-forest-green/80">
+              A real screen from the ledger, on an example ranch (Dry Creek Ranch). Saved on this phone → Waiting to sync → Synced to ranch, then the answer.
+            </p>
+          </section>
 
-            {driestChips.length > 0 && (
-              <div className="mx-auto mt-6 flex max-w-md flex-wrap items-center justify-center gap-2">
-                <p className="w-full font-dm-sans text-xs text-forest-green/40">{chipsLabel}</p>
-                {driestChips.map(c => (
+          {/* ── 5. The one ask · C3 who / what / cost ───────────────────────── */}
+          <section className="mt-10">
+            <Card shadow="soft" className="p-6 sm:p-8">
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                <div className="sm:max-w-sm">
                   <Link
-                    key={c.fips}
-                    href={`/dashboard?fips=${c.fips}&view=drought`}
-                    prefetch={false}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-forest-green/15 bg-white px-3 py-1 font-dm-sans text-xs text-forest-green/70 transition-colors hover:border-forest-green/30 hover:text-forest-green"
+                    href="/signin?mode=signup&pilot=winter"
+                    className="inline-flex min-h-[56px] w-full items-center justify-center rounded-lg bg-forest-green px-6 font-dm-sans text-[17px] font-semibold text-cream transition-colors hover:bg-forest-green/90 sm:w-auto"
                   >
-                    <span className="inline-block flex-shrink-0 rounded-full" style={{ width: 8, height: 8, background: TIER_DOT(c.tier) }} />
-                    {c.name}, {c.state}
+                    Join the winter pilot
                   </Link>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ── What Dryline is — the two engines in three plain lines (North Star v3).
-                 No icons, no cards, deliberately undersold: bold claim + quiet detail.
-                 Line 3 says "every reading kept", not "decisions logged" — the ledger
-                 renders hand-logged events but has no decision-logging UI yet. ── */}
-          <section className="mx-auto mt-16 max-w-xl">
-            <ul className="space-y-4 font-dm-sans text-sm leading-relaxed text-muted/70 sm:text-base">
-              <li>
-                <span className="font-semibold text-ink">This week&rsquo;s drought, and what FSA owes you</span>
-                {' '}&mdash; county status, LFP tier, estimated payment. Free, no account.
-              </li>
-              <li>
-                <span className="font-semibold text-ink">Your herd, valued at this week&rsquo;s auction</span>
-                {' '}&mdash; real Montana barn prices, an LRP floor under every lot.
-              </li>
-              <li>
-                <span className="font-semibold text-ink">Your operation&rsquo;s ledger</span>
-                {' '}&mdash; counties watched, sensors checked in, every reading kept.
-              </li>
-            </ul>
-          </section>
-
-          {/* ── The payoff — ONE labeled Example HerdEstimate (real Billings prices) ─────── */}
-          <section className="mt-20">
-            <Card shadow="sm" className="p-6 sm:p-8">
-              <p className="font-dm-sans text-xs font-semibold uppercase tracking-wider text-rust/70">Example</p>
-
-              {examplePriced ? (
-                <>
-                  <p className="mt-2 font-fraunces text-4xl font-semibold leading-none tracking-tight text-ink tabular-nums sm:text-5xl">
-                    {formatUSD(example!.total_priced)}
+                  <p className="mt-3 font-dm-sans text-[15px] leading-relaxed text-forest-green/80">
+                    Billing isn&rsquo;t live yet, so the honest ask is a pilot, not a purchase. Pricing will be per ranch, not per head.
                   </p>
-                  <p className="mt-2 font-dm-sans text-sm text-muted/70">
-                    300 head · 550&nbsp;lb steers · valued at this week&rsquo;s {exampleTown} auction
-                    {example!.as_of ? ` · as of ${fmtShort(example!.as_of)}` : ''}
-                  </p>
-                </>
-              ) : (
-                <p className="mt-2 font-fraunces text-2xl font-semibold tracking-tight text-ink/80 sm:text-3xl">
-                  Your herd, valued at this week&rsquo;s auction
-                </p>
-              )}
-
-              {/* Glimpse of the three directions (static echo of the real Now/Trend/Outlook toggle) */}
-              <div className="mt-5 inline-flex rounded-lg border border-forest-green/15 bg-cream p-0.5 font-dm-sans text-xs">
-                <span className="rounded-md bg-white px-3 py-1 font-medium text-forest-green shadow-sm">Now</span>
-                <span className="px-3 py-1 text-forest-green/50">Trend</span>
-                <span className="px-3 py-1 text-forest-green/50">Outlook</span>
+                </div>
+                <ul className="space-y-3 font-dm-sans text-[15px] leading-relaxed text-forest-green sm:max-w-xs">
+                  <li><span className="font-semibold">Who it&rsquo;s for.</span> Cow-calf and hay operations with more than one person doing chores.</li>
+                  <li><span className="font-semibold">What works today, no hardware.</span> Feed, hay, rain, cattle moved and worked — logged in two taps, saved on the phone first, synced when there&rsquo;s signal. Repeat yesterday&rsquo;s feeding. See what changed since you last checked. Every place keeps its own memory.</li>
+                  <li><span className="font-semibold">What isn&rsquo;t built yet.</span> Hay accounting beyond bales fed and on hand, and billing.</li>
+                </ul>
               </div>
-              <p className="mt-3 max-w-md font-dm-sans text-sm leading-relaxed text-muted/70">
-                <span className="font-medium text-ink">Now</span>{' '}values your herd at this week&rsquo;s nearest auction.{' '}
-                <span className="font-medium text-ink">Trend</span>{' '}tracks week-over-week.{' '}
-                <span className="font-medium text-ink">Outlook</span>{' '}shows an LRP price floor per lot.
-              </p>
-
-              <p className="mt-4 font-dm-sans text-xs leading-relaxed text-muted/55">
-                Example only — a sample herd on real auction prices, not a real operation. Live auction pricing
-                is in Montana today and expanding.
-              </p>
-
-              {/* mode=signup opens the form in create-account mode once commit 8 wires the
-                  param; until then it lands on sign-in with the Create-one link — accepted
-                  interim. */}
-              <Link
-                href="/signin?mode=signup"
-                className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-6 font-dm-sans text-sm font-semibold text-cream transition-colors hover:bg-forest-green/90"
-              >
-                Sign up to value your herd →
-              </Link>
             </Card>
           </section>
+
+          {/* ── 6. The county tools keep a door; Markets keeps an honest module ── */}
+          <section className="mt-10 text-center">
+            <p className="font-dm-sans text-[15px] text-forest-green/80">
+              <Link href="/dashboard" className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Check county drought, programs, and markets</Link>
+              {' '}— free, no account needed.
+            </p>
+          </section>
+
+          {ref && (
+            <section className="mt-8">
+              <Card shadow="none" className="px-5 py-4">
+                <p className="font-dm-sans text-[13px] font-semibold uppercase tracking-wider text-forest-green/80">Markets · latest reference</p>
+                <p className="mt-1 font-dm-sans text-[16px] text-forest-green">
+                  {ref.scope} · sale of {fmtDate(ref.saleDate)} · USDA AMS report {ref.reportId}
+                </p>
+                <p className="mt-1 font-dm-sans text-[14px] text-forest-green/80">
+                  An auction report from {ref.town}, with head counts and class on every line. Not a county price, not a forecast.{' '}
+                  <Link href="/dashboard?fips=30111&view=markets" className="font-semibold text-forest-green underline underline-offset-2">Open Markets →</Link>
+                </p>
+              </Card>
+            </section>
+          )}
         </div>
       </main>
     </>

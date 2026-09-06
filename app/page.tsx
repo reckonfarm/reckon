@@ -12,11 +12,11 @@ export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: {
-    absolute: 'Dryline — Ranch Intelligence for Cattle Country',
+    absolute: 'Dryline — Your ranch, on the record.',
   },
   description: flagEnabled('marketplace')
-    ? "Cattle-country markets and news, real-time drought conditions, FSA/LFP payment estimates, and a hay marketplace — bringing your operation's markets, money, and conditions together in one place."
-    : "Cattle-country markets and news, real-time drought conditions, and FSA/LFP payment estimates — bringing your operation's markets, money, and conditions together in one place.",
+    ? "A shared feeding record for your ranch — log the feed from your phone, see what's left, and leave the next person a clear handoff. Works with no signal and no hardware."
+    : "A shared feeding record for your ranch — log the feed from your phone, see what's left, and leave the next person a clear handoff. Works with no signal and no hardware.",
 }
 
 // Note: /?fips=… is still a meaningful URL — middleware.ts skips its signed-in redirect

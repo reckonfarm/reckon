@@ -61,7 +61,7 @@ function SaleWindowPicker({ headlineWeeks, ladder }: { headlineWeeks: number; la
 
   return (
     <div className="mt-4 border-t border-forest-green/10 pt-3">
-      <p className="font-dm-sans text-xs font-medium text-forest-green/55">
+      <p className="font-dm-sans text-[15px] font-medium text-forest-green/80">
         Selling later? Pick your sale month — the floor shifts with the endorsement window.
       </p>
 
@@ -72,7 +72,7 @@ function SaleWindowPicker({ headlineWeeks, ladder }: { headlineWeeks: number; la
             type="button"
             onClick={() => setSel(sel === i ? null : i)}
             aria-pressed={sel === i}
-            className={`rounded-md border px-2 py-1 font-dm-sans text-xs font-medium tabular-nums transition-colors ${
+            className={`min-h-[48px] rounded-md border px-4 font-dm-sans text-[16px] font-medium tabular-nums transition-colors ${
               sel === i
                 ? 'border-forest-green bg-forest-green text-cream'
                 : 'border-forest-green/15 text-forest-green/65 hover:bg-forest-green/5'
@@ -84,7 +84,7 @@ function SaleWindowPicker({ headlineWeeks, ladder }: { headlineWeeks: number; la
       </div>
 
       {/* Honest tradeoff — always shown with the picker, never lost when a month is picked. */}
-      <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
+      <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
         Longer coverage = lower floor, higher premium.
       </p>
 
@@ -101,14 +101,14 @@ function SaleWindowPicker({ headlineWeeks, ladder }: { headlineWeeks: number; la
           </p>
           {/* Basis-risk travels with the picked rung — a different endorsement is STILL the
               national index floor, never local cash. */}
-          <p className="mt-1.5 font-dm-sans text-xs text-forest-green/55">
+          <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">
             Still the CME national index floor — not your local cash price.
           </p>
         </div>
       )}
 
       {!picked && (
-        <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
+        <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
           Showing the {headlineWeeks}-wk floor by default.
         </p>
       )}
@@ -126,10 +126,10 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
       {/* Hero: the real headline coverage price — unchanged by the picker below. */}
       <p className="font-fraunces text-4xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-5xl">
         ${lrp.coverage_price.toFixed(2)}
-        <span className="ml-1 font-dm-sans text-lg font-medium text-forest-green/50"> /cwt</span>
+        <span className="ml-1 font-dm-sans text-lg font-medium text-forest-green/80"> /cwt</span>
       </p>
 
-      <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+      <p className="mt-2 font-dm-sans text-sm text-forest-green/80">
         LRP price floor · {commodity}{type ? ` (${type})` : ''}
         {lrp.endorsement_length_weeks ? ` · ${lrp.endorsement_length_weeks}-wk endorsement` : ''}
         {pct ? ` · ${pct}% coverage` : ''}
@@ -139,7 +139,7 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
       <BasisRiskLine />
 
       {/* Compact real detail: producer premium + endorsement end date. */}
-      <p className="mt-3 font-dm-sans text-sm text-forest-green/60">
+      <p className="mt-3 font-dm-sans text-sm text-forest-green/80">
         {lrp.producer_premium_per_cwt > 0 && (
           <>${lrp.producer_premium_per_cwt.toFixed(2)}/cwt premium after subsidy</>
         )}
@@ -155,12 +155,12 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
 
       {/* Stale note — show the data, but never as "today". */}
       {lrp.stale && (
-        <p className="mt-3 font-dm-sans text-xs text-forest-green/45">
+        <p className="mt-3 font-dm-sans text-[15px] text-forest-green/80">
           Latest available — as of {fmtDate(lrp.effective_date)}.
         </p>
       )}
 
-      <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+      <p className="mt-3 text-[15px] text-forest-green/80 font-dm-sans">
         {lrp.source} · LRP · effective {fmtDate(lrp.effective_date)}
       </p>
     </>
@@ -176,13 +176,13 @@ export default function LrpMarketsCard({ result }: { result: LrpResult }) {
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-sm text-forest-green/80 font-dm-sans">
           LRP data temporarily unavailable — check back shortly.
         </p>
       )}
 
       {result.status === 'none' && (
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-sm text-forest-green/80 font-dm-sans">
           LRP prices not loaded yet — check back shortly.
         </p>
       )}

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createServiceClient } from './supabase'
 import { resolveBarns, type MarsPriceRow, type RankedBarn, type ResolveResult } from './barn-resolver'
+import { cullGrade } from './market-scope'
 
 // ─── Local auction read (Markets view) ───────────────────────────────────────────
 //
@@ -30,14 +31,38 @@ export interface BandRead {
   wowPct: number | null  // vs the same band at this barn's PRIOR sale; null = no prior
 }
 
+// One class' weight-band read (feeder steers / heifers / feeder bulls) — head-weighted
+// $/cwt inside a 100-lb band, with the evidence behind it.
+export interface ClassBands {
+  label: string          // 'Steers' | 'Heifers' | 'Feeder bulls'
+  bands: BandRead[]
+}
+// One cull line — Slaughter Cattle rows kept DISTINCT by grade (cows) or yield grade
+// (bulls), never blended into a "cow price". Weight basis and dressing travel with it.
+export interface CullRead {
+  grade: string          // 'Breaker' | 'Boner' | 'Lean' | 'Other' (cows) · yield grade or 'All' (bulls)
+  dressing: string | null
+  avgWeight: number | null
+  avgPrice: number       // head-weighted $/cwt
+  priceLow: number | null
+  priceHigh: number | null
+  head: number
+  rows: number
+  gradeKnown: boolean    // false when the captured rows predate the grade fields (before 2026-09-05)
+}
 export interface LocalAuctionRead {
   status: 'ok'
+  slugId: string         // the MARS report id — the citable source
   barnName: string
   town: string
   miles: number
   beyondHaul: boolean
+  pinned: boolean        // the person's "where I sell" barn, not the nearest
   saleDate: string       // ISO
-  bands: BandRead[]
+  bands: BandRead[]      // feeder steers (the existing read)
+  classes: ClassBands[]  // heifers, feeder bulls — same band logic, kept apart
+  cullCows: CullRead[]
+  slaughterBulls: CullRead[]
   receipts: number | null
   receiptsWeekAgo: number | null
   receiptsYearAgo: number | null
@@ -63,11 +88,11 @@ function bandOf(w: number | null): string | null {
   return h >= 400 && h <= 700 ? String(h) : null
 }
 
-function bandAverages(rows: MarsPriceRow[]): Map<string, { avg: number; lo: number | null; hi: number | null; head: number }> {
+function bandAverages(rows: MarsPriceRow[], cls: string = 'Steers'): Map<string, { avg: number; lo: number | null; hi: number | null; head: number }> {
   interface Acc { wsum: number; head: number; lo: number; hi: number }
   const acc = new Map<string, Acc>()
   for (const r of rows) {
-    if (r.commodity !== 'Feeder Cattle' || r.class !== 'Steers') continue
+    if (r.commodity !== 'Feeder Cattle' || r.class !== cls) continue
     if (r.price_unit !== 'Per Cwt') continue
     if (!/medium and large/i.test(r.frame ?? '')) continue
     const band = bandOf(r.avg_weight)
@@ -95,6 +120,50 @@ function bandAverages(rows: MarsPriceRow[]): Map<string, { avg: number; lo: numb
 // `preResolved` (views2, commit 2): the Markets body resolves the county's
 // barns once and hands the same result here and to the herd anchor when the
 // county in view is the home county — one resolution per render, not two.
+// Slaughter Cattle rows → one line per grade (cows) / yield grade (bulls), head-weighted.
+function cullReads(rows: MarsPriceRow[], cls: 'Cows' | 'Bulls'): CullRead[] {
+  interface Acc { wsum: number; head: number; rows: number; lo: number; hi: number; wt: number; wtHead: number; dressing: Set<string>; known: boolean }
+  const acc = new Map<string, Acc>()
+  for (const r of rows) {
+    if (r.commodity !== 'Slaughter Cattle' || r.class !== cls) continue
+    if (r.price_unit !== 'Per Cwt' || r.avg_price == null) continue
+    const head = r.head_count ?? 0
+    if (head <= 0) continue
+    const known = cls === 'Cows' ? r.quality_grade !== undefined : r.yield_grade !== undefined
+    const grade = cls === 'Cows' ? cullGrade(r.quality_grade) : (r.yield_grade ?? 'All')
+    const a = acc.get(grade) ?? { wsum: 0, head: 0, rows: 0, lo: Infinity, hi: -Infinity, wt: 0, wtHead: 0, dressing: new Set<string>(), known }
+    a.wsum += r.avg_price * head; a.head += head; a.rows++
+    a.lo = Math.min(a.lo, r.avg_price_min ?? r.avg_price); a.hi = Math.max(a.hi, r.avg_price_max ?? r.avg_price)
+    if (r.avg_weight != null) { a.wt += r.avg_weight * head; a.wtHead += head }
+    if (r.dressing) a.dressing.add(r.dressing)
+    acc.set(grade, a)
+  }
+  const order = ['Breaker', 'Boner', 'Lean', 'Other']
+  return [...acc.entries()]
+    .sort((x, y) => (order.indexOf(x[0]) === -1 ? 99 : order.indexOf(x[0])) - (order.indexOf(y[0]) === -1 ? 99 : order.indexOf(y[0])) || x[0].localeCompare(y[0]))
+    .map(([grade, a]) => ({
+      grade,
+      dressing: a.dressing.size === 1 ? [...a.dressing][0] : a.dressing.size > 1 ? 'Mixed' : null,
+      avgWeight: a.wtHead > 0 ? Math.round(a.wt / a.wtHead) : null,
+      avgPrice: Math.round((a.wsum / a.head) * 100) / 100,
+      priceLow: a.lo === Infinity ? null : a.lo,
+      priceHigh: a.hi === -Infinity ? null : a.hi,
+      head: a.head,
+      rows: a.rows,
+      gradeKnown: a.known,
+    }))
+}
+
+function classBands(rows: MarsPriceRow[], cls: string, label: string): ClassBands | null {
+  const m = bandAverages(rows, cls)
+  const bands: BandRead[] = []
+  for (const band of BANDS) {
+    const c = m.get(band)
+    if (c) bands.push({ band, avgPrice: c.avg, priceLow: c.lo, priceHigh: c.hi, head: c.head, wowPct: null })
+  }
+  return bands.length ? { label, bands } : null
+}
+
 export async function getLocalAuctionRead(countyFips: string, preResolved?: ResolveResult): Promise<LocalAuctionResult> {
   try {
     const resolved = preResolved ?? await resolveBarns(countyFips)
@@ -167,14 +236,21 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
 
     // Receipts come row-level on the snapshot (same value across rows) — first hit wins.
     const withReceipts = barn.rows.find(r => r.receipts != null)
+    const classes = [classBands(barn.rows, 'Heifers', 'Heifers'), classBands(barn.rows, 'Bulls', 'Feeder bulls')]
+      .filter((c): c is ClassBands => c !== null)
     return {
       status: 'ok',
+      slugId: barn.slug_id,
       barnName: barn.barn_name,
       town: barn.town,
       miles: barn.miles,
       beyondHaul: resolved.local.length === 0,
+      pinned: !!resolved.pinned && resolved.pinned === barn.slug_id,
       saleDate: barn.report_date,
       bands,
+      classes,
+      cullCows: cullReads(barn.rows, 'Cows'),
+      slaughterBulls: cullReads(barn.rows, 'Bulls'),
       receipts: withReceipts?.receipts ?? null,
       receiptsWeekAgo: withReceipts?.receipts_week_ago ?? null,
       receiptsYearAgo: withReceipts?.receipts_year_ago ?? null,

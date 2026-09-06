@@ -41,6 +41,11 @@ export interface MarsPriceRow {
   lot_desc: string | null
   weight_break_low: number | null
   weight_break_high: number | null
+  // Block 2.5 A5 — present on rows captured from 2026-09-05; null before.
+  quality_grade?: string | null
+  dressing?: string | null
+  yield_grade?: string | null
+  muscle_grade?: string | null
 }
 
 // A snapshot row read from the table (pre-ranking).
@@ -71,6 +76,7 @@ export interface RankedBarn {
 export type ResolveTier = 'local' | 'nearest-comp' | 'regional-only'
 
 export interface ResolveResult {
+  pinned?: string | null          // Block 2.5 A2 — the person's "where I sell" barn slug, when set
   county_fips: string
   county_name: string | null
   centroid: { lat: number; lon: number } | null

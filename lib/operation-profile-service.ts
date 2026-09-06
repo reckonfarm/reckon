@@ -31,6 +31,7 @@ import { createClient } from './supabase-server'
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export interface OperationProfile {
+  sell_barn_slug?: string | null   // Block 2.5 A2 — "where I sell" MARS report slug (046)
   id:          string
   user_id:     string
   county_fips: string | null
@@ -45,6 +46,7 @@ export interface OperationProfileInput {
   county_fips?: string | null
   herd?:        Json
   crops?:       Json
+  sell_barn_slug?: string | null
 }
 
 export type GetOperationProfileResult =
@@ -58,7 +60,10 @@ export type UpsertOperationProfileResult =
   | { status: 'unauthenticated' }
   | { status: 'data_unavailable' }
 
-const PROFILE_COLUMNS = 'id, user_id, county_fips, herd, crops, created_at, updated_at'
+const PROFILE_COLUMNS = 'id, user_id, county_fips, herd, crops, sell_barn_slug, created_at, updated_at'
+// Until migration 046 lands, the pin column is absent: the read falls back to
+// the pre-046 column list rather than failing the whole profile.
+const PROFILE_COLUMNS_PRE_046 = 'id, user_id, county_fips, herd, crops, created_at, updated_at'
 
 // A row counts as "nothing entered yet" when both jsonb payloads are empty — so a
 // freshly-created shell (or a row that only ever held a county) reads as 'empty', never
@@ -83,10 +88,13 @@ export async function getOperationProfile(
   const user = auth ? auth.user : (await supabase.auth.getUser()).data.user
   if (!user) return { status: 'unauthenticated' }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('operation_profiles')
     .select(PROFILE_COLUMNS)
     .maybeSingle()
+  if (error && /sell_barn_slug/.test(error.message)) {
+    ;({ data, error } = await supabase.from('operation_profiles').select(PROFILE_COLUMNS_PRE_046).maybeSingle())
+  }
 
   if (error) {
     console.error('[operation-profile] read failed:', error.message)
@@ -123,6 +131,7 @@ export async function upsertOperationProfile(
   if ('county_fips' in input) payload.county_fips = input.county_fips
   if ('herd'        in input) payload.herd        = input.herd
   if ('crops'       in input) payload.crops       = input.crops
+  if ('sell_barn_slug' in input) payload.sell_barn_slug = input.sell_barn_slug
 
   const { data, error } = await supabase
     .from('operation_profiles')
