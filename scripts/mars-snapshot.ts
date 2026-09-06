@@ -155,7 +155,36 @@ interface BarnSnapshot {
   row_count: number
 }
 
+// ─── Retry with backoff (2026-09-06) — a transient MARS outage must not page anyone.
+// A 5xx, 408, 429, a network error, or a timeout is retried RETRY_DELAYS_MS.length more
+// times with the listed waits between attempts (30 s, then 120 s: a five-minute hiccup
+// is absorbed, a real outage still fails once and emails). Any other 4xx is a
+// definitive refusal and fails at once. Worst case per barn ≈ 3 × 60 s + 150 s, well
+// inside the workflow's 10-minute limit; barns fetch in parallel.
+const RETRY_DELAYS_MS = [30_000, 120_000]
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+function transient(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  const http = /^HTTP (\d{3})$/.exec(msg)
+  if (http) { const code = Number(http[1]); return code >= 500 || code === 408 || code === 429 }
+  return true // network error / abort (timeout) / DNS
+}
+
 async function fetchBarn(barn: Barn): Promise<BarnSnapshot> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetchBarnOnce(barn)
+    } catch (err) {
+      const last = attempt >= RETRY_DELAYS_MS.length
+      if (last || !transient(err)) throw err
+      const wait = RETRY_DELAYS_MS[attempt]
+      console.log(`  … ${barn.slug} ${barn.barn_name} — ${err instanceof Error ? err.message : err}; retry ${attempt + 1}/${RETRY_DELAYS_MS.length} in ${wait / 1000}s`)
+      await sleep(wait)
+    }
+  }
+}
+
+async function fetchBarnOnce(barn: Barn): Promise<BarnSnapshot> {
   const res = await fetch(REPORT_URL(barn.slug), {
     headers: { Authorization: AUTH, Accept: 'application/json' },
     signal: AbortSignal.timeout(REQ_TIMEOUT),
