@@ -103,19 +103,46 @@ function EventMarkers({ events, x0, x1 }: { events: MarketEvent[]; x0: number; x
   )
 }
 
-function EventList({ events, picked, onPick }: { events: MarketEvent[]; picked: MarketEvent | null; onPick: (e: MarketEvent | null) => void }) {
+// Block 2.6F — every closed chip carries its year, chips run in date order, and
+// only events inside the chart's own dates show by default; the rest sit behind
+// one disclosure so six chips can never read as one summer.
+type Period = { x0: number; x1: number } | null
+function EventChip({ e, on, onPick }: { e: MarketEvent; on: boolean; onPick: (e: MarketEvent | null) => void }) {
+  return (
+    <button type="button" onClick={() => onPick(on ? null : e)} aria-pressed={on} data-audit="event-chip"
+      className={`min-h-[48px] rounded-full border px-4 font-dm-sans text-[16px] font-semibold ${on ? 'border-rust bg-rust text-white' : 'border-rust/40 text-rust hover:bg-rust/5'}`}>
+      ▾ {fmtDayYear(e.date)}
+    </button>
+  )
+}
+function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; picked: MarketEvent | null; onPick: (e: MarketEvent | null) => void; period: Period }) {
+  const [showOutside, setShowOutside] = useState(false)
   if (events.length === 0) return null
+  const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date))
+  const inside = period ? sorted.filter(e => ms(e.date) >= period.x0 && ms(e.date) <= period.x1) : sorted
+  const outside = period ? sorted.filter(e => ms(e.date) < period.x0 || ms(e.date) > period.x1) : []
+  const earlier = outside.filter(e => period && ms(e.date) < period.x0).length
   return (
     <div className="mt-3">
-      <p className="mb-2 font-dm-sans text-[15px] text-forest-green/80">Dated events on the chart (dashed lines) — tap a date for what happened and its source.</p>
+      <p className="mb-2 font-dm-sans text-[15px] text-forest-green/80">
+        {inside.length > 0
+          ? <>Dated events on the chart (dashed lines) — tap a date for what happened and its source.</>
+          : <>No dated events fall inside this chart&apos;s dates.</>}
+      </p>
       <div className="flex flex-wrap gap-2">
-        {events.map(e => (
-          <button key={e.id} type="button" onClick={() => onPick(picked?.id === e.id ? null : e)}
-            className={`min-h-[48px] rounded-full border px-4 font-dm-sans text-[16px] font-semibold ${picked?.id === e.id ? 'border-rust bg-rust text-white' : 'border-rust/40 text-rust hover:bg-rust/5'}`}>
-            ▾ {fmtDay(e.date)}
+        {inside.map(e => <EventChip key={e.id} e={e} on={picked?.id === e.id} onPick={onPick} />)}
+        {outside.length > 0 && (
+          <button type="button" aria-expanded={showOutside} onClick={() => setShowOutside(v => !v)} data-audit="event-more"
+            className="min-h-[48px] rounded-full border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
+            {outside.length} {earlier === outside.length ? 'earlier' : 'other'} event{outside.length === 1 ? '' : 's'} {showOutside ? '▴' : '▾'}
           </button>
-        ))}
+        )}
       </div>
+      {showOutside && outside.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2" data-audit="event-outside">
+          {outside.map(e => <EventChip key={e.id} e={e} on={picked?.id === e.id} onPick={onPick} />)}
+        </div>
+      )}
       {picked && (
         <div className="mt-2 rounded-lg border border-rust/20 bg-rust/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
           <p className="font-semibold">{fmtDayYear(picked.date)} · {picked.title}</p>
@@ -228,6 +255,21 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const years = [...new Set(localPts.map(pt => Number(pt.date.slice(0, 4))))].sort()
   const currentYear = years[years.length - 1]
   const priorYears = years.filter(y => y !== currentYear)
+
+  // Block 2.6F — the chart's own dates, per view: the span of the points it draws.
+  const period: Period = (() => {
+    const pad = 86_400_000 * 2
+    const yearsShown = priorYears.length ? [priorYears[priorYears.length - 1], currentYear] : [currentYear]
+    const dates: string[] =
+      view === 'year' ? localPts.filter(pt => yearsShown.includes(Number(pt.date.slice(0, 4)))).map(pt => pt.date)
+      : view === 'compare' ? [...localPts.map(pt => pt.date), ...others.flatMap(o => o.points.map(pt => pt.date)), ...Object.values(p.national).flat().map(n => n.date)]
+      : view === 'cycle' ? p.cycle.map(c => c.date)
+      : view === 'corn' ? [...localPts.map(pt => pt.date), ...p.corn.map(c => c.date)]
+      : localPts.map(pt => pt.date)
+    if (dates.length === 0) return null
+    const ts = dates.map(ms)
+    return { x0: Math.min(...ts) - pad, x1: Math.max(...ts) + pad }
+  })()
 
   const measureOptions: { value: Measure; label: string }[] = [
     { value: 'cwt', label: '$/cwt' }, { value: 'head', label: '$/head' },
@@ -429,8 +471,8 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           </span>
         </div>
       )}
-      {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} />}
-      {picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} />}
+      {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
+      {picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
     </Card>
     </div>
   )

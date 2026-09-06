@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
 //   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
 //   • Block 2.6B: chart title unit = axis unit for every view × measure
 //   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
@@ -137,6 +138,19 @@ async function main() {
     if (evErr) skip('B6/B7: event markers and Since you last checked', `migration 048 not applied (${evErr.message.slice(0, 50)})`)
     else {
       record('B6: event markers with a source link', /▾/.test(body), '')
+      // Block 2.6F — years on every closed chip, chronological, only in-period by default.
+      const chips = (await page.locator('[data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
+      const chipDates = chips.map(t => Date.parse(t))
+      record('2.6F: every closed event chip carries its year', chips.length > 0 && chips.every(t => /\b\d{4}$/.test(t)), chips.join(' | '))
+      record('2.6F: event chips run in date order', chipDates.every((d, i) => i === 0 || d >= chipDates[i - 1]))
+      // The chart's dashed marker lines are filtered by the same period as the chips:
+      // chips shown = markers drawn is the fact that the default list is in-period.
+      const markers = await page.locator('[data-audit="chart"] .recharts-reference-line').count()
+      record('2.6F: default chips are the events on the chart; the rest sit behind a disclosure', chips.length === markers && (await page.locator('[data-audit="event-more"]').count()) === 1, `${chips.length} chips · ${markers} markers · ${(await page.locator('[data-audit="event-more"]').allInnerTexts()).join('') || 'no disclosure'}`)
+      await page.locator('[data-audit="event-more"]').click().catch(() => {})
+      const outside = (await page.locator('[data-audit="event-outside"] [data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
+      record('2.6F: the disclosure opens the out-of-period events, dated with years', outside.length > 0 && outside.every(t => /\b\d{4}$/.test(t)), outside.join(' | '))
+      await page.locator('[data-audit="event-more"]').click().catch(() => {})
       record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
