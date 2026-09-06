@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
 //   • Block 2.6B: chart title unit = axis unit for every view × measure
 //   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
 //     "Nearby" label; the no-coverage sentence and a Nearby label never co-occur
@@ -101,6 +102,13 @@ async function main() {
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /Culls · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
     record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
+    // Block 2.6E — steps default OFF and the copy follows the state.
+    const stepBtn = page.getByRole('button', { name: /carried-forward steps/ })
+    const stepCopy = page.locator('[data-audit="step-copy"]')
+    record('2.6E: carried-forward steps default OFF', /^Show carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Nothing is drawn between them/.test(await stepCopy.innerText()), (await stepBtn.innerText()).trim())
+    await stepBtn.click()
+    record('2.6E: copy follows the state when steps are shown', /^Hide carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Dashed steps only carry the last sale forward/.test(await stepCopy.innerText()))
+    await stepBtn.click()
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
     record('B5: no correlation number anywhere', !/R²|R\^2|correlation|explains \d+%/i.test(body))
     const svgPoints = await page.locator('svg circle').count()

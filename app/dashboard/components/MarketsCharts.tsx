@@ -209,7 +209,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [cls, setCls] = useState<'Steers' | 'Heifers'>('Steers')
   const [band, setBand] = useState<string>('500')
   const [measure, setMeasure] = useState<Measure>('cwt')
-  const [step, setStep] = useState(true)
+  const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
   const hoverable = useHoverable()
@@ -421,7 +421,12 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
             {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'}
           </button>
-          <span className="font-dm-sans text-[15px] text-forest-green/80">Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported. Small, faint points are under {THIN_HEAD_THRESHOLD} head.</span>
+          <span className="font-dm-sans text-[15px] text-forest-green/80" data-audit="step-copy">
+            {step
+              ? <>Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported.</>
+              : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
+            {' '}Small, faint points are under {THIN_HEAD_THRESHOLD} head.
+          </span>
         </div>
       )}
       {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} />}
