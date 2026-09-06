@@ -829,7 +829,7 @@ function LivestockPanel({
       {/* ── Provenance ── */}
       <div className="space-y-1">
         <p className="text-xs text-forest-green/40 font-dm-sans">
-          USDM data as of {formatDateShort(dataAsOf)} ·{' '}
+          USDM data {dataAsOf ? `as of ${formatDateShort(dataAsOf)}` : '— no current reading on file'} ·{' '}
           <a
             href="https://droughtmonitor.unl.edu"
             target="_blank"

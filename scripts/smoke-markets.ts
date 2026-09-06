@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
 //   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
 //   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
 //   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
@@ -264,6 +265,19 @@ async function main() {
         record(`2.6A ${name}: no "Nearby" label`, !nearby)
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
         record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/USDA AMS report/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
+        await pp.close()
+      }
+      // ── Block 2.6D — no displayed "as of" date is in the future (Today view, five counties) ──
+      const todayMs = Date.now() + 86_400_000   // a day of slack for the viewer's zone
+      for (const [fips, name] of [['48375', 'Potter TX'], ['31041', 'Custer NE'], ['19153', 'Polk IA'], ['41039', 'Lane OR'], [HOME_FIPS, 'Petroleum MT']] as const) {
+        const pp = await pub.newPage()
+        await pp.goto(`/dashboard?fips=${fips}`, { waitUntil: 'domcontentloaded' })
+        await pp.getByText(/U\.S\. Drought Monitor · /).first().waitFor({ timeout: 45_000 }).catch(() => {})
+        const b = await text(pp)
+        const asOfs = [...b.matchAll(/as of ([A-Z][a-z]{2,8}\.? \d{1,2}, \d{4})/g)].map(m => m[1])
+        const future = asOfs.filter(d => Date.parse(d) > todayMs)
+        record(`2.6D ${name}: no displayed "as of" date is in the future`, asOfs.length > 0 && future.length === 0, future.length ? `FUTURE: ${future.join(', ')}` : `${asOfs.length} as-of dates, latest ${asOfs.sort((x, y) => Date.parse(x) - Date.parse(y)).slice(-1)[0]}`)
+        if (fips === '48375') record('2.6D Potter TX: a grazing period that has not begun says so', /hasn’t started|hasn't started/.test(b) && !/No D2\+ drought trigger/.test(b), (b.match(/grazing period[^.]*\./i) ?? [''])[0].slice(0, 120))
         await pp.close()
       }
     } finally {

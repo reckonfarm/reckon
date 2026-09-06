@@ -55,7 +55,8 @@ export interface LfpEligibilityResult {
   longestD2Run:      number           // longest completed consecutive D2+ run (weeks) in the grazing period
   weeksUntilTier1:   number | null    // null if already tier 1+; remaining weeks of D2 needed
   grazingPeriod:     GrazingPeriod
-  dataAsOf:          string           // latest USDM week_date used in calculation
+  dataAsOf:          string | null    // latest USDM observation on file for the county — never a future date, null = none
+  periodStatus:      'active' | 'not_started' | 'ended'   // the grazing period vs today (Block 2.6D)
   disclaimer:        string
   obbbaNote:         string
   enforcement:       LfpEnforcement   // FSA-enforcement state (see OBBBA_FSA_IMPLEMENTED)
@@ -242,23 +243,34 @@ function getCurrentD2Streak(runs: ConsecutiveRun[], queryEndDate: string): numbe
   return daysDiff <= 8 ? latest.consecutiveWeeks : 0
 }
 
-// ─── Latest USDM week in our DB ───────────────────────────────────────────────
+// ─── Latest USDM observation in our DB ───────────────────────────────────────
+// Block 2.6D: the as-of is the county's latest OBSERVATION, full stop — never filtered
+// to the grazing window and never a window boundary. The old query looked only inside
+// the period and fell back to the period's END date when it found nothing, which put
+// "as of Jun 1, 2027" on Potter County, TX (its FSA period is Nov 1 → Jun 1, not yet
+// begun). A status as-of can never be in the future; with no observation it is null and
+// the cards say so.
 
-async function latestWeekDate(
+const todayIso = () => new Date().toISOString().slice(0, 10)
+
+async function latestObservation(
   db:       ReturnType<typeof createServiceClient>,
   countyId: number,
-  gp:       GrazingPeriod,
-): Promise<string> {
+): Promise<string | null> {
   const { data } = await db
     .from('drought_data')
     .select('week_date')
     .eq('county_id', countyId)
-    .gte('week_date', gp.startDate)
+    .lte('week_date', todayIso())
     .order('week_date', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  return (data as { week_date: string } | null)?.week_date ?? gp.endDate
+  return (data as { week_date: string } | null)?.week_date ?? null
+}
+
+export function grazingPeriodStatus(gp: GrazingPeriod, today: string = todayIso()): 'active' | 'not_started' | 'ended' {
+  return today < gp.startDate ? 'not_started' : today > gp.endDate ? 'ended' : 'active'
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -280,10 +292,11 @@ export async function computeLfpEligibility(
 
   if (!county) return null
 
-  // Resolve the latest USDM release date FIRST — it is the cache-bust key for the USDM
+  // Resolve the latest USDM observation FIRST — it is the cache-bust key for the USDM
   // consecutive-weeks calls (a new weekly reading → new key → fresh fetch) and is also
   // the eligibility's dataAsOf. One cheap query, before the parallel block.
-  const releaseKey = await latestWeekDate(db, county.id as number, gp)
+  const asOf = await latestObservation(db, county.id as number)
+  const releaseKey = asOf ?? `no-observation-${gp.startDate}`
 
   // Parallel: 4 USDM API calls (cached, keyed by releaseKey) + 7-of-8 DB check.
   // D3 ≥4 weeks and D4 ≥4 weeks are NON-CONSECUTIVE totals (NDMC/FSA definition):
@@ -306,7 +319,6 @@ export async function computeLfpEligibility(
     fetchConsecutiveRunsCached(paddedFips, 2, 8, gp.startDate, gp.endDate, releaseKey)
       .catch(() => null),
   ])
-  const asOf = releaseKey
 
   const d2EightWeek: boolean | null =
     runsD2_8 === null ? null : runsD2_8.some(r => r.consecutiveWeeks >= 8)
@@ -371,6 +383,7 @@ export async function computeLfpEligibility(
     weeksUntilTier1,
     grazingPeriod:   gp,
     dataAsOf:        asOf,
+    periodStatus:    grazingPeriodStatus(gp),
     disclaimer:      LFP_DISCLAIMER,
     obbbaNote:       LFP_OBBBA_NOTE,
     enforcement,
