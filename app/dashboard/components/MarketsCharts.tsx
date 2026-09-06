@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Scatter, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from 'recharts'
@@ -68,7 +68,7 @@ const spreadLine = (pt: AuctionPoint) => {
 }
 
 // One observation as the chart sees it.
-interface Dot { t: number; v: number; head: number; thin: boolean; p: AuctionPoint; series: string }
+interface Dot { t: number; v: number; head: number; thin: boolean; p: AuctionPoint; series: string; idx: number }   // idx: position in the chart's date-ordered list (Block 2.6H)
 
 function PointTip({ active, payload, unit }: { active?: boolean; payload?: { payload: Dot }[]; unit: string }) {
   if (!active || !payload?.length) return null
@@ -85,18 +85,74 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
   )
 }
 
-// A point's visual weight is its evidence: radius and opacity scale with head.
-// The VISIBLE dot is the evidence; the invisible 44 px disc behind it is the
-// thumb target (Block 2D's floor), so a thin 6 px point is still tappable.
-function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: string; onPick?: (d: Dot) => void }) {
-  const { cx, cy, payload, fill, onPick } = props
-  if (cx == null || cy == null || !payload) return null
-  const r = payload.thin ? 3 : Math.min(8, 4 + Math.log10(Math.max(1, payload.head)))
+// Block 2.6H — a point's SIZE carries its sample support, with a solid outline at
+// every level so contrast never depends on fill: 6 px under THIN_HEAD_THRESHOLD
+// (an OPEN shape, so size is not the only cue), 9 px for 20–99 head, 12 px for
+// 100+. No invisible hit disc: the thumb target is the 48 px selection strip under
+// the chart, and every point is a keyboard-reachable button with a text label.
+const pointRadius = (head: number) => head < THIN_HEAD_THRESHOLD ? 3 : head < 100 ? 4.5 : 6
+const pointLabel = (d: Dot, unit: string) => `Sale ${fmtDayYear(d.p.date)} · ${fmtWithUnit(d.v, unit)} · ${d.p.head.toLocaleString('en-US')} head · ${d.p.barn}`
+function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: string; unit?: string; pickedKey?: string | null; onPick?: (d: Dot) => void; onStep?: (d: Dot, dir: -1 | 1) => void }) {
+  const { cx, cy, payload, fill, unit = '$/cwt', pickedKey, onPick, onStep } = props
+  if (cx == null || cy == null || !payload?.p) return null
+  const r = pointRadius(payload.head)
+  const color = fill ?? FOREST
+  const selected = pickedKey === dotKey(payload)
   return (
-    <g onClick={() => onPick?.(payload)} style={{ cursor: 'pointer' }} data-audit="point">
-      <circle cx={cx} cy={cy} r={22} fill="transparent" />
-      <circle cx={cx} cy={cy} r={r} fill={fill ?? FOREST} fillOpacity={payload.thin ? 0.35 : 0.9} stroke={fill ?? FOREST} strokeOpacity={payload.thin ? 0.6 : 1} />
+    <g role="button" tabIndex={0} aria-label={pointLabel(payload, unit)} aria-pressed={selected} data-audit="point" data-idx={payload.idx}
+      onClick={() => onPick?.(payload)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick?.(payload) }
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onStep?.(payload, 1) }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onStep?.(payload, -1) }
+      }}
+      style={{ cursor: 'pointer', outline: 'none' }}>
+      {selected && <circle cx={cx} cy={cy} r={r + 5} fill="none" stroke={RUST} strokeWidth={2} />}
+      <circle cx={cx} cy={cy} r={r} fill={payload.thin ? '#FFFFFF' : color} stroke={color} strokeWidth={2} />
     </g>
+  )
+}
+const dotKey = (d: Dot) => `${d.series}@${d.t}`
+
+// Block 2.6H — the 48 px selection strip: the chart's time axis, laid under the
+// plot, where a thumb picks the NEAREST sale by date. Overlapping targets are the
+// failure mode of a weekly series; a strip has none. Keyboard: arrows step through
+// the sales in date order, Home/End jump; the pick is announced by the panel.
+function SelectionStrip({ ordered, x0, x1, pickedKey, unit, onPick }: { ordered: Dot[]; x0: number; x1: number; pickedKey: string | null; unit: string; onPick: (d: Dot) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  if (ordered.length === 0) return null
+  const idx = pickedKey ? ordered.findIndex(d => dotKey(d) === pickedKey) : -1
+  const picked = idx >= 0 ? ordered[idx] : null
+  const pickAt = (clientX: number) => {
+    const el = ref.current
+    if (!el) return
+    const b = el.getBoundingClientRect()
+    const t = x0 + ((clientX - b.left) / Math.max(1, b.width)) * (x1 - x0)
+    let best = ordered[0]
+    for (const d of ordered) if (Math.abs(d.t - t) < Math.abs(best.t - t)) best = d
+    onPick(best)
+  }
+  const stepTo = (i: number) => onPick(ordered[Math.max(0, Math.min(ordered.length - 1, i))])
+  return (
+    <div ref={ref} role="slider" tabIndex={0} aria-label="Pick a sale by date" aria-valuemin={0} aria-valuemax={ordered.length - 1}
+      aria-valuenow={idx >= 0 ? idx : 0} aria-valuetext={picked ? pointLabel(picked, unit) : 'No sale picked'} data-audit="selection-strip"
+      className="relative mt-1 h-12 min-h-[48px] cursor-pointer touch-none select-none rounded-md border border-forest-green/15 bg-forest-green/[0.05] focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-green"
+      style={{ marginLeft: 46, marginRight: 8 }}
+      onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); pickAt(e.clientX) }}
+      onPointerMove={e => { if (e.buttons > 0) pickAt(e.clientX) }}
+      onKeyDown={e => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); stepTo(idx < 0 ? 0 : idx + 1) }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); stepTo(idx < 0 ? ordered.length - 1 : idx - 1) }
+        else if (e.key === 'Home') { e.preventDefault(); stepTo(0) }
+        else if (e.key === 'End') { e.preventDefault(); stepTo(ordered.length - 1) }
+      }}>
+      {ordered.map(d => {
+        const left = x1 > x0 ? ((d.t - x0) / (x1 - x0)) * 100 : 50
+        const on = pickedKey === dotKey(d)
+        return <span key={dotKey(d)} aria-hidden className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm ${on ? 'h-9 w-[4px] bg-rust' : 'h-6 w-[3px] bg-forest-green/50'}`} style={{ left: `${left}%` }} />
+      })}
+      <span aria-hidden className="pointer-events-none absolute bottom-0.5 left-1.5 font-dm-sans text-[12px] text-forest-green/60">Slide or tap to pick a sale</span>
+    </div>
   )
 }
 
@@ -202,39 +258,75 @@ function useHoverable(): boolean {
   return hover
 }
 
-function ObservationChart({ seriesList, unit, events, step, onPick, picked }: {
+function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pickedKey, height = 320, domain }: {
   seriesList: { name: string; color: string; dots: Dot[] }[]
+  ordered: Dot[]           // every point of the chart in date order (Block 2.6H)
   unit: string
   events: MarketEvent[]
   step: boolean
   onPick: (d: Dot) => void
-  picked: boolean          // a point's panel is open — the tooltip is forced off so it never lingers over the chart
+  pickedKey: string | null // the picked point's key — the tooltip is forced off while a panel is open so it never lingers over the chart
+  height?: number
+  domain?: [number, number] // a shared time domain (the Corn view lays two charts on one axis)
 }) {
   const hoverable = useHoverable()
   const all = seriesList.flatMap(s => s.dots)
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
-  const x0 = ticks[0], x1 = ticks[ticks.length - 1]
+  const x0 = domain ? domain[0] : ticks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : ticks[ticks.length - 1] + 86_400_000 * 2
+  const onStep = (d: Dot, dir: -1 | 1) => {
+    const n = ordered[d.idx + dir]
+    if (!n) return
+    onPick(n)
+    // Move keyboard focus with the selection so the next arrow keeps walking.
+    const root = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${n.idx}"]`) as HTMLElement | null
+    root?.focus()
+  }
   return (
     <div className="w-full" data-audit="chart">
-      <ResponsiveContainer width="100%" height={320}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart margin={{ top: 12, right: 8, bottom: 4, left: 0 }}>
           <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
-          <XAxis type="number" dataKey="t" domain={[x0 - 86_400_000 * 2, x1 + 86_400_000 * 2]} ticks={ticks}
+          <XAxis type="number" dataKey="t" domain={[x0, x1]} ticks={ticks}
             tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} interval="preserveStartEnd" minTickGap={48} />
           <YAxis type="number" dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-          {hoverable && !picked && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
-          <EventMarkers events={events} x0={x0 - 86_400_000 * 2} x1={x1 + 86_400_000 * 2} />
+          {hoverable && !pickedKey && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
+          <EventMarkers events={events} x0={x0} x1={x1} />
           {seriesList.map(s => (
             <Line key={`step-${s.name}`} data={s.dots} dataKey="v" type="stepAfter" stroke={s.color} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} name={`${s.name} (carried forward)`} />
           ))}
           {seriesList.map(s => (
-            <Scatter key={s.name} data={s.dots} dataKey="v" fill={s.color} name={s.name} shape={<EvidenceDot fill={s.color} onPick={onPick} />} isAnimationActive={false} />
+            <Scatter key={s.name} data={s.dots} dataKey="v" fill={s.color} name={s.name} shape={<EvidenceDot fill={s.color} unit={unit} pickedKey={pickedKey} onPick={onPick} onStep={onStep} />} isAnimationActive={false} />
           ))}
         </ComposedChart>
       </ResponsiveContainer>
+      <SelectionStrip ordered={ordered} x0={x0} x1={x1} pickedKey={pickedKey} unit={unit} onPick={onPick} />
       <AxisUnit unit={unit} />
     </div>
+  )
+}
+
+// Block 2.6H — "View sales as list": every point of the current chart as a
+// chronological list of 48 px rows, each a focusable button that picks the sale.
+function SalesList({ ordered, unit, pickedKey, onPick }: { ordered: Dot[]; unit: string; pickedKey: string | null; onPick: (d: Dot) => void }) {
+  if (ordered.length === 0) return <Note>No sales to list.</Note>
+  return (
+    <ol className="mt-2 divide-y divide-forest-green/[0.08] border-y border-forest-green/[0.08]" data-audit="sales-list" aria-label="Sales in date order">
+      {ordered.map(d => {
+        const on = pickedKey === dotKey(d)
+        return (
+          <li key={dotKey(d)}>
+            <button type="button" aria-pressed={on} onClick={() => onPick(d)}
+              className={`flex min-h-[48px] w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-2 text-left font-dm-sans text-[16px] tabular-nums ${on ? 'bg-forest-green/[0.06] text-forest-green' : 'text-forest-green hover:bg-forest-green/[0.03]'}`}>
+              <span className="font-semibold">{fmtDayYear(d.p.date)}</span>
+              <span>{fmtWithUnit(d.v, unit)}</span>
+              <span className="text-forest-green/80">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
+              <span className="text-forest-green/80">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
+            </button>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
@@ -246,8 +338,11 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
-  const hoverable = useHoverable()
-  const [pickedDot, setPickedDot] = useState<Dot | null>(null)   // a tapped point's evidence, readable below the chart
+  const [listOpen, setListOpen] = useState(false)  // Block 2.6H — "View sales as list"
+  // The picked point is remembered by (series, date) so it survives a measure
+  // change: the panel always re-reads the live dot in the current unit.
+  const [pickedKey, setPickedKey] = useState<string | null>(null)
+  const pick = (d: Dot) => setPickedKey(dotKey(d))
 
   const bandsAvailable = useMemo(() => [...new Set(p.auction.filter(s => s.cls === cls).map(s => s.band))].sort(), [p.auction, cls])
   const bandSel = bandsAvailable.includes(band) ? band : (bandsAvailable[0] ?? band)
@@ -255,13 +350,36 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
   const local = p.auction.find(s => s.slug === p.localSlug && s.cls === cls && s.band === bandSel) ?? null
   const others = p.auction.filter(s => s.slug !== p.localSlug && s.cls === cls && s.band === bandSel)
-  const toDots = (s: AuctionSeries): Dot[] => s.points.map(pt => ({ t: ms(pt.date), v: measureValue(pt.price, measure, bandSel, p.lot), head: pt.head, thin: pt.thin, p: pt, series: s.key }))
+  const toDots = (s: AuctionSeries): Dot[] => s.points.map(pt => ({ t: ms(pt.date), v: measureValue(pt.price, measure, bandSel, p.lot), head: pt.head, thin: pt.thin, p: pt, series: s.key, idx: 0 }))
 
   // Years in the spine — the honest framing for Year and Seasonality.
   const localPts = local?.points ?? []
   const years = [...new Set(localPts.map(pt => Number(pt.date.slice(0, 4))))].sort()
   const currentYear = years[years.length - 1]
   const priorYears = years.filter(y => y !== currentYear)
+
+  // ── The series each view draws (Block 2.6H: built once, so the chart, the
+  //    selection strip, Previous/Next, and the list all walk the same points). ──
+  const yearList = local ? [
+    ...(priorYears.length ? [{ name: `${priorYears[priorYears.length - 1]}`, color: GRAY, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === priorYears[priorYears.length - 1]) }) }] : []),
+    { name: `${currentYear}`, color: FOREST, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === currentYear) }) },
+  ] : []
+  const natMetric = cls === 'Steers' && (bandSel === '500' || bandSel === '700') ? `feeder_steer_${bandSel}` : null
+  const nat = natMetric ? (p.national[natMetric] ?? []) : []
+  const natDots: Dot[] = nat.map(n => ({ t: ms(n.date), v: measureValue(n.value, measure, bandSel, p.lot), head: n.head ?? 0, thin: false,
+    p: { date: n.date, price: n.value, low: n.low, high: n.high, head: n.head ?? 0, thin: false, reportId: n.reportId, barn: 'USDA AMS national feeder summary', town: 'National', cls, band: bandSel, revision: null }, series: 'national', idx: 0 }))
+  const compareList = [
+    ...(local ? [{ name: p.localLabel, color: FOREST, dots: toDots(local) }] : []),
+    ...others.map(o => ({ name: `Regional — ${o.town}`, color: UP, dots: toDots(o) })),
+    ...(natDots.length ? [{ name: scopeLabel({ kind: 'national' }), color: RUST, dots: natDots }] : []),
+  ]
+  const cornFeederList = local ? [{ name: p.localLabel, color: FOREST, dots: toDots(local) }] : []
+  const activeList = view === 'year' ? yearList : view === 'compare' ? compareList : view === 'corn' ? cornFeederList : []
+  const ordered = activeList.flatMap(s => s.dots).sort((a, b) => a.t - b.t || a.series.localeCompare(b.series))
+  ordered.forEach((d, i) => { d.idx = i })
+  const pickedIdx = pickedKey ? ordered.findIndex(d => dotKey(d) === pickedKey) : -1
+  const pickedDot = pickedIdx >= 0 ? ordered[pickedIdx] : null
+  const livePickedKey = pickedDot ? pickedKey : null
 
   // Block 2.6F — the chart's own dates, per view: the span of the points it draws.
   const period: Period = (() => {
@@ -283,6 +401,8 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     ...(p.lot ? [{ value: 'lot' as Measure, label: 'My lot' }] : []),
   ]
 
+  const chartProps = { ordered, unit, events: p.events, step, onPick: pick, pickedKey: livePickedKey }
+
   return (
     // On a phone the card bleeds to the screen edges and pads 12 px, so the
     // chart takes the width; from sm it sits in the stack like every other card.
@@ -290,7 +410,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
       <p className={EYEBROW}>Cattle markets · history</p>
       <div className="mt-3 space-y-3">
-        <ChipRow<View> label="Chart" value={view} onChange={v => { setView(v); setPickedDot(null) }} options={[
+        <ChipRow<View> label="Chart" value={view} onChange={v => { setView(v); setPickedKey(null) }} options={[
           { value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: 'compare', label: 'Local · national' }, { value: 'cycle', label: 'Cattle cycle' }, { value: 'corn', label: 'Corn' },
         ]} />
         {view !== 'cycle' && (
@@ -320,12 +440,20 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         )}
       </div>
 
-      {pickedDot && pickedDot.p && (
-        <div role="status" aria-live="polite" className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
+      {/* The picked sale — the detail sheet. Announced (aria-live), with 48 px
+          Previous / Next that walk the chart's sales in date order (Block 2.6H). */}
+      {pickedDot && (
+        <div role="status" aria-live="polite" className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green" data-audit="point-sheet">
           <p className="font-semibold">{fmtWithUnit(pickedDot.v, unit)} · sale {fmtDayYear(pickedDot.p.date)}</p>
           <p>{pickedDot.p.cls} {bandLabel(pickedDot.p.band)} · {pickedDot.p.head.toLocaleString('en-US')} head reported{pickedDot.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
           <p>{pickedDot.p.barn} · USDA AMS report {pickedDot.p.reportId}{spreadLine(pickedDot.p) ? ` · ${spreadLine(pickedDot.p)}` : ''}</p>
-          <button type="button" onClick={() => setPickedDot(null)} className="mt-1 min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Close</button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" disabled={pickedIdx <= 0} onClick={() => { const n = ordered[pickedIdx - 1]; if (n) pick(n) }} data-audit="point-prev"
+              className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-semibold text-forest-green disabled:opacity-40">‹ Previous sale</button>
+            <button type="button" disabled={pickedIdx >= ordered.length - 1} onClick={() => { const n = ordered[pickedIdx + 1]; if (n) pick(n) }} data-audit="point-next"
+              className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-semibold text-forest-green disabled:opacity-40">Next sale ›</button>
+            <button type="button" onClick={() => setPickedKey(null)} className="min-h-[48px] px-2 font-semibold text-forest-green underline underline-offset-2">Close</button>
+          </div>
         </div>
       )}
 
@@ -334,13 +462,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
           {local ? (
             <>
-              <ObservationChart
-                seriesList={[
-                  ...(priorYears.length ? [{ name: `${priorYears[priorYears.length - 1]}`, color: GRAY, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === priorYears[priorYears.length - 1]) }) }] : []),
-                  { name: `${currentYear}`, color: FOREST, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === currentYear) }) },
-                ]}
-                unit={unit} events={p.events} step={step} onPick={setPickedDot} picked={!!pickedDot}
-              />
+              <ObservationChart seriesList={yearList} {...chartProps} />
               <Note>
                 {priorYears.length === 0
                   ? <>History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'} — no prior year to compare yet, and no five-year band. The band appears as years accrue and will say how many it holds.</>
@@ -365,29 +487,14 @@ export default function MarketsCharts(p: MarketsChartsProps) {
       {view === 'compare' && (
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Local · regional · national · {cls} {bandLabel(bandSel)} · {unit}</p>
-          {(() => {
-            const natMetric = cls === 'Steers' && (bandSel === '500' || bandSel === '700') ? `feeder_steer_${bandSel}` : null
-            const nat = natMetric ? (p.national[natMetric] ?? []) : []
-            const natDots: Dot[] = nat.map(n => ({ t: ms(n.date), v: measureValue(n.value, measure, bandSel, p.lot), head: n.head ?? 0, thin: false,
-              p: { date: n.date, price: n.value, low: n.low, high: n.high, head: n.head ?? 0, thin: false, reportId: n.reportId, barn: 'USDA AMS national feeder summary', town: 'National', cls, band: bandSel, revision: null }, series: 'national' }))
-            const list = [
-              ...(local ? [{ name: p.localLabel, color: FOREST, dots: toDots(local) }] : []),
-              ...others.map(o => ({ name: `Regional — ${o.town}`, color: UP, dots: toDots(o) })),
-              ...(natDots.length ? [{ name: scopeLabel({ kind: 'national' }), color: RUST, dots: natDots }] : []),
-            ]
-            return (
-              <>
-                <ObservationChart seriesList={list} unit={unit} events={p.events} step={step} onPick={setPickedDot} picked={!!pickedDot} />
-                <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[15px]" data-audit="legend">
-                  {list.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
-                </ul>
-                <Note>
-                  Three sources, three lines, never averaged together. Regional here means the other Montana barns we carry — not a Northern Plains composite, which we do not have.
-                  {!natMetric && ' The national feeder summary reports 500–599 and 700–799 lb steers; no national line for this band.'}
-                </Note>
-              </>
-            )
-          })()}
+          <ObservationChart seriesList={compareList} {...chartProps} />
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[15px]" data-audit="legend">
+            {compareList.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
+          </ul>
+          <Note>
+            Three sources, three lines, never averaged together. Regional here means the other Montana barns we carry — not a Northern Plains composite, which we do not have.
+            {!natMetric && ' The national feeder summary reports 500–599 and 700–799 lb steers; no national line for this band.'}
+          </Note>
         </div>
       )}
 
@@ -421,35 +528,23 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Corn and feeder cattle · two charts, one time axis</p>
           {(() => {
-            const feeder = local ? toDots(local) : []
-            const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100, head: 0, thin: false, p: null as unknown as AuctionPoint, series: 'corn' }))
+            const feeder = cornFeederList.flatMap(s => s.dots)
+            const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100 }))
             const all = [...feeder.map(d => d.t), ...cornDots.map(d => d.t)]
             if (all.length === 0) return <Note>No observations to draw yet.</Note>
             const x0 = Math.min(...all) - 86_400_000 * 2, x1 = Math.max(...all) + 86_400_000 * 2
-            const axis = (ticks: number[]) => <XAxis type="number" dataKey="t" domain={[x0, x1]} ticks={ticks} tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} minTickGap={48} />
             return (
               <>
                 <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
-                      <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
-                      {axis(feeder.map(d => d.t))}
-                      <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-                      {hoverable && !pickedDot && <Tooltip content={<PointTip unit={unit} />} />}
-                      <EventMarkers events={p.events} x0={x0} x1={x1} />
-                      <Line data={feeder} dataKey="v" type="stepAfter" stroke={FOREST} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
-                      <Scatter data={feeder} dataKey="v" fill={FOREST} shape={<EvidenceDot fill={FOREST} onPick={setPickedDot} />} isAnimationActive={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-                <AxisUnit unit={unit} />
+                {feeder.length > 0
+                  ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
+                  : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
                 <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · $/bu · CBOT via Yahoo Finance</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
                       <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
-                      {axis(cornDots.filter((_, i) => i % Math.max(1, Math.floor(cornDots.length / 8)) === 0).map(d => d.t))}
+                      <XAxis type="number" dataKey="t" domain={[x0, x1]} ticks={cornDots.filter((_, i) => i % Math.max(1, Math.floor(cornDots.length / 8)) === 0).map(d => d.t)} tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} minTickGap={48} />
                       <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => `$${Number(v).toFixed(2)}`} />
                       <Tooltip formatter={(v: unknown) => [`$${Number(v).toFixed(2)}/bu`, 'Settle']} labelFormatter={t => fmtDayYear(isoOf(Number(t)))} />
                       <Line data={cornDots} dataKey="v" type="stepAfter" stroke={RUST} strokeOpacity={step ? 0.35 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
@@ -465,6 +560,16 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         </div>
       )}
 
+      {view !== 'cycle' && view !== 'season' && ordered.length > 0 && (
+        <div className="mt-3">
+          <button type="button" aria-expanded={listOpen} onClick={() => setListOpen(v => !v)} data-audit="sales-list-toggle"
+            className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
+            {listOpen ? 'Hide the list ▴' : `View sales as list (${ordered.length}) ▾`}
+          </button>
+          {listOpen && <SalesList ordered={ordered} unit={unit} pickedKey={livePickedKey} onPick={pick} />}
+        </div>
+      )}
+
       {view !== 'cycle' && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
@@ -474,7 +579,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
             {step
               ? <>Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported.</>
               : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
-            {' '}Small, faint points are under {THIN_HEAD_THRESHOLD} head.
+            {' '}Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more.
           </span>
         </div>
       )}

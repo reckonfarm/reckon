@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
 //   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
 //   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
 //   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
@@ -136,6 +137,56 @@ async function main() {
     }
     await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
     await page.getByRole('radio', { name: 'This year', exact: true }).click()
+
+    // ── Block 2.6H — points, the selection strip, the sheet, keyboard, the list ──
+    {
+      await page.getByRole('radio', { name: 'This year', exact: true }).click()
+      await page.locator('[data-audit="selection-strip"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+      const pts = await page.evaluate(`(function(){
+        return Array.from(document.querySelectorAll('[data-audit="chart"] [data-audit="point"]')).map(function(g){
+          var c = g.querySelectorAll('circle'); var dot = c[c.length - 1];
+          return { role: g.getAttribute('role'), tab: g.getAttribute('tabindex'), label: g.getAttribute('aria-label') || '', r: parseFloat(dot.getAttribute('r')), sw: parseFloat(dot.getAttribute('stroke-width')), fill: dot.getAttribute('fill') };
+        });
+      })()`) as { role: string | null; tab: string | null; label: string; r: number; sw: number; fill: string }[]
+      record('2.6H: every point group has role, tabindex, and a text label', pts.length > 0 && pts.every(x => x.role === 'button' && x.tab === '0' && /^Sale [A-Z][a-z]{2} \d{1,2}, \d{4} · \$/.test(x.label)), pts[0]?.label ?? 'no points')
+      record('2.6H: point size is 6 / 9 / 12 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [3, 4.5, 6].includes(x.r) && x.sw === 2 && (x.r !== 3 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
+      const strip = page.locator('[data-audit="selection-strip"]').first()
+      const sb = await strip.boundingBox()
+      record('2.6H: a 48 px selection strip under the chart (role slider)', !!sb && sb.height >= 48 && (await strip.getAttribute('role')) === 'slider', `${sb?.height ?? 0}px`)
+      if (sb) {
+        await page.mouse.click(sb.x + sb.width * 0.3, sb.y + sb.height / 2)
+        const sheet = page.locator('[data-audit="point-sheet"]')
+        const opened = await sheet.isVisible().catch(() => false)
+        const first = opened ? (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1] : undefined
+        const nb = await page.locator('[data-audit="point-next"]').boundingBox(), pb = await page.locator('[data-audit="point-prev"]').boundingBox()
+        record('2.6H: tapping the strip picks the nearest sale and opens the sheet with 48 px Previous / Next', opened && !!nb && nb.height >= 48 && !!pb && pb.height >= 48, `${first ?? 'no sheet'} · next ${nb?.height ?? 0}px · prev ${pb?.height ?? 0}px`)
+        const nextBtn = page.locator('[data-audit="point-next"]')
+        if (opened && !(await nextBtn.isDisabled())) {
+          await nextBtn.click()
+          const second = (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+          record('2.6H: Next walks to the following sale', !!second && second !== first && Date.parse(second) > Date.parse(first!), `${first} → ${second}`)
+        } else skip('2.6H: Next walks to the following sale', 'only one sale on the chart')
+        await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      }
+      // Keyboard: Enter on a focused point opens the sheet; ArrowRight moves the pick.
+      const firstPt = page.locator('[data-audit="chart"] [data-audit="point"]').first()
+      await firstPt.focus()
+      await page.keyboard.press('Enter')
+      const kSheet = page.locator('[data-audit="point-sheet"]')
+      const k1 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      await page.keyboard.press('ArrowRight')
+      const k2 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
+      record('2.6H: Enter picks the focused point and ArrowRight moves to the next sale', !!k1 && !!k2 && (pts.length === 1 || k2 !== k1), `${k1 ?? '∅'} → ${k2 ?? '∅'}`)
+      await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      // The list: one 48 px row per sale, in date order.
+      await page.locator('[data-audit="sales-list-toggle"]').click()
+      const rows = page.locator('[data-audit="sales-list"] li button')
+      const n = await rows.count()
+      const heights = await rows.evaluateAll('els => els.map(e => e.getBoundingClientRect().height)') as number[]
+      const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
+      record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
+      await page.locator('[data-audit="sales-list-toggle"]').click()
+    }
 
     // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
     if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
