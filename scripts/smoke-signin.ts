@@ -6,6 +6,7 @@
 // walks through to get a session:
 //
 //   • Default account = the SCRATCH account (SMOKE_SCRATCH_EMAIL below): no
+//     (the two TEST_RANCH_EMAILS are allowed the same way — their own ranch)
 //     ranch membership, no home county, its rows are its own under RLS.
 //     Writes there touch nothing PK looks at.
 //   • Minting a cookie for ANY other account (the owner's) requires
@@ -30,6 +31,10 @@ import { createClient } from '@supabase/supabase-js'
 import { chromium } from '@playwright/test'
 
 export const SMOKE_SCRATCH_EMAIL = 'kiehl.preston+test@gmail.com'
+// The durable Test Ranch accounts (scripts/seed-test-ranch.ts, seeded on
+// production 2026-09-06 on PK's instruction): their ranch is their own, so a
+// smoke may sign in as either without the owner ack.
+export const TEST_RANCH_EMAILS = ['kiehl.preston+testranch@gmail.com', 'kiehl.preston+testhand@gmail.com']
 
 const BASE = process.env.BASE ?? 'http://localhost:3000'
 const EMAIL = process.env.SMOKE_EMAIL ?? SMOKE_SCRATCH_EMAIL
@@ -48,7 +53,7 @@ function loadEnv() {
 
 async function main() {
   loadEnv()
-  const isScratch = EMAIL.toLowerCase() === SMOKE_SCRATCH_EMAIL.toLowerCase()
+  const isScratch = EMAIL.toLowerCase() === SMOKE_SCRATCH_EMAIL.toLowerCase() || TEST_RANCH_EMAILS.includes(EMAIL.toLowerCase())
   if (!isScratch && process.env.SMOKE_OWNER_ACK !== 'announced') {
     console.error(
       `smoke-signin: refusing to mint a session for ${EMAIL}.\n` +
@@ -77,7 +82,7 @@ async function main() {
     await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 })
     const cookies = await ctx.cookies()
     writeFileSync(OUT, cookies.map(c => `${c.name}=${c.value}`).join('; '))
-    console.log(`smoke-signin: ${isScratch ? 'SCRATCH account' : `OWNER account ${EMAIL} (announced)`} → ${cookies.length} cookie(s) → ${OUT}`)
+    console.log(`smoke-signin: ${isScratch ? `scratch/test account ${EMAIL}` : `OWNER account ${EMAIL} (announced)`} → ${cookies.length} cookie(s) → ${OUT}`)
     if (!isScratch) console.log('smoke-signin: any write this session makes lands in the REAL ledger.')
   } finally {
     await browser.close()
