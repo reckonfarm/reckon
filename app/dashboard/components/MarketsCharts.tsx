@@ -129,6 +129,13 @@ function EventList({ events, picked, onPick }: { events: MarketEvent[]; picked: 
 
 const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2 font-dm-sans text-[15px] leading-snug text-forest-green/80">{children}</p>
 
+// Block 2.6B — the vertical axis names its unit in words, from the SAME `unit`
+// the title and the tooltip read, so a stale measure can never leave the axis
+// in one unit and the title in another. The smoke asserts the two agree.
+const AxisUnit = ({ unit }: { unit: string }) => (
+  <p className="mt-1 font-dm-sans text-[15px] text-forest-green/70" data-audit="axis-unit">Vertical axis · {unit}</p>
+)
+
 // A wrapping row of 48 px chips — never a horizontal scroll, never a shrunk
 // segmented control. One row per selector; the active chip is solid.
 function ChipRow<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
@@ -175,8 +182,8 @@ function ObservationChart({ seriesList, unit, events, step, onPick, picked }: {
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
   const x0 = ticks[0], x1 = ticks[ticks.length - 1]
   return (
-    <div className="h-[320px] w-full" data-audit="chart">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full" data-audit="chart">
+      <ResponsiveContainer width="100%" height={320}>
         <ComposedChart margin={{ top: 12, right: 8, bottom: 4, left: 0 }}>
           <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
           <XAxis type="number" dataKey="t" domain={[x0 - 86_400_000 * 2, x1 + 86_400_000 * 2]} ticks={ticks}
@@ -192,6 +199,7 @@ function ObservationChart({ seriesList, unit, events, step, onPick, picked }: {
           ))}
         </ComposedChart>
       </ResponsiveContainer>
+      <AxisUnit unit={unit} />
     </div>
   )
 }
@@ -236,7 +244,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <ChipRow<View> label="Chart" value={view} onChange={v => { setView(v); setPickedDot(null) }} options={[
           { value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: 'compare', label: 'Local · national' }, { value: 'cycle', label: 'Cattle cycle' }, { value: 'corn', label: 'Corn' },
         ]} />
-        {view !== 'cycle' && view !== 'corn' && (
+        {view !== 'cycle' && (
           <>
             <div className="flex flex-wrap items-center gap-2">
               <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
@@ -274,7 +282,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'year' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
           {local ? (
             <>
               <ObservationChart
@@ -296,7 +304,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'season' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Seasonality · {cls} {bandLabel(bandSel)} · {unit}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Seasonality · {cls} {bandLabel(bandSel)} · {unit}</p>
           {priorYears.length === 0 ? (
             <Note>Seasonality needs more than one year of sales. History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'}; this year&apos;s points are on the &ldquo;This year&rdquo; chart. Under three years it will show as a thin reference, not a rule.</Note>
           ) : (
@@ -307,7 +315,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'compare' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Local · regional · national · {cls} {bandLabel(bandSel)} · {unit}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Local · regional · national · {cls} {bandLabel(bandSel)} · {unit}</p>
           {(() => {
             const natMetric = cls === 'Steers' && (bandSel === '500' || bandSel === '700') ? `feeder_steer_${bandSel}` : null
             const nat = natMetric ? (p.national[natMetric] ?? []) : []
@@ -372,21 +380,22 @@ export default function MarketsCharts(p: MarketsChartsProps) {
             const axis = (ticks: number[]) => <XAxis type="number" dataKey="t" domain={[x0, x1]} ticks={ticks} tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} minTickGap={48} />
             return (
               <>
-                <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">{p.localLabel} · {cls} {bandLabel(bandSel)} · $/cwt</p>
+                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
                 <div className="h-[200px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
                       <CartesianGrid stroke="#1B4332" strokeOpacity={0.08} vertical={false} />
                       {axis(feeder.map(d => d.t))}
                       <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
-                      {hoverable && !pickedDot && <Tooltip content={<PointTip unit="$/cwt" />} />}
+                      {hoverable && !pickedDot && <Tooltip content={<PointTip unit={unit} />} />}
                       <EventMarkers events={p.events} x0={x0} x1={x1} />
                       <Line data={feeder} dataKey="v" type="stepAfter" stroke={FOREST} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
                       <Scatter data={feeder} dataKey="v" fill={FOREST} shape={<EvidenceDot fill={FOREST} onPick={setPickedDot} />} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">Corn · front-month settle · $/bu · CBOT via Yahoo Finance</p>
+                <AxisUnit unit={unit} />
+                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · $/bu · CBOT via Yahoo Finance</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>
@@ -399,6 +408,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+                <AxisUnit unit="$/bu" />
                 <Note>Corn is the feedlot&apos;s input cost. When corn rises, the buyer&apos;s cost of gain rises and feeder bids tend to come down. That is the mechanism; no number is attached to it here, because weekly sales over a short spine cannot support one.</Note>
               </>
             )

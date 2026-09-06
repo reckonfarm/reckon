@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6B: chart title unit = axis unit for every view × measure
 //   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
 //     "Nearby" label; the no-coverage sentence and a Nearby label never co-occur
 // Teardown before and after. Exit 1 on any FAIL.
@@ -104,6 +105,24 @@ async function main() {
     record('B5: no correlation number anywhere', !/R²|R\^2|correlation|explains \d+%/i.test(body))
     const svgPoints = await page.locator('svg circle').count()
     record('B3: observations render as points', svgPoints > 0, `${svgPoints} circles`)
+
+    // ── Block 2.6B — title unit = axis unit in every view × measure ──
+    // The chart title and the "Vertical axis · …" caption read the same `unit`;
+    // this walks every combination and checks the two RENDERED strings agree.
+    for (const v of ['This year', 'Local · national', 'Corn'] as const) {
+      await page.getByRole('radio', { name: v, exact: true }).click()
+      for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
+        if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) await page.getByRole('button', { name: /More ▾/ }).click()
+        await page.getByRole('radio', { name: m, exact: true }).click()
+        await page.locator('[data-audit="axis-unit"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+        const titles = await page.locator('[data-audit="chart-title"]').allInnerTexts()
+        const axes = (await page.locator('[data-audit="axis-unit"]').allInnerTexts()).map(t => t.replace(/^Vertical axis · /, '').trim())
+        const agree = titles.length > 0 && titles.length === axes.length && titles.every((t, i) => t.trim().endsWith(axes[i]))
+        record(`2.6B ${v} × ${m}: title unit = axis unit`, agree, `${titles.map((t, i) => `"${t.split(' · ').slice(-1)[0]}" vs "${axes[i] ?? '∅'}"`).join('; ')}`)
+      }
+    }
+    await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
+    await page.getByRole('radio', { name: 'This year', exact: true }).click()
 
     // Event markers + Since (need migration 048)
     const { error: evErr } = await admin.from('market_events').select('id').limit(1)
