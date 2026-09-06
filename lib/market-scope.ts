@@ -31,6 +31,7 @@ export function isThin(headCount: number | null | undefined): boolean {
 export type Scope =
   | { kind: 'nearby'; town: string }
   | { kind: 'pinned'; town: string }
+  | { kind: 'reference'; town: string; miles: number }   // beyond the discovery radius: town WITH state + straight-line miles
   | { kind: 'regional'; region: string }
   | { kind: 'national' }
 
@@ -38,6 +39,7 @@ export function scopeLabel(s: Scope): string {
   switch (s.kind) {
     case 'nearby':   return `Nearby auction reference — ${s.town}`
     case 'pinned':   return `Where you sell — ${s.town}`
+    case 'reference': return `Regional reference — ${s.town} · ~${s.miles.toLocaleString('en-US')} mi`
     case 'regional': return `Regional comparison — ${s.region}`
     case 'national': return 'National benchmark'
   }

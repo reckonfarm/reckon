@@ -806,7 +806,7 @@ export async function MarketsViewBody({
       {anchor && <HerdValueCard anchor={anchor} />}
       {homeFips && (
         <Suspense fallback={null}>
-          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} />
+          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
         </Suspense>
       )}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}

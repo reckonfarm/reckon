@@ -1,4 +1,4 @@
-import { roadMiles } from './freight'
+import { haversineMiles } from './freight'
 
 // ─── Barn geo + the PURE nearest-fresh-barn ranking ─────────────────────────────────────
 // The DB-FREE core of the resolver: constants, the barn geo table, the priced-row + result
@@ -8,7 +8,15 @@ import { roadMiles } from './freight'
 // wrapper resolveBarns lives in lib/barn-resolver.ts and re-exports everything here.
 
 export const FRESH_DAYS = 10
-export const HAUL_RADIUS_MI = 150
+// Block 2.6A — the discovery radius: a supported auction counts as LOCAL only when it is
+// within this many STRAIGHT-LINE miles of the county center. Straight-line, not road: the
+// county center is not the ranch gate and we have no routing source, so every distance the
+// resolver reports is labeled DISTANCE_BASIS. Beyond the radius a barn is at most a
+// "Regional reference — Town, ST · ~N mi", never "Nearby". User-adjustable later.
+export const DISCOVERY_RADIUS_MI = 150
+export const DISTANCE_BASIS = 'approx. straight-line miles'
+/** @deprecated alias kept for older importers — same number as DISCOVERY_RADIUS_MI. */
+export const HAUL_RADIUS_MI = DISCOVERY_RADIUS_MI
 
 // Barn geo — MARS carries no coords, so we geocode the (few) barn towns ourselves, keyed by
 // slug_id. A barn added to the pipeline (scripts/mars-snapshot.ts) MUST also be added here or
@@ -65,7 +73,7 @@ export interface RankedBarn {
   slug_id: string
   barn_name: string
   town: string
-  miles: number // road miles from the county centroid (rounded)
+  miles: number // straight-line miles from the county center (rounded) — see DISTANCE_BASIS
   report_date: string
   age_days: number
   fresh: boolean
@@ -81,8 +89,9 @@ export interface ResolveResult {
   county_name: string | null
   centroid: { lat: number; lon: number } | null
   tier: ResolveTier
-  local: RankedBarn[]             // fresh barns within HAUL_RADIUS_MI, nearest first
-  nearest_comp: RankedBarn | null // nearest fresh barn BEYOND the radius (only when no local)
+  local: RankedBarn[]             // fresh barns within DISCOVERY_RADIUS_MI, nearest first
+  nearest_comp: RankedBarn | null // nearest fresh barn BEYOND the radius (only when no local) — a
+                                  // REGIONAL REFERENCE at any distance, labeled with state + ~miles
   ranked: RankedBarn[]            // ALL fresh barns, nearest first
   stale: RankedBarn[]             // present but past the freshness gate (honesty/debug)
   summary: string                 // one honest line
@@ -110,7 +119,7 @@ export function rankFreshBarns(
       slug_id: b.slug_id,
       barn_name: b.barn_name,
       town: geo.town,
-      miles: Math.round(roadMiles(centroid.lat, centroid.lon, geo.lat, geo.lon)),
+      miles: Math.round(haversineMiles(centroid.lat, centroid.lon, geo.lat, geo.lon)),
       report_date: b.report_date,
       age_days: age,
       fresh: age <= FRESH_DAYS,
@@ -121,15 +130,15 @@ export function rankFreshBarns(
 
   const ranked = geocoded.filter(b => b.fresh).sort((a, b) => a.miles - b.miles)
   const stale = geocoded.filter(b => !b.fresh).sort((a, b) => a.miles - b.miles)
-  const local = ranked.filter(b => b.miles <= HAUL_RADIUS_MI)
+  const local = ranked.filter(b => b.miles <= DISCOVERY_RADIUS_MI)
   const nearest_comp = local.length === 0 ? ranked[0] ?? null : null
   const tier: ResolveTier = local.length > 0 ? 'local' : ranked.length > 0 ? 'nearest-comp' : 'regional-only'
 
   let summary: string
   if (tier === 'local') {
-    summary = `${local.length} local barn${local.length > 1 ? 's' : ''} within ${HAUL_RADIUS_MI}mi — nearest ${local[0].town} ~${local[0].miles}mi`
+    summary = `${local.length} local barn${local.length > 1 ? 's' : ''} within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} — nearest ${local[0].town} ~${local[0].miles} mi`
   } else if (tier === 'nearest-comp' && nearest_comp) {
-    summary = `No barn within ${HAUL_RADIUS_MI}mi; nearest comparable ${nearest_comp.town} ~${nearest_comp.miles}mi (not local) — layer regional context`
+    summary = `No barn within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS}; regional reference ${nearest_comp.town} ~${nearest_comp.miles} mi (not local)`
   } else {
     summary = 'No fresh barn in range — regional/national context only'
   }

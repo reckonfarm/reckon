@@ -9,6 +9,8 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
+//     "Nearby" label; the no-coverage sentence and a Nearby label never co-occur
 // Teardown before and after. Exit 1 on any FAIL.
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/smoke-markets.ts
@@ -180,6 +182,31 @@ async function main() {
     const herd = await text(page)
     record('A4: herd page lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
     record('A2: herd page scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
+
+    // ── Block 2.6A — out-of-state counties: never "Nearby", never contradicting ──
+    // Signed OUT (the public county view the audit walked). A county with no supported
+    // auction inside the discovery radius says so, and any barn it still names is a
+    // "Regional reference — Town, ST · ~N mi". The no-coverage sentence and a Nearby
+    // label never share a page.
+    const pub = await browser.newContext({ baseURL: BASE, viewport: { width: 420, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    try {
+      for (const [fips, name] of [['48375', 'Potter TX'], ['31041', 'Custer NE'], ['19153', 'Polk IA'], ['41039', 'Lane OR']] as const) {
+        const pp = await pub.newPage()
+        await pp.goto(`/dashboard?fips=${fips}&view=markets`, { waitUntil: 'domcontentloaded' })
+        await pp.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
+        await pp.getByText(/carried-forward steps|No nearby barn|Regional reference/).first().waitFor({ timeout: 45_000 }).catch(() => {})
+        const b = await text(pp)
+        const nearby = /Nearby auction reference|Nearby —/.test(b)
+        const noLocal = /No reporting auction within \d+ approx\. straight-line miles/.test(b)
+        const ref = /Regional reference — [A-Za-z .'-]+, [A-Z]{2} · ~[\d,]+ mi/.test(b)
+        record(`2.6A ${name}: no "Nearby" label`, !nearby)
+        record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
+        record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/USDA AMS report/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
+        await pp.close()
+      }
+    } finally {
+      await pub.close()
+    }
   } finally {
     await browser.close()
     await teardown('finish')

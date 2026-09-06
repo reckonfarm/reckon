@@ -4,6 +4,7 @@ import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtRange, isThin, matchLabel, scopeLabel, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
 
 // ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
 // Every figure here is an AUCTION result with its scope named — the barn, never
@@ -22,6 +23,9 @@ function bandLabel(band: string): string {
   return `${lo}–${lo + 99} lb`
 }
 const fmtInt = (n: number) => n.toLocaleString('en-US')
+const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
+// The one no-local sentence, shared by the no-coverage state and the regional-reference state.
+const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
@@ -96,7 +100,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
         <p className="font-dm-sans text-[16px] text-forest-green/80">Auction data temporarily unavailable — check back shortly.</p>
       )}
       {result.status === 'no_coverage' && (
-        <p className="font-dm-sans text-[16px] text-forest-green/80">No reporting auction within haul distance — Montana barns today, expanding.</p>
+        <p className="font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE} — Montana barns today, expanding.</p>
       )}
       {result.status === 'no_recent_sale' && (
         <p className="font-dm-sans text-[16px] text-forest-green/80">
@@ -106,13 +110,21 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
 
       {result.status === 'ok' && (
         <>
+          {/* Block 2.6A — beyond the discovery radius the card says so FIRST, then offers
+              the barn as a regional reference with its state and straight-line miles. */}
+          {result.beyondHaul && !result.pinned && (
+            <p className="mb-2 font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE}.</p>
+          )}
           {/* Scope — the barn, never a county. */}
           <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
-            {scopeLabel(result.pinned ? { kind: 'pinned', town: result.town.replace(/,\s*[A-Z]{2}$/, '') } : { kind: 'nearby', town: result.town.replace(/,\s*[A-Z]{2}$/, '') })}
+            {scopeLabel(
+              result.pinned ? { kind: 'pinned', town: shortTown(result.town) }
+              : result.beyondHaul ? { kind: 'reference', town: result.town, miles: result.miles }
+              : { kind: 'nearby', town: shortTown(result.town) },
+            )}
           </p>
           <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">
-            {result.barnName} · {result.miles} mi · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}
-            {result.beyondHaul && !result.pinned && ' · beyond typical haul, shown for reference'}
+            {result.barnName} · ~{result.miles} mi ({DISTANCE_BASIS}) · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}
           </p>
 
           <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
