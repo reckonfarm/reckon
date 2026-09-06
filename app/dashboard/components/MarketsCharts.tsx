@@ -8,6 +8,7 @@ import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { AuctionSeries, AuctionPoint, NationalPoint, CornPoint, CyclePoint, MarketEvent } from '@/lib/markets/series'
 import { THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
+import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
 // RULES, enforced here and nowhere else:
@@ -79,7 +80,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
       <p className="font-semibold">{fmtWithUnit(d.v, unit)}</p>
       <p>Sale {fmtDayYear(d.p.date)} · {d.p.cls} {bandLabel(d.p.band)}</p>
       <p>{d.p.head.toLocaleString('en-US')} head reported{d.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
-      <p>{d.p.barn} · USDA AMS report {d.p.reportId}{d.p.revision && d.p.revision > 1 ? ` · rev ${d.p.revision}` : ''}</p>
+      <p><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} revision={d.p.revision} /></p>
       {d.p.low != null && d.p.high != null && <p>{spreadLine(d.p)}</p>}
     </div>
   )
@@ -323,6 +324,7 @@ function SalesList({ ordered, unit, pickedKey, onPick }: { ordered: Dot[]; unit:
               <span className="text-forest-green/80">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
               <span className="text-forest-green/80">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
             </button>
+            <span className="block px-2 pb-1 font-dm-sans text-[15px] text-forest-green/80"><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} /></span>
           </li>
         )
       })}
@@ -446,7 +448,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <div role="status" aria-live="polite" className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green" data-audit="point-sheet">
           <p className="font-semibold">{fmtWithUnit(pickedDot.v, unit)} · sale {fmtDayYear(pickedDot.p.date)}</p>
           <p>{pickedDot.p.cls} {bandLabel(pickedDot.p.band)} · {pickedDot.p.head.toLocaleString('en-US')} head reported{pickedDot.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
-          <p>{pickedDot.p.barn} · USDA AMS report {pickedDot.p.reportId}{spreadLine(pickedDot.p) ? ` · ${spreadLine(pickedDot.p)}` : ''}</p>
+          <p><ReportEvidence barn={pickedDot.p.barn} date={pickedDot.p.date} head={pickedDot.p.head} slug={pickedDot.p.reportId} revision={pickedDot.p.revision} />{spreadLine(pickedDot.p) ? ` · ${spreadLine(pickedDot.p)}` : ''}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" disabled={pickedIdx <= 0} onClick={() => { const n = ordered[pickedIdx - 1]; if (n) pick(n) }} data-audit="point-prev"
               className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-semibold text-forest-green disabled:opacity-40">‹ Previous sale</button>

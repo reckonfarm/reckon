@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
 //   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
 //   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
 //   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
@@ -188,6 +189,26 @@ async function main() {
       await page.locator('[data-audit="sales-list-toggle"]').click()
     }
 
+    // ── Block 2.6I — every price-bearing component links to its report ──
+    {
+      const linkIn = async (sel: string) => page.locator(`${sel} [data-audit="report-link"]`).count()
+      const auctionLinks = await linkIn('[data-audit="auction-card"]'), herdLinks = await linkIn('[data-audit="herd-value-card"]')
+      record('2.6I: the auction card links to its report', auctionLinks >= 1, `${auctionLinks} link(s)`)
+      record('2.6I: the herd value card links to each barn it priced at', herdLinks >= 1, `${herdLinks} link(s)`)
+      await page.locator('[data-audit="chart"] [data-audit="point"]').first().focus(); await page.keyboard.press('Enter')
+      const sheetLinks = await linkIn('[data-audit="point-sheet"]')
+      record('2.6I: a picked point links to its report', sheetLinks >= 1, `${sheetLinks} link(s)`)
+      const sheetEvidence = (await page.locator('[data-audit="point-sheet"] [data-audit="report-evidence"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      record('2.6I: the evidence line reads "Barn · Mon D · N head · Report ↗"', /^.+ · [A-Z][a-z]{2} \d{1,2} · [\d,]+ head( · rev \d+)? · Report ↗$/.test(sheetEvidence), sheetEvidence)
+      await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
+      const hrefs = await page.locator('[data-audit="report-link"]').evaluateAll('els => els.map(e => e.getAttribute("href"))') as string[]
+      record('2.6I: every report link points at the USDA AMS report page for its slug', hrefs.length > 0 && hrefs.every(h => /^https:\/\/mymarketnews\.ams\.usda\.gov\/viewReport\/\d+$/.test(h)), [...new Set(hrefs)].join(' '))
+      record('2.6I: no bare "USDA AMS report N" text is left on the page', !/USDA AMS report \d+/.test(await text(page)))
+      const probe = await page.request.get(hrefs[0] ?? 'https://mymarketnews.ams.usda.gov/viewReport/1777', { timeout: 20_000 }).catch(() => null)
+      if (probe && probe.status() === 200) record('2.6I: the report page answers 200', true, hrefs[0])
+      else skip('2.6I: the report page answers 200', `USDA answered ${probe ? probe.status() : 'no response'} — their platform, not ours (eWAPS maintenance on 2026-09-06)`)
+    }
+
     // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
     if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
     else {
@@ -273,7 +294,7 @@ async function main() {
       const pt = mp.locator('[data-audit="point"]').first()
       if (await pt.count()) {
         await pt.tap().catch(() => pt.click())
-        const detail = await mp.getByText(/USDA AMS report \d+/).first().isVisible().catch(() => false)
+        const detail = await mp.locator('[data-audit="point-sheet"]').first().isVisible().catch(() => false)
         record(`${width}px: tapping a point opens its evidence`, detail)
         await mp.waitForTimeout(400)
         const lingering = await mp.locator('.recharts-tooltip-wrapper:visible').count()
@@ -296,6 +317,7 @@ async function main() {
     const herd = await text(page)
     record('A4: herd page lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
     record('A2: herd page scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
+    record('2.6I: the herd page lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
 
     // ── Block 2.6A — out-of-state counties: never "Nearby", never contradicting ──
     // Signed OUT (the public county view the audit walked). A county with no supported
@@ -315,7 +337,7 @@ async function main() {
         const ref = /Regional reference — [A-Za-z .'-]+, [A-Z]{2} · ~[\d,]+ mi/.test(b)
         record(`2.6A ${name}: no "Nearby" label`, !nearby)
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
-        record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/USDA AMS report/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
+        record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
         await pp.close()
       }
       // ── Block 2.6D — no displayed "as of" date is in the future (Today view, five counties) ──

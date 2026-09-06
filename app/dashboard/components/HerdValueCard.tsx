@@ -3,6 +3,7 @@ import { Card } from '@/app/components/ui/Card'
 import type { HerdAnchor } from '@/lib/herd-anchor'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { dollarsPerCwtMove, scopeLabel } from '@/lib/market-scope'
+import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Herd value — a card, not the hero (2026-08-09 repositioning) ──────────────
 // One number (this week's estimate at the nearest auction) plus the LRP floor
@@ -38,6 +39,8 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
   )
   const minFloor = floors.length > 0 ? Math.min(...floors.map(l => l.floor!.coverage_price)) : null
   const towns = [...new Set(estimate.perLot.filter(l => l.source).map(l => l.source!.town.replace(/,\s*[A-Z]{2}$/, '')))].join(' / ')
+  // One report link per distinct barn the lots were priced at (Block 2.6I).
+  const sources = [...new Map(estimate.perLot.filter(l => l.source).map(l => [l.source!.slug_id, l.source!])).values()]
   // The sensitivity line is arithmetic on the LOT (head × weight), so a thin
   // price reference does not withhold it — only a missing head or weight does.
   const cwtLots = estimate.perLot.filter(l => l.value != null && l.source?.price_basis === 'cwt')
@@ -45,8 +48,9 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
   const sensitivity = perDollar > 0 ? `Every $1/cwt move is $${perDollar.toLocaleString('en-US')} across ${cwtLots.length === 1 ? 'this lot' : `${cwtLots.length} lots`}.` : null
 
   return (
-    <Link href="/herd" className="block">
-      <Card shadow="none" className="px-5 py-4 transition-colors hover:bg-forest-green/[0.03]" data-audit="herd-value-card">
+    // Block 2.6I — the card is no longer one big link: the report links inside it
+    // would nest anchors. The herd page link is its own 48 px control at the foot.
+    <Card shadow="none" className="px-5 py-4" data-audit="herd-value-card">
         <p className={EYEBROW}>
           Herd value
         </p>
@@ -68,6 +72,11 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
               {estimate.lots_thin > 0 && ` · ${estimate.lots_thin} on thin evidence`}
             </p>
             {sensitivity && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sensitivity}</p>}
+            {sources.length > 0 && (
+              <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
+                {sources.map((s, i) => <span key={s.slug_id}>{i > 0 && ' · '}<ReportEvidence barn={s.barn_name} date={s.report_date} head={s.head_count} slug={s.slug_id} /></span>)}
+              </p>
+            )}
           </>
         ) : (
           <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">{estimate.note}</p>
@@ -77,7 +86,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
             LRP coverage available to explore for {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · reference coverage price from ${minFloor.toFixed(2)}/cwt · needs a purchased endorsement
           </p>
         )}
+        <Link href="/herd" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Herd page →</Link>
       </Card>
-    </Link>
   )
 }

@@ -35,6 +35,9 @@ export type Scope =
   | { kind: 'regional'; region: string }
   | { kind: 'national' }
 
+/** Block 2.6I — the public USDA AMS MyMarketNews page for a report slug (the latest issue of that report). */
+export const reportUrl = (slug: string) => `https://mymarketnews.ams.usda.gov/viewReport/${encodeURIComponent(slug)}`
+
 export function scopeLabel(s: Scope): string {
   switch (s.kind) {
     case 'nearby':   return `Nearby auction reference — ${s.town}`

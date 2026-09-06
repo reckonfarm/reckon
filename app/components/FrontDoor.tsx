@@ -5,6 +5,7 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { BARN_GEO } from '@/lib/barn-geo'
 import { scopeLabel } from '@/lib/market-scope'
+import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Front door — the signed-out homepage (Block 2.5, Part C) ─────────────────
 // Dryline is a private ranch ledger. The page leads with the ledger, shows a
@@ -31,7 +32,6 @@ async function latestLocalReference(): Promise<{ scope: string; town: string; sa
   }
 }
 
-const fmtDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
 export default async function FrontDoor() {
   const ref = await latestLocalReference()
@@ -110,7 +110,7 @@ export default async function FrontDoor() {
               <Card shadow="none" className="px-5 py-4">
                 <p className="font-dm-sans text-[13px] font-semibold uppercase tracking-wider text-forest-green/80">Markets · latest reference</p>
                 <p className="mt-1 font-dm-sans text-[16px] text-forest-green">
-                  {ref.scope} · sale of {fmtDate(ref.saleDate)} · USDA AMS report {ref.reportId}
+                  {ref.scope} · <ReportEvidence barn={ref.town} date={ref.saleDate} slug={ref.reportId} />
                 </p>
                 <p className="mt-1 font-dm-sans text-[14px] text-forest-green/80">
                   An auction report from {ref.town}, with head counts and class on every line. Not a county price, not a forecast.{' '}

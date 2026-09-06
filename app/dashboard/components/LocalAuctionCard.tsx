@@ -5,6 +5,7 @@ import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { isThin, matchLabel, scopeLabel, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
+import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
 // Every figure here is an AUCTION result with its scope named — the barn, never
@@ -126,7 +127,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
             )}
           </p>
           <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">
-            {result.barnName} · ~{result.miles} mi ({DISTANCE_BASIS}) · sale of {fmtDate(result.saleDate)} · USDA AMS report {result.slugId}
+            <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
 
           <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
