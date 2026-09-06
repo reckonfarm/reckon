@@ -541,7 +541,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                 {feeder.length > 0
                   ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
                   : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
-                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · $/bu · CBOT via Yahoo Finance</p>
+                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · CBOT via Yahoo Finance · $/bu</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart margin={{ top: 12, right: 12, bottom: 4, left: 0 }}>

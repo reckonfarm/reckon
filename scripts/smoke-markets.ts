@@ -98,6 +98,10 @@ async function main() {
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
     await page.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
+    // The chart card is server-rendered before it is hydrated; a click that lands in
+    // between is dropped. Wait for the network to go quiet and a beat more.
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+    await page.waitForTimeout(1500)
     const body = await text(page)
 
     record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
@@ -114,6 +118,7 @@ async function main() {
     const stepCopy = page.locator('[data-audit="step-copy"]')
     record('2.6E: carried-forward steps default OFF', /^Show carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Nothing is drawn between them/.test(await stepCopy.innerText()), (await stepBtn.innerText()).trim())
     await stepBtn.click()
+    await page.getByRole('button', { name: /^Hide carried-forward steps/ }).waitFor({ timeout: 5_000 }).catch(() => {})
     record('2.6E: copy follows the state when steps are shown', /^Hide carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Dashed steps only carry the last sale forward/.test(await stepCopy.innerText()))
     await stepBtn.click()
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
@@ -127,7 +132,10 @@ async function main() {
     for (const v of ['This year', 'Local · national', 'Corn'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
-        if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) await page.getByRole('button', { name: /More ▾/ }).click()
+        if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
+          await page.getByRole('button', { name: /More ▾/ }).click()
+          await page.getByRole('radio', { name: m, exact: true }).waitFor({ timeout: 5_000 }).catch(() => {})
+        }
         await page.getByRole('radio', { name: m, exact: true }).click()
         await page.locator('[data-audit="axis-unit"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
         const titles = await page.locator('[data-audit="chart-title"]').allInnerTexts()
@@ -152,14 +160,16 @@ async function main() {
       record('2.6H: every point group has role, tabindex, and a text label', pts.length > 0 && pts.every(x => x.role === 'button' && x.tab === '0' && /^Sale [A-Z][a-z]{2} \d{1,2}, \d{4} · \$/.test(x.label)), pts[0]?.label ?? 'no points')
       record('2.6H: point size is 6 / 9 / 12 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [3, 4.5, 6].includes(x.r) && x.sw === 2 && (x.r !== 3 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
       const strip = page.locator('[data-audit="selection-strip"]').first()
+      await strip.scrollIntoViewIfNeeded().catch(() => {})
       const sb = await strip.boundingBox()
       record('2.6H: a 48 px selection strip under the chart (role slider)', !!sb && sb.height >= 48 && (await strip.getAttribute('role')) === 'slider', `${sb?.height ?? 0}px`)
       if (sb) {
-        await page.mouse.click(sb.x + sb.width * 0.3, sb.y + sb.height / 2)
+        await strip.click({ position: { x: sb.width * 0.3, y: sb.height / 2 } })
         const sheet = page.locator('[data-audit="point-sheet"]')
+        await sheet.waitFor({ timeout: 5_000 }).catch(() => {})
         const opened = await sheet.isVisible().catch(() => false)
         const first = opened ? (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1] : undefined
-        const nb = await page.locator('[data-audit="point-next"]').boundingBox(), pb = await page.locator('[data-audit="point-prev"]').boundingBox()
+        const nb = await page.locator('[data-audit="point-next"]').boundingBox({ timeout: 3_000 }).catch(() => null), pb = await page.locator('[data-audit="point-prev"]').boundingBox({ timeout: 3_000 }).catch(() => null)
         record('2.6H: tapping the strip picks the nearest sale and opens the sheet with 48 px Previous / Next', opened && !!nb && nb.height >= 48 && !!pb && pb.height >= 48, `${first ?? 'no sheet'} · next ${nb?.height ?? 0}px · prev ${pb?.height ?? 0}px`)
         const nextBtn = page.locator('[data-audit="point-next"]')
         if (opened && !(await nextBtn.isDisabled())) {
@@ -174,6 +184,7 @@ async function main() {
       await firstPt.focus()
       await page.keyboard.press('Enter')
       const kSheet = page.locator('[data-audit="point-sheet"]')
+      await kSheet.waitFor({ timeout: 5_000 }).catch(() => {})
       const k1 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
       await page.keyboard.press('ArrowRight')
       const k2 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
