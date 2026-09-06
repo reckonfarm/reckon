@@ -152,7 +152,7 @@ function SelectionStrip({ ordered, x0, x1, pickedKey, unit, onPick }: { ordered:
         const on = pickedKey === dotKey(d)
         return <span key={dotKey(d)} aria-hidden className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm ${on ? 'h-9 w-[4px] bg-rust' : 'h-6 w-[3px] bg-forest-green/50'}`} style={{ left: `${left}%` }} />
       })}
-      <span aria-hidden className="pointer-events-none absolute bottom-0.5 left-1.5 font-dm-sans text-[12px] text-forest-green/60">Slide or tap to pick a sale</span>
+      <span aria-hidden className="pointer-events-none absolute bottom-0 left-1.5 font-dm-sans text-[15px] leading-none text-forest-green/60">Slide or tap to pick a sale</span>
     </div>
   )
 }
@@ -271,19 +271,21 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
   domain?: [number, number] // a shared time domain (the Corn view lays two charts on one axis)
 }) {
   const hoverable = useHoverable()
+  // Keyboard on a point: the pick re-renders the chart and the focused <g> can be
+  // replaced under the caret. The wanted index is noted in the handler and focus is
+  // put back in the commit that follows — before any further keystroke is processed.
+  const wantFocus = useRef<number | null>(null)
+  useEffect(() => {
+    if (wantFocus.current == null) return
+    const el = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${wantFocus.current}"]`) as HTMLElement | null
+    wantFocus.current = null
+    el?.focus()
+  })
   const all = seriesList.flatMap(s => s.dots)
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
   const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
   const x0 = domain ? domain[0] : ticks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : ticks[ticks.length - 1] + 86_400_000 * 2
-  // Keyboard on a point: the pick re-renders the chart, and the focused <g> can be
-  // replaced under the caret — so focus is put back on the picked point AFTER the
-  // render, by its index, or the next arrow would go nowhere.
-  const focusPoint = (idx: number) => {
-    window.setTimeout(() => {
-      const el = document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${idx}"]`) as HTMLElement | null
-      el?.focus()
-    }, 60)
-  }
+  const focusPoint = (idx: number) => { wantFocus.current = idx }
   const onKeyPick = (d: Dot) => { onPick(d); focusPoint(d.idx) }
   const onStep = (d: Dot, dir: -1 | 1) => {
     const i = ordered.findIndex(x => dotKey(x) === dotKey(d))

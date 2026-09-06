@@ -185,6 +185,7 @@ async function main() {
       await page.keyboard.press('Enter')
       const kSheet = page.locator('[data-audit="point-sheet"]')
       await kSheet.waitFor({ timeout: 5_000 }).catch(() => {})
+      await page.waitForTimeout(300)
       const k1 = (await kSheet.innerText().catch(() => '')).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
       await page.keyboard.press('ArrowRight')
       await page.waitForTimeout(300)
