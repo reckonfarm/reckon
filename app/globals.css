@@ -67,7 +67,7 @@
 
   /* ── LEGACY (retired by A1 / A4 — do not add new callers) ──────────────────
      cream        → canvas          forest-green (as text) → ink or brand
-     body, muted  → ink / secondary-ink        accent → brand
+     body → ink · muted → secondary-ink (already that value)   accent → brand
      line         → rule (callers use border-line/10 today; A4 re-points them)
      warning      → danger          rust (as text) → danger or down
      shadow-card, shadow-pop → none on ordinary surfaces; overlay for overlays */
@@ -75,7 +75,7 @@
   --color-forest-green: #1B4332;
   --color-rust: #8B3A2B;
   --color-body: #1B4332;
-  --color-muted: #1B4332;
+  --color-muted: #526257;   /* PK 2026-09-06: = secondary-ink, so a stripped modifier fails quiet, not loud */
   --color-line: #1B4332;
   --color-accent: #1B4332;
   --color-warning: #C2410C;
