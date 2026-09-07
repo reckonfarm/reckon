@@ -37,17 +37,28 @@ select count(*) as history_rows, count(distinct user_id) as history_users from p
 -- Expect 0 rows: a user with memberships on more than one ranch (backfill picks the first by created_at).
 select user_id, count(*) from public.ranch_members group by user_id having count(*) > 1;
 -- Expect 0 rows: a ranch that would receive more than one profile row.
-select m.ranch_id, count(*) from public.operation_profiles p
-  join lateral (select ranch_id from public.ranch_members r where r.user_id = p.user_id order by r.created_at asc limit 1) m on true
-  group by m.ranch_id having count(*) > 1;
+select first_ranch, count(*)
+  from (
+    select (select r.ranch_id from public.ranch_members r
+             where r.user_id = p.user_id
+             order by r.created_at asc limit 1) as first_ranch
+      from public.operation_profiles p
+  ) x
+ where first_ranch is not null
+ group by first_ranch having count(*) > 1;
 
 -- 1) operation_profiles.ranch_id ---------------------------------------------
 alter table public.operation_profiles
   add column if not exists ranch_id uuid references public.ranches(id) on delete cascade;
 
+-- Correlated subquery, NOT "update … from lateral": an UPDATE's FROM cannot see the
+-- target's alias (42P10 on the first run of this file, 2026-09-07).
 update public.operation_profiles p
-   set ranch_id = m.ranch_id
-  from lateral (select ranch_id from public.ranch_members r where r.user_id = p.user_id order by r.created_at asc limit 1) m
+   set ranch_id = (
+     select r.ranch_id from public.ranch_members r
+      where r.user_id = p.user_id
+      order by r.created_at asc limit 1
+   )
  where p.ranch_id is null;
 
 -- One herd per ranch. A plain UNIQUE (nulls are distinct, so the membership-less
@@ -92,8 +103,11 @@ alter table public.herd_estimate_history
   add column if not exists ranch_id uuid references public.ranches(id) on delete cascade;
 
 update public.herd_estimate_history h
-   set ranch_id = m.ranch_id
-  from lateral (select ranch_id from public.ranch_members r where r.user_id = h.user_id order by r.created_at asc limit 1) m
+   set ranch_id = (
+     select r.ranch_id from public.ranch_members r
+      where r.user_id = h.user_id
+      order by r.created_at asc limit 1
+   )
  where h.ranch_id is null;
 
 -- One snapshot per ranch per day — a plain UNIQUE (inferable by on_conflict); the
