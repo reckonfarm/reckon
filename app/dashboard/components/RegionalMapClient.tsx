@@ -100,7 +100,7 @@ function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status
             ? `As of ${asOf}`
             : <span className="text-secondary-ink">{count} active</span>
   return (
-    <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
+    <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans">
       <div className="text-[14px] font-semibold text-forest-green">{layer.attribution}</div>
       <div className="mb-1.5 text-[14px] text-secondary-ink">{line}</div>
       {layer.legend.map(({ color, label }) => (
@@ -578,7 +578,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
           type="button"
           onClick={() => setPlaying(p => !p)}
           aria-pressed={playing}
-          className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green shadow-sm hover:bg-white"
+          className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-white"
         >
           {playing ? '❚❚ Pause' : '▶ Play'}
         </button>
@@ -591,7 +591,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
           'empty' = a genuine quiet day; 'error' (incl. the request timeout) = rust "Alerts
           unavailable"; 'loading' stays silent so the radar never looks blocked. */}
       {ALERTS_LAYER && alertsStatus !== 'loading' && (
-        <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px] shadow-sm">
+        <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px]">
           {alertsStatus === 'error'
             ? <span style={{ color: warning }}>Alerts unavailable</span>
             : alertsStatus === 'empty'
@@ -601,7 +601,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
       )}
 
       {/* Legend + staleness ("Radar as of HH:MM") / honest-degraded note. */}
-      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
+      <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans">
         <div className="text-[14px] font-semibold text-forest-green">{layer.attribution}</div>
         <div className="mb-1.5 text-[14px] text-secondary-ink">
           {status === 'loading'
@@ -736,7 +736,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
       {/* In-view window control — BOTTOM-RIGHT so the interactive toggle sits in the phone
           thumb-zone (the read-only legend takes the top). Right-aligned, so it stays clear
           of Leaflet's zoom +/- (top-left). */}
-      <div className="absolute bottom-3 right-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-sm">
+      <div className="absolute bottom-3 right-3 z-[1000] flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1">
         {layer.windows.map((w, i) => (
           <button
             key={w.label}
@@ -759,7 +759,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
           SHORT title (the full "NOAA/NWS AHPS" attribution already shows in the caption under
           the map) and a width cap so a long "as of"/error note wraps instead of covering the
           county. */}
-      <div className="absolute top-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans shadow-sm">
+      <div className="absolute top-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans">
         <div className="text-[14px] font-semibold leading-tight text-forest-green">{layer.legendTitle}</div>
         <div className="mb-1 text-[14px] leading-tight text-secondary-ink">
           {status === 'loading'

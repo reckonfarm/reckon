@@ -70,7 +70,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
           <button
             type="button"
             onClick={sameToday}
-            className="min-h-[56px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white shadow-sm shadow-forest-green/20 hover:bg-forest-green/90"
+            className="min-h-[56px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white hover:bg-forest-green/90"
           >
             Same today
           </button>

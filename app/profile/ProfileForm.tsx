@@ -118,7 +118,7 @@ export default function ProfileForm() {
   }
 
   return (
-    <div className="mt-8 rounded-xl border border-forest-green/10 bg-white px-5 py-6 shadow-sm">
+    <div className="mt-8 rounded-xl border border-forest-green/10 bg-white px-5 py-6">
       <div className="grid gap-5">
 
         {/* Email — read-only */}

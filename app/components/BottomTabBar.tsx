@@ -198,7 +198,7 @@ export default function BottomTabBar() {
         >
           <span
             className={`flex h-14 w-14 -translate-y-4 items-center justify-center rounded-full bg-forest-green text-cream ring-4 ring-cream transition-shadow ${
-              opActive ? 'shadow-lg shadow-forest-green/40' : 'shadow-md shadow-forest-green/25'
+              opActive ? '' : ''
             }`}
           >
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

@@ -132,7 +132,7 @@ export function DashboardViewPanels({ params, order, eager, fallbacks }: {
               <button
                 type="button"
                 onClick={() => retry(key)}
-                className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+                className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
               >
                 Try again
               </button>

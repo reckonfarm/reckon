@@ -81,8 +81,8 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
           <style>{`@keyframes dlHookPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
           {[0, 1, 2].map(i => (
             <div key={i} className="py-3" style={{ animation: 'dlHookPulse 1.6s ease-in-out infinite' }}>
-              <div className="h-4 w-4/5 rounded bg-forest-green/10" />
-              <div className="mt-2 h-3 w-2/5 rounded bg-forest-green/10" />
+              <div className="h-4 w-4/5 rounded-lg bg-forest-green/10" />
+              <div className="mt-2 h-3 w-2/5 rounded-lg bg-forest-green/10" />
             </div>
           ))}
         </Card>
@@ -113,7 +113,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
             <button
               onClick={() => setExpanded(!expanded)}
               aria-expanded={expanded}
-              className="min-h-[44px] w-full py-3 text-left font-dm-sans text-[14px] text-secondary-ink transition-colors hover:text-forest-green"
+              className="min-h-[48px] w-full py-3 text-left font-dm-sans text-[14px] text-secondary-ink transition-colors hover:text-forest-green"
             >
               {expanded ? 'Fewer headlines ↑' : 'More headlines ↓'}
             </button>

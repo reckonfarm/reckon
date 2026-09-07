@@ -126,7 +126,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
             type="button"
             onClick={() => onChange(EMPTY_SLOT)}
             disabled={disabled}
-            className="min-h-[44px] shrink-0 px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
+            className="min-h-[48px] shrink-0 px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
           >
             Pick existing
           </button>
@@ -484,7 +484,7 @@ export default function LogIt() {
         <button
           type="button"
           onClick={openSheet}
-          className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white shadow-sm shadow-forest-green/20 transition-colors hover:bg-forest-green/90"
+          className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white transition-colors hover:bg-forest-green/90"
         >
           {hasDraft && !open ? 'Log it · finish your unsaved entry' : 'Log it'}
         </button>
@@ -509,7 +509,7 @@ export default function LogIt() {
               <button
                 type="button"
                 onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
-                className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
+                className="min-h-[48px] px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
               >
                 {type ? 'Back' : 'Close'}
               </button>
@@ -552,7 +552,7 @@ export default function LogIt() {
                     <button
                       type="button"
                       onClick={() => { setWhen(toLocalInput(new Date())); setEditWhen(true) }}
-                      className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2 hover:text-ink"
+                      className="min-h-[48px] font-semibold text-forest-green underline underline-offset-2 hover:text-ink"
                     >
                       change time
                     </button>

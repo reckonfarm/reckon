@@ -20,9 +20,9 @@ function Skeleton() {
       <style>{`@keyframes dlRainShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-rain-skel{animation:dlRainShimmer 1.4s ease-in-out infinite}`}</style>
       <div className="dl-rain-skel h-40 w-full rounded-lg bg-forest-green/5" />
       <div className="mt-4 grid grid-cols-3 gap-3">
-        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
-        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
-        <div className="dl-rain-skel h-12 rounded bg-forest-green/5" />
+        <div className="dl-rain-skel h-12 rounded-lg bg-forest-green/5" />
+        <div className="dl-rain-skel h-12 rounded-lg bg-forest-green/5" />
+        <div className="dl-rain-skel h-12 rounded-lg bg-forest-green/5" />
       </div>
     </Card>
   )

@@ -29,8 +29,8 @@ const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
 const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
 function MatchChip({ label }: { label: string }) {
-  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
-  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
+  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 border border-amber-200'
+  return <span className={`rounded-lg px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
 }
 
 // One band line: precise $/cwt only when the head count clears the floor.

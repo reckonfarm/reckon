@@ -65,7 +65,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
 
   return (
     <Card
-      className={`overflow-hidden transition-shadow hover:shadow-md ${className}`}
+      className={`overflow-hidden transition-shadow hover: ${className}`}
     >
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <Heading level={5}>{displayTitle}</Heading>
@@ -82,7 +82,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
             className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
             loading="lazy"
           />
-          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+          <span className="absolute bottom-2 right-2 rounded-lg bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             Tap to enlarge
           </span>
         </div>

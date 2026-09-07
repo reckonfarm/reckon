@@ -70,7 +70,7 @@ function usd(n: number, decimals = 2) {
 
 function EstimateBadge() {
   return (
-    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
+    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 border border-amber-200 font-dm-sans">
       Estimate
     </span>
   )
@@ -504,7 +504,7 @@ function LivestockPanel({
       {pending ? (
         // Pending — meets OBBBA's new D2 threshold but NOT officially triggered. Amber, no
         // dollar, no "triggered"/sign-up call — same story as the banner/hero/alert siblings.
-        <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+        <div className="rounded-xl bg-amber-50 p-4 border border-amber-200">
           <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-amber-700">
             {droughtLabel(maxTier)}
           </p>
@@ -886,7 +886,7 @@ function RowCropPanel({
       <div className={[
         'rounded-xl p-4',
         qualifying
-          ? 'bg-amber-50 ring-1 ring-amber-200'
+          ? 'bg-amber-50 border border-amber-200'
           : 'bg-forest-green/5',
       ].join(' ')}>
         {qualifying ? (

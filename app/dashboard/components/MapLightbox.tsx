@@ -120,7 +120,7 @@ export default function MapLightbox({ open, onClose, src, alt }: Props) {
       <button
         onClick={onClose}
         aria-label="Close"
-        className="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white backdrop-blur hover:bg-white/25"
+        className="absolute right-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-white backdrop-blur hover:bg-white/25"
       >
         ×
       </button>

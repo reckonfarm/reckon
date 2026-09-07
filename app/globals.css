@@ -46,6 +46,17 @@
   --radius-control:  8px;      /* inputs, buttons */
   --radius-surface: 12px;      /* the task surface */
   --radius-pill:    9999px;    /* a compact status pill only */
+  /* A4: every legacy rounded-* name now resolves to one of the three, so the
+     nine radii in the tree became three without touching 400 call sites.
+     rounded / -xs / -sm / -md / -lg → control 8 px · -xl / -2xl / -3xl → surface 12 px */
+  --radius-xs:  8px;
+  --radius-sm:  8px;
+  --radius-md:  8px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
+  --radius-2xl: 12px;
+  --radius-3xl: 12px;
+  --radius-4xl: 12px;
 
   /* ── Shadow — overlays only. Ordinary rows and primary buttons carry none. ── */
   --shadow-overlay: 0 8px 24px rgba(27, 67, 50, 0.12);

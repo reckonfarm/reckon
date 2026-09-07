@@ -37,8 +37,8 @@ export function JobsViewSkeleton() {
       <style>{`@keyframes dlJobsPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
       {[0, 1, 2].map(i => (
         <div key={i} className="py-3" style={{ animation: 'dlJobsPulse 1.6s ease-in-out infinite' }}>
-          <div className="h-4 w-2/5 rounded bg-forest-green/10" />
-          <div className="mt-2 h-3 w-3/5 rounded bg-forest-green/10" />
+          <div className="h-4 w-2/5 rounded-lg bg-forest-green/10" />
+          <div className="mt-2 h-3 w-3/5 rounded-lg bg-forest-green/10" />
         </div>
       ))}
     </Card>
@@ -60,7 +60,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
         </p>
         <Link
           href="/signin"
-          className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+          className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
         >
           Sign in to see your jobs
         </Link>

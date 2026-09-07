@@ -42,7 +42,7 @@ type Tab = (typeof TABS)[number]
 
 function ForecastBadge() {
   return (
-    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
+    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 border border-amber-200 font-dm-sans">
       Forecast — not a current observation
     </span>
   )
@@ -141,7 +141,7 @@ function PrecipTooltip({
     month: 'short', day: 'numeric',
   })
   return (
-    <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 shadow-md text-[14px] font-dm-sans">
+    <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 text-[14px] font-dm-sans">
       <p className="font-semibold text-forest-green mb-1">{date}</p>
       {actual && <p className="text-forest-green">Actual: {actual.value.toFixed(2)}&quot;</p>}
       {normal && <p className="text-secondary-ink">Normal: {normal.value.toFixed(2)}&quot;</p>}
@@ -420,7 +420,7 @@ function CpcMapPanel({
       <div className="group relative cursor-pointer overflow-hidden rounded-lg" onClick={() => setOpen(true)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={alt} className="w-full rounded-lg transition-opacity group-hover:opacity-90" loading="lazy" />
-        <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 rounded-lg bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           Tap to enlarge
         </span>
       </div>

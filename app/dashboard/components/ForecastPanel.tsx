@@ -134,7 +134,8 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
   return (
     <Card className="p-4 sm:p-5">
       {/* Horizontal swipe carousel — one row tall, scrolls sideways on touch. */}
-      <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
+      {/* A4: seven CELLS in one surface, divided by rules — not seven little cards. */}
+      <div className="flex divide-x divide-rule overflow-x-auto pb-1 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
         {days.map((d, i) => {
           const isOpen = open === i
           const hasRain = d.precip != null && d.precip > 0
@@ -145,8 +146,8 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               type="button"
               onClick={() => setOpen(isOpen ? null : i)}
               aria-pressed={isOpen}
-              className={`relative snap-start shrink-0 w-[64px] rounded-xl border px-1.5 py-2 text-center transition-colors ${
-                isOpen ? 'border-forest-green/40 bg-forest-green/5' : 'border-forest-green/10 hover:bg-forest-green/5'
+              className={`relative min-h-[48px] snap-start shrink-0 w-[64px] px-1.5 py-2 text-center transition-colors ${
+                isOpen ? 'bg-forest-green/5' : 'hover:bg-forest-green/5'
               }`}
             >
               {/* Wind badge — top-right corner, only on periods over 15 mph sustained.

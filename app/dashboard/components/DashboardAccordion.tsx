@@ -43,10 +43,10 @@ export default function DashboardAccordion({
   }, [hashTarget])
 
   return (
-    <div className={`rounded-xl overflow-hidden ${highlight ? 'border-2 border-forest-green shadow-[0_0_0_4px_rgba(27,67,50,0.08)]' : 'border border-forest-green/10'}`}>
+    <div className={`rounded-xl overflow-hidden ${highlight ? 'border-2 border-forest-green' : 'border border-forest-green/10'}`}>
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-5 py-4 transition-colors text-left ${highlight ? 'bg-forest-green hover:bg-forest-green/90' : 'bg-white hover:bg-forest-green/5'}`}
+        className={`w-full flex min-h-[52px] items-center justify-between px-5 py-3 transition-colors text-left ${highlight ? 'bg-forest-green hover:bg-forest-green/90' : 'bg-white hover:bg-forest-green/5'}`}
         aria-expanded={open}
       >
         <div className="flex flex-col gap-0.5">

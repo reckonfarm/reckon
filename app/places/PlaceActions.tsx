@@ -25,7 +25,7 @@ export default function PlaceActions({ placeId, placeName, memory }: { placeId: 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3">
-        <button type="button" onClick={() => openLogIt({ type: 'hay_fed', place: placeId })} className={`${btn} bg-forest-green text-white shadow-sm shadow-forest-green/20 hover:bg-forest-green/90`}>Log feed here</button>
+        <button type="button" onClick={() => openLogIt({ type: 'hay_fed', place: placeId })} className={`${btn} bg-forest-green text-white hover:bg-forest-green/90`}>Log feed here</button>
         <button type="button" onClick={() => openLogIt({ type: 'rain', place: placeId })} className={`${btn} border border-forest-green/25 text-forest-green hover:bg-forest-green/5`}>Log rain here</button>
         <button type="button" onClick={() => openLogIt({ type: 'bales_stacked', place: placeId })} className={`${btn} border border-forest-green/25 text-forest-green hover:bg-forest-green/5`}>Stack bales here</button>
       </div>

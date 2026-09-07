@@ -57,7 +57,7 @@ export default function SiteHeader({ center }: Props) {
     <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
 
-        <Link href="/" className="flex flex-col leading-tight">
+        <Link href="/" className="flex min-h-[48px] flex-col justify-center leading-tight">
           {/* The rope-line mark sits left of the wordmark (brand, commit 3). Its ink
               fills 44.8 of the file's 80 viewBox units, so the box is drawn at
               80/44.8 × the wordmark's cap height (Fraunces ≈ 0.7em: 14px at
@@ -92,7 +92,7 @@ export default function SiteHeader({ center }: Props) {
           <div className="hidden items-center gap-4 md:flex">
             <Link
               href="/watchlist"
-              className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
+              className="inline-flex min-h-[48px] items-center font-dm-sans text-sm text-ink hover:text-brand transition-colors"
             >
               My Counties
             </Link>
@@ -185,7 +185,7 @@ export default function SiteHeader({ center }: Props) {
           ) : (
             <Link
               href="/signin"
-              className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
+              className="inline-flex min-h-[48px] items-center rounded-lg border border-forest-green/20 px-4 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
             >
               Sign in
             </Link>

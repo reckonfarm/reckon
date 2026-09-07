@@ -72,14 +72,14 @@ function Hero({ latest }: { latest: Reading }) {
     <div className="flex items-center gap-3">
       {cat !== null ? (
         <span
-          className="inline-flex h-9 w-11 flex-shrink-0 items-center justify-center rounded-md text-sm font-bold font-dm-sans"
+          className="inline-flex h-9 w-12 flex-shrink-0 items-center justify-center rounded-md text-sm font-bold font-dm-sans"
           style={{ backgroundColor: USDM_HEX[cat], color: '#000' }}
           aria-label={`Current drought category D${cat}`}
         >
           D{cat}
         </span>
       ) : (
-        <span className="inline-flex h-9 w-11 flex-shrink-0 items-center justify-center rounded-md border border-forest-green/20 bg-forest-green/5 text-[14px] font-semibold text-secondary-ink font-dm-sans">
+        <span className="inline-flex h-9 w-12 flex-shrink-0 items-center justify-center rounded-md border border-forest-green/20 bg-forest-green/5 text-[14px] font-semibold text-secondary-ink font-dm-sans">
           None
         </span>
       )}

@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A4: three radii, no shadows in main, 48 px links/buttons, 52 px LFP disclosure with Show/Hide, header targets
 //   • Phase A3: a real action fully inside the first viewport at 390×844 and 1440×900; caption above the image
 //   • Phase A2: one left edge at 390 and 1440; no FIPS in the heading; resting control + chooser with Cancel
 //   • Phase A1: from the painted page — no text under 14 px, no pair under 4.5:1, nav/answers ≥ 7:1
@@ -336,6 +337,15 @@ async function main() {
       await mctx.close()
     }
 
+    // A4: My Counties (desktop header, signed in) is a 48 px target.
+    {
+        const dc = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const dp = await signIn(dc)
+        const mc = await dp.locator('header a[href="/watchlist"]').first().boundingBox().catch(() => null)
+        record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px`)
+        await dc.close()
+    }
+
     // Herd page lot card
     await page.goto('/herd', { waitUntil: 'domcontentloaded' })
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})
@@ -364,6 +374,35 @@ async function main() {
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
         record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
         await pp.close()
+      }
+      // ── Phase A4 — one surface system, measured on the public Today at 390 px: three radii
+      //    (8 / 12 / pill), no shadow on anything in main, every link/button ≥ 48 px, the LFP
+      //    disclosure a 52 px full row that says what it opens with visible Show/Hide. ──
+      {
+        const sc = await browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const sp = await sc.newPage()
+        await sp.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await sp.getByText(/Payment estimate and steps|LFP status/).first().waitFor({ timeout: 30_000 }).catch(() => {})
+        await sp.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+        const a4 = await sp.evaluate(`(function(){
+          var els = Array.from(document.querySelectorAll('main *'));
+          var radii = {}; var shadows = []; var small = [];
+          els.forEach(function(el){ var cs = getComputedStyle(el); var b = el.getBoundingClientRect(); if (b.width === 0 || b.height === 0) return;
+            var r = cs.borderTopLeftRadius; if (r && r !== '0px') { var px = parseFloat(r); var key = px >= b.height / 2 ? 'pill' : r; radii[key] = (radii[key] || 0) + 1; }
+            if (cs.boxShadow && cs.boxShadow !== 'none' && !el.closest('[role="dialog"], .fixed, [data-audit="selection-strip"]')) shadows.push(el.tagName + '.' + String(el.className).slice(0, 30));
+            if ((el.tagName === 'A' && el.getAttribute('href')) || el.tagName === 'BUTTON') { if (b.height < 48 && !el.closest('svg')) small.push((el.textContent || '').trim().slice(0, 24) + ' ' + Math.round(b.height) + 'px'); }
+          });
+          var lfp = Array.from(document.querySelectorAll('main button')).find(function(b){ return /Payment estimate and steps/.test(b.textContent || ''); });
+          return { radii: radii, shadows: shadows.slice(0, 6), small: small.slice(0, 8), smallCount: small.length, lfp: lfp ? { h: Math.round(lfp.getBoundingClientRect().height), w: Math.round(lfp.getBoundingClientRect().width), text: (lfp.textContent || '').replace(/\s+/g, ' ').trim(), expanded: lfp.getAttribute('aria-expanded') } : null };
+        })()`) as { radii: Record<string, number>; shadows: string[]; small: string[]; smallCount: number; lfp: { h: number; w: number; text: string; expanded: string | null } | null }
+        const radiiKeys = Object.keys(a4.radii)
+        record('A4: three radii on the Today page — 8 px, 12 px, pill', radiiKeys.every(k => k === '8px' || k === '12px' || k === 'pill'), JSON.stringify(a4.radii))
+        record('A4: no shadow on ordinary surfaces in main', a4.shadows.length === 0, a4.shadows.join(' | '))
+        record('A4: every link and button on Today is at least 48 px tall', a4.smallCount === 0, a4.small.join(' | '))
+        record('A4: the LFP disclosure is a 52 px full row that says what it opens, with Show/Hide', !!a4.lfp && a4.lfp.h >= 52 && a4.lfp.w >= 300 && /Payment estimate and steps/.test(a4.lfp.text) && /Show|Hide/.test(a4.lfp.text) && a4.lfp.expanded != null, a4.lfp ? `${a4.lfp.h}×${a4.lfp.w} "${a4.lfp.text}" aria-expanded=${a4.lfp.expanded}` : 'no disclosure')
+        const signin = await sp.locator('header a[href="/signin"]').first().boundingBox().catch(() => null)
+        record('A4: the header Sign in is a 48 px target', !!signin && signin.height >= 48, `${signin?.height ?? 0}px`)
+        await sc.close()
       }
       // ── Phase A3 — the homepage has something to tap: at 390×844 and 1440×900 at least one
       //    interactive element sits fully inside the first viewport, and the example image is

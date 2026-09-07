@@ -76,7 +76,7 @@ export default function LedgerTabs({ season, hay, logged }: Record<LedgerTab, Re
                 aria-selected={isActive}
                 aria-controls={`ledger-${t}`}
                 onClick={() => setActive(t)}
-                className={`min-h-[44px] flex-1 rounded-lg px-2 font-dm-sans text-sm transition-colors ${
+                className={`min-h-[48px] flex-1 rounded-lg px-2 font-dm-sans text-sm transition-colors ${
                   isActive ? 'bg-forest-green font-semibold text-cream' : 'font-medium text-ink hover:text-forest-green'
                 }`}
               >

@@ -115,7 +115,7 @@ export default async function FrontDoor() {
           {/* ── 6. The county tools keep a door; Markets keeps an honest module ── */}
           <section className="mt-10 text-center">
             <p className="font-dm-sans text-[15px] text-ink">
-              <Link href="/dashboard" className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Check county drought, programs, and markets</Link>
+              <Link href="/dashboard" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2">Check county drought, programs, and markets</Link>
               {' '}— free, no account needed.
             </p>
           </section>
@@ -129,7 +129,7 @@ export default async function FrontDoor() {
                 </p>
                 <p className="mt-1 font-dm-sans text-[14px] text-ink">
                   An auction report from {ref.town}, with head counts and class on every line. Not a county price, not a forecast.{' '}
-                  <Link href="/dashboard?fips=30111&view=markets" className="font-semibold text-forest-green underline underline-offset-2">Open Markets →</Link>
+                  <Link href="/dashboard?fips=30111&view=markets" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2">Open Markets →</Link>
                 </p>
               </Card>
             </section>

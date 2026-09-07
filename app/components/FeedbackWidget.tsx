@@ -99,7 +99,7 @@ export default function FeedbackWidget() {
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-sm font-medium text-forest-green shadow-lg shadow-forest-green/10 transition-transform hover:-translate-y-0.5"
+          className="flex min-h-[48px] items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-sm font-medium text-forest-green transition-transform hover:-translate-y-0.5"
           aria-label="Send feedback"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -108,7 +108,7 @@ export default function FeedbackWidget() {
           Feedback
         </button>
       ) : (
-        <div className="w-[18rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-forest-green/15 bg-cream p-4 shadow-xl shadow-forest-green/15">
+        <div className="w-[18rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-forest-green/15 bg-cream p-4 shadow-overlay">
           {status === 'done' ? (
             <div className="py-2 text-center">
               <div className="mb-1 text-2xl">🌱</div>
@@ -125,7 +125,7 @@ export default function FeedbackWidget() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setOpen(false)}
-                    className="rounded p-1 text-secondary-ink transition-colors hover:text-secondary-ink"
+                    className="rounded-lg p-1 text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Close"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -135,7 +135,7 @@ export default function FeedbackWidget() {
                   </button>
                   <button
                     onClick={dismiss}
-                    className="rounded px-1.5 py-1 text-[14px] text-secondary-ink transition-colors hover:text-secondary-ink"
+                    className="rounded-lg px-1.5 py-1 text-[14px] text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Hide feedback for this visit"
                   >
                     Hide

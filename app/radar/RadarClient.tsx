@@ -142,7 +142,7 @@ export default function RadarClient() {
               {searches.map(s => {
                 const working = busy.has(s.id)
                 return (
-                  <li key={s.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5">
+                  <li key={s.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 sm:px-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">

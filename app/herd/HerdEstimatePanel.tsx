@@ -18,8 +18,8 @@ import { dollarsPerCwtMove, matchLabel, scopeLabel, sensitivityLine, thinEvidenc
 
 
 function MatchChip({ label }: { label: string }) {
-  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
-  return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
+  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 border border-amber-200'
+  return <span className={`rounded-lg px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
 }
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
@@ -89,7 +89,7 @@ function LotCard({ l }: { l: LotValuation }) {
             <>
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
                 <MatchChip label={label!} />
-                {src!.cull && <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">Cull price — salvage, not breeding value</span>}
+                {src!.cull && <span className="rounded-lg bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 border border-amber-200">Cull price — salvage, not breeding value</span>}
               </p>
               <p className="mt-1 font-dm-sans text-[15px] text-ink">
                 {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · <ReportEvidence barn={src!.barn_name} date={src!.report_date} head={src!.head_count} slug={src!.slug_id} />

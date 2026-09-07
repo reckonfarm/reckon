@@ -48,7 +48,7 @@ export default function LfpCard({
     <Card
       as="section"
       shadow="soft"
-      className={`p-4 sm:p-6 ${highlight ? 'border-forest-green/40 shadow-[0_0_0_4px_rgba(27,67,50,0.08)]' : ''}`}
+      className={`p-4 sm:p-6 ${highlight ? 'border-2 border-forest-green/40' : ''}`}
     >
       {summary}
 
@@ -59,15 +59,16 @@ export default function LfpCard({
             onClick={() => setOpen(o => !o)}
             aria-expanded={open}
             aria-controls="lfp-detail"
-            className="mt-3 flex min-h-[44px] w-full items-center justify-between rounded-lg border border-forest-green/15 px-4 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+            className="mt-4 flex min-h-[52px] w-full items-center justify-between border-t border-rule px-1 font-dm-sans text-[17px] font-semibold text-ink transition-colors hover:bg-forest-green/5"
           >
-            <span>{open ? 'Hide details' : 'Details — path to payment, estimate, eligibility math'}</span>
+            <span>{open ? 'Hide payment estimate and steps' : 'Payment estimate and steps'}</span>
+            <span className="ml-3 inline-flex shrink-0 items-center gap-1 font-dm-sans text-[16px] font-medium text-secondary-ink">{open ? 'Hide' : 'Show'}
             <svg
-              className={`h-5 w-5 shrink-0 text-secondary-ink transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              className={`h-5 w-5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
+            </svg></span>
           </button>
           {open && (
             <div id="lfp-detail" className="mt-4 space-y-4 border-t border-forest-green/10 pt-4">

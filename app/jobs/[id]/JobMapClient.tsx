@@ -162,7 +162,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
   const onImagery = basemap === 'satellite'
   return (
     <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 12 }}>
-      <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
+      <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2">
         {hasBales && (
           <div className="flex items-center gap-2">
             <span
@@ -384,7 +384,7 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
           the panes, so taps never fight the map's own event capture. */}
       <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
-        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold shadow-sm">
+        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold">
           {(['satellite', 'street'] as const).map(b => (
             <button
               key={b}
@@ -402,7 +402,7 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
           <button
             type="button"
             onClick={toggleTrack}
-            className={`rounded-lg border border-gray-200 px-3 py-2 font-dm-sans text-[14px] font-semibold shadow-sm transition-colors ${
+            className={`rounded-lg border border-gray-200 px-3 py-2 font-dm-sans text-[14px] font-semibold transition-colors ${
               showTrack ? 'bg-forest-green text-white' : 'bg-white/95 text-secondary-ink hover:text-forest-green'
             }`}
           >
@@ -415,7 +415,7 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
         <button
           type="button"
           onClick={() => setFollowing(true)}
-          className="absolute bottom-6 left-3 z-[1000] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 font-dm-sans text-[14px] font-semibold text-forest-green shadow-sm hover:bg-white"
+          className="absolute bottom-6 left-3 z-[1000] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-white"
         >
           ⌖ Recenter
         </button>

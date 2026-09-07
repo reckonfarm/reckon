@@ -19,7 +19,7 @@ import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState
 
 const TONE: Record<OutboxState, string> = {
   local:  'bg-forest-green/[0.06] text-forest-green',
-  queued: 'bg-amber-50 text-amber-900 ring-1 ring-amber-200',
+  queued: 'bg-amber-50 text-amber-900 border border-amber-200',
   synced: 'bg-forest-green/[0.06] text-forest-green',
   failed: 'bg-red-50 text-red-900 ring-1 ring-red-200',
 }

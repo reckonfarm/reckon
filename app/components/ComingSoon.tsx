@@ -120,7 +120,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
             return (
               <div
                 key={f.key}
-                className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+                className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5"
               >
                 <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/10 px-2.5 py-0.5 font-dm-sans text-[14px] font-medium text-forest-green">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-forest-green" />
@@ -143,7 +143,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
           return (
             <div
               key={f.key}
-              className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+              className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5"
             >
               <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/8 px-2.5 py-0.5 font-dm-sans text-[14px] font-medium text-secondary-ink">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-rust/60" />

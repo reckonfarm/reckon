@@ -10,10 +10,10 @@ const INPUT_CLS =
   'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
 
 const BTN_CLS =
-  'w-full rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
+  'w-full min-h-[48px] rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
 
 const LINK_CLS =
-  'font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors'
+  'inline-flex min-h-[48px] items-center font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors'
 
 // Shown only when explicitly enabled, so we can ship password without Google.
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'
@@ -401,7 +401,7 @@ export default function SignInForm({
         <button
           type="button"
           onClick={() => { setPwMode(isSignup ? 'signin' : 'signup'); setError(null) }}
-          className="font-medium text-forest-green hover:underline"
+          className="inline-flex min-h-[48px] items-center px-1 font-medium text-forest-green hover:underline"
         >
           {isSignup ? 'Sign in' : 'Create one'}
         </button>

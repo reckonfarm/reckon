@@ -13,7 +13,7 @@ const MAP_HEIGHT = 460
 
 export default function HomeDroughtMap() {
   return (
-    <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-forest-green/10 bg-cream shadow-sm">
+    <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-forest-green/10 bg-cream">
       <div className="relative" style={{ height: MAP_HEIGHT }}>
         {/* Flat branded placeholder — instant first paint, intentionally not a map. */}
         <div className="absolute inset-0 flex items-center justify-center bg-forest-green/5">

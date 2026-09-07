@@ -109,7 +109,7 @@ export default function WatchlistPage() {
               <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
             </div>
           ) : entries.length === 0 ? (
-            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
+            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center">
               <p className="text-sm text-secondary-ink font-dm-sans">
                 No counties watched yet.{' '}
                 <Link href="/dashboard" prefetch={false} className="underline hover:text-forest-green">
@@ -128,7 +128,7 @@ export default function WatchlistPage() {
                 return (
                   <li
                     key={entry.countyId}
-                    className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5"
+                    className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 sm:px-5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">

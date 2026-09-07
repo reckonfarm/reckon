@@ -231,7 +231,7 @@ function MessagesInner() {
           <ul className="mt-6 space-y-2">
             {threads.map(t => (
               <li key={t.id}>
-                <button onClick={() => openThread(t.id)} className="w-full rounded-xl border border-forest-green/10 bg-white px-4 py-3 text-left shadow-sm hover:bg-cream/50 transition-colors">
+                <button onClick={() => openThread(t.id)} className="w-full rounded-xl border border-forest-green/10 bg-white px-4 py-3 text-left hover:bg-cream/50 transition-colors">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-dm-sans text-sm font-semibold text-forest-green truncate">
                       {t.counterparty_name ?? 'Dryline member'}
@@ -373,7 +373,7 @@ function MessagesInner() {
 
       {/* Composer */}
       {canInteract ? (
-        <div className="rounded-xl border border-forest-green/10 bg-white px-4 py-3 shadow-sm">
+        <div className="rounded-xl border border-forest-green/10 bg-white px-4 py-3">
           {showOffer ? (
             <div className="space-y-2">
               <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">Make an offer</p>

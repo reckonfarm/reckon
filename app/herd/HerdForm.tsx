@@ -199,7 +199,7 @@ export default function HerdForm() {
                   aria-pressed={on}
                   onClick={() => setDClass(c)}
                   className={[
-                    'min-h-[44px] rounded-lg border px-3 font-dm-sans text-sm transition-colors',
+                    'min-h-[48px] rounded-lg border px-3 font-dm-sans text-sm transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                     on ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent hover:bg-accent/5',
                   ].join(' ')}

@@ -300,7 +300,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
         </div>
       )}
       {pending && (
-        <div className="mt-6 rounded-lg bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+        <div className="mt-6 rounded-lg bg-amber-50 px-4 py-3 border border-amber-200">
           <p className="font-dm-sans text-sm leading-relaxed text-amber-800">
             Expected to qualify once FSA updates — keep your records, and{' '}
             <a

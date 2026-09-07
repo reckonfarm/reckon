@@ -84,9 +84,9 @@ export function LfpAlertSkeleton() {
   return (
     <Card shadow="soft" className="p-4 sm:p-6" aria-hidden="true">
       <style>{`@keyframes dlLfpShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-lfp-skel{animation:dlLfpShimmer 1.4s ease-in-out infinite}`}</style>
-      <div className="dl-lfp-skel h-3 w-24 rounded bg-forest-green/10" />
-      <div className="dl-lfp-skel mt-3 h-5 w-40 rounded bg-forest-green/5" />
-      <div className="dl-lfp-skel mt-2 h-4 w-56 rounded bg-forest-green/5" />
+      <div className="dl-lfp-skel h-3 w-24 rounded-lg bg-forest-green/10" />
+      <div className="dl-lfp-skel mt-3 h-5 w-40 rounded-lg bg-forest-green/5" />
+      <div className="dl-lfp-skel mt-2 h-4 w-56 rounded-lg bg-forest-green/5" />
     </Card>
   )
 }

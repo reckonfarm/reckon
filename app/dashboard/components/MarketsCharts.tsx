@@ -76,7 +76,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
   const d = payload[0].payload
   if (!d.p) return null
   return (
-    <div className="rounded-lg border border-forest-green/15 bg-white px-3 py-2 font-dm-sans text-[15px] text-forest-green shadow-sm">
+    <div className="rounded-lg border border-forest-green/15 bg-white px-3 py-2 font-dm-sans text-[15px] text-forest-green">
       <p className="font-semibold">{fmtWithUnit(d.v, unit)}</p>
       <p>Sale {fmtDayYear(d.p.date)} · {d.p.cls} {bandLabel(d.p.band)}</p>
       <p>{d.p.head.toLocaleString('en-US')} head reported{d.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
@@ -211,7 +211,7 @@ function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; 
         <div className="mt-2 rounded-lg border border-rust/20 bg-rust/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
           <p className="font-semibold">{fmtDayYear(picked.date)} · {picked.title}</p>
           <p className="mt-1">{picked.description}</p>
-          <a href={picked.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Source: {picked.sourceName} →</a>
+          <a href={picked.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block min-h-[48px] font-semibold text-forest-green underline underline-offset-2">Source: {picked.sourceName} →</a>
         </div>
       )}
     </div>

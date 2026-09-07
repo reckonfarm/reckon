@@ -17,9 +17,12 @@ import type { ComponentPropsWithoutRef, ElementType, ReactNode } from 'react'
 // use; 'none' = no shadow (e.g. OfficialMap's empty state). Radius/border live here.
 type CardShadow = 'sm' | 'soft' | 'none'
 
+// A4: a shadow signifies elevation. Ordinary surfaces carry none; every variant is
+// flat now and the prop stays only so existing callers compile. Overlays use
+// `shadow-overlay` directly.
 const SHADOWS: Record<CardShadow, string> = {
-  sm: 'shadow-sm',
-  soft: 'shadow-[0_2px_12px_rgba(27,67,50,0.08)]',
+  sm: '',
+  soft: '',
   none: '',
 }
 
@@ -33,7 +36,7 @@ type CardProps<T extends ElementType> = {
 export function Card<T extends ElementType = 'div'>({ as, shadow = 'sm', className = '', children, ...rest }: CardProps<T>) {
   const Tag: ElementType = as ?? 'div'
   return (
-    <Tag className={`rounded-xl border border-line/10 bg-surface ${SHADOWS[shadow]} ${className}`} {...(rest as Record<string, unknown>)}>
+    <Tag className={`rounded-xl border border-rule bg-surface ${SHADOWS[shadow]} ${className}`} {...(rest as Record<string, unknown>)}>
       {children}
     </Tag>
   )

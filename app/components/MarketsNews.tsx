@@ -254,7 +254,7 @@ function NewsCard({
 }) {
   return (
     // Clickable card built from the Card primitive (as="a"). Card supplies the chrome
-    // (rounded-xl border-line/10 bg-surface shadow-sm == the old forest-green/10 + bg-white);
+    // (rounded-xl border-line/10 bg-surface == the old forest-green/10 + bg-white);
     // padding + interactive hover/transition stay caller-supplied via className — identical
     // to the previous inline classes.
     <Card
@@ -362,7 +362,7 @@ function LoadMore({ label, onClick }: { label: string; onClick: () => void }) {
 // still renders. Never a fabricated item.
 function TierEmpty({ text }: { text: string }) {
   return (
-    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-secondary-ink shadow-sm">
+    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-secondary-ink">
       {text}
     </p>
   )
@@ -376,11 +376,11 @@ function NewsSkeleton() {
       <style>{`@keyframes dlNewsShimmer{0%,100%{opacity:.55}50%{opacity:.85}}.dl-news-skel{animation:dlNewsShimmer 1.4s ease-in-out infinite}`}</style>
       <div className="space-y-4" aria-hidden="true">
         {[0, 1, 2, 3].map(i => (
-          <div key={i} className="rounded-xl border border-forest-green/10 bg-white p-4 shadow-sm sm:p-5">
-            <div className="dl-news-skel mb-3 h-3 w-28 rounded bg-forest-green/10" />
-            <div className="dl-news-skel h-4 w-11/12 rounded bg-forest-green/10" />
-            <div className="dl-news-skel mt-2 h-4 w-3/5 rounded bg-forest-green/10" />
-            <div className="dl-news-skel mt-3 h-3 w-full rounded bg-forest-green/5" />
+          <div key={i} className="rounded-xl border border-forest-green/10 bg-white p-4 sm:p-5">
+            <div className="dl-news-skel mb-3 h-3 w-28 rounded-lg bg-forest-green/10" />
+            <div className="dl-news-skel h-4 w-11/12 rounded-lg bg-forest-green/10" />
+            <div className="dl-news-skel mt-2 h-4 w-3/5 rounded-lg bg-forest-green/10" />
+            <div className="dl-news-skel mt-3 h-3 w-full rounded-lg bg-forest-green/5" />
           </div>
         ))}
       </div>
@@ -390,7 +390,7 @@ function NewsSkeleton() {
 
 function UnavailablePanel({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center shadow-sm">
+    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
       <p className="font-fraunces text-base font-semibold text-forest-green">
         News briefly unavailable
       </p>
@@ -410,7 +410,7 @@ function UnavailablePanel({ onRetry }: { onRetry: () => void }) {
 
 function EmptyPanel() {
   return (
-    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center shadow-sm">
+    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
       <p className="font-fraunces text-base font-semibold text-forest-green">
         No cattle-country headlines right now
       </p>
@@ -424,7 +424,7 @@ function EmptyPanel() {
 // Distinct from the all-empty panel: feeds DID return news, just none in this filter.
 function FilterEmptyPanel({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center shadow-sm">
+    <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-8 text-center">
       <p className="font-fraunces text-base font-semibold text-forest-green">
         Nothing in {label} right now
       </p>
