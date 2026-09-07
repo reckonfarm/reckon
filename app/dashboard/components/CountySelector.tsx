@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { trackEvent } from '@/lib/analytics'
+import { US_STATE_NAMES } from '@/lib/news-sources'
+
+// County names in the counties table already end in "County" ("Petroleum County"); some
+// do not ("Baltimore city"). Say "County" once, never twice.
+const countyLabel = (name: string) => /\bcounty$/i.test(name.trim()) ? name.trim() : `${name.trim()} County`
 
 export interface County {
   id: number
@@ -86,11 +91,6 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
     go(`${basePath}?fips=${county.fips}${view ? `&view=${view}` : ''}`)
   }
 
-  function clear() {
-    setQuery('')
-    setResults([])
-    go(basePath)
-  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -106,63 +106,85 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   const showResults  = open && results.length > 0
   const showNoMatch  = open && query.trim().length >= 2 && !loading && results.length === 0
 
+  // Phase A2 — two states. RESTING: the county as a statement at ink weight with one
+  // verb, "Change" (a faded search input read as disabled). CHOOSING: the search
+  // field, results, and a visible Cancel that keeps the current county. With no
+  // county chosen yet there is nothing to rest on, so the chooser is simply open.
+  const [choosing, setChoosing] = useState(false)
+  const chooserOpen = !selectedCounty || choosing
+  function startChoosing() {
+    setChoosing(true)
+    setQuery('')
+    setResults([])
+    setOpen(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+  function cancel() {
+    setChoosing(false)
+    setOpen(false)
+    setQuery('')
+    setResults([])
+  }
+  const stateName = selectedCounty ? (US_STATE_NAMES[selectedCounty.state] ?? selectedCounty.state) : ''
+
+  if (!chooserOpen && selectedCounty) {
+    return (
+      <div ref={containerRef} className="w-full" data-audit="county-control">
+        <button
+          type="button"
+          onClick={startChoosing}
+          aria-label={`${countyLabel(selectedCounty.name)}, ${stateName}. Change county`}
+          className="flex min-h-[48px] w-full items-center justify-between gap-3 rounded-lg px-1 text-left font-dm-sans text-[17px] text-ink hover:bg-forest-green/5"
+        >
+          <span className="truncate font-semibold">{countyLabel(selectedCounty.name)}, {stateName}</span>
+          <span className="shrink-0 font-semibold text-brand underline underline-offset-2">Change</span>
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div ref={containerRef} className="relative w-full max-w-lg">
-      <div className="relative">
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true) }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); setQuery('') } }}
-          placeholder={
-            selectedCounty
-              ? `${selectedCounty.name}, ${selectedCounty.state}`
-              : 'Search by county name, state, or FIPS…'
-          }
-          className="w-full rounded-lg border border-forest-green/20 bg-white py-3 pl-4 pr-10 text-sm font-dm-sans text-forest-green placeholder:text-secondary-ink focus:border-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/20 transition-colors"
-        />
-
-        {/* Loading dots */}
-        {loading && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-secondary-ink font-dm-sans select-none">
-            …
-          </span>
-        )}
-
-        {/* Clear button */}
-        {selectedCounty && !query && !loading && (
-          <button
-            onClick={clear}
-            aria-label="Clear selection"
-            className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-secondary-ink hover:text-rust transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+    <div ref={containerRef} className="relative w-full" data-audit="county-control" role="search" aria-label="Choose a county">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <label htmlFor="county-search" className="sr-only">Search by county name or state</label>
+          <input
+            id="county-search"
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={e => { if (e.key === 'Escape') { if (selectedCounty) cancel(); else { setOpen(false); setQuery('') } } }}
+            placeholder="Search by county name or state"
+            autoFocus={!!selectedCounty}
+            className="w-full min-h-[52px] rounded-lg border border-control-border bg-surface py-3 pl-4 pr-10 font-dm-sans text-[18px] text-ink placeholder:text-secondary-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+          {loading && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 font-dm-sans text-[14px] text-secondary-ink select-none">…</span>
+          )}
+        </div>
+        {selectedCounty && (
+          <button type="button" onClick={cancel} className="min-h-[52px] shrink-0 rounded-lg border border-control-border px-4 font-dm-sans text-[17px] font-semibold text-ink hover:bg-forest-green/5" data-audit="county-cancel">
+            Cancel
           </button>
         )}
       </div>
+      {selectedCounty && (
+        <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">Cancel keeps {countyLabel(selectedCounty.name)}.</p>
+      )}
 
-      {/* Results dropdown */}
+      {/* Results */}
       {showResults && (
-        <ul className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-forest-green/20 bg-white shadow-lg divide-y divide-forest-green/5">
+        <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-control-border bg-surface shadow-overlay divide-y divide-rule" aria-label="Matching counties">
           {results.map(county => (
             <li key={county.fips}>
               <button
-                className="flex min-h-[44px] w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
+                className="flex min-h-[48px] w-full items-center px-4 py-2.5 text-left hover:bg-cream transition-colors"
                 onMouseDown={e => { e.preventDefault(); select(county) }}
               >
-                <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
-                  {county.name}
-                </span>
-                <span className="ml-3 shrink-0 text-[14px] font-medium text-secondary-ink font-dm-sans">
-                  {county.state}
-                </span>
-                <span className="ml-2 shrink-0 text-[14px] text-secondary-ink font-dm-sans">
-                  {county.fips}
-                </span>
+                <span className="flex-1 truncate font-dm-sans text-[17px] font-medium text-ink">{countyLabel(county.name)}</span>
+                <span className="ml-3 shrink-0 font-dm-sans text-[16px] text-secondary-ink">{US_STATE_NAMES[county.state] ?? county.state}</span>
               </button>
             </li>
           ))}
@@ -171,10 +193,8 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
 
       {/* No match */}
       {showNoMatch && (
-        <div className="absolute z-30 mt-1 w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 shadow-lg">
-          <p className="text-sm text-secondary-ink font-dm-sans">
-            No counties match &ldquo;{query}&rdquo;
-          </p>
+        <div className="absolute z-30 mt-1 w-full rounded-lg border border-control-border bg-surface px-4 py-3 shadow-overlay">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">No counties match &ldquo;{query}&rdquo;</p>
         </div>
       )}
     </div>

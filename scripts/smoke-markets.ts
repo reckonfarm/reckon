@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A2: one left edge at 390 and 1440; no FIPS in the heading; resting control + chooser with Cancel
 //   • Phase A1: from the painted page — no text under 14 px, no pair under 4.5:1, nav/answers ≥ 7:1
 //   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
 //   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
@@ -362,6 +363,32 @@ async function main() {
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
         record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
         await pp.close()
+      }
+      // ── Phase A2 — one column: the county control, the heading, the tabs, and the first
+      //    section share one left edge at a phone width and on a desktop; no FIPS in the heading. ──
+      for (const width of [390, 1440]) {
+        const pc = await browser.newContext({ baseURL: BASE, viewport: { width, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const pp = await pc.newPage()
+        await pp.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pp.locator('[role="tablist"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+        const edges = await pp.evaluate(`(function(){
+          var x = function(sel){ var el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().left) : null; };
+          var h1 = document.querySelector('main h1');
+          return { control: x('[data-audit="county-control"]'), h1: h1 ? Math.round(h1.getBoundingClientRect().left) : null, tabs: x('[role="tablist"]'), section: x('main section, main [data-audit$="-card"]'), h1Text: h1 ? h1.textContent : '', chooserOpen: !!document.querySelector('#county-search') };
+        })()`) as { control: number | null; h1: number | null; tabs: number | null; section: number | null; h1Text: string; chooserOpen: boolean }
+        const xs = [edges.control, edges.h1, edges.tabs, edges.section].filter((v): v is number => v != null)
+        record(`A2 ${width}px: county control, heading, tabs, and first section share one left edge`, xs.length >= 3 && Math.max(...xs) - Math.min(...xs) <= 2, JSON.stringify(edges))
+        if (width === 390) {
+          record('A2: no FIPS in the heading', !/FIPS/.test(edges.h1Text), edges.h1Text.trim())
+          record('A2: the county rests as a statement with Change, not a search field', !edges.chooserOpen && /Change/.test((await pp.locator('[data-audit="county-control"]').innerText().catch(() => ''))))
+          await pp.locator('[data-audit="county-control"] button').first().click()
+          const chooser = await pp.locator('#county-search').count()
+          const cancelBox = await pp.locator('[data-audit="county-cancel"]').boundingBox().catch(() => null)
+          await pp.locator('[data-audit="county-cancel"]').click().catch(() => {})
+          const back = await pp.locator('[data-audit="county-control"]').innerText().catch(() => '')
+          record('A2: Change opens the chooser with a 48 px Cancel that keeps the county', chooser === 1 && !!cancelBox && cancelBox.height >= 48 && /Petroleum County/.test(back) && /Change/.test(back), `${cancelBox?.height ?? 0}px · after cancel: "${back.replace(/\s+/g, ' ').slice(0, 40)}"`)
+        }
+        await pc.close()
       }
       // ── Block 2.6D — no displayed "as of" date is in the future (Today view, five counties) ──
       const todayMs = Date.now() + 86_400_000   // a day of slack for the viewer's zone
