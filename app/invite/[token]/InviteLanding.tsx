@@ -49,7 +49,7 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
     return (
       <Card shadow="soft" className="p-6" data-audit="invite-closed">
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green">{why}</h1>
-        <p className="mt-2 font-dm-sans text-[16px] leading-relaxed text-forest-green/80">
+        <p className="mt-2 font-dm-sans text-[16px] leading-relaxed text-ink">
           {view.state === 'accepted' && matches ? 'You are already on this ranch.' : `Ask ${view.inviter ?? 'the ranch owner'} to send a new one.`}
         </p>
         {view.state === 'accepted' && matches && <Link href="/home" className={`${CTA} mt-4 bg-forest-green text-cream`}>Open {ranch}</Link>}
@@ -66,7 +66,7 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
         <div className="mt-6 space-y-3" data-audit="invite-ctas">
           <Link href={`/signin?mode=signup&next=${next}`} className={`${CTA} bg-forest-green text-cream`}>Create your account</Link>
           <Link href={`/signin?next=${next}`} className={`${CTA} border border-forest-green/25 text-forest-green`}>I already have an account</Link>
-          <p className="font-dm-sans text-[15px] text-forest-green/80">Use {view.invited_email} — the invitation is for that address.</p>
+          <p className="font-dm-sans text-[16px] text-ink">Use {view.invited_email} — the invitation is for that address.</p>
         </div>
       )}
 

@@ -75,7 +75,7 @@ export default function RanchPeopleCard() {
           <li key={p.user_id} className={ROW} data-audit="member-row">
             <div className="min-w-0">
               <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{who(p)}{p.user_id === people.me!.user_id ? ' (you)' : ''}</p>
-              <p className="font-dm-sans text-[15px] text-forest-green/80">{p.role === 'owner' ? 'Owner' : 'Member'}{p.email && p.name ? ` · ${p.email}` : ''} · since {fmtDay(p.since)}</p>
+              <p className="font-dm-sans text-[16px] text-ink">{p.role === 'owner' ? 'Owner' : 'Member'}{p.email && p.name ? ` · ${p.email}` : ''} · since {fmtDay(p.since)}</p>
             </div>
             {isOwner && p.user_id !== people.me!.user_id && (
               <div className="flex flex-wrap gap-1">
@@ -110,7 +110,7 @@ export default function RanchPeopleCard() {
               <li key={i.id} className={ROW} data-audit="invite-row">
                 <div className="min-w-0">
                   <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{i.invited_email}</p>
-                  <p className="font-dm-sans text-[15px] text-forest-green/80">{i.role === 'owner' ? 'Owner' : 'Member'} · invited by {i.invited_by ?? 'an owner'} {fmtDay(i.created_at)} · expires in {daysLeft(i.expires_at)} day{daysLeft(i.expires_at) === 1 ? '' : 's'}</p>
+                  <p className="font-dm-sans text-[16px] text-ink">{i.role === 'owner' ? 'Owner' : 'Member'} · invited by {i.invited_by ?? 'an owner'} {fmtDay(i.created_at)} · expires in {daysLeft(i.expires_at)} day{daysLeft(i.expires_at) === 1 ? '' : 's'}</p>
                 </div>
                 {isOwner && <button type="button" disabled={busy} className={LINK_BTN} onClick={() => post('/api/invitations/revoke', { id: i.id })}>Revoke</button>}
               </li>
@@ -140,10 +140,10 @@ export default function RanchPeopleCard() {
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green">
             {sent.emailed ? `Invitation emailed to ${sent.email}.` : `Invitation ready for ${sent.email}.`}
           </p>
-          <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
+          <p className="mt-1 font-dm-sans text-[16px] text-ink">
             {sent.emailed ? 'If it does not arrive, text them this link — it works for their address only, for 7 days.' : 'Text them this link — it works for their address only, for 7 days.'}
           </p>
-          <p className="mt-1 break-all font-dm-sans text-[15px] text-forest-green" data-audit="invite-link">{sent.acceptUrl}</p>
+          <p className="mt-1 break-all font-dm-sans text-[16px] text-forest-green" data-audit="invite-link">{sent.acceptUrl}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => copy(sent.acceptUrl)}>{copied ? 'Copied' : 'Copy link'}</Button>
             <button type="button" className={LINK_BTN} onClick={() => setSent(null)}>Done</button>
@@ -151,7 +151,7 @@ export default function RanchPeopleCard() {
         </div>
       )}
 
-      {error && <p className="mt-2 font-dm-sans text-[15px] font-medium text-warning" role="alert">{error}</p>}
+      {error && <p className="mt-2 font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>}
     </Card>
   )
 }
