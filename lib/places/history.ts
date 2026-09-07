@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
+import { placeEntryCounts } from '@/lib/activity'
 
 // ─── A place's practical memory (Block 2F) ────────────────────────────────────
 // "When did we last…" at one place, answered from the ledger: the most recent
@@ -94,7 +95,7 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
     return {
       place: place as PlaceHistory['place'],
       memory,
-      counts: { entries: all.length, sinceIso: all.length ? all[all.length - 1].ts : null },
+      counts: await placeEntryCounts(supabase, placeId),   // Block 5A: exact, same predicate as /activity?place=
     }
   } catch {
     return empty

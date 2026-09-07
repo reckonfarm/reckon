@@ -165,12 +165,12 @@ function anonClient(): SupabaseClient {
   return createClient(URL_!, ANON!, { auth: { autoRefreshToken: false, persistSession: false } })
 }
 // A route call as this person: the same session JWT as a Bearer (lib/auth-user).
-async function api(c: SupabaseClient, path: string, body: unknown, method: 'POST' | 'PATCH' | 'DELETE' = 'POST'): Promise<{ status: number; json: Record<string, unknown> }> {
+async function api(c: SupabaseClient, path: string, body: unknown, method: 'POST' | 'PATCH' | 'DELETE' | 'GET' = 'POST'): Promise<{ status: number; json: Record<string, unknown> }> {
   const { data: { session } } = await c.auth.getSession()
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token ?? ''}`, ...(process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {}) },
-    body: JSON.stringify(body),
+    ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
   })
   const json = await res.json().catch(() => ({})) as Record<string, unknown>
   return { status: res.status, json }
@@ -423,6 +423,46 @@ async function lotsChecks() {
   }
 }
 
+// ─── Block 5A — the record's routes never cross the ranch boundary ────────────
+// /api/activity/options reads ranch_members with the SERVICE ROLE (a member's
+// own row is all the client policy shows), so the ranch scoping lives in the
+// route: the ranch comes from the caller's own membership row and nothing else.
+// These checks hit the API directly, never the page.
+async function activityChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A'), B = await userClient('B')
+  const membersOf = async (ranchId: string) => new Set(((await admin.from('ranch_members').select('user_id').eq('ranch_id', ranchId)).data ?? []).map(m => m.user_id as string))
+  const [membersA, membersB] = [await membersOf(a.ranchId), await membersOf(b.ranchId)]
+  const people = (j: Record<string, unknown>) => ((j.people ?? []) as { id: string; name: string }[])
+  {
+    const r = await api(A, '/api/activity/options', undefined, 'GET')
+    const ids = people(r.json).map(p => p.id)
+    const names = people(r.json).map(p => p.name)
+    record('user A (owner)', 'GET /api/activity/options lists only ranch A\'s people', r.status === 200 && ids.length === membersA.size && ids.every(id => membersA.has(id)), `${r.status} · ${ids.length} listed vs ${membersA.size} member(s)`)
+    record('user A (owner)', 'no person from ranch B in A\'s people list', r.status === 200 && !ids.some(id => membersB.has(id)) && !names.some(n => n.includes(`${PREFIX}B`)), names.join(', ') || 'empty')
+    const places = ((r.json.places ?? []) as { id: string }[]).map(p => p.id)
+    record('user A (owner)', 'no place from ranch B in A\'s place list', r.status === 200 && places.includes(a.placeId) && !places.includes(b.placeId), `${places.length} place(s)`)
+  }
+  {
+    const r = await api(B, '/api/activity/options', undefined, 'GET')
+    const ids = people(r.json).map(p => p.id)
+    record('user B (owner)', 'GET /api/activity/options lists only ranch B\'s people', r.status === 200 && ids.length === membersB.size && ids.every(id => membersB.has(id)) && !ids.some(id => membersA.has(id)), `${r.status} · ${ids.length} listed vs ${membersB.size} member(s)`)
+  }
+  {
+    const r = await api(A, `/api/activity/${b.eventIds[0]}`, undefined, 'GET')
+    record('user A (owner)', 'GET /api/activity/<ranch B event> → 404', r.status === 404 && !r.json.event, `${r.status}`)
+  }
+  {
+    const r = await api(A, `/api/activity/${a.eventIds[0]}`, undefined, 'GET')
+    const e = (r.json.event ?? {}) as Record<string, unknown>
+    record('user A (owner)', 'GET /api/activity/<own event> → the event with actor + role', r.status === 200 && e.actor_id === a.userId && e.actor_role === 'owner' && typeof e.work_time === 'string' && typeof e.recorded_at === 'string', `${r.status} · ${String(e.actor)} · ${String(e.actor_role)}`)
+  }
+  {
+    const res = await fetch(`${BASE}/api/activity/options`, { headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} })
+    record('anonymous', 'GET /api/activity/options → 401', res.status === 401, `${res.status}`)
+  }
+}
+
 async function removedMemberChecks() {
   const me = fx.A!
   const { error } = await admin.from('ranch_members').delete().eq('ranch_id', me.ranchId).eq('user_id', me.userId)
@@ -502,6 +542,7 @@ async function main() {
     await ingestChecks()
     await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
     await lotsChecks()          // Block 4A — needs migration 050
+    await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')
