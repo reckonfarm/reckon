@@ -364,6 +364,8 @@ async function main() {
     // ── a member with NO home county: /home must still put Log it in front of them, and a feeding must save ──
     const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
     const pageB = await signIn(ctxB, EMAIL_B)
+    if (process.env.DEBUG_2E) pageB.on('request', r => { if (/\/api\/seen/.test(r.url()) && r.method() === 'POST') console.log(`   [2E debug] ${new Date().toISOString()} B POST /api/seen from ${r.frame().url().replace(BASE, '')}`) })
+    if (process.env.DEBUG_2E) pageB.on('response', r => { if (/\/dashboard\?fips=/.test(r.url()) && r.request().isNavigationRequest()) console.log(`   [2E debug] ${new Date().toISOString()} B navigation response ${r.status()} ${r.url().replace(BASE, '')}`) })
     await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
     await pageB.waitForURL(/\/dashboard/, { timeout: 30_000 })
     const urlB = pageB.url().replace(BASE, '')
@@ -382,12 +384,14 @@ async function main() {
     const seqB = await watchStates(pageB, 'Synced to ranch', 20_000, 'Fed 1 bale')
     const afterB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
     record('no home county: a feed event saves and syncs', seqB.includes('Synced to ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
-    // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
-    await page.waitForTimeout(800)
-    const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-    record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+
+    // After a feed syncs the ledger page re-renders and its "visit" ping re-arms (4 s dwell),
+    // so a ping can be IN FLIGHT when this fixture reset runs and land after it (seen
+    // 2026-09-07: POST /api/seen 47 ms before the reset, stamp written after it). Let the
+    // re-armed ping fire first, then restore the unstamped B that 2E's sequence starts from.
+    await pageB.waitForTimeout(5_500)
+    const resetRes = await admin.from('ranch_members').update({ last_seen_at: null }).eq('user_id', userIdB).select('last_seen_at')
+    if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} reset →`, JSON.stringify(resetRes.data), resetRes.error?.message ?? '')
 
     // ── 2E: the second person sees what A did; a visit clears it; A never sees A ──
     const { error: colErr } = await admin.from('ranch_members').select('last_seen_at').limit(1)
@@ -397,10 +401,13 @@ async function main() {
     } else {
       const ownBlock = await page.getByText('Since you last checked').count() + await page.getByText('Since yesterday').count()
       record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
+      if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} before goto, B last_seen_at =`, JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data))
       await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
       const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB.slice(0, 140))
+      const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       const placeHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
       record('2E: a line taps through to its place', placeHref === `/places/${placeId}`, String(placeHref))
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
@@ -411,10 +418,20 @@ async function main() {
       await ctxB.close()
     }
 
+    // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
+    // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
+    //  "since you last checked" news and break 2E's fixed sequence.)
+    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
+    await page.waitForTimeout(800)
+    const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+
     // ── no page errors / 5xx during the run is not tracked here; the invariant smoke covers it ──
   } finally {
     await browser.close()
-    await teardown('finish')
+    if (process.env.KEEP_FIXTURE) console.log('KEEP_FIXTURE set — fixture left in place for inspection (next run tears it down)')
+    else await teardown('finish')
   }
   const fails = results.filter(r => !r.pass).length
   const skips = results.filter(r => r.skip).length
