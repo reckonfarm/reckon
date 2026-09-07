@@ -61,6 +61,7 @@ async function teardown(label: string) {
   let n = 0
   if (ids.length) {
     for (const t of ['events', 'places', 'operation_profiles', 'ranch_members']) n += (await admin.from(t).delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
   }
   n += (await admin.from('ranches').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
@@ -75,9 +76,10 @@ async function seed() {
   const { data: ranch } = await admin.from('ranches').insert({ name: `${PREFIX} ranch` }).select('id').single()
   await admin.from('ranch_members').insert({ ranch_id: ranch!.id, user_id: userId, role: 'owner' })
   await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS })
-  const lot = { id: 'smoke-steers', class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }
-  const { error: pErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranch!.id, county_fips: HOME_FIPS, herd: { lots: [lot] } })
+  const { error: pErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranch!.id, county_fips: HOME_FIPS })
   if (pErr) throw new Error(`profile: ${pErr.message}`)
+  const { error: lErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', created_by: userId, updated_by: userId })
+  if (lErr) throw new Error(`herd lot: ${lErr.message}`)
 }
 
 async function signIn(ctx: BrowserContext): Promise<Page> {

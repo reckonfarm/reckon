@@ -74,6 +74,7 @@ async function teardown(label: string) {
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
   }
@@ -110,8 +111,10 @@ async function seed() {
   await admin.from('profiles').upsert({ id: userIdB, email: EMAIL_B })
   // Block 4A — the RANCH's herd (050): one lot, so the hand's Fed-to control has something to show.
   lotId = randomUUID()
-  const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranchId, county_fips: HOME_FIPS, herd: { lots: [{ id: lotId, class: 'steers', name: LOT_NAME, head_count: 60, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } })
+  const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranchId, county_fips: HOME_FIPS })
   if (oErr) throw new Error(`operation_profile: ${oErr.message}`)
+  const { error: lErr } = await admin.from('herd_lots').insert({ id: lotId, ranch_id: ranchId, class: 'steers', name: LOT_NAME, head_count: 60, avg_weight: 550, weight_unit: 'lb', created_by: userId, updated_by: userId })
+  if (lErr) throw new Error(`herd lot: ${lErr.message}`)
   // /home resolves the home county from profiles.home_county_fips (lib/concierge-service).
   const { error: hErr } = await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS, display_name: 'Smoke A' })
   if (hErr) throw new Error(`profile: ${hErr.message}`)
