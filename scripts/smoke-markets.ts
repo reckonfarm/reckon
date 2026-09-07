@@ -397,7 +397,7 @@ async function main() {
             if ((el.tagName === 'A' && el.getAttribute('href')) || el.tagName === 'BUTTON') { if (b.height < 48 && !el.closest('svg')) small.push((el.textContent || '').trim().slice(0, 24) + ' ' + Math.round(b.height) + 'px'); }
           });
           var lfp = Array.from(document.querySelectorAll('main button')).find(function(b){ return /Payment estimate and steps/.test(b.textContent || ''); });
-          return { radii: radii, shadows: shadows.slice(0, 6), small: small.slice(0, 8), smallCount: small.length, lfp: lfp ? { h: Math.round(lfp.getBoundingClientRect().height), w: Math.round(lfp.getBoundingClientRect().width), text: (lfp.textContent || '').replace(/\s+/g, ' ').trim(), expanded: lfp.getAttribute('aria-expanded') } : null };
+          return { radii: radii, shadows: shadows.slice(0, 6), small: small.slice(0, 8), smallCount: small.length, lfp: lfp ? { h: Math.round(lfp.getBoundingClientRect().height), w: Math.round(lfp.getBoundingClientRect().width), text: (lfp.textContent || '').split(/[\\t\\n\\r ]+/).join(' ').trim(), expanded: lfp.getAttribute('aria-expanded') } : null };
         })()`) as { radii: Record<string, number>; shadows: string[]; small: string[]; smallCount: number; lfp: { h: number; w: number; text: string; expanded: string | null } | null }
         const radiiKeys = Object.keys(a4.radii)
         record('A4: three radii on the Today page — 8 px, 12 px, pill', radiiKeys.every(k => k === '8px' || k === '12px' || k === 'pill'), JSON.stringify(a4.radii))
