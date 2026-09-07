@@ -73,6 +73,13 @@ function dateIso(v: unknown): string | null {
   const t = dateMs(v)
   return Number.isNaN(t) ? null : new Date(t).toISOString().slice(0, 10)
 }
+// JSON with object keys sorted at every level — the shape jsonb hands back, applied to
+// both sides of a comparison so key order can never masquerade as a change.
+function canonical(v: unknown): string {
+  const norm = (x: unknown): unknown => Array.isArray(x) ? x.map(norm) : (x && typeof x === 'object') ? Object.fromEntries(Object.keys(x as Record<string, unknown>).sort().map(k => [k, norm((x as Record<string, unknown>)[k])])) : x
+  return JSON.stringify(norm(v))
+}
+
 function tsIso(v: unknown): string | null {
   if (!v) return null
   const t = Date.parse(String(v))
@@ -368,7 +375,12 @@ async function main() {
         break
       }
       if (priorErr) { console.error('[mars-snapshot] history read failed:', priorErr.message); continue }
-      if (prior && JSON.stringify(prior.rows) === JSON.stringify(h.rows)) { unchanged++; continue }
+      // Compare CANONICAL forms: Postgres jsonb reorders object keys (shortest first, then
+      // alphabetical) on write, so rows read back never stringify equal to the freshly
+      // mapped objects — every run looked "revised" (2026-09-07, revisions 2 and 3 were
+      // byte-identical). Keys are sorted on both sides; row order is kept (a reordered
+      // report IS a revision).
+      if (prior && canonical(prior.rows) === canonical(h.rows)) { unchanged++; continue }
       const revision = prior ? (prior.revision as number) + 1 : 1
       const { data: inserted, error: insErr } = await db
         .from('mars_price_history')
