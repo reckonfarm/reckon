@@ -24,7 +24,7 @@ async function seed() {
   const { data: ranch } = await admin.from('ranches').insert({ name: 'AUDIT-MARKETS ranch' }).select('id').single()
   await admin.from('ranch_members').insert({ ranch_id: ranch!.id, user_id: userId, role: 'owner' })
   await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: '30069' })
-  await admin.from('operation_profiles').insert({ user_id: userId, county_fips: '30069', herd: { lots: [{ id: 'audit-steers', class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }] } })
+  await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranch!.id, county_fips: '30069', herd: { lots: [{ id: 'audit-steers', class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }] } })
 }
 type Box = { x: number; y: number; w: number; h: number }
 interface Measure {

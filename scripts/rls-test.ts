@@ -19,7 +19,7 @@
 // Writes only RLS-TEST-* rows under the two synthetic accounts (the smoke
 // scratch-account rule: nothing here touches a real ranch's ledger).
 
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
@@ -46,8 +46,11 @@ const PREFIX = 'RLS-TEST-'
 const USERS = {
   A: { email: 'rls-test-a@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
   B: { email: 'rls-test-b@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
+  // D: a second member of ranch A (Block 4A) — the hand who must see the ranch's lots.
+  D: { email: 'rls-test-d@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
 }
 type Side = 'A' | 'B'
+type Who = Side | 'D'
 const OTHER: Record<Side, Side> = { A: 'B', B: 'A' }
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -62,6 +65,8 @@ function record(who: string, check: string, pass: boolean, detail = '') {
 interface Fixture {
   userId: string
   ranchId: string
+  lotId: string      // Block 4A — the ranch's one seeded cattle lot
+  lotName: string
   placeId: string
   deviceId: string
   hardwareId: string
@@ -74,7 +79,7 @@ async function teardown(label: string) {
   // Order respects FKs: events → devices → places → members → ranches → users.
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
   const ids = (users?.users ?? [])
-    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email)
+    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.D.email)
     .map(u => u.id)
   let n = 0
   if (ids.length) {
@@ -82,6 +87,7 @@ async function teardown(label: string) {
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('id')).data?.length ?? 0
   }
   n += (await admin.from('devices').delete().like('hardware_id', `${PREFIX}%`).select('id')).data?.length ?? 0
   n += (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
@@ -122,6 +128,14 @@ async function seed(side: Side): Promise<Fixture> {
     .select('id').single()
   if (dErr) throw new Error(`device ${side}: ${dErr.message}`)
 
+  // Block 4A — the ranch's herd: one lot on the RANCH's operation_profiles row (050).
+  const lotId = randomUUID(), lotName = `${PREFIX}${side}-lot`
+  const { error: hErr } = await admin.from('operation_profiles').insert({
+    user_id: userId, ranch_id: ranchId, county_fips: '30069',
+    herd: { lots: [{ id: lotId, class: 'steers', name: lotName, head_count: 40, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] },
+  })
+  if (hErr) throw new Error(`herd ${side}: ${hErr.message}`)
+
   const eventIds: string[] = []
   for (let i = 0; i < 3; i++) {
     const { data: ev, error: eErr } = await admin.from('events')
@@ -135,11 +149,11 @@ async function seed(side: Side): Promise<Fixture> {
     if (eErr) throw new Error(`event ${side}/${i}: ${eErr.message}`)
     eventIds.push(ev.id as string)
   }
-  return { userId, ranchId, placeId: place.id as string, deviceId: device.id as string, hardwareId, token, eventIds }
+  return { userId, ranchId, lotId, lotName, placeId: place.id as string, deviceId: device.id as string, hardwareId, token, eventIds }
 }
 
 // ─── Clients — anon key + the user's own session (never service role) ────────
-async function userClient(side: Side): Promise<SupabaseClient> {
+async function userClient(side: Who): Promise<SupabaseClient> {
   const c = createClient(URL_!, ANON!, { auth: { autoRefreshToken: false, persistSession: false } })
   const { error } = await c.auth.signInWithPassword({ email: USERS[side].email, password: USERS[side].password })
   if (error) throw new Error(`sign in ${side}: ${error.message}`)
@@ -234,6 +248,61 @@ async function isolationChecks(side: Side, c: SupabaseClient) {
   }
 }
 
+// ─── Block 4A — cattle lots belong to the ranch (050) ─────────────────────────
+// A member sees the ranch's lots, a second ranch's lots stay invisible, a member
+// can edit the ranch's herd and the owner sees the edit, and a removed member
+// loses the lots. All through the USER-SCOPED client — the membership policy is
+// the gate.
+async function lotsChecks() {
+  const a = fx.A!, b = fx.B!
+  const lotsOf = async (c: SupabaseClient, ranchId: string) => {
+    const { data, error } = await c.from('operation_profiles').select('herd').eq('ranch_id', ranchId).maybeSingle()
+    const lots = (data as { herd?: { lots?: { id: string; name?: string }[] } } | null)?.herd?.lots
+    return { error, lots: Array.isArray(lots) ? lots : null }
+  }
+  const A = await userClient('A'), B = await userClient('B')
+  {
+    const r = await lotsOf(A, a.ranchId)
+    record('user A (owner)', 'reads the ranch\'s lots', !r.error && r.lots?.length === 1 && r.lots[0].name === a.lotName, r.error?.message ?? `${r.lots?.length ?? 'no row'} lot(s)`)
+  }
+  {
+    const r = await lotsOf(A, b.ranchId)
+    record('user A (owner)', 'reads ranch B\'s lots → no row', !r.error && r.lots === null, r.error?.message ?? (r.lots ? `${r.lots.length} lot(s) VISIBLE` : 'no row'))
+  }
+  // D joins ranch A as a member (service role — the invite flow's write, Phase A2).
+  const { data: du, error: dErr } = await admin.auth.admin.createUser({ email: USERS.D.email, password: USERS.D.password, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}D` } })
+  if (dErr || !du.user) throw new Error(`createUser D: ${dErr?.message}`)
+  const { error: mErr } = await admin.from('ranch_members').insert({ ranch_id: a.ranchId, user_id: du.user.id, role: 'member' })
+  if (mErr) throw new Error(`member D: ${mErr.message}`)
+  const D = await userClient('D')
+  {
+    const r = await lotsOf(D, a.ranchId)
+    record('member D (hand)', 'sees the ranch\'s lots — the Fed-to control has something to show', !r.error && r.lots?.length === 1 && r.lots[0].name === a.lotName, r.error?.message ?? `${r.lots?.length ?? 'no row'} lot(s)`)
+  }
+  {
+    const r = await lotsOf(D, b.ranchId)
+    record('member D (hand)', 'reads ranch B\'s lots → no row', !r.error && r.lots === null, r.error?.message ?? (r.lots ? 'VISIBLE' : 'no row'))
+  }
+  // A member edits the ranch's herd; the owner reads the edit on the SAME row.
+  {
+    const renamed = `${a.lotName}-renamed-by-D`
+    const { data, error } = await D.from('operation_profiles').update({ herd: { lots: [{ id: a.lotId, class: 'steers', name: renamed, head_count: 41, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } }).eq('ranch_id', a.ranchId).select('id')
+    const r = await lotsOf(A, a.ranchId)
+    record('member D (hand)', 'edits the ranch\'s herd and the owner reads the edit', !error && (data?.length ?? 0) === 1 && r.lots?.[0]?.name === renamed, error?.message ?? `owner sees "${r.lots?.[0]?.name}"`)
+  }
+  {
+    const { data, error } = await B.from('operation_profiles').update({ herd: { lots: [] } }).eq('ranch_id', a.ranchId).select('id')
+    const r = await lotsOf(A, a.ranchId)
+    record('user B (other ranch)', 'update ranch A\'s herd → 0 rows, lots intact', (!!error || (data?.length ?? 0) === 0) && r.lots?.length === 1, error?.message ?? `${data?.length ?? 0} row(s) updated · ${r.lots?.length} lot(s) left`)
+  }
+  {
+    const { error } = await admin.from('ranch_members').delete().eq('ranch_id', a.ranchId).eq('user_id', du.user.id)
+    if (error) throw new Error(`remove D: ${error.message}`)
+    const r = await lotsOf(D, a.ranchId)
+    record('removed member D', 'reads the former ranch\'s lots → no row', !r.error && r.lots === null, r.error?.message ?? (r.lots ? 'STILL VISIBLE' : 'no row'))
+  }
+}
+
 async function removedMemberChecks() {
   const me = fx.A!
   const { error } = await admin.from('ranch_members').delete().eq('ranch_id', me.ranchId).eq('user_id', me.userId)
@@ -307,6 +376,7 @@ async function main() {
     await isolationChecks('B', await userClient('B'))
     await anonymousChecks()
     await ingestChecks()
+    await lotsChecks()          // Block 4A — needs migration 050
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')

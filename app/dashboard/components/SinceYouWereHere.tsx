@@ -6,6 +6,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
+import { getRanchLots } from '@/lib/herd-lots'
 import LastSeenPing from './LastSeenPing'
 
 // ─── Since you last checked (Block 2E) ────────────────────────────────────────
@@ -92,12 +93,11 @@ export default async function SinceYouWereHere() {
   const [placesRes, profilesRes, herdRes] = await Promise.all([
     placeIds.size ? supabase.from('places').select('id, name').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     createServiceClient().from('profiles').select('id, display_name').in('id', [...userIds]),
-    lotIds.size ? supabase.from('operation_profiles').select('herd').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+    lotIds.size ? getRanchLots(supabase, user.id) : Promise.resolve([] as Lot[]),
   ])
   const placeNames = new Map((placesRes.data ?? []).map(p => [p.id as string, p.name as string]))
   const authors = new Map((profilesRes.data ?? []).map(p => [p.id as string, (p.display_name as string | null)?.trim() || null]))
-  const lots = (herdRes.data as { herd?: { lots?: Lot[] } } | null)?.herd?.lots
-  const lotNames = new Map((Array.isArray(lots) ? lots : []).map(l => [l.id, lotLabel(l)]))
+  const lotNames = new Map(herdRes.map(l => [l.id, lotLabel(l)]))   // the RANCH's lots (Block 4A), so a hand's feeding keeps its name for everyone
   const placeName = (id: unknown) => { const s = str(id); return s ? placeNames.get(s) ?? null : null }
   const lotName = (id: unknown) => { const s = str(id); return s ? lotNames.get(s) ?? null : null }
 

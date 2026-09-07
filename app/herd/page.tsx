@@ -41,7 +41,7 @@ export default async function HerdPage() {
       .maybeSingle()
     const homeFips = (prof as { home_county_fips: string | null } | null)?.home_county_fips ?? null
     if (homeFips) {
-      const anchor = await getHerdAnchor({ lots, homeFips, supabase })
+      const anchor = await getHerdAnchor({ lots, homeFips, supabase, ranchId: profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null })
       estimate = anchor.estimate
       trend = anchor.trend
       outlook = anchor.outlook

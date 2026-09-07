@@ -58,21 +58,26 @@ async function main() {
   if (barnErr) { console.error('[herd-estimate-snapshot] barns read failed:', barnErr.message); process.exit(1) }
   const barns = (barnRows ?? []) as BarnSnapshot[]
 
-  // 2) Users with a herd — service-role bypasses the owner-RLS, so we see all of them.
+  // 2) RANCHES with a herd (Block 4A / 050: one profile row per ranch; the service role
+  //    sees all of them). A row with no ranch (a person on no ranch) is skipped — there
+  //    is no ranch to record a value for.
   const { data: opRows, error: opErr } = await db
     .from('operation_profiles')
-    .select('user_id, herd')
+    .select('user_id, ranch_id, herd')
     .not('herd', 'is', null)
+    .not('ranch_id', 'is', null)
   if (opErr) { console.error('[herd-estimate-snapshot] operation_profiles read failed:', opErr.message); process.exit(1) }
   const users = (opRows ?? [])
-    .map(r => ({ user_id: (r as { user_id: string }).user_id, lots: extractLots((r as { herd: unknown }).herd) }))
+    .map(r => ({ user_id: (r as { user_id: string }).user_id, ranch_id: (r as { ranch_id: string }).ranch_id, lots: extractLots((r as { herd: unknown }).herd) }))
     .filter(u => u.lots.length > 0)
 
-  if (users.length === 0) { console.log('[herd-estimate-snapshot] no herds with lots — nothing to do.'); return }
+  if (users.length === 0) { console.log('[herd-estimate-snapshot] no ranch herds with lots — nothing to do.'); return }
 
-  // 3) Home county per user (profiles.home_county_fips), then county centroids.
+  // 3) Home county per ranch. Home county is still PER PERSON (profiles.home_county_fips);
+  //    until a ranch-level home county exists (PK's call, Block 4), the ranch is placed by
+  //    the county of the member who last wrote its herd (user_id on the row).
   const homeByUser = new Map<string, string>()
-  const ids = users.map(u => u.user_id)
+  const ids = [...new Set(users.map(u => u.user_id))]
   for (let i = 0; i < ids.length; i += CHUNK) {
     const { data, error } = await db.from('profiles').select('id, home_county_fips').in('id', ids.slice(i, i + CHUNK))
     if (error) { console.error('[herd-estimate-snapshot] profiles read failed:', error.message); process.exit(1) }
@@ -112,7 +117,8 @@ async function main() {
     }
     const est = estimateHerd({ lots: u.lots }, resolved)
     rows.push({
-      user_id:       u.user_id,
+      user_id:       u.user_id,       // authorship of the herd row — who the ranch was placed by
+      ranch_id:      u.ranch_id,      // the row's subject (050)
       snapshot_date: snapshotDate,
       total_value:   est.total_priced,
       lots_priced:   est.lots_priced,
@@ -124,16 +130,16 @@ async function main() {
     })
   }
 
-  // 5) Append — idempotent on (user_id, snapshot_date); chunked.
+  // 5) Append — idempotent on (ranch_id, snapshot_date) since 050; chunked.
   let written = 0
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK)
-    const { error } = await db.from('herd_estimate_history').upsert(chunk, { onConflict: 'user_id,snapshot_date' })
+    const { error } = await db.from('herd_estimate_history').upsert(chunk, { onConflict: 'ranch_id,snapshot_date' })
     if (error) { console.error('[herd-estimate-snapshot] upsert failed:', error.message); process.exit(1) }
     written += chunk.length
   }
 
-  console.log(`[herd-estimate-snapshot] ${snapshotDate}: ${users.length} herds → ${written} recorded, ${skipped} skipped (no home county)`)
+  console.log(`[herd-estimate-snapshot] ${snapshotDate}: ${users.length} ranch herds → ${written} recorded, ${skipped} skipped (no home county)`)
 }
 
 main().catch(err => {

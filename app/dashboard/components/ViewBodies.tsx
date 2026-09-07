@@ -725,8 +725,9 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots, homeFips, supabase, sellBarn = null,
+  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null,
 }: {
+  ranchId?: string | null   // Block 4A — the ranch whose herd value history the anchor reads
   selectedCounty: CountyRow
   sellBarn?: string | null   // Block 2.5 A2 — the "where I sell" pin (operation_profiles.sell_barn_slug)
   // The herd anchor is THIS body's (views2, commit 2): the profile's lots, the
@@ -745,7 +746,7 @@ export async function MarketsViewBody({
   const canAnchor = lots.length > 0 && !!homeFips
   const anchorPromise = canAnchor
     ? (homeFips === selectedCounty.fips ? viewedBarns : resolveBarns(homeFips!, sellBarn))
-        .then(resolved => getHerdAnchor({ lots, homeFips: homeFips!, supabase, resolved }))
+        .then(resolved => getHerdAnchor({ lots, homeFips: homeFips!, supabase, resolved, ranchId }))
         .catch(() => null)
     : Promise.resolve(null)
   // LRP coverage-price floor — gated to the Markets view so news/drought/hay never pay
@@ -854,6 +855,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
       let lots: Lot[] = []
       let homeFips: string | null = null
       let sellBarn: string | null = null
+      let ranchId: string | null = null
       if (user) {
         const [profile, hf] = await Promise.all([
           getOperationProfile({ supabase, user }),
@@ -863,10 +865,11 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
         lots = Array.isArray(herd?.lots) ? herd!.lots : []
         homeFips = hf
         sellBarn = profile.status === 'ok' ? profile.profile.sell_barn_slug ?? null : null
+        ranchId = profile.status === 'ok' ? profile.profile.ranch_id ?? null : null
       }
       return (
         <Suspense fallback={<JobsViewSkeleton />}>
-          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} />
+          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} ranchId={ranchId} />
         </Suspense>
       )
     }
