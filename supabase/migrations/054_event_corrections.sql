@@ -67,16 +67,11 @@ select column_name from information_schema.columns
    and column_name in ('supersedes_event_id','voided_at','correction_reason','superseded_by');
 
 -- 1) The columns --------------------------------------------------------------
--- The two self-references are ON DELETE NO ACTION (the default), not RESTRICT:
--- a single original can never be deleted out from under its correction, while
--- a whole-account or whole-ranch cascade (fixture teardown; nothing in the
--- product deletes) removes the pair in one statement — RESTRICT would refuse
--- that cascade row by row.
 alter table public.events
-  add column if not exists supersedes_event_id uuid references public.events(id),
+  add column if not exists supersedes_event_id uuid references public.events(id) on delete restrict,
   add column if not exists voided_at           timestamptz,
   add column if not exists correction_reason   text,
-  add column if not exists superseded_by       uuid references public.events(id);
+  add column if not exists superseded_by       uuid references public.events(id) on delete restrict;
 
 comment on column public.events.supersedes_event_id is
   $$054 Block 5B. The row this one corrects or voids. A correction is a new row; the original is never edited.$$;
