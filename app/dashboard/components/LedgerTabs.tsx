@@ -31,7 +31,7 @@ const LABELS: Record<LedgerTab, string> = {
 
 // Plain-spoken, and each says what would fill it.
 const EMPTY: Record<LedgerTab, string> = {
-  season: 'No work sessions this season yet. Put a Scout on a machine and go to work.',
+  season: 'No machine sessions this season. Bales baled, acres cut, and working time come from a Scout on a machine; feed, counts, rain, and cattle work go in with Log it above and show under Recently logged.',
   hay: 'No hay logged this season yet. Log a count of the stack, bales stacked, or hay fed.',
   logged: 'Nothing logged yet. Log it is right above.',
 }
@@ -55,7 +55,7 @@ export function LedgerLoading() {
 }
 
 export default function LedgerTabs({ season, hay, logged }: Record<LedgerTab, ReactNode>) {
-  const [active, setActive] = useState<LedgerTab>('season')
+  const [active, setActive] = useState<LedgerTab>('hay')   // Block 5E: hay on hand and runway is what Today shows first
   const [empty, setEmpty] = useState<Partial<Record<LedgerTab, boolean>>>({})
   const report = useCallback((tab: LedgerTab, e: boolean) => {
     setEmpty(prev => (prev[tab] === e ? prev : { ...prev, [tab]: e }))

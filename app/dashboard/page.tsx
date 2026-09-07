@@ -391,6 +391,10 @@ export default async function DashboardPage({
             self-gating, RLS-scoped components as the county view's Today. */}
         {user && !selectedCounty && !fips && (
           <div className="mb-8 space-y-4">
+            {/* Block 5E order: live job · since you last checked · quick record · hay on hand (the ledger strip opens on Hay). */}
+            <Suspense fallback={null}>
+              <LiveJobCard />
+            </Suspense>
             <Suspense fallback={null}>
               <SinceYouWereHere />
             </Suspense>
@@ -514,47 +518,29 @@ export default async function DashboardPage({
               eager={{
                 news: (
                   <>
-                    {/* ── B2′: conditions strip — weather leads the Today view (flow, commit 3: the stack moved under the tabs).
-                           Drought chip (always-awaited `latest`) renders immediately; today's
-                           forecast streams in from the always-started NWS promise (no new
-                           fetch, News stays fast, default tab unchanged). Tapping opens the
-                           Weather tab via the toggle's exact link pattern. Renders nothing
-                           when there's no real data. ── */}
-                    {/* Today's order (layout, commit 3), top to bottom: conditions
-                        strip · LFP card · deadlines · Log it · live job · today's
-                        jobs · herd value · 7-day forecast · headlines · This season ·
-                        Hay · Recently logged. Money and the operator's own line
-                        first; the machines; the herd; the sky; the news; then the
-                        season ledgers at the bottom. Same components, same gates. */}
-                    {/* Repeat last feeding (Block 2B) — above everything on the
-                        signed-in Today: the ten-second path. Renders nothing until a
-                        feeding has been logged. */}
+                    {/* ── Today, reordered (Block 5E). Signed in, Today is a WORKING surface:
+                          1. a machine working right now (and today's finished sessions)
+                          2. what needs attention — LFP when loud, a deadline when loud, the quiet program row
+                          3. recorded since you last checked
+                          4. quick record — repeat last, Log it
+                          5. hay on hand and runway — the ledger strip, opening on Hay (This season · Recently logged one tap away)
+                          6. condition strips — drought chip + today's forecast, then the 7-day carousel
+                          7. no news feed (ruled Aug 9; the headlines stay on the signed-out county page only)
+                        Same self-gating components; every card that has nothing to say renders nothing. */}
                     {user && (
                       <>
-                        {/* Since you last checked (Block 2E) — what the other people
-                            on the ranch put in the ledger since this person's last
-                            visit. Absent when nothing is new. */}
                         <Suspense fallback={null}>
-                          <SinceYouWereHere />
+                          <LiveJobCard />
                         </Suspense>
                         <Suspense fallback={null}>
-                          <RepeatLastFeeding />
+                          <TodayJobs />
                         </Suspense>
                       </>
                     )}
 
-                    <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-
-                    {/* Herd value lives on Markets (views2, commit 2) — one surface,
-                        between the Market Read and the cash it's priced at; the full
-                        Now/Trend/Outlook panel is on /herd. Nothing herd-scoped here. */}
-
-                    {/* LFP status alert — LOUD ONLY (Block 2): triggered / pending-OBBBA /
-                        building a D2 streak / data unavailable (an outage must speak — see
-                        isLfpLoud). The clean no-trigger state renders nothing here and joins
-                        the Program status row below instead. Streamed behind Suspense so the
-                        slow USDM eligibility fetch never blocks the page paint; Today only
-                        since flow commit 3, above the deadline card (higher priority). */}
+                    {/* 2. Needs attention. LFP loud only (triggered / pending-OBBBA / building a
+                        D2 streak / data unavailable); a deadline card only when loud (≤45 days,
+                        newly published, or unavailable); the quiet row is the quiet home for both. */}
                     <Suspense fallback={<LfpAlertSkeleton />}>
                       <LfpCardAsync
                         dataPromise={lfpPromise}
@@ -563,80 +549,50 @@ export default async function DashboardPage({
                         fips={selectedCounty.fips}
                       />
                     </Suspense>
-
-                    {/* USDA program deadlines — full card ONLY when loud (soonest ≤45 days,
-                        newly published row, or data_unavailable); quiet (none / far out) folds
-                        into the Program status row below. Never gated behind a view; filters
-                        to the user's crops when set, else shows all. */}
                     {isDeadlineLoud(deadlineResult) && (
                       <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
                     )}
-
-                    {/* Program status — the quiet home (Block 2). ONE collapsed row for
-                        whatever is quiet (LFP no-trigger line and/or far-out deadlines), full
-                        cards one tap away. Its own Suspense slot BELOW the loud cards, fed by
-                        the SAME lfpPromise, because LFP quietness is only known after the USDM
-                        fetch resolves; quiet content is by definition non-urgent, so the late
-                        paint costs nothing (null fallback — a quiet row has no skeleton).
-                        Renders nothing when everything above is loud. */}
                     <DeadlineQuietRow
                       countyName={selectedCounty.name}
                       quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
                     />
 
-                    {/* ── The operation (shell pass, commit 3: Today absorbed /home) ──
-                        What the machines say, then the sky and the news, then the
-                        operator's own line in the ledger (Log it, views2 commit 3) and
-                        the ledgers it feeds. Every card is the same self-gating server
-                        component it was on /home (RLS-scoped reads that return nothing
-                        signed out → null). */}
-                    {/* A machine working RIGHT NOW, carrying the headline number for
-                        the job type (bale count / percent cut + ETA). Null when nothing
-                        runs and for signed-out visitors (RLS returns nothing). */}
-                    <Suspense fallback={null}>
-                      <LiveJobCard />
-                    </Suspense>
+                    {user && (
+                      <>
+                        {/* 3. Recorded since you last checked (Block 2E / 5F). Absent when nothing is new. */}
+                        <Suspense fallback={null}>
+                          <SinceYouWereHere />
+                        </Suspense>
+                        {/* 4. Quick record — repeat last (Block 2B), then Log it. */}
+                        <Suspense fallback={null}>
+                          <RepeatLastFeeding />
+                        </Suspense>
+                        <LogIt />
+                        {/* 5. Hay on hand and runway — the ledger strip opens on Hay; This season and
+                            Recently logged stay one tap away (views2, commit 4). */}
+                        <div id="ledgers" />
+                        <LedgerTabs
+                          season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
+                          hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
+                          logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
+                        />
+                      </>
+                    )}
 
-                    {/* Today's completed sessions — quiet, gone at midnight ranch
-                        time (at breakfast the slate is clean; history lives in the
-                        Jobs view). The live card above already carries in-progress. */}
-                    <Suspense fallback={null}>
-                      <TodayJobs />
-                    </Suspense>
-
-                    {/* 7-day forecast — Today ONLY since layout commit 3 (its Weather
-                        copy was cut: one carousel, one place). Streamed behind Suspense. */}
+                    {/* 6. Condition strips — drought chip + today's forecast (B2′), then the 7-day
+                        carousel (Today only since layout commit 3). Signed out this is the top of
+                        the county page after the loud cards. */}
+                    <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
                     <div>
                       <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
                       <Suspense fallback={<ForecastPanelSkeleton />}>
                         <ForecastPanelAsync dataPromise={forecastPromise} />
                       </Suspense>
                     </div>
-                    <NewsHookCard fips={selectedCounty.fips} />
 
-                    {/* Log it — the primary action, directly above the ledgers its
-                        saves feed (views2, commit 3). LogIt is the one client piece
-                        and never gated itself, so it takes the page's user: a public
-                        county page must not offer a Log it button that can only 401. */}
-                    {user && <LogIt />}
-
-                    {/* The three ledgers as tabs (views2, commit 4) — This season ·
-                        Hay · Recently logged — directly under Log it. Each body is the
-                        same self-gating server component it was, streamed behind its own
-                        Suspense into the client strip and kept mounted (hidden) — a tab
-                        tap costs zero requests, and all three still fetch on every
-                        signed-in Today (deferring them is a separate decision). Signed
-                        out there is nothing to ledger, so no strip. */}
-                    {user && (
-                      <div id="ledgers" />
-                    )}
-                    {user && (
-                      <LedgerTabs
-                        season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
-                        hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
-                        logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
-                      />
-                    )}
+                    {/* 7. No news feed on the signed-in Today. The headlines hook stays on the
+                        public county page for the signed-out visitor. */}
+                    {!user && <NewsHookCard fips={selectedCounty.fips} />}
                   </>
                 ),
                 ...(view === 'jobs'

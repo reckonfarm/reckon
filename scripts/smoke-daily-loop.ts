@@ -265,6 +265,15 @@ async function main() {
     const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2C: the answer — recorded, remaining from the count, no invented runway',
       /4 bales recorded/.test(strip1) && /196 bales on hand \(from your count of 200/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))
+    // Block 5E — Today, reordered: quick record above the ledgers, the ledger strip open on Hay,
+    // conditions and the forecast below, and no news feed on the signed-in Today.
+    {
+      const y = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? b.y : NaN }
+      const yRepeat = await y('text=Repeat last feeding'), yLog = await y('button:has-text("Log it")'), yTabs = await y('[role="tablist"][aria-label="Ledgers"]'), yForecast = await y('text=7-day forecast')
+      const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
+      const headlines = await page.getByText('Headlines', { exact: true }).count()
+      record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · 7-day forecast, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
+    }
     // Block 5C — one receipt: the strip's link opens the exact entry it just made.
     {
       const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
@@ -416,15 +425,15 @@ async function main() {
       skip('2E: since-you-were-here for member B', `migration 044 not applied (${colErr.message.slice(0, 60)})`)
       await ctxB.close()
     } else {
-      const ownBlock = await page.getByText('Since you last checked').count() + await page.getByText('Since yesterday').count()
+      const ownBlock = await page.getByText('Recorded since you last checked').count() + await page.getByText('Recorded since yesterday').count()
       record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
       if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} before goto, B last_seen_at =`, JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data))
       await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
-      const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const blockB = (await pageB.getByText('Recorded since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
+      record('2E: B sees "Recorded since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
       const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
       const eventId = rowHref?.match(/^\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null
@@ -447,11 +456,11 @@ async function main() {
       const listed = await pageB.locator('[data-audit="activity-row"]').count()
       record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
       await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
       await pageB.waitForTimeout(3_000)
-      const after = await pageB.getByText('Since you last checked').count() + await pageB.getByText('Since yesterday').count()
+      const after = await pageB.getByText('Recorded since you last checked').count() + await pageB.getByText('Recorded since yesterday').count()
       record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
       // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
       await pageB.goto('/activity', { waitUntil: 'domcontentloaded' })
