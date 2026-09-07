@@ -214,6 +214,10 @@ async function feedRows(): Promise<number> {
   return count ?? 0
 }
 
+// A Ctrl-C or a kill mid-run still tears the fixture down (a hard kill cannot be
+// caught; scripts/teardown-fixtures.ts sweeps whatever a hard kill leaves).
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { try { await teardown(`on ${sig}`) } catch {} ; process.exit(130) })
+
 async function main() {
   console.log(`\nDryline — daily-loop smoke  (${BASE})\n`)
   await teardown('pre-run')
