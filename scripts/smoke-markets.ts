@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A3: a real action fully inside the first viewport at 390×844 and 1440×900; caption above the image
 //   • Phase A2: one left edge at 390 and 1440; no FIPS in the heading; resting control + chooser with Cancel
 //   • Phase A1: from the painted page — no text under 14 px, no pair under 4.5:1, nav/answers ≥ 7:1
 //   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
@@ -363,6 +364,25 @@ async function main() {
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
         record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
         await pp.close()
+      }
+      // ── Phase A3 — the homepage has something to tap: at 390×844 and 1440×900 at least one
+      //    interactive element sits fully inside the first viewport, and the example image is
+      //    captioned above and placed after the actions. ──
+      for (const [w, h] of [[390, 844], [1440, 900]] as const) {
+        const lc = await browser.newContext({ baseURL: BASE, viewport: { width: w, height: h }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const lp = await lc.newPage()
+        await lp.goto('/', { waitUntil: 'domcontentloaded' })
+        await lp.getByText('Check my county').first().waitFor({ timeout: 30_000 }).catch(() => {})
+        const fold = await lp.evaluate(`(function(h){
+          var els = Array.from(document.querySelectorAll('main a[href], main button')).map(function(el){ var b = el.getBoundingClientRect(); return { text: (el.textContent||'').trim().slice(0,30), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; });
+          var inFold = els.filter(function(e){ return e.height > 0 && e.top >= 0 && e.bottom <= h; });
+          var img = document.querySelector('main img'); var cap = Array.from(document.querySelectorAll('main p')).find(function(p){ return /Example ranch record/i.test(p.textContent||''); });
+          var actions = document.querySelector('[data-audit="landing-actions"]');
+          return { inFold: inFold, imgTop: img ? Math.round(img.getBoundingClientRect().top + window.scrollY) : null, capTop: cap ? Math.round(cap.getBoundingClientRect().top + window.scrollY) : null, actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom + window.scrollY) : null };
+        })(${h})`) as { inFold: { text: string; height: number }[]; imgTop: number | null; capTop: number | null; actionsBottom: number | null }
+        record(`A3 ${w}×${h}: a real action sits fully inside the first viewport`, fold.inFold.some(e => /Check my county|Try the ranch record/.test(e.text) && e.height >= 48), fold.inFold.map(e => `${e.text} ${e.height}px`).join(' | ') || 'nothing interactive above the fold')
+        if (w === 390) record('A3: the example image is captioned above and comes after the actions', fold.imgTop != null && fold.capTop != null && fold.actionsBottom != null && fold.capTop < fold.imgTop && fold.actionsBottom <= fold.capTop, `actions end ${fold.actionsBottom} · caption ${fold.capTop} · image ${fold.imgTop}`)
+        await lc.close()
       }
       // ── Phase A2 — one column: the county control, the heading, the tabs, and the first
       //    section share one left edge at a phone width and on a desktop; no FIPS in the heading. ──

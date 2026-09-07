@@ -54,10 +54,25 @@ export default async function FrontDoor() {
               A shared feeding record for your ranch. Log the feed from your phone, see what&rsquo;s left,
               and leave the next person a clear handoff. Works with no signal and no hardware.
             </p>
+
+            {/* ── Phase A3 — the two real actions, above the fold at every width. The
+                   picture of the ledger comes AFTER these; a picture of a button is not
+                   a button. Primary 52 px: the free county tools, no account needed.
+                   Secondary 48 px: the ranch record itself. ── */}
+            <div className="mx-auto mt-6 flex max-w-sm flex-col gap-3" data-audit="landing-actions">
+              <Link href="/dashboard" className="inline-flex min-h-[52px] w-full items-center justify-center rounded-lg bg-forest-green px-6 font-dm-sans text-[17px] font-semibold text-cream hover:bg-forest-green/90">
+                Check my county
+              </Link>
+              <Link href="/signin?mode=signup&pilot=winter" className="inline-flex min-h-[48px] w-full items-center justify-center rounded-lg border border-control-border bg-surface px-6 font-dm-sans text-[17px] font-semibold text-ink hover:bg-forest-green/5">
+                Try the ranch record
+              </Link>
+              <p className="font-dm-sans text-[14px] text-secondary-ink">County drought, programs, and markets are free with no account. The ranch record is the winter pilot.</p>
+            </div>
           </section>
 
           {/* ── 4. One real screen — the answer line and the save states ───── */}
-          <section className="mt-10">
+          <section className="mt-10" aria-label="Example ranch record">
+            <p className="mb-2 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Example ranch record</p>
             <Card shadow="soft" className="overflow-hidden p-0">
               <Image
                 src="/landing/ledger-answer.png"
@@ -68,8 +83,8 @@ export default async function FrontDoor() {
                 className="h-auto w-full"
               />
             </Card>
-            <p className="mt-2 text-center font-dm-sans text-[14px] text-ink">
-              A real screen from the ledger, on an example ranch (Dry Creek Ranch). Saved on this phone → Waiting to sync → Synced to ranch, then the answer.
+            <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
+              A real screen from the ledger on an example ranch (Dry Creek Ranch): Saved on this phone → Waiting to sync → Synced to ranch, then the answer.
             </p>
           </section>
 
