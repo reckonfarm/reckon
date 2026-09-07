@@ -94,6 +94,10 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
 
 const text = async (page: Page, sel = 'main') => (await page.locator(sel).first().innerText().catch(() => '')).replace(/\s+/g, ' ')
 
+// A Ctrl-C or a kill mid-run still tears the fixture down (a hard kill cannot be
+// caught; scripts/teardown-fixtures.ts sweeps whatever a hard kill leaves).
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { try { await teardown(`on ${sig}`) } catch {} ; process.exit(130) })
+
 async function main() {
   console.log(`\nDryline — markets smoke  (${BASE})\n`)
   await teardown('pre-run')
