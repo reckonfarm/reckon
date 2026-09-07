@@ -106,11 +106,11 @@ export default async function JobsView({ user }: { user: { id: string } | null }
       <Card shadow="none" className="px-5 py-8 text-center">
         <p className="font-dm-sans text-[16px] text-secondary-ink">
           {jobs.length === 0
-            ? 'No jobs yet. Put a Scout on a machine and go to work.'
+            ? 'No machine sessions yet. This list fills from a Scout on a machine; work logged by hand is in the record.'
             : 'Nothing recent to show — the full list lives under All sessions.'}
         </p>
-        <Link href="/jobs" className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
-          All sessions →
+        <Link href={jobs.length === 0 ? '/activity' : '/jobs'} className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
+          {jobs.length === 0 ? 'The record →' : 'All sessions →'}
         </Link>
       </Card>
     )
