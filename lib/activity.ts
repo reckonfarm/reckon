@@ -107,6 +107,20 @@ async function namesFor(supabase: SupabaseClient, userId: string, rows: Activity
   }
 }
 
+// The one predicate for "names this place" (as where, or as a move's endpoints).
+// The record's place filter and the place page's entry count both use it, so the
+// count a place claims is exactly the list the link opens.
+export function placePredicate(placeId: string): string {
+  return `payload->>place_id.eq.${placeId},payload->>from_place_id.eq.${placeId},payload->>to_place_id.eq.${placeId}`
+}
+export async function placeEntryCounts(supabase: SupabaseClient, placeId: string): Promise<{ entries: number; sinceIso: string | null }> {
+  const [{ count }, { data: earliest }] = await Promise.all([
+    supabase.from('events').select('id', { count: 'exact', head: true }).in('type', [...ACTIVITY_TYPES]).or(placePredicate(placeId)),
+    supabase.from('events').select('ts').in('type', [...ACTIVITY_TYPES]).or(placePredicate(placeId)).order('ts', { ascending: true }).limit(1).maybeSingle(),
+  ])
+  return { entries: count ?? 0, sinceIso: (earliest?.ts as string | undefined) ?? null }
+}
+
 // ── The list: keyset pagination on (ts desc, id desc); filters; the ranch's rows only ──
 export async function listActivity(supabase: SupabaseClient, userId: string, filters: ActivityFilters, cursor?: string | null): Promise<ActivityPage | null> {
   const ranchId = await resolveRanchId(supabase, userId)
@@ -115,7 +129,7 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
     .eq('ranch_id', ranchId).in('type', [...ACTIVITY_TYPES])
     .order('ts', { ascending: false }).order('id', { ascending: false }).limit(PAGE_SIZE + 1)
   if (filters.actor) q = q.eq('user_id', filters.actor)
-  if (filters.place) q = q.or(`payload->>place_id.eq.${filters.place},payload->>from_place_id.eq.${filters.place},payload->>to_place_id.eq.${filters.place}`)
+  if (filters.place) q = q.or(placePredicate(filters.place))
   if (filters.lot) q = q.eq('payload->>herd_lot_id', filters.lot)
   if (filters.from && DAY.test(filters.from)) q = q.gte('ts', ranchDayStartIso(filters.from))
   if (filters.to && DAY.test(filters.to)) q = q.lt('ts', ranchDayEndIso(filters.to))
