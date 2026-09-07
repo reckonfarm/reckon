@@ -456,7 +456,7 @@ export default async function DashboardPage({
               ) : (
                 <Heading level={1} className="!text-lg !leading-snug">
                   {selectedCounty.name}, {selectedCounty.state}
-                  <span className="ml-2 align-middle font-dm-sans text-[14px] font-normal text-secondary-ink">
+                  <span className="ml-2 align-middle font-dm-sans text-[14px] font-normal text-ink">
                     FIPS {selectedCounty.fips}
                   </span>
                 </Heading>

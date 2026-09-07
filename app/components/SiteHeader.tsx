@@ -74,7 +74,7 @@ export default function SiteHeader({ center }: Props) {
               Dryline
             </span>
           </span>
-          <span className="text-[14px] sm:text-[14px] leading-tight text-secondary-ink font-dm-sans">
+          <span className="text-[14px] sm:text-[14px] leading-tight text-ink font-dm-sans">
             {TAGLINE}
           </span>
         </Link>
