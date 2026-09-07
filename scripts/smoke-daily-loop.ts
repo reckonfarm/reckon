@@ -265,6 +265,13 @@ async function main() {
     const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2C: the answer — recorded, remaining from the count, no invented runway',
       /4 bales recorded/.test(strip1) && /196 bales on hand \(from your count of 200/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))
+    // Block 5C — one receipt: the strip's link opens the exact entry it just made.
+    {
+      const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
+      const ob = await outbox(page)
+      const latestId = ob.length ? ob[ob.length - 1].id : null
+      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
+    }
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
     record('exactly one row under the client-minted id', !!id1 && (await rowsFor(id1)) === 1 && (await feedRows()) === 1, `id ${id1.slice(0, 8)}… rows=${id1 ? await rowsFor(id1) : '-'} feeds=${await feedRows()}`)
