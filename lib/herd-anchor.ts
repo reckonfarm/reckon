@@ -31,8 +31,11 @@ export async function getHerdAnchor(input: {
   // Already-resolved barns for homeFips (views2, commit 2) — the Markets body
   // shares one resolution with the Local auction card when the counties match.
   resolved?: ResolveResult
+  // The ranch whose history to read (050). Without it the membership policy still
+  // scopes the read, but a person on two ranches would see both.
+  ranchId?: string | null
 }): Promise<HerdAnchor> {
-  const { lots, homeFips, supabase } = input
+  const { lots, homeFips, supabase, ranchId = null } = input
 
   const resolved = input.resolved ?? await resolveBarns(homeFips)
   const estimate = estimateHerd({ lots }, resolved)
@@ -42,11 +45,13 @@ export async function getHerdAnchor(input: {
   // history via service-role (RLS-none). A read error → null → the panel shows "unavailable".
   let herdHistory: HerdHistoryRow[] | null = null
   try {
-    const { data, error } = await supabase
+    let q = supabase
       .from('herd_estimate_history')
       .select('snapshot_date, total_value, lots_priced')
       .order('snapshot_date', { ascending: false })
       .limit(2)
+    if (ranchId) q = q.eq('ranch_id', ranchId)
+    const { data, error } = await q
     herdHistory = error ? null : ((data ?? []) as HerdHistoryRow[])
   } catch { herdHistory = null }
 

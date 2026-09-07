@@ -6,6 +6,7 @@ import { LedgerPanel } from './LedgerTabs'
 import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
+import { getRanchLots } from '@/lib/herd-lots'
 
 // "Recently logged" — the last three lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
@@ -111,9 +112,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   for (const r of rows) { if (r.type === 'hay_fed') { const v = str(r.payload.herd_lot_id); if (v) lotIds.add(v) } }
   const lotNames = new Map<string, string>()
   if (lotIds.size > 0) {
-    const { data: profile } = await supabase.from('operation_profiles').select('herd').maybeSingle()
-    const lots = (profile?.herd as { lots?: Lot[] } | null)?.lots
-    for (const l of Array.isArray(lots) ? lots : []) if (lotIds.has(l.id)) lotNames.set(l.id, lotLabel(l))
+    for (const l of await getRanchLots(supabase)) if (lotIds.has(l.id)) lotNames.set(l.id, lotLabel(l))   // the RANCH's lots (Block 4A)
   }
   const lotName = (id: unknown) => { const s = str(id); return s ? lotNames.get(s) ?? null : null }
 

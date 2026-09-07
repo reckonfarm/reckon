@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
+import { getRanchLots } from '@/lib/herd-lots'
 
 // ─── A place's practical memory (Block 2F) ────────────────────────────────────
 // "When did we last…" at one place, answered from the ledger: the most recent
@@ -49,13 +50,12 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
       supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>from_place_id', placeId).order('ts', { ascending: false }).limit(5),
       supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>to_place_id', placeId).order('ts', { ascending: false }).limit(5),
       supabase.from('devices').select('id, name, type').eq('place_id', placeId),
-      supabase.from('operation_profiles').select('herd').maybeSingle(),
+      getRanchLots(supabase),
     ])
     const rows = new Map<string, Row>()
     for (const r of [...(here.data ?? []), ...(from.data ?? []), ...(to.data ?? [])] as Row[]) rows.set(r.id, r)
     const all = [...rows.values()].sort((a, b) => b.ts.localeCompare(a.ts))
-    const lots = (herd.data as { herd?: { lots?: Lot[] } } | null)?.herd?.lots
-    const lotNames = new Map((Array.isArray(lots) ? lots : []).map(l => [l.id, lotLabel(l)]))
+    const lotNames = new Map(herd.map(l => [l.id, lotLabel(l)]))   // the RANCH's lots (Block 4A)
 
     const first = (pred: (r: Row) => boolean) => all.find(pred) ?? null
     const memory: PlaceMemory[] = []

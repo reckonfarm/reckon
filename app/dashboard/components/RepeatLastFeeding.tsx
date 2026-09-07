@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { fmtDay, fmtTime, todayKey, dayKey } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
+import { getRanchLots } from '@/lib/herd-lots'
 import RepeatLastCard, { type LastFeeding } from './RepeatLastCard'
 
 // The most recent feeding the ranch logged by hand, resolved to words (lot
@@ -42,11 +43,10 @@ export default async function RepeatLastFeeding() {
   let lotName: string | null = null
   const [placeRes, profileRes] = await Promise.all([
     placeId ? supabase.from('places').select('name').eq('id', placeId).maybeSingle() : Promise.resolve({ data: null }),
-    lotId ? supabase.from('operation_profiles').select('herd').maybeSingle() : Promise.resolve({ data: null }),
+    lotId ? getRanchLots(supabase) : Promise.resolve([] as Lot[]),
   ])
   placeName = (placeRes.data as { name?: string } | null)?.name ?? null
-  const lots = (profileRes.data as { herd?: { lots?: Lot[] } } | null)?.herd?.lots
-  const lot = Array.isArray(lots) ? lots.find(l => l.id === lotId) : undefined
+  const lot = profileRes.find(l => l.id === lotId)   // the RANCH's lots (Block 4A)
   lotName = lot ? lotLabel(lot) : null
 
   const last: LastFeeding = { bales, lotId: lot ? lotId : null, lotLabel: lotName, placeId: placeName ? placeId : null, placeName, whenLabel: whenLabel(data.ts as string) }

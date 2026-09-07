@@ -1,20 +1,22 @@
 import 'server-only'
 
 import { createClient } from './supabase-server'
+import { resolveRanchId } from './ranch-membership'
 
 // ─── Operation profile service (read/write path) ─────────────────────────────────
 //
-// User-owned, PRIVATE operation data (migration 020 — operation_profiles). One row
-// per user: their herd groups, crops/acreage, and the county the operation works out
-// of. A producer reads and writes ONLY their own row.
+// The RANCH's operation data (migration 020 — operation_profiles; 050 — Block 4A moved
+// it to the ranch). One row per ranch: the herd's lots, crops/acreage, the county the
+// operation works out of, the "where I sell" pin. Every member reads and writes the
+// ranch's row; a person on no ranch keeps a row of their own (ranch_id null).
 //
 // ⚠️  CLIENT — DELIBERATE EXCEPTION TO HOUSE STYLE. This module uses the user-scoped
 //   SSR client (lib/supabase-server.ts createClient — the cookie-bound @supabase/ssr
 //   client that runs AS the signed-in user and RESPECTS RLS). It does NOT use the
 //   service-role createServiceClient() that every other service in this repo uses.
-//   The four RLS policies on operation_profiles (user_id = auth.uid()) ARE the access
-//   control — so reads/writes carry no manual .eq('user_id', …) filter; the policy
-//   scopes every query to the caller's own row. Service-role would bypass the policies
+//   The four RLS policies on operation_profiles (050: membership through ranch_members)
+//   ARE the access control; the .eq('ranch_id', …) below picks the caller's ranch among
+//   the ranches the policy exposes. Service-role would bypass the policies
 //   and silently defeat them. If you reach for createServiceClient here, that's the bug.
 //
 // HONEST RESULT (mirrors the discriminated, never-fabricate posture of
@@ -33,7 +35,8 @@ export type Json = string | number | boolean | null | { [key: string]: Json } | 
 export interface OperationProfile {
   sell_barn_slug?: string | null   // Block 2.5 A2 — "where I sell" MARS report slug (046)
   id:          string
-  user_id:     string
+  user_id:     string          // authorship — who last wrote the row; never a grant
+  ranch_id:    string | null   // the ranch the row belongs to (050); null only for a person on no ranch
   county_fips: string | null
   herd:        Json
   crops:       Json
@@ -60,7 +63,7 @@ export type UpsertOperationProfileResult =
   | { status: 'unauthenticated' }
   | { status: 'data_unavailable' }
 
-const PROFILE_COLUMNS = 'id, user_id, county_fips, herd, crops, sell_barn_slug, created_at, updated_at'
+const PROFILE_COLUMNS = 'id, user_id, ranch_id, county_fips, herd, crops, sell_barn_slug, created_at, updated_at'
 // Until migration 046 lands, the pin column is absent: the read falls back to
 // the pre-046 column list rather than failing the whole profile.
 const PROFILE_COLUMNS_PRE_046 = 'id, user_id, county_fips, herd, crops, created_at, updated_at'
@@ -88,12 +91,13 @@ export async function getOperationProfile(
   const user = auth ? auth.user : (await supabase.auth.getUser()).data.user
   if (!user) return { status: 'unauthenticated' }
 
-  let { data, error } = await supabase
-    .from('operation_profiles')
-    .select(PROFILE_COLUMNS)
-    .maybeSingle()
-  if (error && /sell_barn_slug/.test(error.message)) {
-    ;({ data, error } = await supabase.from('operation_profiles').select(PROFILE_COLUMNS_PRE_046).maybeSingle())
+  // The ranch's row (050). A person on no ranch reads their own.
+  const ranchId = await resolveRanchId(supabase, user.id)
+  const col = ranchId ? 'ranch_id' : 'user_id'
+  const key = ranchId ?? user.id
+  let { data, error } = await supabase.from('operation_profiles').select(PROFILE_COLUMNS).eq(col, key).maybeSingle()
+  if (error && /sell_barn_slug|ranch_id/.test(error.message)) {
+    ;({ data, error } = await supabase.from('operation_profiles').select(PROFILE_COLUMNS_PRE_046).eq('user_id', user.id).maybeSingle())
   }
 
   if (error) {
@@ -124,8 +128,12 @@ export async function upsertOperationProfile(
   // is bound from auth, never from input — the conflict target, so the upsert resolves
   // to UPDATE on the caller's existing row (or INSERT their first one). RLS's WITH CHECK
   // (user_id = auth.uid()) is the backstop: a mismatched user_id would be rejected.
+  // The row is the RANCH's (050): stamped with the member's ranch and upserted on it,
+  // so two members editing the herd edit ONE row. user_id records who wrote last.
+  const ranchId = await resolveRanchId(supabase, user.id)
   const payload: Record<string, unknown> = {
     user_id:    user.id,
+    ...(ranchId ? { ranch_id: ranchId } : {}),
     updated_at: new Date().toISOString(),
   }
   if ('county_fips' in input) payload.county_fips = input.county_fips
@@ -135,7 +143,7 @@ export async function upsertOperationProfile(
 
   const { data, error } = await supabase
     .from('operation_profiles')
-    .upsert(payload, { onConflict: 'user_id' })
+    .upsert(payload, { onConflict: ranchId ? 'ranch_id' : 'user_id' })
     .select(PROFILE_COLUMNS)
     .maybeSingle()
 
