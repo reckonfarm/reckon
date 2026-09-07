@@ -232,7 +232,7 @@ function SourceFavicon({ link, source, size = 20 }: { link: string; source: stri
 function ExternalArrow() {
   return (
     <svg
-      className="h-3.5 w-3.5 flex-shrink-0 text-forest-green/30 transition-colors group-hover:text-forest-green/60"
+      className="h-3.5 w-3.5 flex-shrink-0 text-secondary-ink transition-colors group-hover:text-secondary-ink"
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
@@ -268,13 +268,13 @@ function NewsCard({
           left; timestamp + external-link affordance right-aligned on the same row. */}
       <div className="mb-2.5 flex items-center gap-2">
         <SourceFavicon link={item.link} source={item.source} size={20} />
-        <span className="font-dm-sans text-sm font-semibold text-forest-green/70">
+        <span className="font-dm-sans text-sm font-semibold text-secondary-ink">
           {item.source}
         </span>
         {item.regional && !hideRegionalBadge && <NearYouBadge />}
         <span className="ml-auto flex items-center gap-2">
           {item.pubDate && (
-            <span className="font-dm-sans text-xs text-forest-green/40">
+            <span className="font-dm-sans text-[14px] text-secondary-ink">
               {relativeTime(item.pubDate)}
             </span>
           )}
@@ -283,11 +283,11 @@ function NewsCard({
       </div>
       {/* Headline under the source — Heading L4 (text-xl, leading baked in). text-ink (warm
           near-black) is the intentional headline punch; size comes from the modular scale. */}
-      <Heading level={4} className="group-hover:text-ink/80">
+      <Heading level={4} className="group-hover:text-ink">
         {item.title}
       </Heading>
       {item.snippet && (
-        <p className="mt-2 line-clamp-2 font-dm-sans text-sm leading-relaxed text-forest-green/55">
+        <p className="mt-2 line-clamp-2 font-dm-sans text-sm leading-relaxed text-secondary-ink">
           {item.snippet}
         </p>
       )}
@@ -307,20 +307,20 @@ export function NewsCardCompact({ item }: { item: NewsItem }) {
       className="group flex items-baseline justify-between gap-3 py-3"
     >
       <div className="min-w-0">
-        <Heading level={5} className="group-hover:text-ink/80">
+        <Heading level={5} className="group-hover:text-ink">
           {item.title}
         </Heading>
         <div className="mt-1 flex items-center gap-1.5">
           <SourceFavicon link={item.link} source={item.source} size={16} />
-          <span className="font-dm-sans text-xs font-medium text-forest-green/45">
+          <span className="font-dm-sans text-[14px] font-medium text-secondary-ink">
             {item.source}
           </span>
           {item.pubDate && (
             <>
-              <span className="text-forest-green/20" aria-hidden="true">
+              <span className="text-secondary-ink" aria-hidden="true">
                 ·
               </span>
-              <span className="font-dm-sans text-xs text-forest-green/40">
+              <span className="font-dm-sans text-[14px] text-secondary-ink">
                 {relativeTime(item.pubDate)}
               </span>
             </>
@@ -339,7 +339,7 @@ function TierHeader({ title, count }: { title: string; count: number }) {
   return (
     <div className="mb-4 flex items-baseline gap-2">
       <Heading level={3}>{title}</Heading>
-      <span className="font-dm-sans text-sm font-medium text-forest-green/40">{count}</span>
+      <span className="font-dm-sans text-sm font-medium text-secondary-ink">{count}</span>
     </div>
   )
 }
@@ -362,7 +362,7 @@ function LoadMore({ label, onClick }: { label: string; onClick: () => void }) {
 // still renders. Never a fabricated item.
 function TierEmpty({ text }: { text: string }) {
   return (
-    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-forest-green/55 shadow-sm">
+    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-secondary-ink shadow-sm">
       {text}
     </p>
   )
@@ -394,7 +394,7 @@ function UnavailablePanel({ onRetry }: { onRetry: () => void }) {
       <p className="font-fraunces text-base font-semibold text-forest-green">
         News briefly unavailable
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-forest-green/60">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
         We couldn&apos;t reach the news sources just now — back shortly.
       </p>
       <button
@@ -414,7 +414,7 @@ function EmptyPanel() {
       <p className="font-fraunces text-base font-semibold text-forest-green">
         No cattle-country headlines right now
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-forest-green/60">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
         Nothing new from our sources at the moment — check back soon.
       </p>
     </div>
@@ -428,7 +428,7 @@ function FilterEmptyPanel({ label, onClear }: { label: string; onClear: () => vo
       <p className="font-fraunces text-base font-semibold text-forest-green">
         Nothing in {label} right now
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-forest-green/60">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
         No headlines match this filter at the moment.
       </p>
       <button
@@ -472,7 +472,7 @@ function FilterBar({
               'rounded-full px-4 py-2 font-dm-sans text-sm font-semibold transition-colors ' +
               (isActive
                 ? 'bg-forest-green text-white'
-                : 'border border-forest-green/20 text-forest-green/70 hover:border-forest-green/40 hover:text-forest-green')
+                : 'border border-forest-green/20 text-secondary-ink hover:border-forest-green/40 hover:text-forest-green')
             }
           >
             {f.label}
@@ -547,7 +547,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
           <Heading level={2}>Cattle Country</Heading>
-          <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+          <p className="mt-1 font-dm-sans text-sm leading-relaxed text-secondary-ink">
             The headlines moving cattle, hay, and ranch markets.
           </p>
         </div>
@@ -596,7 +596,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
                   <div>
                     <TierHeader title={hasAnyLocal ? 'National' : 'Top stories'} count={national.length} />
                     {!hasAnyLocal && region === null && (
-                      <p className="mb-4 -mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/55">
+                      <p className="mb-4 -mt-1 font-dm-sans text-sm leading-relaxed text-secondary-ink">
                         Set your county to see Northern Plains news.
                       </p>
                     )}

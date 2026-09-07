@@ -148,7 +148,7 @@ export default async function ActivityFeed() {
   if (!user) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/70">
+        <p className="font-dm-sans text-sm text-secondary-ink">
           The ranch ledger is private.
         </p>
         <Link
@@ -171,7 +171,7 @@ export default async function ActivityFeed() {
   if (error) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-sm text-secondary-ink">
           Activity is temporarily unavailable.
         </p>
       </Card>
@@ -183,7 +183,7 @@ export default async function ActivityFeed() {
   if (events.length === 0) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-sm text-secondary-ink">
           Nothing in the ledger yet. Decisions and device readings land here.
         </p>
       </Card>
@@ -202,15 +202,15 @@ export default async function ActivityFeed() {
                   {r.title}
                 </p>
                 {r.detail && (
-                  <p className="mt-0.5 truncate font-dm-sans text-xs text-forest-green/55">
+                  <p className="mt-0.5 truncate font-dm-sans text-[14px] text-secondary-ink">
                     {r.detail}
                   </p>
                 )}
-                <p className="mt-0.5 font-dm-sans text-xs text-forest-green/45">
+                <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                   {r.source ?? sourceLine(e)}
                 </p>
               </div>
-              <p className="shrink-0 font-dm-sans text-xs text-forest-green/50">
+              <p className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">
                 {whenLabel(e.ts)}
               </p>
             </div>
@@ -220,7 +220,7 @@ export default async function ActivityFeed() {
 
       {/* The cap, stated — never a silent truncation. */}
       {events.length === FEED_CAP && (
-        <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/40">
+        <p className="mt-2 text-center font-dm-sans text-[14px] text-secondary-ink">
           Showing the last {FEED_CAP} — older entries are kept, not shown yet.
         </p>
       )}

@@ -46,7 +46,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
         type="button"
         disabled={busy}
         onClick={() => run(null)}
-        className="mt-0.5 font-dm-sans text-xs text-forest-green/45 hover:text-forest-green disabled:opacity-50"
+        className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink hover:text-forest-green disabled:opacity-50"
       >
         Not finished after all? Undo
       </button>
@@ -60,7 +60,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
         type="button"
         disabled={busy}
         onClick={() => run('cut')}
-        className="mt-0.5 font-dm-sans text-xs text-forest-green/45 hover:text-forest-green disabled:opacity-50"
+        className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink hover:text-forest-green disabled:opacity-50"
       >
         Mark field cut
       </button>
@@ -71,7 +71,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
 
   return (
     <div className="mt-1.5">
-      <p className="font-dm-sans text-sm text-forest-green/70">
+      <p className="font-dm-sans text-sm text-secondary-ink">
         Looks like you finished this field — mark it cut?
       </p>
       <div className="mt-1.5 flex flex-wrap gap-2">

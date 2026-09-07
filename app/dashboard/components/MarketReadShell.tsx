@@ -26,9 +26,9 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 // unavailable"; never a fabricated $0 / 0% / lean.
 
 const CHIP = 'rounded-lg border border-forest-green/10 bg-cream/40 px-3 py-3'
-const CHIP_LABEL = 'font-dm-sans text-xs font-medium text-forest-green/60'
+const CHIP_LABEL = 'font-dm-sans text-[14px] font-medium text-secondary-ink'
 const CHIP_VALUE = 'mt-1 font-dm-sans text-base font-semibold tabular-nums text-ink'
-const CHIP_FOOT = 'mt-1 font-dm-sans text-[11px] leading-tight'
+const CHIP_FOOT = 'mt-1 font-dm-sans text-[14px] leading-tight'
 
 // 'YYYY-MM-DD' → 'Jun 20' (date-only → identical server/client, no tz drift).
 function fmtShort(iso: string): string {
@@ -45,9 +45,9 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
     return (
       <div className={CHIP}>
         <p className={CHIP_LABEL}>Feed-region drought</p>
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>16-state feeding area in D1+</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>16-state feeding area in D1+</p>
       </div>
     )
   }
@@ -60,7 +60,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
       <p className={CHIP_VALUE}>{Math.round(droughtPct)}%</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || pts == null ? (
-          <span className="text-muted/60">unchanged</span>
+          <span className="text-secondary-ink">unchanged</span>
         ) : (
           // Drought footprint rising = drier feeding area = bad → ▲ red.
           (() => {
@@ -73,7 +73,7 @@ function MoistureChip({ moisture }: { moisture: MoistureResult }) {
           })()
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(mapDate)}` : '16-state feeding area in D1+'}</p>
+      <p className={`${CHIP_FOOT} text-secondary-ink`}>{stale ? `as of ${fmtShort(mapDate)}` : '16-state feeding area in D1+'}</p>
     </div>
   )
 }
@@ -87,9 +87,9 @@ function CropChip({ crop }: { crop: CropResult }) {
     return (
       <div className={CHIP}>
         <p className={CHIP_LABEL}>Corn condition</p>
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-        <p className={`${CHIP_FOOT} text-muted/55`}>resumes in spring</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>US corn good + excellent</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>resumes in spring</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>US corn good + excellent</p>
       </div>
     )
   }
@@ -98,9 +98,9 @@ function CropChip({ crop }: { crop: CropResult }) {
     return (
       <div className={CHIP}>
         <p className={CHIP_LABEL}>Corn condition</p>
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>US corn good + excellent</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>US corn good + excellent</p>
       </div>
     )
   }
@@ -113,7 +113,7 @@ function CropChip({ crop }: { crop: CropResult }) {
       <p className={CHIP_VALUE}>{Math.round(gePct)}%</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || pts == null ? (
-          <span className="text-muted/60">unchanged</span>
+          <span className="text-secondary-ink">unchanged</span>
         ) : (
           // A better crop = more/cheaper feed = good → ▲ green (arrow and color agree here).
           (() => {
@@ -126,7 +126,7 @@ function CropChip({ crop }: { crop: CropResult }) {
           })()
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'US corn good + excellent'}</p>
+      <p className={`${CHIP_FOOT} text-secondary-ink`}>{stale ? `as of ${fmtShort(weekEnding)}` : 'US corn good + excellent'}</p>
     </div>
   )
 }
@@ -144,9 +144,9 @@ function CycleChip({ cycle }: { cycle: CycleResult }) {
     return (
       <div className={CHIP}>
         <p className={CHIP_LABEL}>Heifers on feed</p>
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>US feedlots · vs year ago</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>US feedlots · vs year ago</p>
       </div>
     )
   }
@@ -156,15 +156,15 @@ function CycleChip({ cycle }: { cycle: CycleResult }) {
     <div className={CHIP}>
       <p className={CHIP_LABEL}>Heifers on feed</p>
       {yoyPct == null ? (
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
       ) : (
         <p className={CHIP_VALUE}>{yoyPct > 0 ? '+' : ''}{yoyPct.toFixed(1)}%</p>
       )}
       <p className={CHIP_FOOT}>
         {yoyPct == null ? (
-          <span className="text-muted/60">no year-ago figure</span>
+          <span className="text-secondary-ink">no year-ago figure</span>
         ) : direction === 'steady' ? (
-          <span className="text-muted/60">unchanged</span>
+          <span className="text-secondary-ink">unchanged</span>
         ) : (
           // More heifers on feed = herd still liquidating = bad → ▲ red; fewer = rebuilding → ▼ green.
           (() => {
@@ -177,7 +177,7 @@ function CycleChip({ cycle }: { cycle: CycleResult }) {
           })()
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>US feedlots · quarterly{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
+      <p className={`${CHIP_FOOT} text-secondary-ink`}>US feedlots · quarterly{stale ? ` · as of ${fmtShort(reportPoint)}` : ''}</p>
     </div>
   )
 }
@@ -190,9 +190,9 @@ function PriceChip({ corn }: { corn: CornResult }) {
     return (
       <div className={CHIP}>
         <p className={CHIP_LABEL}>Corn</p>
-        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-ink/25">&mdash;</p>
-        <p className={`${CHIP_FOOT} text-muted/55`}>{note}</p>
-        <p className={`${CHIP_FOOT} text-muted/40`}>CBOT front month · ¢/bu</p>
+        <p className="mt-1 font-fraunces text-xl font-semibold tabular-nums text-secondary-ink">&mdash;</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>{note}</p>
+        <p className={`${CHIP_FOOT} text-secondary-ink`}>CBOT front month · ¢/bu</p>
       </div>
     )
   }
@@ -205,7 +205,7 @@ function PriceChip({ corn }: { corn: CornResult }) {
       <p className={CHIP_VALUE}>{settlePrice.toFixed(2)}&cent;</p>
       <p className={CHIP_FOOT}>
         {direction === 'flat' || abs == null ? (
-          <span className="text-muted/60">unchanged</span>
+          <span className="text-secondary-ink">unchanged</span>
         ) : (
           (() => {
             const d = marketDelta(direction === 'up', false)
@@ -218,7 +218,7 @@ function PriceChip({ corn }: { corn: CornResult }) {
           })()
         )}
       </p>
-      <p className={`${CHIP_FOOT} text-muted/40`}>{stale ? `as of ${fmtShort(settleDate)}` : 'CBOT front month · ¢/bu'}</p>
+      <p className={`${CHIP_FOOT} text-secondary-ink`}>{stale ? `as of ${fmtShort(settleDate)}` : 'CBOT front month · ¢/bu'}</p>
     </div>
   )
 }

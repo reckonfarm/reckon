@@ -72,7 +72,7 @@ export default function RanchNameCard() {
           <Button type="submit" disabled={!dirty || saving || !name.trim()}>
             {saving ? 'Saving…' : 'Save name'}
           </Button>
-          {saved && <span className="font-dm-sans text-sm text-forest-green/60">Saved</span>}
+          {saved && <span className="font-dm-sans text-sm text-secondary-ink">Saved</span>}
         </div>
       </form>
     </Card>

@@ -453,7 +453,7 @@ export async function WeatherViewBody({
 
       {!history.length && (
         <Card shadow="none" className="px-6 py-8 text-center">
-          <p className="text-sm text-forest-green/60 font-dm-sans">
+          <p className="text-sm text-secondary-ink font-dm-sans">
             No drought data yet for this county.
           </p>
         </Card>
@@ -479,13 +479,13 @@ export async function WeatherViewBody({
                   {hayAvgPrice && ` · avg $${hayAvgPrice}/ton`}
                 </p>
               ) : (
-                <p className="font-fraunces text-base font-semibold text-forest-green/50 leading-snug sm:text-lg">
+                <p className="font-fraunces text-base font-semibold text-secondary-ink leading-snug sm:text-lg">
                   No hay listed within 200 miles yet.
                 </p>
               )}
 
               {lfpOfficial && bannerDefaultEstimate > 0 && (
-                <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+                <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
                   {cashToHayTons != null && hayAvgPrice != null
                     ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
                     : `Your estimated LFP payment is ~$${Math.round(bannerDefaultEstimate).toLocaleString()}.`}
@@ -500,7 +500,7 @@ export async function WeatherViewBody({
               </Link>
 
               {hayNearbyCount === 0 && (
-                <p className="mt-3 text-center font-dm-sans text-xs text-forest-green/40">
+                <p className="mt-3 text-center font-dm-sans text-[14px] text-secondary-ink">
                   <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
                 </p>
               )}
@@ -661,7 +661,7 @@ export async function HayViewBody({
             of the dashboard and can't trap the user). Copy is edited in one place
             after the calibration drive; render-only, no score/backend tie-in. */}
         <DashboardAccordion title="How the Hay Score works">
-          <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-forest-green/80">
+          <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-ink">
             <p>
               Each county gets a 0–100 score for how its hay outlook is shaping up this
               season. Greener is better, redder is worse. It&rsquo;s built from four things:
@@ -696,7 +696,7 @@ export async function HayViewBody({
               substitute for walking your own ground. Conditions change fast as rain comes. If a
               county looks wrong to you, that&rsquo;s worth knowing — tell us.
             </p>
-            <p className="text-forest-green/50">
+            <p className="text-secondary-ink">
               Data: PRISM precip, gridMET temperature/humidity/wind, USDM drought monitor.
               Updated weekly, provisional for the current season.
             </p>

@@ -42,12 +42,12 @@ export default function DeviceLiveness({ devices }: { devices: DeviceLivenessRow
       {devices.map((d, i) => {
         const fresh = d.lastSeen != null && isFresh(d.lastSeen)
         return (
-          <p key={i} className="flex items-center gap-1.5 font-dm-sans text-xs text-forest-green/50">
+          <p key={i} className="flex items-center gap-1.5 font-dm-sans text-[14px] text-secondary-ink">
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${fresh ? 'bg-up' : 'bg-forest-green/25'}`}
             />
-            <span className="font-medium text-forest-green/70">{d.name ?? 'Unknown device'}</span>
-            <span className="text-forest-green/25">·</span>
+            <span className="font-medium text-secondary-ink">{d.name ?? 'Unknown device'}</span>
+            <span className="text-secondary-ink">·</span>
             {d.lastSeen ? `last heard ${ageLabel(d.lastSeen)}` : 'never heard'}
           </p>
         )

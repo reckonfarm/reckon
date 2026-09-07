@@ -126,7 +126,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
             type="button"
             onClick={() => onChange(EMPTY_SLOT)}
             disabled={disabled}
-            className="min-h-[44px] shrink-0 px-2 font-dm-sans text-[15px] font-semibold text-forest-green/80 hover:text-forest-green"
+            className="min-h-[44px] shrink-0 px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
           >
             Pick existing
           </button>
@@ -194,7 +194,7 @@ function UnitInput({ unit, id, invalid, className = '', ...rest }: React.InputHT
         className={`min-h-[64px] pr-20 text-[32px] font-semibold tabular-nums ${className}`}
         {...rest}
       />
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-dm-sans text-[17px] font-medium text-forest-green/80">{unit}</span>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-dm-sans text-[17px] font-medium text-ink">{unit}</span>
     </div>
   )
 }
@@ -509,7 +509,7 @@ export default function LogIt() {
               <button
                 type="button"
                 onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
-                className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green/80 hover:text-forest-green"
+                className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-ink hover:text-forest-green"
               >
                 {type ? 'Back' : 'Close'}
               </button>
@@ -525,7 +525,7 @@ export default function LogIt() {
                     className="min-h-[84px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5"
                   >
                     <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{MANUAL_EVENT_LABELS[t]}</span>
-                    <span className="mt-1 block font-dm-sans text-[15px] text-forest-green/80">{TILE_HINT[t]}</span>
+                    <span className="mt-1 block font-dm-sans text-[15px] text-ink">{TILE_HINT[t]}</span>
                   </button>
                 ))}
               </div>
@@ -547,12 +547,12 @@ export default function LogIt() {
                     />
                   </Field>
                 ) : (
-                  <p className="font-dm-sans text-[15px] text-forest-green/80">
+                  <p className="font-dm-sans text-[15px] text-ink">
                     Now ·{' '}
                     <button
                       type="button"
                       onClick={() => { setWhen(toLocalInput(new Date())); setEditWhen(true) }}
-                      className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2 hover:text-forest-green/80"
+                      className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2 hover:text-ink"
                     >
                       change time
                     </button>
@@ -571,7 +571,7 @@ export default function LogIt() {
                     type="button"
                     onClick={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }}
                     disabled={busy}
-                    className="min-h-[48px] px-3 font-dm-sans text-[15px] font-semibold text-forest-green/70 hover:text-forest-green disabled:opacity-50"
+                    className="min-h-[48px] px-3 font-dm-sans text-[15px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
                   >
                     Cancel
                   </button>

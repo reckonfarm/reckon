@@ -138,14 +138,14 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
         </span>
 
         {hasAlert && (
-          <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-cream/30 text-xs font-bold">
+          <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-cream/30 text-[14px] font-bold">
             {alerts.length}
           </span>
         )}
       </button>
 
       {showAdded && (
-        <span className="text-xs font-dm-sans text-forest-green/70">
+        <span className="text-[14px] font-dm-sans text-secondary-ink">
           Added to{' '}
           <Link href="/watchlist" className="underline hover:text-forest-green">
             My Counties
@@ -155,18 +155,18 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
 
       {showTooltip && hasAlert && (
         <div className="absolute left-0 top-full z-40 mt-1.5 w-56 rounded-lg border border-forest-green/10 bg-white p-3 shadow-lg">
-          <p className="mb-1.5 text-xs font-semibold text-forest-green font-dm-sans">
+          <p className="mb-1.5 text-[14px] font-semibold text-forest-green font-dm-sans">
             Active drought alerts
           </p>
           <ul className="space-y-1">
             {alerts.map(a => (
-              <li key={a.level} className="flex items-center justify-between text-xs font-dm-sans">
+              <li key={a.level} className="flex items-center justify-between text-[14px] font-dm-sans">
                 <span className="font-medium text-forest-green">{a.level} {a.label}</span>
-                <span className="text-forest-green/60">{a.pct.toFixed(1)}%</span>
+                <span className="text-secondary-ink">{a.pct.toFixed(1)}%</span>
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-forest-green/40 font-dm-sans">% of county area affected</p>
+          <p className="mt-1.5 text-[14px] text-secondary-ink font-dm-sans">% of county area affected</p>
         </div>
       )}
     </div>

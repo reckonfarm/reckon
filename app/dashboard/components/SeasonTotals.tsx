@@ -120,12 +120,12 @@ export default async function SeasonTotals({ heading = true }: { heading?: boole
         {stats.map(s => (
           <div key={s.label}>
             <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>
-            <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">{s.label}</p>
-            {s.sub && <p className="font-dm-sans text-[11px] text-forest-green/40">{s.sub}</p>}
+            <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">{s.label}</p>
+            {s.sub && <p className="font-dm-sans text-[14px] text-secondary-ink">{s.sub}</p>}
           </div>
         ))}
       </div>
-      <p className="mt-3 font-dm-sans text-xs text-forest-green/40">
+      <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">
         Since {fmtDay(included[0].started_at)} · read straight off the machine.
       </p>
     </Card>

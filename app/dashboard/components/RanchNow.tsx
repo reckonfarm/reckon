@@ -119,7 +119,7 @@ export async function LiveJobCard() {
           <Link key={j.id} href={`/jobs/${j.id}`} className="block">
             <Card shadow="sm" className="border-forest-green/20 px-5 py-4 transition-colors hover:bg-forest-green/[0.03]">
               <div className="flex items-center gap-2">
-                <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/50">
+                <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wider text-secondary-ink">
                   On the ranch now
                 </p>
                 <InProgressBadge />
@@ -127,12 +127,12 @@ export async function LiveJobCard() {
               <p className="mt-1.5 font-fraunces text-2xl font-semibold text-forest-green">
                 {headline}
               </p>
-              <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
-                {name && <>{name}<span className="text-forest-green/25"> · </span></>}
+              <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
+                {name && <>{name}<span className="text-secondary-ink"> · </span></>}
                 since {fmtTime(j.started_at)} MT
-                <span className="text-forest-green/25"> · </span>
+                <span className="text-secondary-ink"> · </span>
                 {j.devices?.name ?? 'Unknown device'}
-                <span className="text-forest-green/25"> · </span>
+                <span className="text-secondary-ink"> · </span>
                 {fmtDuration(j.duration_s)} working
               </p>
             </Card>
@@ -193,18 +193,18 @@ export async function TodayJobs() {
                     <p className="truncate font-fraunces text-base font-semibold text-forest-green">
                       {name ?? <>{fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT</>}
                     </p>
-                    <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
+                    <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                       {name && (
                         <>
                           {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
-                          <span className="text-forest-green/25"> · </span>
+                          <span className="text-secondary-ink"> · </span>
                         </>
                       )}
                       {j.devices?.name ?? 'Unknown device'}
                       {bales && (
                         <>
-                          <span className="text-forest-green/25"> · </span>
-                          <span className="font-semibold text-forest-green/80">{bales}</span>
+                          <span className="text-secondary-ink"> · </span>
+                          <span className="font-semibold text-ink">{bales}</span>
                         </>
                       )}
                     </p>

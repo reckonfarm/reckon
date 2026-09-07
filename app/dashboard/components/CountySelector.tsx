@@ -121,12 +121,12 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
               ? `${selectedCounty.name}, ${selectedCounty.state}`
               : 'Search by county name, state, or FIPS…'
           }
-          className="w-full rounded-lg border border-forest-green/20 bg-white py-3 pl-4 pr-10 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/50 focus:border-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/20 transition-colors"
+          className="w-full rounded-lg border border-forest-green/20 bg-white py-3 pl-4 pr-10 text-sm font-dm-sans text-forest-green placeholder:text-secondary-ink focus:border-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/20 transition-colors"
         />
 
         {/* Loading dots */}
         {loading && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-forest-green/30 font-dm-sans select-none">
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-secondary-ink font-dm-sans select-none">
             …
           </span>
         )}
@@ -136,7 +136,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           <button
             onClick={clear}
             aria-label="Clear selection"
-            className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-forest-green/40 hover:text-rust transition-colors"
+            className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-secondary-ink hover:text-rust transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -157,10 +157,10 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
                 <span className="flex-1 truncate text-sm font-medium text-forest-green font-dm-sans">
                   {county.name}
                 </span>
-                <span className="ml-3 shrink-0 text-xs font-medium text-forest-green/60 font-dm-sans">
+                <span className="ml-3 shrink-0 text-[14px] font-medium text-secondary-ink font-dm-sans">
                   {county.state}
                 </span>
-                <span className="ml-2 shrink-0 text-xs text-forest-green/30 font-dm-sans">
+                <span className="ml-2 shrink-0 text-[14px] text-secondary-ink font-dm-sans">
                   {county.fips}
                 </span>
               </button>
@@ -172,7 +172,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
       {/* No match */}
       {showNoMatch && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 shadow-lg">
-          <p className="text-sm text-forest-green/50 font-dm-sans">
+          <p className="text-sm text-secondary-ink font-dm-sans">
             No counties match &ldquo;{query}&rdquo;
           </p>
         </div>

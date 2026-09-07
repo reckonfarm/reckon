@@ -63,7 +63,7 @@ export default function LfpCard({
           >
             <span>{open ? 'Hide details' : 'Details — path to payment, estimate, eligibility math'}</span>
             <svg
-              className={`h-5 w-5 shrink-0 text-forest-green/50 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              className={`h-5 w-5 shrink-0 text-secondary-ink transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />

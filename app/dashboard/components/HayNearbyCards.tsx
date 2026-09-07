@@ -68,7 +68,7 @@ export default function HayNearbyCards({
   if (listings.length === 0) {
     return (
       <Card shadow="none" className="px-6 py-8 text-center">
-        <p className="text-sm text-forest-green/60 font-dm-sans">
+        <p className="text-sm text-secondary-ink font-dm-sans">
           No hay for sale listed near you yet.
         </p>
       </Card>
@@ -99,7 +99,7 @@ export default function HayNearbyCards({
                   className="h-full w-full object-cover"
                 />
                 {l.photoUrls.length > 1 && (
-                  <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-xs text-white">
+                  <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-1.5 py-0.5 font-dm-sans text-[14px] text-white">
                     +{l.photoUrls.length - 1} more
                   </span>
                 )}
@@ -112,47 +112,47 @@ export default function HayNearbyCards({
                 <Heading level={5}>
                   {l.hayType ?? 'Hay'}
                   {l.cuttingNumber != null && (
-                    <span className="font-dm-sans text-sm font-normal text-forest-green/60 ml-1">
+                    <span className="font-dm-sans text-sm font-normal text-secondary-ink ml-1">
                       — {ORDINALS[l.cuttingNumber]} cut
                     </span>
                   )}
                 </Heading>
                 {l.reliefFlag && (
-                  <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-red-700 ring-1 ring-red-200">
+                  <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-red-700 ring-1 ring-red-200">
                     Relief
                   </span>
                 )}
                 {l.baleType && (
-                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green/70 ring-1 ring-forest-green/15">
+                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-secondary-ink ring-1 ring-forest-green/15">
                     {BALE_TYPE_LABELS[l.baleType] ?? l.baleType}
                   </span>
                 )}
                 {l.storageMethod === 'barn' && (
-                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green/70 ring-1 ring-forest-green/15">
+                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-secondary-ink ring-1 ring-forest-green/15">
                     Barn stored
                   </span>
                 )}
                 {l.storageMethod === 'covered' && (
-                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green/70 ring-1 ring-forest-green/15">
+                  <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-secondary-ink ring-1 ring-forest-green/15">
                     Covered
                   </span>
                 )}
                 {l.hasTest && (
-                  <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
+                  <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                     Hay test
                   </span>
                 )}
                 {badge && (
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium font-dm-sans ring-1 ${badge.cls}`}>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[14px] font-medium font-dm-sans ring-1 ${badge.cls}`}>
                     {badge.label} Drought
                   </span>
                 )}
               </div>
 
               {/* Location + distance (always shown — this is the ranking signal) */}
-              <p className="mt-1 text-sm text-forest-green/60 font-dm-sans">
+              <p className="mt-1 text-sm text-secondary-ink font-dm-sans">
                 {l.countyName}, {l.state}
-                <span className="ml-1 text-forest-green/40">· {l.miles} mi away</span>
+                <span className="ml-1 text-secondary-ink">· {l.miles} mi away</span>
               </p>
 
               {/* Price — delivered headline (we always know the home county here) */}
@@ -160,9 +160,9 @@ export default function HayNearbyCards({
                 <div className="mt-1.5">
                   <p className="font-fraunces text-xl font-semibold text-forest-green leading-none">
                     ${dc.delivered}
-                    <span className="ml-1 font-dm-sans text-xs font-medium text-forest-green/60">/ton est. delivered</span>
+                    <span className="ml-1 font-dm-sans text-[14px] font-medium text-secondary-ink">/ton est. delivered</span>
                   </p>
-                  <p className="mt-1 text-xs text-forest-green/50 font-dm-sans">
+                  <p className="mt-1 text-[14px] text-secondary-ink font-dm-sans">
                     ${dc.base}/ton hay + ~${dc.freightPerTon}/ton est. freight · ~{dc.miles} mi
                   </p>
                 </div>
@@ -173,13 +173,13 @@ export default function HayNearbyCards({
               )}
 
               {/* Meta row */}
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-forest-green/50 font-dm-sans">
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[14px] text-secondary-ink font-dm-sans">
                 {l.tonnage != null && <span>{l.tonnage} tons</span>}
                 {l.haulRadiusMiles != null && <span>Hauls up to {l.haulRadiusMiles} mi</span>}
               </div>
 
               {l.description && (
-                <p className="mt-2 text-sm text-forest-green/70 font-dm-sans line-clamp-2">
+                <p className="mt-2 text-sm text-secondary-ink font-dm-sans line-clamp-2">
                   {l.description}
                 </p>
               )}

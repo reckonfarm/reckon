@@ -57,9 +57,9 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
       <p className={EYEBROW}>Repeat last feeding</p>
       <p className="mt-2 font-fraunces text-[28px] font-semibold leading-tight text-forest-green sm:text-[32px]">
         {last.bales} {last.bales === 1 ? 'bale' : 'bales'}
-        {last.lotLabel && <span className="font-dm-sans text-[17px] font-medium text-forest-green/80"> · {last.lotLabel}</span>}
+        {last.lotLabel && <span className="font-dm-sans text-[17px] font-medium text-ink"> · {last.lotLabel}</span>}
       </p>
-      <p className="mt-1 font-dm-sans text-[15px] text-forest-green/75">
+      <p className="mt-1 font-dm-sans text-[15px] text-ink">
         {last.placeName ? `${last.placeName} · ` : ''}last logged {last.whenLabel}
       </p>
 

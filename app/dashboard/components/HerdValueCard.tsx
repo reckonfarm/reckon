@@ -59,13 +59,13 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
             <p className="mt-1.5 font-fraunces text-2xl font-semibold tabular-nums text-forest-green">
               {estimate.total_priced > 0 ? formatUSD(estimate.total_priced) : ''}
               {estimate.thin_range && (
-                <span className={estimate.total_priced > 0 ? 'text-[17px] text-forest-green/80' : ''}>
+                <span className={estimate.total_priced > 0 ? 'text-[17px] text-ink' : ''}>
                   {estimate.total_priced > 0 ? ' + ' : ''}{fmtThinRange(estimate.thin_range.low, estimate.thin_range.high)}
                 </span>
               )}
             </p>
             {/* Scope is the BARN the prices came from (Block 2.5 A2) — never the county. */}
-            <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
+            <p className="mt-1 font-dm-sans text-[15px] text-ink">
               {estimate.lots_priced} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} priced
               {towns && ` · ${scopeLabel({ kind: 'nearby', town: towns })}`}
               {estimate.as_of && ` · as of ${fmtShort(estimate.as_of)}`}
@@ -73,16 +73,16 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
             </p>
             {sensitivity && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sensitivity}</p>}
             {sources.length > 0 && (
-              <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
+              <p className="mt-1 font-dm-sans text-[15px] text-ink">
                 {sources.map((s, i) => <span key={s.slug_id}>{i > 0 && ' · '}<ReportEvidence barn={s.barn_name} date={s.report_date} head={s.head_count} slug={s.slug_id} /></span>)}
               </p>
             )}
           </>
         ) : (
-          <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">{estimate.note}</p>
+          <p className="mt-1.5 font-dm-sans text-[15px] text-ink">{estimate.note}</p>
         )}
         {minFloor != null && (
-          <p className="mt-1 font-dm-sans text-[15px] text-forest-green/80">
+          <p className="mt-1 font-dm-sans text-[15px] text-ink">
             LRP coverage available to explore for {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · reference coverage price from ${minFloor.toFixed(2)}/cwt · needs a purchased endorsement
           </p>
         )}

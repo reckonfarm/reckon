@@ -11,7 +11,7 @@ import type { MapListing } from '@/app/hay/map/HayMapClient'
 const HayMapClient = dynamic(() => import('@/app/hay/map/HayMapClient'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[400px] items-center justify-center rounded-xl border border-forest-green/10 bg-white font-dm-sans text-sm text-forest-green/40">
+    <div className="flex h-[400px] items-center justify-center rounded-xl border border-forest-green/10 bg-white font-dm-sans text-sm text-secondary-ink">
       Loading map…
     </div>
   ),

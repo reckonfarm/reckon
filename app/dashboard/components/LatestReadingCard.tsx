@@ -79,7 +79,7 @@ function Hero({ latest }: { latest: Reading }) {
           D{cat}
         </span>
       ) : (
-        <span className="inline-flex h-9 w-11 flex-shrink-0 items-center justify-center rounded-md border border-forest-green/20 bg-forest-green/5 text-[11px] font-semibold text-forest-green/50 font-dm-sans">
+        <span className="inline-flex h-9 w-11 flex-shrink-0 items-center justify-center rounded-md border border-forest-green/20 bg-forest-green/5 text-[14px] font-semibold text-secondary-ink font-dm-sans">
           None
         </span>
       )}
@@ -87,7 +87,7 @@ function Hero({ latest }: { latest: Reading }) {
         <p className="font-fraunces text-lg font-semibold leading-tight text-forest-green">
           {cat !== null ? `D${cat} · ${CAT_NAME[cat]}` : 'No drought'}
         </p>
-        <p className="font-dm-sans text-sm text-forest-green/60">{coverage}</p>
+        <p className="font-dm-sans text-sm text-secondary-ink">{coverage}</p>
       </div>
     </div>
   )
@@ -97,7 +97,7 @@ function Hero({ latest }: { latest: Reading }) {
 function RibbonAndSummary({ history }: { history: DroughtHistoryWeek[] }) {
   if (history.length === 0) {
     return (
-      <p className="font-dm-sans text-xs text-forest-green/40">3-year history unavailable — check back shortly.</p>
+      <p className="font-dm-sans text-[14px] text-secondary-ink">3-year history unavailable — check back shortly.</p>
     )
   }
 
@@ -143,12 +143,12 @@ function RibbonAndSummary({ history }: { history: DroughtHistoryWeek[] }) {
         {/* 1-year-ago tick: the recent 52 weeks are the right third (2/3 across). */}
         <div className="pointer-events-none absolute inset-y-0 left-2/3 w-px bg-forest-green/40" aria-hidden="true" />
       </div>
-      <div className="mt-1 flex items-center justify-between font-dm-sans text-[10px] text-forest-green/45">
+      <div className="mt-1 flex items-center justify-between font-dm-sans text-[14px] text-secondary-ink">
         <span>3 yr ago</span>
         <span>now ▲</span>
       </div>
 
-      <p className="mt-2 font-dm-sans text-xs text-forest-green/60">{summary}</p>
+      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">{summary}</p>
     </div>
   )
 }
@@ -164,7 +164,7 @@ export default function LatestReadingCard({
     <Card shadow="soft" className="p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Heading level={5}>Latest Reading</Heading>
-        <span className="rounded-full bg-forest-green/10 px-3 py-1 text-xs font-medium text-forest-green font-dm-sans">
+        <span className="rounded-full bg-forest-green/10 px-3 py-1 text-[14px] font-medium text-forest-green font-dm-sans">
           Week of {formatWeek(latest.week_date)}
         </span>
       </div>
@@ -175,7 +175,7 @@ export default function LatestReadingCard({
         <RibbonAndSummary history={history} />
       </div>
 
-      <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+      <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
         Source:{' '}
         <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
           U.S. Drought Monitor

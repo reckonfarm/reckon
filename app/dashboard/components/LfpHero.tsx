@@ -103,7 +103,7 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
     const left   = weeksUntilTier1 ?? 4
     return (
       <div className="space-y-3">
-        <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/45">
+        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wider text-secondary-ink">
           Path to your first LFP payment
         </p>
         <div className="flex gap-1.5" aria-hidden="true">
@@ -111,10 +111,10 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
             <div key={i} className={`h-2 flex-1 rounded-full ${i < filled ? 'bg-forest-green' : 'bg-forest-green/10'}`} />
           ))}
         </div>
-        <p className="font-dm-sans text-sm text-forest-green/70">
+        <p className="font-dm-sans text-sm text-secondary-ink">
           <span className="font-medium tabular-nums text-forest-green">{filled}</span> of 4 consecutive D2 (Severe) weeks
         </p>
-        <p className="font-dm-sans text-sm leading-relaxed text-forest-green/55">
+        <p className="font-dm-sans text-sm leading-relaxed text-secondary-ink">
           {currentD2Streak > 0
             ? `${left} more consecutive week${left !== 1 ? 's' : ''} of D2 would trigger Tier 1 — 1 monthly payment.`
             : 'Four consecutive weeks of D2 (Severe) drought would trigger Tier 1 — 1 monthly payment.'}
@@ -129,7 +129,7 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
   const nextTier = maxTier < 6 ? tiers[maxTier] : null  // tiers[] 0-indexed; tiers[maxTier] = tier maxTier+1
   return (
     <div className="space-y-3">
-      <p className="font-dm-sans text-xs font-medium uppercase tracking-wider text-forest-green/45">
+      <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wider text-secondary-ink">
         {pending ? 'LFP tier ladder (OBBBA — pending FSA)' : 'LFP payout schedule'}
       </p>
       <ol>
@@ -142,23 +142,23 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
               className={`flex items-center justify-between gap-3 border-l-2 py-2 pl-3 ${reached ? 'border-forest-green' : 'border-forest-green/10'}`}
             >
               <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-dm-sans text-sm">
-                <span className={reached ? 'font-medium text-forest-green' : 'text-forest-green/40'}>
+                <span className={reached ? 'font-medium text-forest-green' : 'text-secondary-ink'}>
                   {shortLabel(t.label)}
                 </span>
                 {current && (
-                  <span className="font-dm-sans text-xs font-medium uppercase tracking-wide text-forest-green/50">
+                  <span className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">
                     Current
                   </span>
                 )}
               </span>
-              <span className={`shrink-0 font-dm-sans text-sm tabular-nums ${reached ? 'text-forest-green' : 'text-forest-green/40'}`}>
+              <span className={`shrink-0 font-dm-sans text-sm tabular-nums ${reached ? 'text-forest-green' : 'text-secondary-ink'}`}>
                 {t.payments} pmt{t.payments !== 1 ? 's' : ''}
               </span>
             </li>
           )
         })}
       </ol>
-      <p className="font-dm-sans text-sm leading-relaxed text-forest-green/55">
+      <p className="font-dm-sans text-sm leading-relaxed text-secondary-ink">
         {pending
           ? `Your county meets the Tier ${maxTier} threshold under OBBBA's new D2 rule, but FSA hasn't implemented it yet — so it's not officially triggered.`
           : `Your county has reached Tier ${maxTier} — ${payments} monthly payment${payments !== 1 ? 's' : ''}. You're paid at your highest qualifying tier.`}
@@ -203,7 +203,7 @@ async function DeltaLine({ fips, official }: { fips: string; official: boolean }
       text = `Unchanged ${sincePhrase(delta.priorWeek, delta.currentWeek)}.`
       break
   }
-  return <p className="font-dm-sans text-sm text-forest-green/55">{text}</p>
+  return <p className="font-dm-sans text-sm text-secondary-ink">{text}</p>
 }
 
 export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
@@ -232,11 +232,11 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
 
       {/* a. County + severity chip — small, orienting, above the hero */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <span className="font-dm-sans text-sm font-medium text-forest-green/70">
+        <span className="font-dm-sans text-sm font-medium text-secondary-ink">
           {countyName}
         </span>
         <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-[14px] font-medium"
           style={{ backgroundColor: chip.bg, color: chip.text }}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: chip.dot }} />
@@ -251,7 +251,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
             <p className="font-fraunces text-5xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-6xl">
               ~${Math.round(refEstimate!).toLocaleString()}
             </p>
-            <p className="mt-3 font-dm-sans text-sm text-forest-green/50">
+            <p className="mt-3 font-dm-sans text-sm text-secondary-ink">
               estimated LFP payment
             </p>
           </>
@@ -268,7 +268,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       </div>
 
       {/* c. Plain-language line — small, gray, money/decision framing under the hero */}
-      <p className="mt-4 max-w-xl font-dm-sans text-sm leading-relaxed text-forest-green/60">
+      <p className="mt-4 max-w-xl font-dm-sans text-sm leading-relaxed text-secondary-ink">
         {official
           ? `Your county qualifies for ${payments} monthly LFP payment${payments !== 1 ? 's' : ''} — ${tierLabel}. Estimate assumes ~100 head of adult beef cattle; your herd may differ.`
           : pending
@@ -287,7 +287,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
             <p className="font-dm-sans text-sm font-medium text-forest-green">
               Tier {maxTier} triggered — FSA signup is open now.
             </p>
-            <p className="mt-0.5 font-dm-sans text-xs text-forest-green/60">
+            <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
               <LfpDeadlineLine />
             </p>
           </div>
@@ -331,7 +331,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       <div className="mt-6 space-y-1.5 border-t border-forest-green/[0.08] pt-4">
         <LfpEstimateNote />
         <LfpDisclaimer />
-        <p className="font-dm-sans text-xs text-forest-green/40">
+        <p className="font-dm-sans text-[14px] text-secondary-ink">
           Drought data {dataAsOf ? `as of ${fmtAsOf(dataAsOf)}` : '— no current reading on file'}.
         </p>
       </div>

@@ -62,7 +62,7 @@ export default function TabBar({ tabs, activeTab, onChange }: Props) {
                 'px-4 py-2.5 text-sm font-medium font-dm-sans whitespace-nowrap transition-colors',
                 activeTab === tab.id
                   ? 'border-b-2 border-forest-green text-forest-green'
-                  : 'text-forest-green/50 hover:text-forest-green/80',
+                  : 'text-secondary-ink hover:text-ink',
               ].join(' ')}
             >
               {tab.label}

@@ -118,7 +118,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
       </button>
 
       {justSet && (
-        <span className="text-xs font-dm-sans text-forest-green/70">
+        <span className="text-[14px] font-dm-sans text-secondary-ink">
           Your dashboard opens here now
         </span>
       )}

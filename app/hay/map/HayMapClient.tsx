@@ -98,7 +98,7 @@ function ResetButton() {
       <div className="leaflet-control">
         <button
           onClick={() => map.setView([39.5, -98.5], 4)}
-          className="rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-xs font-dm-sans text-forest-green shadow-sm hover:bg-gray-50"
+          className="rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-[14px] font-dm-sans text-forest-green shadow-sm hover:bg-gray-50"
         >
           Reset view
         </button>
@@ -123,13 +123,13 @@ function LayerControl({
     <div className="leaflet-top leaflet-right" style={{ marginTop: 12, marginRight: 12 }}>
       <div className="leaflet-control">
         <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
-          <p className="mb-1.5 font-dm-sans text-[10px] font-semibold uppercase tracking-wide text-forest-green/40">
+          <p className="mb-1.5 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
             Layers
           </p>
           {overlays.map(o => (
             <label
               key={o.id}
-              className="flex cursor-pointer items-center gap-2 font-dm-sans text-xs text-forest-green"
+              className="flex cursor-pointer items-center gap-2 font-dm-sans text-[14px] text-forest-green"
             >
               <input
                 type="checkbox"

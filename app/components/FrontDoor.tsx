@@ -50,7 +50,7 @@ export default async function FrontDoor() {
             <h1 className="mt-4 font-fraunces text-[40px] font-semibold leading-[1.08] tracking-tight text-ink sm:text-[52px]">
               Know what got fed.<br />Know what&rsquo;s on hand.
             </h1>
-            <p className="mx-auto mt-5 max-w-xl font-dm-sans text-[17px] leading-relaxed text-forest-green/80 sm:text-[18px]">
+            <p className="mx-auto mt-5 max-w-xl font-dm-sans text-[17px] leading-relaxed text-ink sm:text-[18px]">
               A shared feeding record for your ranch. Log the feed from your phone, see what&rsquo;s left,
               and leave the next person a clear handoff. Works with no signal and no hardware.
             </p>
@@ -68,7 +68,7 @@ export default async function FrontDoor() {
                 className="h-auto w-full"
               />
             </Card>
-            <p className="mt-2 text-center font-dm-sans text-[13px] text-forest-green/80">
+            <p className="mt-2 text-center font-dm-sans text-[14px] text-ink">
               A real screen from the ledger, on an example ranch (Dry Creek Ranch). Saved on this phone → Waiting to sync → Synced to ranch, then the answer.
             </p>
           </section>
@@ -84,7 +84,7 @@ export default async function FrontDoor() {
                   >
                     Join the winter pilot
                   </Link>
-                  <p className="mt-3 font-dm-sans text-[15px] leading-relaxed text-forest-green/80">
+                  <p className="mt-3 font-dm-sans text-[15px] leading-relaxed text-ink">
                     Billing isn&rsquo;t live yet, so the honest ask is a pilot, not a purchase. Pricing will be per ranch, not per head.
                   </p>
                 </div>
@@ -99,7 +99,7 @@ export default async function FrontDoor() {
 
           {/* ── 6. The county tools keep a door; Markets keeps an honest module ── */}
           <section className="mt-10 text-center">
-            <p className="font-dm-sans text-[15px] text-forest-green/80">
+            <p className="font-dm-sans text-[15px] text-ink">
               <Link href="/dashboard" className="min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Check county drought, programs, and markets</Link>
               {' '}— free, no account needed.
             </p>
@@ -108,11 +108,11 @@ export default async function FrontDoor() {
           {ref && (
             <section className="mt-8">
               <Card shadow="none" className="px-5 py-4">
-                <p className="font-dm-sans text-[13px] font-semibold uppercase tracking-wider text-forest-green/80">Markets · latest reference</p>
+                <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-ink">Markets · latest reference</p>
                 <p className="mt-1 font-dm-sans text-[16px] text-forest-green">
                   {ref.scope} · <ReportEvidence barn={ref.town} date={ref.saleDate} slug={ref.reportId} />
                 </p>
-                <p className="mt-1 font-dm-sans text-[14px] text-forest-green/80">
+                <p className="mt-1 font-dm-sans text-[14px] text-ink">
                   An auction report from {ref.town}, with head counts and class on every line. Not a county price, not a forecast.{' '}
                   <Link href="/dashboard?fips=30111&view=markets" className="font-semibold text-forest-green underline underline-offset-2">Open Markets →</Link>
                 </p>

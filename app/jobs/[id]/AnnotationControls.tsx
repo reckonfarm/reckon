@@ -61,7 +61,7 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
           type="button"
           disabled={busy}
           onClick={() => setCustomOpen(true)}
-          className="rounded-full border border-dashed border-forest-green/25 px-3 py-1.5 font-dm-sans text-sm text-forest-green/60 hover:text-forest-green disabled:opacity-50"
+          className="rounded-full border border-dashed border-forest-green/25 px-3 py-1.5 font-dm-sans text-sm text-secondary-ink hover:text-forest-green disabled:opacity-50"
         >
           Custom…
         </button>
@@ -97,14 +97,14 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
     <Card shadow="none" className="mt-5 px-5 py-4">
       {dismissed && (
         <div className="mb-3 flex items-center justify-between gap-3 border-b border-forest-green/10 pb-3">
-          <p className="font-dm-sans text-sm text-forest-green/60">
+          <p className="font-dm-sans text-sm text-secondary-ink">
             Dismissed — hidden from the jobs list.
           </p>
           <button
             type="button"
             disabled={busy}
             onClick={() => run({ dismissed: false })}
-            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
           >
             Restore
           </button>
@@ -113,14 +113,14 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
 
       {name && !editing ? (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="font-dm-sans text-sm text-forest-green/70">
+          <p className="font-dm-sans text-sm text-secondary-ink">
             Named <span className="font-semibold text-forest-green">{name}</span>
           </p>
           <button
             type="button"
             disabled={busy}
             onClick={() => setEditing(true)}
-            className="font-dm-sans text-xs font-semibold text-forest-green/60 hover:text-forest-green disabled:opacity-50"
+            className="font-dm-sans text-[14px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
           >
             Change
           </button>
@@ -128,15 +128,15 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
             type="button"
             disabled={busy}
             onClick={() => run({ name: null })}
-            className="font-dm-sans text-xs font-semibold text-forest-green/60 hover:text-forest-green disabled:opacity-50"
+            className="font-dm-sans text-[14px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
           >
             Clear
           </button>
         </div>
       ) : (
         <div>
-          <p className="font-dm-sans text-sm text-forest-green/70">
-            Name this session <span className="text-forest-green/45">(optional)</span>
+          <p className="font-dm-sans text-sm text-secondary-ink">
+            Name this session <span className="text-secondary-ink">(optional)</span>
           </p>
           {chips}
         </div>
@@ -151,11 +151,11 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
             type="button"
             disabled={busy}
             onClick={() => run({ dismissed: true })}
-            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
           >
             Dismiss this session
           </button>
-          <span className="font-dm-sans text-xs text-forest-green/40">
+          <span className="font-dm-sans text-[14px] text-secondary-ink">
             Hides it from the list; find it again under “Show all sessions”.
           </span>
         </div>

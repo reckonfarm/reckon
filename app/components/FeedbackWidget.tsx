@@ -125,7 +125,7 @@ export default function FeedbackWidget() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setOpen(false)}
-                    className="rounded p-1 text-forest-green/40 transition-colors hover:text-forest-green/70"
+                    className="rounded p-1 text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Close"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -135,7 +135,7 @@ export default function FeedbackWidget() {
                   </button>
                   <button
                     onClick={dismiss}
-                    className="rounded px-1.5 py-1 text-[11px] text-forest-green/40 transition-colors hover:text-forest-green/70"
+                    className="rounded px-1.5 py-1 text-[14px] text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Hide feedback for this visit"
                   >
                     Hide
@@ -150,10 +150,10 @@ export default function FeedbackWidget() {
                     <button
                       key={s.value}
                       onClick={() => setSentiment(active ? null : s.value)}
-                      className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl border py-2 text-[11px] transition-colors ${
+                      className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl border py-2 text-[14px] transition-colors ${
                         active
                           ? 'border-forest-green bg-forest-green/5 text-forest-green'
-                          : 'border-forest-green/15 text-forest-green/55 hover:border-forest-green/30'
+                          : 'border-forest-green/15 text-secondary-ink hover:border-forest-green/30'
                       }`}
                       aria-pressed={active}
                     >
@@ -170,7 +170,7 @@ export default function FeedbackWidget() {
                 placeholder="Anything on your mind? (optional)"
                 rows={3}
                 maxLength={2000}
-                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-sm text-forest-green placeholder:text-forest-green/35 focus:border-forest-green/40 focus:outline-none"
+                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-sm text-forest-green placeholder:text-secondary-ink focus:border-forest-green/40 focus:outline-none"
               />
 
               <button

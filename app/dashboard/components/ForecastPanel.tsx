@@ -92,7 +92,7 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
 function UnavailableCard() {
   return (
     <Card className="p-4 sm:p-6">
-      <p className="text-sm text-forest-green/50 font-dm-sans">
+      <p className="text-sm text-secondary-ink font-dm-sans">
         Forecast temporarily unavailable — check back shortly.
       </p>
     </Card>
@@ -152,15 +152,15 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                   Forest-green + muted: it's spray-planning context, not an alarm. */}
               {isWindy && (
                 <span
-                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[9px] font-semibold leading-none text-forest-green/60"
+                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[14px] font-semibold leading-none text-secondary-ink"
                   title={`Wind to ${d.windMph} mph`}
                 >
                   <WindGlyph size={12} />
                   {d.windMph}
                 </span>
               )}
-              <div className="text-[11px] font-dm-sans font-semibold leading-tight text-forest-green/70">{d.label}</div>
-              <div className="text-[9px] font-dm-sans leading-tight text-forest-green/40">{d.date}</div>
+              <div className="text-[14px] font-dm-sans font-semibold leading-tight text-secondary-ink">{d.label}</div>
+              <div className="text-[14px] font-dm-sans leading-tight text-secondary-ink">{d.date}</div>
               <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>
               {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
                   with the value (same RAIN_BLUE, opacity ramps 55%→100% across 0–100%,
@@ -178,9 +178,9 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               >
                 {d.precip != null ? `${d.precip}%` : '—'}
               </div>
-              <div className="mt-1.5 font-dm-sans text-[11px] text-forest-green">
+              <div className="mt-1.5 font-dm-sans text-[14px] text-forest-green">
                 {d.high != null ? `${d.high}°` : '—'}
-                <span className="text-forest-green/40"> / {d.low != null ? `${d.low}°` : '—'}</span>
+                <span className="text-secondary-ink"> / {d.low != null ? `${d.low}°` : '—'}</span>
               </div>
             </button>
           )
@@ -191,12 +191,12 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
           by default so the strip stays compact). */}
       {open != null && days[open] && (
         <div className="mt-3 rounded-lg border border-forest-green/10 bg-[#FDFBF7] px-3 py-2">
-          <p className="font-dm-sans text-xs font-semibold text-forest-green">{days[open].label}</p>
+          <p className="font-dm-sans text-[14px] font-semibold text-forest-green">{days[open].label}</p>
           {days[open].detailDay && (
-            <p className="mt-1 font-dm-sans text-xs leading-relaxed text-forest-green/70">{days[open].detailDay}</p>
+            <p className="mt-1 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">{days[open].detailDay}</p>
           )}
           {days[open].detailNight && (
-            <p className="mt-1 font-dm-sans text-xs leading-relaxed text-forest-green/50">
+            <p className="mt-1 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">
               <span className="font-medium">Overnight: </span>{days[open].detailNight}
             </p>
           )}
@@ -206,7 +206,7 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
       {/* Visible freshness stamp (the never-lie rule), honest about precision: this is
           NWS's gridpoint forecast for the county CENTER, not a specific ranch. One line,
           small, so it doesn't bloat the compact card. */}
-      <p className="mt-3 truncate font-dm-sans text-[10px] text-forest-green/40">
+      <p className="mt-3 truncate font-dm-sans text-[14px] text-secondary-ink">
         NWS · county center{updated ? ` · updated ${updated}` : ''}
       </p>
     </Card>

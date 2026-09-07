@@ -21,7 +21,7 @@ export default function Error({
                 Dryline
               </span>
             </span>
-            <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
+            <span className="text-[14px] sm:text-[14px] leading-tight text-secondary-ink font-dm-sans">
               Your ranch, on the record.
             </span>
           </Link>
@@ -39,7 +39,7 @@ export default function Error({
           <h1 className="font-fraunces text-3xl font-semibold text-forest-green mb-3">
             Something went wrong
           </h1>
-          <p className="font-dm-sans text-forest-green/60 mb-6">
+          <p className="font-dm-sans text-secondary-ink mb-6">
             We could not load the data. This may be a temporary issue with a data source.
           </p>
           <div className="flex gap-3 justify-center">

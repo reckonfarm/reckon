@@ -183,7 +183,7 @@ export default function HerdForm() {
   function renderEditor() {
     return (
       <Card shadow="soft" className="p-4 sm:p-5">
-        <p className="font-dm-sans text-xs font-medium uppercase tracking-wide text-muted/50">
+        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">
           {editing === 'new' ? 'Add a lot' : 'Edit lot'}
         </p>
 
@@ -252,7 +252,7 @@ export default function HerdForm() {
           <button
             type="button"
             onClick={() => setShowDetail(s => !s)}
-            className="font-dm-sans text-sm font-medium text-accent/70 hover:text-accent"
+            className="font-dm-sans text-sm font-medium text-brand hover:text-accent"
           >
             {showDetail ? 'Hide details' : 'Sharpen details (optional)'}
           </button>
@@ -279,7 +279,7 @@ export default function HerdForm() {
 
               <div>
                 <p className="mb-1.5 font-dm-sans text-sm font-medium text-ink">Sale windows</p>
-                <p className="mb-2 font-dm-sans text-xs text-muted/70">
+                <p className="mb-2 font-dm-sans text-[14px] text-secondary-ink">
                   When you expect to sell. Leave empty if you&rsquo;re not sure yet.
                 </p>
                 {dWindows.length > 0 && (
@@ -287,14 +287,14 @@ export default function HerdForm() {
                     {dWindows.map(m => (
                       <span
                         key={m}
-                        className="inline-flex items-center gap-1 rounded-full border border-line/20 bg-accent/[0.05] px-2.5 py-1 font-dm-sans text-xs text-accent"
+                        className="inline-flex items-center gap-1 rounded-full border border-line/20 bg-accent/[0.05] px-2.5 py-1 font-dm-sans text-[14px] text-accent"
                       >
                         {formatMonth(m)}
                         <button
                           type="button"
                           aria-label={`Remove ${formatMonth(m)}`}
                           onClick={() => setDWindows(w => w.filter(x => x !== m))}
-                          className="text-muted/50 hover:text-warning"
+                          className="text-secondary-ink hover:text-warning"
                         >
                           ×
                         </button>
@@ -317,7 +317,7 @@ export default function HerdForm() {
           <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'}>
             {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add lot' : 'Save changes'}
           </Button>
-          <button type="button" onClick={cancel} className="font-dm-sans text-sm text-muted/60 hover:text-ink">
+          <button type="button" onClick={cancel} className="font-dm-sans text-sm text-secondary-ink hover:text-ink">
             Cancel
           </button>
         </div>
@@ -331,27 +331,27 @@ export default function HerdForm() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-dm-sans text-base font-semibold text-ink">{lotLabel(lot)}</p>
-            <p className="mt-0.5 font-dm-sans text-sm text-body/70">
+            <p className="mt-0.5 font-dm-sans text-sm text-ink">
               {/* A named lot keeps its class in view on the detail line. */}
               {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
               <span className="tabular-price">{lot.head_count}</span> head ·{' '}
               <span className="tabular-price">{lot.avg_weight}</span> {lot.weight_unit} avg
             </p>
-            <p className="mt-1 font-dm-sans text-xs text-muted/60">
+            <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
               {lot.frame}
               {isFeeder(lot.class) ? ` · ${lot.weaned ? 'weaned' : 'unweaned'}` : ''}
               {lot.sale_windows?.length ? ` · sells ${lot.sale_windows.map(w => formatMonth(w.month)).join(', ')}` : ''}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-4">
-            <button type="button" onClick={() => openEdit(lot)} className="font-dm-sans text-sm font-medium text-accent hover:text-accent/80">
+            <button type="button" onClick={() => openEdit(lot)} className="font-dm-sans text-sm font-medium text-accent hover:text-brand">
               Edit
             </button>
             <button
               type="button"
               onClick={() => removeLot(lot.id)}
               disabled={status === 'saving'}
-              className="font-dm-sans text-sm text-muted/50 hover:text-warning disabled:opacity-50"
+              className="font-dm-sans text-sm text-secondary-ink hover:text-warning disabled:opacity-50"
             >
               Remove
             </button>
@@ -389,7 +389,7 @@ export default function HerdForm() {
       {lots.length === 0 && editing !== 'new' && (
         <Card shadow="soft" className="px-6 py-10 text-center">
           <p className="font-fraunces text-xl font-semibold text-ink">Add your first lot</p>
-          <p className="mx-auto mt-2 max-w-sm font-dm-sans text-sm text-muted/70">
+          <p className="mx-auto mt-2 max-w-sm font-dm-sans text-sm text-secondary-ink">
             Tell us what you&rsquo;re running — a class, a head count, an average weight. A few
             seconds a lot, and you can sharpen the details later.
           </p>

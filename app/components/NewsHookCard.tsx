@@ -70,7 +70,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
   return (
     <div>
-      <p className="mb-3 text-xs font-dm-sans font-medium uppercase tracking-wide text-forest-green/40">
+      <p className="mb-3 text-[14px] font-dm-sans font-medium uppercase tracking-wide text-secondary-ink">
         Headlines
       </p>
 
@@ -90,7 +90,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'error' && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-forest-green/55">
+          <p className="font-dm-sans text-sm text-secondary-ink">
             Headlines are temporarily unavailable.
           </p>
         </Card>
@@ -98,7 +98,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'ready' && state.items.length === 0 && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-forest-green/55">
+          <p className="font-dm-sans text-sm text-secondary-ink">
             No cattle-country headlines right now.
           </p>
         </Card>
@@ -113,7 +113,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
             <button
               onClick={() => setExpanded(!expanded)}
               aria-expanded={expanded}
-              className="min-h-[44px] w-full py-3 text-left font-dm-sans text-xs text-forest-green/50 transition-colors hover:text-forest-green"
+              className="min-h-[44px] w-full py-3 text-left font-dm-sans text-[14px] text-secondary-ink transition-colors hover:text-forest-green"
             >
               {expanded ? 'Fewer headlines ↑' : 'More headlines ↓'}
             </button>

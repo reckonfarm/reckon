@@ -53,10 +53,10 @@ function TapStatus() {
   return pending ? (
     <span
       aria-hidden
-      className="dl-strip-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent text-forest-green/50"
+      className="dl-strip-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent text-secondary-ink"
     />
   ) : (
-    <span aria-hidden className="text-forest-green/40">›</span>
+    <span aria-hidden className="text-secondary-ink">›</span>
   )
 }
 
@@ -96,20 +96,20 @@ export default function ConditionsStrip({
       <span className="inline-flex items-center gap-2">
         <>
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-[14px] font-medium"
               style={{ backgroundColor: chip.bg, color: chip.text }}
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: chip.dot }} />
               {chipLabel}
             </span>
-            <span className="font-dm-sans text-[10px] text-forest-green/40">
+            <span className="font-dm-sans text-[14px] text-secondary-ink">
               USDM {fmtShort(reading.week_date)}
             </span>
         </>
       </span>
 
       <span className="inline-flex items-center gap-2 font-dm-sans text-sm text-forest-green">
-        <span className="text-xs text-forest-green/50">Weather</span>
+        <span className="text-[14px] text-secondary-ink">Weather</span>
         <TapStatus />
       </span>
     </a>

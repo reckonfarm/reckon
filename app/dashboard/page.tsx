@@ -417,7 +417,7 @@ export default async function DashboardPage({
         {!fips && <EmptyState signedIn={!!user} />}
 
         {fips && !selectedCounty && (
-          <p className="text-sm text-forest-green/60 font-dm-sans">
+          <p className="text-sm text-secondary-ink font-dm-sans">
             County not found for FIPS {fips}.
           </p>
         )}
@@ -444,7 +444,7 @@ export default async function DashboardPage({
                 // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
                   <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
-                  <p className="font-dm-sans text-xs text-forest-green/50" data-testid="operation-line">
+                  <p className="font-dm-sans text-[14px] text-secondary-ink" data-testid="operation-line">
                     {homeCounty
                       ? `Operation · ${homeCounty.name}, ${homeCounty.state} · FIPS ${homeCounty.fips}`
                       : 'Operation · No home county set'}
@@ -456,7 +456,7 @@ export default async function DashboardPage({
               ) : (
                 <Heading level={1} className="!text-lg !leading-snug">
                   {selectedCounty.name}, {selectedCounty.state}
-                  <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
+                  <span className="ml-2 align-middle font-dm-sans text-[14px] font-normal text-secondary-ink">
                     FIPS {selectedCounty.fips}
                   </span>
                 </Heading>
@@ -700,7 +700,7 @@ function EmptyState({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-forest-green/8 mx-auto">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/60">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
           <circle cx="11" cy="11" r="8"/>
           <path d="m21 21-4.35-4.35"/>
         </svg>
@@ -708,7 +708,7 @@ function EmptyState({ signedIn }: { signedIn: boolean }) {
       <Heading level={3}>
         {signedIn ? 'Pick a county for the county tools' : 'Select a county to begin'}
       </Heading>
-      <p className="mt-2 max-w-xs text-[15px] text-forest-green/80 font-dm-sans">
+      <p className="mt-2 max-w-xs text-[15px] text-ink font-dm-sans">
         {signedIn
           ? 'Drought, program, weather, and market tools are by county. Your ledger above is here either way.'
           : 'Search above to view drought conditions and weekly history for any US county.'}

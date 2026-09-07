@@ -152,7 +152,7 @@ function SelectionStrip({ ordered, x0, x1, pickedKey, unit, onPick }: { ordered:
         const on = pickedKey === dotKey(d)
         return <span key={dotKey(d)} aria-hidden className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm ${on ? 'h-9 w-[4px] bg-rust' : 'h-6 w-[3px] bg-forest-green/50'}`} style={{ left: `${left}%` }} />
       })}
-      <span aria-hidden className="pointer-events-none absolute bottom-0 left-1.5 font-dm-sans text-[15px] leading-none text-forest-green/60">Slide or tap to pick a sale</span>
+      <span aria-hidden className="pointer-events-none absolute bottom-0 left-1.5 font-dm-sans text-[15px] leading-none text-secondary-ink">Slide or tap to pick a sale</span>
     </div>
   )
 }
@@ -188,7 +188,7 @@ function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; 
   const earlier = outside.filter(e => period && ms(e.date) < period.x0).length
   return (
     <div className="mt-3">
-      <p className="mb-2 font-dm-sans text-[15px] text-forest-green/80">
+      <p className="mb-2 font-dm-sans text-[15px] text-ink">
         {inside.length > 0
           ? <>Dated events on the chart (dashed lines) — tap a date for what happened and its source.</>
           : <>No dated events fall inside this chart&apos;s dates.</>}
@@ -218,13 +218,13 @@ function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; 
   )
 }
 
-const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2 font-dm-sans text-[15px] leading-snug text-forest-green/80">{children}</p>
+const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2 font-dm-sans text-[15px] leading-snug text-ink">{children}</p>
 
 // Block 2.6B — the vertical axis names its unit in words, from the SAME `unit`
 // the title and the tooltip read, so a stale measure can never leave the axis
 // in one unit and the title in another. The smoke asserts the two agree.
 const AxisUnit = ({ unit }: { unit: string }) => (
-  <p className="mt-1 font-dm-sans text-[15px] text-forest-green/70" data-audit="axis-unit">Vertical axis · {unit}</p>
+  <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="axis-unit">Vertical axis · {unit}</p>
 )
 
 // A wrapping row of 48 px chips — never a horizontal scroll, never a shrunk
@@ -332,10 +332,10 @@ function SalesList({ ordered, unit, pickedKey, onPick }: { ordered: Dot[]; unit:
               className={`flex min-h-[48px] w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-2 text-left font-dm-sans text-[16px] tabular-nums ${on ? 'bg-forest-green/[0.06] text-forest-green' : 'text-forest-green hover:bg-forest-green/[0.03]'}`}>
               <span className="font-semibold">{fmtDayYear(d.p.date)}</span>
               <span>{fmtWithUnit(d.v, unit)}</span>
-              <span className="text-forest-green/80">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
-              <span className="text-forest-green/80">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
+              <span className="text-ink">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
+              <span className="text-ink">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
             </button>
-            <span className="block px-2 pb-1 font-dm-sans text-[15px] text-forest-green/80"><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} /></span>
+            <span className="block px-2 pb-1 font-dm-sans text-[15px] text-ink"><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} /></span>
           </li>
         )
       })}
@@ -588,7 +588,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
             {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'}
           </button>
-          <span className="font-dm-sans text-[15px] text-forest-green/80" data-audit="step-copy">
+          <span className="font-dm-sans text-[15px] text-ink" data-audit="step-copy">
             {step
               ? <>Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported.</>
               : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}

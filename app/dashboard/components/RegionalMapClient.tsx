@@ -95,16 +95,16 @@ function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status
       : status === 'error'
         ? <span style={{ color: warning }}>{layer.failure.note}</span>
         : status === 'empty'
-          ? <span className="text-forest-green/60">{layer.emptyNote ?? 'None active'}</span>
+          ? <span className="text-secondary-ink">{layer.emptyNote ?? 'None active'}</span>
           : asOf
             ? `As of ${asOf}`
-            : <span className="text-forest-green/70">{count} active</span>
+            : <span className="text-secondary-ink">{count} active</span>
   return (
     <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
-      <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
-      <div className="mb-1.5 text-[10px] text-forest-green/50">{line}</div>
+      <div className="text-[14px] font-semibold text-forest-green">{layer.attribution}</div>
+      <div className="mb-1.5 text-[14px] text-secondary-ink">{line}</div>
       {layer.legend.map(({ color, label }) => (
-        <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
+        <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[14px] text-secondary-ink">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
           {label}
         </div>
@@ -398,16 +398,16 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
       <div className="overflow-hidden rounded-xl border border-forest-green/10 bg-white">
         <div className="border-b border-forest-green/10 px-4 py-3">
           <h3 className="font-fraunces text-base font-semibold text-forest-green">{layer.attribution}</h3>
-          <p className="mt-0.5 font-dm-sans text-xs" style={{ color: warning }}>
+          <p className="mt-0.5 font-dm-sans text-[14px]" style={{ color: warning }}>
             Interactive map temporarily unavailable — showing the latest static map.
           </p>
         </div>
         <div className="p-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={fallbackImage.url} alt={`${layer.attribution} — ${countyLabel}`} className="w-full rounded-lg object-contain" loading="lazy" />
-          <p className="mt-3 font-dm-sans text-xs text-forest-green/50">
+          <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">
             Source:{' '}
-            <a href={fallbackImage.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-forest-green/70">
+            <a href={fallbackImage.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-secondary-ink">
               {layer.attribution}
             </a>
           </p>
@@ -578,7 +578,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
           type="button"
           onClick={() => setPlaying(p => !p)}
           aria-pressed={playing}
-          className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs font-semibold text-forest-green shadow-sm hover:bg-white"
+          className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green shadow-sm hover:bg-white"
         >
           {playing ? '❚❚ Pause' : '▶ Play'}
         </button>
@@ -591,19 +591,19 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
           'empty' = a genuine quiet day; 'error' (incl. the request timeout) = rust "Alerts
           unavailable"; 'loading' stays silent so the radar never looks blocked. */}
       {ALERTS_LAYER && alertsStatus !== 'loading' && (
-        <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-xs shadow-sm">
+        <div className="absolute top-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-1.5 font-dm-sans text-[14px] shadow-sm">
           {alertsStatus === 'error'
             ? <span style={{ color: warning }}>Alerts unavailable</span>
             : alertsStatus === 'empty'
-              ? <span className="text-forest-green/60">No active alerts</span>
-              : <span className="text-forest-green/80">{alertsCount} active alert{alertsCount !== 1 ? 's' : ''}</span>}
+              ? <span className="text-secondary-ink">No active alerts</span>
+              : <span className="text-ink">{alertsCount} active alert{alertsCount !== 1 ? 's' : ''}</span>}
         </div>
       )}
 
       {/* Legend + staleness ("Radar as of HH:MM") / honest-degraded note. */}
       <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans shadow-sm">
-        <div className="text-xs font-semibold text-forest-green">{layer.attribution}</div>
-        <div className="mb-1.5 text-[10px] text-forest-green/50">
+        <div className="text-[14px] font-semibold text-forest-green">{layer.attribution}</div>
+        <div className="mb-1.5 text-[14px] text-secondary-ink">
           {status === 'loading'
             ? (layer.loadingNote ?? 'Loading…')
             : status === 'error'
@@ -613,7 +613,7 @@ function RadarLayerView({ layer, center, zoom, selectedFips, alertsEndpoint }: {
                 : ''}
         </div>
         {layer.legend.map(({ color, label }) => (
-          <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[11px] text-forest-green/70">
+          <div key={label} className="mb-0.5 flex items-center gap-1.5 text-[14px] text-secondary-ink">
             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
             {label}
           </div>
@@ -743,8 +743,8 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
             type="button"
             onClick={() => setWinIdx(i)}
             aria-pressed={i === winIdx}
-            className={`rounded-md px-2.5 py-1 font-dm-sans text-xs font-semibold transition-colors ${
-              i === winIdx ? 'bg-forest-green text-cream' : 'text-forest-green/60 hover:text-forest-green'
+            className={`rounded-md px-2.5 py-1 font-dm-sans text-[14px] font-semibold transition-colors ${
+              i === winIdx ? 'bg-forest-green text-cream' : 'text-secondary-ink hover:text-forest-green'
             }`}
           >
             {w.label}
@@ -760,8 +760,8 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
           the map) and a width cap so a long "as of"/error note wraps instead of covering the
           county. */}
       <div className="absolute top-3 right-3 z-[1000] max-w-[128px] rounded-lg border border-black/10 bg-white/95 px-2 py-1.5 font-dm-sans shadow-sm">
-        <div className="text-[11px] font-semibold leading-tight text-forest-green">{layer.legendTitle}</div>
-        <div className="mb-1 text-[9px] leading-tight text-forest-green/50">
+        <div className="text-[14px] font-semibold leading-tight text-forest-green">{layer.legendTitle}</div>
+        <div className="mb-1 text-[14px] leading-tight text-secondary-ink">
           {status === 'loading'
             ? 'Loading…'
             : status === 'error'
@@ -771,7 +771,7 @@ function RasterLayerView({ layer, center, zoom, selectedFips }: {
                 : lead}
         </div>
         {win.legend.map(({ color, label }) => (
-          <div key={label} className="mb-0.5 flex items-center gap-1 text-[10px] leading-tight text-forest-green/70">
+          <div key={label} className="mb-0.5 flex items-center gap-1 text-[14px] leading-tight text-secondary-ink">
             <span className="inline-block h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: color, border: '1px solid rgba(0,0,0,0.15)' }} />
             {label}
           </div>
@@ -834,7 +834,7 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
               onClick={() => setTab(id)}
               aria-pressed={tab === id}
               className={`rounded-md px-3 py-1.5 font-dm-sans text-sm font-medium transition-colors ${
-                tab === id ? 'bg-forest-green text-cream' : 'text-forest-green/60 hover:text-forest-green'
+                tab === id ? 'bg-forest-green text-cream' : 'text-secondary-ink hover:text-forest-green'
               }`}
             >
               {label}
@@ -843,7 +843,7 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
         </div>
       )}
 
-      <p className="mt-2 font-dm-sans text-xs text-forest-green/45">
+      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
         {activeLayer
           ? `Interactive ${activeLayer.attribution}, centered on your county. Base map © OpenStreetMap.`
           : ''}
@@ -853,17 +853,17 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
           empty / partial). A healthy map stays quiet; signed-out (no ownGround)
           says nothing at all. */}
       {ownGround && ownGround.error && (
-        <p className="mt-1 font-dm-sans text-xs" style={{ color: warning }}>
+        <p className="mt-1 font-dm-sans text-[14px]" style={{ color: warning }}>
           Your places are temporarily unavailable.
         </p>
       )}
       {ownGround && !ownGround.error && ownGround.places.length === 0 && (
-        <p className="mt-1 font-dm-sans text-xs text-forest-green/45">
+        <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
           No places yet — your fields and tanks will draw here.
         </p>
       )}
       {ownGround && !ownGround.error && ownGround.places.length > 0 && placesSkipped > 0 && (
-        <p className="mt-1 font-dm-sans text-xs text-forest-green/45">
+        <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
           {drawablePlaces.length} of {ownGround.places.length} places shown — {placesSkipped} {placesSkipped === 1 ? 'has' : 'have'} no drawn boundary yet.
         </p>
       )}

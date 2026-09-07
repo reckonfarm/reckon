@@ -20,7 +20,7 @@ export function Badge({
 }: { tone?: Tone; className?: string; children: ReactNode }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-dm-sans text-[11px] font-semibold ${TONES[tone]} ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-dm-sans text-[14px] font-semibold ${TONES[tone]} ${className}`}
     >
       {children}
     </span>

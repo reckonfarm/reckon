@@ -11,7 +11,7 @@ export default function InProgressBadge() {
         className="h-1.5 w-1.5 rounded-full bg-up"
         style={{ animation: 'dlJobLive 1.6s ease-in-out infinite' }}
       />
-      <span className="font-dm-sans text-[11px] font-semibold uppercase tracking-wide text-up">
+      <span className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-up">
         In progress
       </span>
     </span>

@@ -147,7 +147,7 @@ export default function MapLightbox({ open, onClose, src, alt }: Props) {
         />
       </div>
 
-      <p className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-white/60">
+      <p className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-[14px] text-white">
         Pinch or double-tap to zoom · swipe down or tap outside to close
       </p>
     </div>

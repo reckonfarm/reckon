@@ -12,10 +12,10 @@ export default function LfpEstimateNote({ tone = 'light' }: { tone?: 'light' | '
   return (
     <p
       className={[
-        'font-dm-sans text-xs leading-relaxed',
+        'font-dm-sans text-[14px] leading-relaxed',
         dark
-          ? 'text-white/80'
-          : 'rounded-md border border-forest-green/15 bg-forest-green/[0.04] px-3 py-2 text-forest-green/75',
+          ? 'text-white'
+          : 'rounded-md border border-forest-green/15 bg-forest-green/[0.04] px-3 py-2 text-ink',
       ].join(' ')}
     >
       <span className="font-semibold">Estimate only</span> — not a guarantee of eligibility or payment.

@@ -94,7 +94,7 @@ function countyLabel(name: string): string {
 // Source/freshness line. as_of is the soonest row's verification date when present.
 function FreshnessLine({ asOf }: { asOf: string | null }) {
   return (
-    <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+    <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
       USDA RMA/FSA{asOf ? ` · as of ${fmtDate(asOf)}` : ''}
     </p>
   )
@@ -106,9 +106,9 @@ function Hero({ d }: { d: UpcomingDeadline }) {
       <p className="font-fraunces text-3xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-4xl">
         {countdownText(d.daysUntil)}
       </p>
-      <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+      <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
         <DeadlineTitle d={d} lead />
-        <span className="text-forest-green/40"> · {fmtDate(d.deadline_date)}</span>
+        <span className="text-secondary-ink"> · {fmtDate(d.deadline_date)}</span>
       </p>
     </div>
   )
@@ -136,14 +136,14 @@ export default function DeadlineCountdownCard({
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-sm text-secondary-ink font-dm-sans">
           Deadline data temporarily unavailable — check back shortly.
         </p>
       )}
 
       {result.status === 'none' && (
         <>
-          <p className="font-fraunces text-base font-semibold leading-snug text-forest-green/50 sm:text-lg">
+          <p className="font-fraunces text-base font-semibold leading-snug text-secondary-ink sm:text-lg">
             No upcoming USDA program deadlines listed for {countyLabel(countyName)}.
           </p>
           <FreshnessLine asOf={null} />
@@ -158,10 +158,10 @@ export default function DeadlineCountdownCard({
             <ul className="mt-4 space-y-2 border-t border-forest-green/[0.08] pt-3">
               {result.deadlines.slice(1).map((d, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-3 font-dm-sans text-sm">
-                  <span className="text-forest-green/70">
+                  <span className="text-secondary-ink">
                     <DeadlineTitle d={d} lead={false} />
                   </span>
-                  <span className="shrink-0 text-forest-green/50 tabular-nums">
+                  <span className="shrink-0 text-secondary-ink tabular-nums">
                     {fmtDate(d.deadline_date)} · {countdownText(d.daysUntil)}
                   </span>
                 </li>

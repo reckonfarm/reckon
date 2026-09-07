@@ -29,7 +29,7 @@ const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
 const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
 function MatchChip({ label }: { label: string }) {
-  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-forest-green/80' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
+  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200'
   return <span className={`rounded px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
 }
 
@@ -44,7 +44,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
         <span className="text-forest-green">{cls} {bandLabel(b.band)}</span>
         <span className="shrink-0 tabular-nums">
           {ev ? (
-            <span className="font-semibold text-forest-green/80">{ev.figure}</span>
+            <span className="font-semibold text-ink">{ev.figure}</span>
           ) : (
             <span className="font-semibold text-ink">${b.avgPrice.toFixed(2)}</span>
           )}
@@ -54,7 +54,7 @@ function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: st
           })()}
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
         <MatchChip label={label} />
         <span>{fmtInt(b.head)} head reported · sale {fmtDate(saleDate)}</span>
         {ev && <span>· {ev.note}</span>}
@@ -74,10 +74,10 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
       <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
         <span className="text-forest-green">{name}</span>
         <span className="shrink-0 tabular-nums font-semibold">
-          {ev ? <span className="text-forest-green/80">{ev.figure}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
+          {ev ? <span className="text-ink">{ev.figure}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-forest-green/80">
+      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
         <MatchChip label={matchLabel({ exactBracket: c.gradeKnown, headCount: c.head })} />
         <span>
           {fmtInt(c.head)} head · {c.rows} {c.rows === 1 ? 'lot' : 'lots'}
@@ -100,13 +100,13 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="font-dm-sans text-[16px] text-forest-green/80">Auction data temporarily unavailable — check back shortly.</p>
+        <p className="font-dm-sans text-[16px] text-ink">Auction data temporarily unavailable — check back shortly.</p>
       )}
       {result.status === 'no_coverage' && (
-        <p className="font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE} — Montana barns today, expanding.</p>
+        <p className="font-dm-sans text-[16px] text-ink">{NO_LOCAL_LINE} — Montana barns today, expanding.</p>
       )}
       {result.status === 'no_recent_sale' && (
-        <p className="font-dm-sans text-[16px] text-forest-green/80">
+        <p className="font-dm-sans text-[16px] text-ink">
           No recent sale reported at {result.barnName} ({result.town}) — last sale {fmtDate(result.lastSale)}. Montana barns run lighter summer schedules.
         </p>
       )}
@@ -116,7 +116,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
           {/* Block 2.6A — beyond the discovery radius the card says so FIRST, then offers
               the barn as a regional reference with its state and straight-line miles. */}
           {result.beyondHaul && !result.pinned && (
-            <p className="mb-2 font-dm-sans text-[16px] text-forest-green/80">{NO_LOCAL_LINE}.</p>
+            <p className="mb-2 font-dm-sans text-[16px] text-ink">{NO_LOCAL_LINE}.</p>
           )}
           {/* Scope — the barn, never a county. */}
           <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
@@ -126,7 +126,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
               : { kind: 'nearby', town: shortTown(result.town) },
             )}
           </p>
-          <p className="mt-0.5 font-dm-sans text-[15px] text-forest-green/80">
+          <p className="mt-0.5 font-dm-sans text-[15px] text-ink">
             <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
 
@@ -146,13 +146,13 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
           )}
 
           {result.receipts != null && (
-            <p className="mt-3 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
+            <p className="mt-3 font-dm-sans text-[15px] tabular-nums text-ink">
               {fmtInt(result.receipts)} receipts
               {result.receiptsWeekAgo != null && ` · wk ago ${fmtInt(result.receiptsWeekAgo)}`}
               {result.receiptsYearAgo != null && ` · yr ago ${fmtInt(result.receiptsYearAgo)}`}
             </p>
           )}
-          <p className="mt-2 font-dm-sans text-[15px] text-forest-green/80">
+          <p className="mt-2 font-dm-sans text-[15px] text-ink">
             $/cwt, head-weighted within each 100-lb band · Close match = same class and weight bracket with {THIN_HEAD_THRESHOLD}+ head · Limited evidence = fewer than {THIN_HEAD_THRESHOLD} head reported.
           </p>
         </>

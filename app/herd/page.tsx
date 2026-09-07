@@ -55,7 +55,7 @@ export default async function HerdPage() {
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
         <Heading level={2}>My herd</Heading>
-        <p className="mt-1 font-dm-sans text-sm text-muted/70">
+        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
           What you&rsquo;re running, by lot — and what it&rsquo;s worth at this week&rsquo;s cash.
         </p>
 
@@ -69,16 +69,16 @@ export default async function HerdPage() {
         {homeCountyMissing && (
           <Card shadow="sm" className="mt-8 p-5">
             <p className="font-dm-sans text-sm font-semibold text-ink">Set your home county to value your herd</p>
-            <p className="mt-1 font-dm-sans text-sm text-muted/70">
+            <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
               Your HerdEstimate uses the nearest cattle auction to your operation.{' '}
-              <Link href="/dashboard" prefetch={false} className="text-accent underline hover:text-accent/80">Set your home county</Link>{' '}
+              <Link href="/dashboard" prefetch={false} className="text-accent underline hover:text-brand">Set your home county</Link>{' '}
               and it&rsquo;ll show up here.
             </p>
           </Card>
         )}
 
         {lots.length === 0 && (
-          <p className="mt-8 font-dm-sans text-sm text-muted/60">
+          <p className="mt-8 font-dm-sans text-sm text-secondary-ink">
             Add a lot below and your <span className="font-medium text-ink">HerdEstimate</span> appears here —
             your herd valued at this week&rsquo;s nearest auction cash.
           </p>

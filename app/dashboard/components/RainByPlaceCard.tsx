@@ -64,12 +64,12 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
             </span>
             <span className="shrink-0 text-right">
               <span className="font-fraunces text-lg font-semibold tabular-nums text-forest-green">{inches(p.ytd.inches)}</span>
-              <span className="ml-2 font-dm-sans text-xs text-forest-green/50">{readings(p.ytd.entries)}</span>
+              <span className="ml-2 font-dm-sans text-[14px] text-secondary-ink">{readings(p.ytd.entries)}</span>
             </span>
           </li>
         ))}
       </ul>
-      <p className="mt-2 font-dm-sans text-xs text-forest-green/40">
+      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
         Gauge readings you logged, added up by place · since {fmtDay(ledger.entries[0].ts)}.
       </p>
 
@@ -78,12 +78,12 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
           <p className={EYEBROW}>
             County estimate · not a gauge
           </p>
-          <p className="mt-1 font-dm-sans text-sm text-forest-green/70">
+          <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
             <span className="font-semibold tabular-nums text-forest-green">{inches(estimate.ytdActual)}</span>
             {' '}this year vs {inches(estimate.ytdNormal)} normal ·{' '}
             <span className="tabular-nums">{Math.round((estimate.ytdActual / estimate.ytdNormal) * 100)}%</span> of normal
           </p>
-          <p className="mt-0.5 font-dm-sans text-[11px] text-forest-green/40">
+          <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
             {estimate.source === 'grid'
               ? 'PRISM county estimate — modeled, not measured'
               : `${estimate.label}, ${estimate.distanceMiles} mi from the county center${estimate.outOfCounty ? ', outside the county' : ''}`}

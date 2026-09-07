@@ -74,13 +74,13 @@ export default function SiteHeader({ center }: Props) {
               Dryline
             </span>
           </span>
-          <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
+          <span className="text-[14px] sm:text-[14px] leading-tight text-secondary-ink font-dm-sans">
             {TAGLINE}
           </span>
         </Link>
 
         {center && (
-          <p className="hidden text-sm text-forest-green/60 font-dm-sans sm:block">
+          <p className="hidden text-sm text-secondary-ink font-dm-sans sm:block">
             {center}
           </p>
         )}
@@ -92,14 +92,14 @@ export default function SiteHeader({ center }: Props) {
           <div className="hidden items-center gap-4 md:flex">
             <Link
               href="/watchlist"
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
             >
               My Counties
             </Link>
             {flagEnabled('marketplace') && (
               <Link
                 href="/hay"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 Hay
               </Link>
@@ -111,7 +111,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/"
-                className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
+                className="font-dm-sans text-sm font-medium text-forest-green hover:text-ink transition-colors"
               >
                 My Operation
               </Link>
@@ -119,7 +119,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/herd"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 My herd
               </Link>
@@ -128,7 +128,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/jobs"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 Jobs
               </Link>
@@ -138,7 +138,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/devices"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 Devices
               </Link>
@@ -146,10 +146,10 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('messaging') && (
               <Link
                 href="/messages"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 Messages{unread > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-white align-middle">
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white align-middle">
                     {unread > 9 ? '9+' : unread}
                   </span>
                 )}
@@ -158,7 +158,7 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('marketplace') && (
               <Link
                 href="/radar"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
               >
                 Hay Radar
               </Link>
@@ -166,7 +166,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/profile"
-                className="max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans hover:text-forest-green transition-colors"
+                className="max-w-[160px] truncate text-[14px] text-secondary-ink font-dm-sans hover:text-forest-green transition-colors"
               >
                 {user.email}
               </Link>
@@ -178,7 +178,7 @@ export default function SiteHeader({ center }: Props) {
           {user ? (
             <button
               onClick={signOut}
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
             >
               Sign out
             </button>

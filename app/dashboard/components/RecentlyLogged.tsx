@@ -131,7 +131,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
                 {line(r, placeName, lotName)}
                 {linked && <Link href={`/places/${pid}`} className="ml-2 font-semibold text-forest-green underline underline-offset-2">place →</Link>}
               </span>
-              <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-forest-green/80">
+              <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-ink">
                 {fmtDay(r.ts)} · {fmtTime(r.ts)}
               </span>
             </li>

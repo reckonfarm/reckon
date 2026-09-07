@@ -58,7 +58,7 @@ export default function DashboardAccordion({
             {title}
           </span>
           {preview && !open && (
-            <span className={`text-sm font-dm-sans ${highlight ? 'text-cream/70' : 'text-forest-green/50'}`}>
+            <span className={`text-sm font-dm-sans ${highlight ? 'text-cream' : 'text-secondary-ink'}`}>
               {preview}
             </span>
           )}
@@ -70,7 +70,7 @@ export default function DashboardAccordion({
             </span>
           )}
           <svg
-            className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${highlight ? 'text-cream/60' : 'text-forest-green/40'}`}
+            className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${highlight ? 'text-cream' : 'text-secondary-ink'}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

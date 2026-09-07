@@ -45,7 +45,7 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
         <option value="">Nearest reporting barn</option>
         {options.map(o => <option key={o.slug} value={o.slug}>{o.name} · {o.town}</option>)}
       </select>
-      <p className="mt-1.5 font-dm-sans text-[15px] text-forest-green/80">
+      <p className="mt-1.5 font-dm-sans text-[15px] text-ink">
         Pins the barn you haul to. Prices are still that barn&apos;s report — the pin only picks which report you see first.
       </p>
       {error && <p role="alert" className="mt-1 font-dm-sans text-[15px] font-medium text-warning">{error}</p>}

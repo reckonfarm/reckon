@@ -24,7 +24,7 @@ interface Profile {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">{label}</label>
+      <label className="block text-[14px] font-medium text-secondary-ink font-dm-sans mb-1">{label}</label>
       {children}
     </div>
   )
@@ -124,9 +124,9 @@ export default function ProfileForm() {
         {/* Email — read-only */}
         <Field label="Email">
           <div className="flex items-center rounded-xl border border-forest-green/15 bg-cream px-4 py-2.5">
-            <span className="text-sm font-dm-sans text-forest-green/70">{email ?? '—'}</span>
+            <span className="text-sm font-dm-sans text-secondary-ink">{email ?? '—'}</span>
           </div>
-          <p className="mt-1 text-xs font-dm-sans text-forest-green/40">Your sign-in email can&apos;t be changed here.</p>
+          <p className="mt-1 text-[14px] font-dm-sans text-secondary-ink">Your sign-in email can&apos;t be changed here.</p>
         </Field>
 
         {/* Phone verification status */}
@@ -140,14 +140,14 @@ export default function ProfileForm() {
           />
           <div className="mt-1.5">
             {verifiedPhone ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
                 Phone verified
               </span>
             ) : (
-              <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-medium font-dm-sans text-forest-green/50 ring-1 ring-forest-green/15">
+              <span className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-secondary-ink ring-1 ring-forest-green/15">
                 Not verified yet
               </span>
             )}
@@ -196,7 +196,7 @@ export default function ProfileForm() {
             maxLength={500}
             className={`${INPUT_CLS} resize-none`}
           />
-          <p className="mt-1 text-right text-xs font-dm-sans text-forest-green/40">{bio.length}/500</p>
+          <p className="mt-1 text-right text-[14px] font-dm-sans text-secondary-ink">{bio.length}/500</p>
         </Field>
 
         {/* Buyer-demand alerts opt-in — marketplace feature, rides its flag (the saved
@@ -214,7 +214,7 @@ export default function ProfileForm() {
               <span className="block text-sm font-medium font-dm-sans text-forest-green">
                 Email me when a buyer near me is looking for hay I have
               </span>
-              <span className="mt-0.5 block text-xs font-dm-sans text-forest-green/55">
+              <span className="mt-0.5 block text-[14px] font-dm-sans text-secondary-ink">
                 When a rancher posts a &ldquo;wanted&rdquo; listing for hay you have within haul range,
                 we&apos;ll email you so you can respond. Off by default; at most a few per week. Turn off anytime.
               </span>

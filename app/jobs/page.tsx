@@ -148,7 +148,7 @@ export default async function JobsPage({
       <AutoRefresh />
       <main className="mx-auto max-w-2xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
         <Heading level={1} className="!text-2xl sm:!text-3xl">Jobs</Heading>
-        <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
+        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
           Work sessions, read straight off the machine. Nobody wrote anything down.
         </p>
         <DeviceLiveness devices={liveDevices} />
@@ -156,7 +156,7 @@ export default async function JobsPage({
         <div className="mt-6 space-y-5">
           {error && (
             <Card shadow="none" className="px-5 py-6 text-center">
-              <p className="font-dm-sans text-sm text-forest-green/55">
+              <p className="font-dm-sans text-sm text-secondary-ink">
                 Jobs are temporarily unavailable.
               </p>
             </Card>
@@ -164,7 +164,7 @@ export default async function JobsPage({
 
           {!error && visible.length === 0 && (
             <Card shadow="none" className="px-5 py-8 text-center">
-              <p className="font-dm-sans text-sm text-forest-green/55">
+              <p className="font-dm-sans text-sm text-secondary-ink">
                 {jobs.length === 0
                   ? 'No jobs yet. Put a Scout on a machine and go to work.'
                   : 'Nothing to show — every session is minor or dismissed. Show all below.'}
@@ -174,10 +174,10 @@ export default async function JobsPage({
 
           {showEmptyToday && (
             <section>
-              <h2 className="px-1 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
+              <h2 className="px-1 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
                 Today
               </h2>
-              <p className="mt-2 px-1 pb-1 font-dm-sans text-sm text-forest-green/45">
+              <p className="mt-2 px-1 pb-1 font-dm-sans text-sm text-secondary-ink">
                 No sessions yet today.
               </p>
             </section>
@@ -185,9 +185,9 @@ export default async function JobsPage({
 
           {groups.map(g => (
             <section key={g.key}>
-              <h2 className="px-1 pt-2 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
+              <h2 className="px-1 pt-2 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
                 {g.key === today ? 'Today' : fmtDay(g.jobs[0].started_at)}
-                <span className="font-normal normal-case text-forest-green/40">
+                <span className="font-normal normal-case text-secondary-ink">
                   {' · '}{plural(g.jobs.length, 'session')}{' · '}{fmtDuration(g.jobs.reduce((s, j) => s + j.duration_s, 0))}
                 </span>
               </h2>
@@ -207,18 +207,18 @@ export default async function JobsPage({
                               {name ?? <>{fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT</>}
                               {live && <InProgressBadge />}
                             </p>
-                            <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
+                            <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                               {name && (
                                 <>
                                   {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
-                                  <span className="text-forest-green/25"> · </span>
+                                  <span className="text-secondary-ink"> · </span>
                                 </>
                               )}
                               {j.devices?.name ?? 'Unknown device'}
                               {j.multi_field && (
                                 <>
-                                  <span className="text-forest-green/25"> · </span>
-                                  <span className="font-semibold text-forest-green/70">
+                                  <span className="text-secondary-ink"> · </span>
+                                  <span className="font-semibold text-secondary-ink">
                                     {fieldSummaries.get(j.id) ?? 'Multi-field'}
                                   </span>
                                 </>
@@ -234,18 +234,18 @@ export default async function JobsPage({
                                 "data received", never "coverage": field percent-cut
                                 owns the coverage-shaped idea on the detail page. */}
                             {lowCoverage && (
-                              <p className="mt-0.5 font-dm-sans text-xs font-semibold tabular-nums text-warning">
+                              <p className="mt-0.5 font-dm-sans text-[14px] font-semibold tabular-nums text-warning">
                                 {covPct}% data received
                               </p>
                             )}
                           </div>
                         </div>
-                        <p className="mt-2 font-dm-sans text-xs tabular-nums text-forest-green/50">
+                        <p className="mt-2 font-dm-sans text-[14px] tabular-nums text-secondary-ink">
                           {plural(j.event_count, 'impact')} recorded
                           {baleLine(j) && (
                             <>
                               {' · '}
-                              <span className="font-semibold text-forest-green/80">{baleLine(j)}</span>
+                              <span className="font-semibold text-ink">{baleLine(j)}</span>
                             </>
                           )}
                           {j.evicted_count > 0 && (
@@ -254,7 +254,7 @@ export default async function JobsPage({
                         </p>
                         {dismissed && (
                           <div className="mt-3 flex items-center justify-between gap-3 border-t border-forest-green/10 pt-3">
-                            <p className="font-dm-sans text-xs text-forest-green/50">
+                            <p className="font-dm-sans text-[14px] text-secondary-ink">
                               Dismissed — hidden from the default list.
                             </p>
                             <RestoreButton jobId={j.id} />
@@ -272,7 +272,7 @@ export default async function JobsPage({
             <div className="pt-1 text-center">
               <Link
                 href={showAll ? '/jobs' : '/jobs?all=1'}
-                className="inline-block rounded-lg px-4 py-2 font-dm-sans text-sm text-forest-green/60 hover:text-forest-green"
+                className="inline-block rounded-lg px-4 py-2 font-dm-sans text-sm text-secondary-ink hover:text-forest-green"
               >
                 {showAll
                   ? 'Back to the working list'

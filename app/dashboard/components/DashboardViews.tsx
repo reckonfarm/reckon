@@ -128,7 +128,7 @@ export function DashboardViewPanels({ params, order, eager, fallbacks }: {
         else if (isActive) {
           node = failed[key] ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-5 py-8 text-center">
-              <p className="font-dm-sans text-sm text-forest-green/70">This view didn&rsquo;t load.</p>
+              <p className="font-dm-sans text-sm text-secondary-ink">This view didn&rsquo;t load.</p>
               <button
                 type="button"
                 onClick={() => retry(key)}
