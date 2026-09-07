@@ -108,11 +108,11 @@ export default async function SinceYouWereHere() {
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(r => {
           const author = r.type === 'alert' ? 'Dryline' : (authors.get(r.user_id) ?? 'Someone on the ranch')
-          const placeId = str(r.payload.place_id) ?? str(r.payload.to_place_id)
-          const href = placeId && placeNames.has(placeId) ? `/places/${placeId}` : '#ledgers'
+          // Block 5A — the row opens ITS exact event by stable id, never a place summary.
+          const href = `/activity/${r.id}`
           return (
             <li key={r.id}>
-              <Link href={href} className="flex min-h-[56px] items-center justify-between gap-3 py-2">
+              <Link href={href} className="flex min-h-[56px] items-center justify-between gap-3 py-2" data-audit="since-row">
                 <span className="font-dm-sans text-[17px] leading-snug text-forest-green">
                   <span className="font-semibold">{author}</span> {what(r, placeName, lotName)}
                 </span>

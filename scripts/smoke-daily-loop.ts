@@ -415,13 +415,39 @@ async function main() {
       const blockB = (await pageB.getByText('Since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('2E: B sees "Since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
-      const placeHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
-      record('2E: a line taps through to its place', placeHref === `/places/${placeId}`, String(placeHref))
+      // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
+      const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
+      const eventId = rowHref?.match(/^\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null
+      record('5A: a handoff row opens its exact event, not a place summary', !!eventId, String(rowHref))
+      if (eventId) {
+        await pageB.goto(`/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
+        await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
+        const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('sync'), place = await d('place')
+        record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Synced to ranch/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
+        await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
+      }
+      // The place's entry count is a door into the place's record (gate 2).
+      await pageB.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      const entriesLink = pageB.locator('[data-audit="place-entries-link"]')
+      const entriesText = (await entriesLink.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const claimed = parseInt((entriesText.match(/(\d+) entr/) ?? ['', '0'])[1], 10)
+      await entriesLink.click().catch(() => {})
+      await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+      const listed = await pageB.locator('[data-audit="activity-row"]').count()
+      record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
+      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.getByText('Since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
       await pageB.waitForTimeout(3_000)
       const after = await pageB.getByText('Since you last checked').count() + await pageB.getByText('Since yesterday').count()
       record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
+      // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
+      await pageB.goto('/activity', { waitUntil: 'domcontentloaded' })
+      await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+      const still = await pageB.getByRole('link', { name: /Smoke A · Fed 2 bales/ }).count()
+      record('5A: after the visit the entries are still findable in the record', still >= 1, `${still} matching row(s) on /activity`)
       await ctxB.close()
     }
 

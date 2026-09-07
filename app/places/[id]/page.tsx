@@ -54,7 +54,9 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           )}
           {counts.entries > 0 && counts.sinceIso && (
             <p className="mt-3 font-dm-sans text-[16px] text-ink">
-              {counts.entries} {counts.entries === 1 ? 'entry' : 'entries'} here since {fmtDay(counts.sinceIso)}.
+              <Link href={`/activity?place=${place.id}`} className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="place-entries-link">
+                {counts.entries} {counts.entries === 1 ? 'entry' : 'entries'} here since {fmtDay(counts.sinceIso)} →
+              </Link>
             </p>
           )}
         </Card>
