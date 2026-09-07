@@ -27,7 +27,15 @@ export interface ActivityRow {
   user_id: string
   device_id: string | null
   payload: Record<string, unknown>
+  // Block 5B (054): the correction chain. The record shows every row — a
+  // superseded line stays legible, marked; a void is marked; a correction says
+  // what it corrects.
+  supersedes_event_id?: string | null
+  superseded_by?: string | null
+  voided_at?: string | null
+  correction_reason?: string | null
 }
+export const ACTIVITY_COLS = 'id, type, ts, ingested_at, user_id, device_id, payload, supersedes_event_id, superseded_by, voided_at, correction_reason'
 export interface Names {
   place: (id: unknown) => string | null
   lot: (id: unknown) => string | null
@@ -60,6 +68,10 @@ function zonedIso(day: string, hour: number): string {
 
 // ── One line for one event, the same words everywhere ─────────────────────────
 export function describeEvent(r: ActivityRow, names: Names): string {
+  const line = describeBody(r, names)
+  return r.voided_at ? `Voided: ${line}` : line
+}
+function describeBody(r: ActivityRow, names: Names): string {
   const p = r.payload
   const at = names.place(p.place_id)
   const suffix = at ? ` at ${at}` : ''
@@ -125,7 +137,7 @@ export async function placeEntryCounts(supabase: SupabaseClient, placeId: string
 export async function listActivity(supabase: SupabaseClient, userId: string, filters: ActivityFilters, cursor?: string | null): Promise<ActivityPage | null> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return null
-  let q = supabase.from('events').select('id, type, ts, ingested_at, user_id, device_id, payload')
+  let q = supabase.from('events').select(ACTIVITY_COLS)
     .eq('ranch_id', ranchId).in('type', [...ACTIVITY_TYPES])
     .order('ts', { ascending: false }).order('id', { ascending: false }).limit(PAGE_SIZE + 1)
   if (filters.actor) q = q.eq('user_id', filters.actor)
@@ -156,7 +168,7 @@ export interface EventDetail {
   lotId: string | null
 }
 export async function getEvent(supabase: SupabaseClient, userId: string, id: string): Promise<EventDetail | null> {
-  const { data } = await supabase.from('events').select('id, type, ts, ingested_at, user_id, device_id, payload, ranch_id').eq('id', id).maybeSingle()
+  const { data } = await supabase.from('events').select(`${ACTIVITY_COLS}, ranch_id`).eq('id', id).maybeSingle()
   if (!data) return null
   const row = data as ActivityRow & { ranch_id: string }
   const names = await namesFor(supabase, userId, [row])

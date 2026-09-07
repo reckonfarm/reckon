@@ -3,6 +3,7 @@ import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import { placeEntryCounts } from '@/lib/activity'
+import { effective } from '@/lib/ledger-effective'
 
 // ─── A place's practical memory (Block 2F) ────────────────────────────────────
 // "When did we last…" at one place, answered from the ledger: the most recent
@@ -47,9 +48,10 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
 
     // Manual lines that name this place (as where, or as the move's endpoints).
     const [here, from, to, devices, herd] = await Promise.all([
-      supabase.from('events').select('id, type, ts, device_id, payload').eq('payload->>source', 'manual').eq('payload->>place_id', placeId).order('ts', { ascending: false }).limit(400),
-      supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>from_place_id', placeId).order('ts', { ascending: false }).limit(5),
-      supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>to_place_id', placeId).order('ts', { ascending: false }).limit(5),
+      // Block 5B: the "last …" answers are what currently STANDS (through the chain).
+      effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('payload->>source', 'manual').eq('payload->>place_id', placeId)).order('ts', { ascending: false }).limit(400),
+      effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>from_place_id', placeId)).order('ts', { ascending: false }).limit(5),
+      effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>to_place_id', placeId)).order('ts', { ascending: false }).limit(5),
       supabase.from('devices').select('id, name, type').eq('place_id', placeId),
       getRanchLots(supabase),
     ])

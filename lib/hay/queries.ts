@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dayKey } from '@/lib/jobs/format'
+import { effective } from '@/lib/ledger-effective'
 
 // ─── Hay ledger — the operator's own hay lines, added up honestly ─────────────
 //
@@ -160,11 +161,13 @@ export async function getHayLedger(
   opts: { since?: string; now?: number } = {},
 ): Promise<HayLedger> {
   try {
-    let q = supabase
+    // Block 5B: through the correction chain — a superseded line does not count,
+    // its replacement does; a void counts for nothing. Never applied twice.
+    let q = effective(supabase
       .from('events')
       .select('id, type, ts, payload')
       .in('type', [...HAY_EVENT_TYPES])
-      .eq('payload->>source', 'manual')
+      .eq('payload->>source', 'manual'))
       .order('ts', { ascending: true })
       .limit(HAY_ROW_CAP)
     if (opts.since) q = q.gte('ts', opts.since)
@@ -173,11 +176,11 @@ export async function getHayLedger(
     const rows = (data ?? []) as EventRow[]
 
     if (opts.since && !rows.some(r => r.type === 'hay_inventory')) {
-      const { data: latestCount } = await supabase
+      const { data: latestCount } = await effective(supabase
         .from('events')
         .select('id, type, ts, payload')
         .eq('type', 'hay_inventory')
-        .eq('payload->>source', 'manual')
+        .eq('payload->>source', 'manual'))
         .order('ts', { ascending: false })
         .limit(1)
       for (const r of (latestCount ?? []) as EventRow[]) rows.push(r)

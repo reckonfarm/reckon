@@ -7,6 +7,7 @@ import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
+import { effective } from '@/lib/ledger-effective'
 
 // "Recently logged" — the last three lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
@@ -80,11 +81,11 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   // Bounded: the manual types by name (an indexable predicate ahead of the
   // jsonb source check) and this ranch year as the floor — the season the
   // rest of /home is scoped to. Cap unchanged.
-  const { data } = await supabase
+  const { data } = await effective(supabase   // Block 5B: what currently stands
     .from('events')
     .select('id, type, ts, payload')
     .in('type', [...MANUAL_EVENT_TYPES])
-    .eq('payload->>source', 'manual')
+    .eq('payload->>source', 'manual'))
     .gte('ts', ranchYearStart())
     .order('ts', { ascending: false })
     .limit(FEED_CAP)
