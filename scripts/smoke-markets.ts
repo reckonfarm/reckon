@@ -76,7 +76,7 @@ async function seed() {
   await admin.from('ranch_members').insert({ ranch_id: ranch!.id, user_id: userId, role: 'owner' })
   await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS })
   const lot = { id: 'smoke-steers', class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z' }
-  const { error: pErr } = await admin.from('operation_profiles').insert({ user_id: userId, county_fips: HOME_FIPS, herd: { lots: [lot] } })
+  const { error: pErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranch!.id, county_fips: HOME_FIPS, herd: { lots: [lot] } })
   if (pErr) throw new Error(`profile: ${pErr.message}`)
 }
 

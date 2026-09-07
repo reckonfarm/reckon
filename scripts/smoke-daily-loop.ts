@@ -23,6 +23,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
 
@@ -61,6 +62,8 @@ let userId = ''
 let userIdB = ''
 let ranchId = ''
 let placeId = ''
+let lotId = ''
+const LOT_NAME = 'Smoke steers'
 
 async function teardown(label: string) {
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
@@ -105,7 +108,9 @@ async function seed() {
   if (mbErr) throw new Error(`member B: ${mbErr.message}`)
   // B deliberately has NO home county (the November onboarding case): the ledger must still be there.
   await admin.from('profiles').upsert({ id: userIdB, email: EMAIL_B })
-  const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, county_fips: HOME_FIPS })
+  // Block 4A — the RANCH's herd (050): one lot, so the hand's Fed-to control has something to show.
+  lotId = randomUUID()
+  const { error: oErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranchId, county_fips: HOME_FIPS, herd: { lots: [{ id: lotId, class: 'steers', name: LOT_NAME, head_count: 60, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } })
   if (oErr) throw new Error(`operation_profile: ${oErr.message}`)
   // /home resolves the home county from profiles.home_county_fips (lib/concierge-service).
   const { error: hErr } = await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS, display_name: 'Smoke A' })
@@ -166,11 +171,12 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
 }
 const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
-async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string } = {}) {
+async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
   await page.getByRole('button', { name: /^Log it/ }).click()
   await page.getByRole('button', { name: /Hay fed/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
+  if (opts.lot) await page.getByLabel('Fed to').selectOption({ label: opts.lot })
   const save = page.getByRole('button', { name: 'Save', exact: true })
   if (opts.doubleTap) {
     // Two clicks in the same tick, straight at the DOM — faster than a thumb.
@@ -364,10 +370,24 @@ async function main() {
     const logItB = await pageB.getByRole('button', { name: /^Log it/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
     const beforeB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
-    await logFeed(pageB, 1)
+    // Block 4A — the hand sees the ranch's lots: the Fed-to control is there, with the lot.
+    await pageB.getByRole('button', { name: /^Log it/ }).click()
+    await pageB.getByRole('button', { name: /Hay fed/ }).click()
+    const fedTo = pageB.getByLabel('Fed to')
+    const fedToShown = await fedTo.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+    const lotOptions = fedToShown ? await fedTo.locator('option').allInnerTexts() : []
+    record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
+    await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+    await logFeed(pageB, 1, { lot: fedToShown ? LOT_NAME : undefined })
     const seqB = await watchStates(pageB, 'Synced to ranch', 20_000, 'Fed 1 bale')
     const afterB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
     record('no home county: a feed event saves and syncs', seqB.includes('Synced to ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
+    // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
+    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
+    await page.waitForTimeout(800)
+    const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
     // ── 2E: the second person sees what A did; a visit clears it; A never sees A ──
     const { error: colErr } = await admin.from('ranch_members').select('last_seen_at').limit(1)
