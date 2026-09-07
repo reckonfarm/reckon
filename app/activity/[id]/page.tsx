@@ -7,6 +7,8 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { getEvent, describeEvent, type ActivityRow } from '@/lib/activity'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import CorrectionActions from './CorrectionActions'
+import { consequenceFor } from '@/lib/log-consequence'
+import { isManualEventType } from '@/lib/manual-log'
 
 // ─── /activity/[id] — the exact event (Block 5A) + its correction chain (5B) ──
 // Opened by its stable id from a handoff row, a Recently logged row, a place, or
@@ -36,6 +38,12 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const isCorrection = Boolean(row.supersedes_event_id) && !isVoid
   const replaced = correctedBy.length > 0
   const original = corrects[0] ?? null
+  // The receipt after a correction or void says what the entry MEANS now — the
+  // same answer a fresh entry gets (Block 2C), read on the same client, so the
+  // resulting balance is on the page the save lands on (gate 4).
+  const receipt = saved === '1' && isManualEventType(row.type)
+    ? (await consequenceFor(supabase, row.type, row.payload, placeName)).lines.slice(isVoid ? 1 : 0)
+    : []
 
   const rows: [string, React.ReactNode][] = [
     ['Who', <>{names.person(row.user_id)} <span className="text-secondary-ink">· {actorRole}</span></>],
@@ -61,6 +69,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         {saved === '1' && (
           <p className="mt-3 rounded-lg bg-forest-green/[0.06] px-4 py-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="event-saved">
             Saved. {isVoid ? 'The entry it voids is marked and no longer counts.' : 'This entry now stands; the one it corrects is marked and no longer counts.'}
+            {receipt.length > 0 && <span className="mt-1 block font-normal" data-audit="event-consequence">{receipt.join(' · ')}</span>}
           </p>
         )}
 

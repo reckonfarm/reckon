@@ -58,8 +58,11 @@ async function placeNameOf(supabase: SupabaseClient, placeId: unknown): Promise<
 }
 
 // Maps the database's refusals (054's triggers, index, and checks) to a status.
-function dbRefusal(code: string | undefined, message: string, id: string | null): CorrectionResult {
-  if (code === '23505' && id && /events_pkey/.test(message)) return { ok: false, status: 409, error: 'duplicate' }   // handled by the caller
+// A 23505 can be the primary key (the same client id arrived twice) OR the
+// trigger's "already corrected" (which fires BEFORE the key is checked, so a
+// retry of a landed correction also reads as 23505 from the trigger); the
+// caller settles which by looking for the client id.
+function dbRefusal(code: string | undefined, message: string): CorrectionResult {
   if (code === '23505') return { ok: false, status: 409, error: 'This entry was already corrected — correct the current entry instead' }
   if (code === '23514' || code === '23503') return { ok: false, status: 409, error: message.replace(/^events_supersede: /, '') }
   return { ok: false, status: 500, error: message }
@@ -98,13 +101,12 @@ async function insertSuperseding(
     return fields.voided ? { lines: ['Entry voided — it no longer counts', ...c.lines.slice(1)] } : { lines: ['Entry corrected', ...c.lines] }
   }
   if (error) {
-    const r = dbRefusal(error.code, error.message, fields.id)
-    if (r.ok === false && r.error === 'duplicate' && fields.id) {
+    if (error.code === '23505' && fields.id) {
       // The same client id arrived twice (a retry after a landed write): answer with the row that exists.
       const { data: existing } = await supabase.from('events').select(ACTIVITY_COLS).eq('id', fields.id).maybeSingle()
       if (existing) return { ok: true, status: 200, event: existing as ActivityRow, duplicate: true, consequence: await answer() }
     }
-    return r
+    return dbRefusal(error.code, error.message)
   }
   return { ok: true, status: 201, event: data as ActivityRow, consequence: await answer() }
 }
@@ -112,7 +114,28 @@ async function insertSuperseding(
 // Correct: the body carries only what changed (bales, inches, ts, place_id,
 // herd_lot_id, …) plus `reason`; everything else is the original's. The
 // merged answer is validated exactly like a fresh entry.
+// A retry of a correction that already landed (same client id) is answered
+// with the row that exists — BEFORE the head check, which would otherwise
+// read the now-superseded original as "already corrected" and refuse the retry.
+async function alreadyLanded(supabase: SupabaseClient, original: string, body: Record<string, unknown>): Promise<CorrectionResult | null> {
+  const clientId = idOf(body.id)
+  if (!clientId) return null
+  const { data } = await supabase.from('events').select(ACTIVITY_COLS).eq('id', clientId).maybeSingle()
+  const row = data as ActivityRow | null
+  if (!row) return null
+  if (row.supersedes_event_id !== original) return { ok: false, status: 409, error: 'That id already names a different entry' }
+  const c = await consequenceFor(supabase, row.type as ManualEventType, row.payload, await placeNameOf(supabase, row.payload.place_id))
+  return { ok: true, status: 200, event: row, duplicate: true, consequence: row.voided_at ? { lines: ['Entry voided — it no longer counts', ...c.lines.slice(1)] } : { lines: ['Entry corrected', ...c.lines] } }
+}
+
 export async function correctEvent(supabase: SupabaseClient, userId: string, id: string, body: Record<string, unknown>): Promise<CorrectionResult> {
+  try {
+    const landed = await alreadyLanded(supabase, id, body)
+    if (landed) return landed
+  } catch (err) {
+    if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }
+    throw err
+  }
   const head = await loadHead(supabase, id)
   if ('error' in head) return head.error
   const original = head.row
@@ -138,6 +161,13 @@ export async function correctEvent(supabase: SupabaseClient, userId: string, id:
 // Void: a reversal row with the original's values and work time, voided_at
 // set. Both stay readable; the balance drops the pair.
 export async function voidEvent(supabase: SupabaseClient, userId: string, id: string, body: Record<string, unknown>): Promise<CorrectionResult> {
+  try {
+    const landed = await alreadyLanded(supabase, id, body)
+    if (landed) return landed
+  } catch (err) {
+    if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }
+    throw err
+  }
   const head = await loadHead(supabase, id)
   if ('error' in head) return head.error
   const original = head.row

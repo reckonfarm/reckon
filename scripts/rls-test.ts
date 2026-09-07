@@ -497,7 +497,6 @@ async function correctionChecks() {
   const c1 = await api(A, `/api/activity/${before}/correct`, { bales: 4, reason: 'was 4, typed 6' })
   const b1 = onHandOf(c1.json)
   record('user A (owner)', 'correct a feeding BEFORE the count (6→4): balance does not shift pre-count consumption past the count (34)', c1.status === 201 && b1.onHand === 34 && b1.counted === 40, `${c1.status} · ${b1.lines.join(' | ') || (c1.json.error as string)}`)
-  record('user A (owner)', 'the correction supersedes its original (chain both ways)', c1.status === 201 && ev(c1.json).supersedes_event_id === before && (await api(A, `/api/activity/${before}`, undefined, 'GET')).json && true, '')
   {
     const orig = await api(A, `/api/activity/${before}`, undefined, 'GET')
     const head = await api(A, `/api/activity/${String(ev(c1.json).id)}`, undefined, 'GET')
@@ -532,7 +531,7 @@ async function correctionChecks() {
   // 8) The record still shows every row: original, corrections, voids — nothing deleted.
   {
     const { count } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', a.ranchId).eq('type', 'hay_fed')
-    record('user A (owner)', 'nothing deleted: every hay_fed row of the chain is still on the record', count === 9, `${count} hay_fed rows (2 seeds + 5 corrections + 1 extra + 1 void)`)
+    record('user A (owner)', 'nothing deleted: every hay_fed row of the chain is still on the record', count === 10, `${count} hay_fed rows (2 seeds + 5 corrections + 2 voids + 1 extra)`)
   }
   // 9) Ranch B cannot touch A's chain: correcting A's event → 404 (invisible), voiding → 404.
   const cross = await api(B, `/api/activity/${after}/correct`, { bales: 1, reason: 'not mine' })
