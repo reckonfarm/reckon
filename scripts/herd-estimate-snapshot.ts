@@ -61,15 +61,27 @@ async function main() {
   // 2) RANCHES with a herd (Block 4A / 050: one profile row per ranch; the service role
   //    sees all of them). A row with no ranch (a person on no ranch) is skipped — there
   //    is no ranch to record a value for.
-  const { data: opRows, error: opErr } = await db
-    .from('operation_profiles')
-    .select('user_id, ranch_id, herd')
-    .not('herd', 'is', null)
-    .not('ranch_id', 'is', null)
+  // Block 4B: the herd is herd_lots rows (live = not retired), grouped by ranch. The
+  // profile row still supplies who last wrote for the ranch (placement fallback).
+  const { data: lotRows, error: lotErr } = await db
+    .from('herd_lots')
+    .select('id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at')
+    .is('retired_at', null)
+  if (lotErr) { console.error('[herd-estimate-snapshot] herd_lots read failed:', lotErr.message); process.exit(1) }
+  const { data: opRows, error: opErr } = await db.from('operation_profiles').select('user_id, ranch_id').not('ranch_id', 'is', null)
   if (opErr) { console.error('[herd-estimate-snapshot] operation_profiles read failed:', opErr.message); process.exit(1) }
-  const users = (opRows ?? [])
-    .map(r => ({ user_id: (r as { user_id: string }).user_id, ranch_id: (r as { ranch_id: string }).ranch_id, lots: extractLots((r as { herd: unknown }).herd) }))
-    .filter(u => u.lots.length > 0)
+  const { data: ranchRows } = await db.from('ranches').select('id, home_county_fips')
+  const ranchHome = new Map((ranchRows ?? []).map(r => [(r as { id: string }).id, (r as { home_county_fips?: string | null }).home_county_fips ?? null]))
+  const writerByRanch = new Map((opRows ?? []).map(r => [(r as { ranch_id: string }).ranch_id, (r as { user_id: string }).user_id]))
+  // history.user_id is NOT NULL: the writer of the ranch's profile row, else the ranch's first owner.
+  const { data: owners } = await db.from('ranch_members').select('ranch_id, user_id, role, created_at').eq('role', 'owner').order('created_at', { ascending: true })
+  const ownerByRanch = new Map<string, string>()
+  for (const o of owners ?? []) { const rid = (o as { ranch_id: string }).ranch_id; if (!ownerByRanch.has(rid)) ownerByRanch.set(rid, (o as { user_id: string }).user_id) }
+  const byRanch = new Map<string, Record<string, unknown>[]>()
+  for (const r of lotRows ?? []) { const rid = (r as { ranch_id: string }).ranch_id; byRanch.set(rid, [...(byRanch.get(rid) ?? []), r as Record<string, unknown>]) }
+  const users = [...byRanch.entries()]
+    .map(([ranch_id, rows]) => ({ ranch_id, user_id: writerByRanch.get(ranch_id) ?? ownerByRanch.get(ranch_id) ?? '', lots: extractLots({ lots: rows.map(r => ({ ...r, avg_weight: Number(r.avg_weight), name: r.name ?? undefined })) }) }))
+    .filter(u => u.lots.length > 0 && u.user_id)
 
   if (users.length === 0) { console.log('[herd-estimate-snapshot] no ranch herds with lots — nothing to do.'); return }
 
@@ -77,7 +89,7 @@ async function main() {
   //    until a ranch-level home county exists (PK's call, Block 4), the ranch is placed by
   //    the county of the member who last wrote its herd (user_id on the row).
   const homeByUser = new Map<string, string>()
-  const ids = [...new Set(users.map(u => u.user_id))]
+  const ids = [...new Set(users.map(u => u.user_id).filter(Boolean))]
   for (let i = 0; i < ids.length; i += CHUNK) {
     const { data, error } = await db.from('profiles').select('id, home_county_fips').in('id', ids.slice(i, i + CHUNK))
     if (error) { console.error('[herd-estimate-snapshot] profiles read failed:', error.message); process.exit(1) }
@@ -108,7 +120,8 @@ async function main() {
   const rows: Array<Record<string, unknown>> = []
   let skipped = 0
   for (const u of users) {
-    const fips = homeByUser.get(u.user_id)
+    // 052: the ranch's own home county first; the writer's county until it is set.
+    const fips = ranchHome.get(u.ranch_id) ?? homeByUser.get(u.user_id)
     const c = fips ? centroidByFips.get(fips) : undefined
     if (!fips || !c) { skipped++; continue }
     const resolved: ResolveResult = {
@@ -117,7 +130,7 @@ async function main() {
     }
     const est = estimateHerd({ lots: u.lots }, resolved)
     rows.push({
-      user_id:       u.user_id,       // authorship of the herd row — who the ranch was placed by
+      user_id:       u.user_id,       // who last wrote the ranch's profile row, else its first owner (NOT NULL column; placement fallback)
       ranch_id:      u.ranch_id,      // the row's subject (050)
       snapshot_date: snapshotDate,
       total_value:   est.total_priced,

@@ -21,8 +21,8 @@ import { Segmented } from '@/app/components/ui/Segmented'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
-// behind "Sharpen details" — available, never blocking. Saves PATCH the whole lots array;
-// we adopt the server's normalized lots back into state so ids + timestamps round-trip.
+// behind "Sharpen details" — available, never blocking. Saves go ONE LOT AT A TIME to
+// /api/herd/lots (Block 4B: rows, not a blob); the server's rows are adopted back into state.
 // No dollars here — valuation lands with the MARS/HerdEstimate engine later.
 
 const FEEDER_CLASSES: readonly LotClass[] = ['steers', 'heifers', 'yearlings']
@@ -134,24 +134,30 @@ export default function HerdForm() {
     return lot
   }
 
-  async function commit(nextLots: LotPayload[]): Promise<boolean> {
+  // Block 4B — lots are rows: each save touches ONE lot (POST new, PATCH by id with the
+  // updated_at this form last saw; DELETE retires). Two people editing different lots
+  // never overwrite each other; a same-lot edit that lost the race comes back 409 and the
+  // form reloads the other person's version instead of writing over it.
+  async function reload(): Promise<Lot[]> {
+    const res = await fetch('/api/herd/lots')
+    const json = await res.json().catch(() => ({}))
+    const next = Array.isArray((json as { lots?: Lot[] }).lots) ? (json as { lots: Lot[] }).lots : []
+    setLots(next)
+    return next
+  }
+  async function write(url: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<boolean> {
     setStatus('saving'); setErrorMsg('')
     try {
-      const res = await fetch('/api/operation-profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ herd: { lots: nextLots } }),
-      })
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         setStatus('error')
         setErrorMsg((json as { error?: string }).error ?? 'Could not save. Try again.')
+        if (res.status === 409 || res.status === 404) await reload()   // show the ranch's current version, never write over it
         return false
       }
-      const serverLots = (json as { profile?: { herd?: { lots?: Lot[] } } })?.profile?.herd?.lots
-      setLots(Array.isArray(serverLots) ? serverLots : [])
-      // Re-render the server-computed HerdEstimate above with the new lots.
-      router.refresh()
+      await reload()
+      router.refresh()   // the server-computed HerdEstimate above re-reads the rows
       setStatus('saved')
       setTimeout(() => setStatus(s => (s === 'saved' ? 'idle' : s)), 2000)
       return true
@@ -165,12 +171,14 @@ export default function HerdForm() {
   async function saveDraft() {
     if (!draftValid) return
     const lot = buildPayloadLot()
-    const next: LotPayload[] = editing === 'new' ? [...lots, lot] : lots.map(l => (l.id === editing ? lot : l))
-    if (await commit(next)) { setEditing(null); resetDraft() }
+    const ok = editing === 'new'
+      ? await write('/api/herd/lots', 'POST', lot)
+      : await write(`/api/herd/lots/${editing}`, 'PATCH', { ...lot, expected_updated_at: lots.find(l => l.id === editing)?.updated_at ?? null })
+    if (ok) { setEditing(null); resetDraft() }
   }
 
   async function removeLot(id: string) {
-    if (await commit(lots.filter(l => l.id !== id)) && editing === id) setEditing(null)
+    if (await write(`/api/herd/lots/${id}`, 'DELETE') && editing === id) setEditing(null)
   }
 
   function addWindow() {
