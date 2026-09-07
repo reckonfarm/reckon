@@ -52,8 +52,8 @@ export default function OfficialMap({ map, title, note, className = '', regional
         className={`flex min-h-[180px] items-center justify-center p-6 text-center ${className}`}
       >
         <div>
-          <p className="text-sm font-medium text-forest-green/60 font-dm-sans">{displayTitle}</p>
-          <p className="mt-1 text-xs text-forest-green/40 font-dm-sans">
+          <p className="text-[16px] font-medium text-secondary-ink font-dm-sans">{displayTitle}</p>
+          <p className="mt-1 text-[14px] text-secondary-ink font-dm-sans">
             Official map updating — check back after the next Tuesday release.
           </p>
         </div>
@@ -65,7 +65,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
 
   return (
     <Card
-      className={`overflow-hidden transition-shadow hover:shadow-md ${className}`}
+      className={`overflow-hidden transition-shadow hover: ${className}`}
     >
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
         <Heading level={5}>{displayTitle}</Heading>
@@ -82,23 +82,23 @@ export default function OfficialMap({ map, title, note, className = '', regional
             className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
             loading="lazy"
           />
-          <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+          <span className="absolute bottom-2 right-2 rounded-lg bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             Tap to enlarge
           </span>
         </div>
-        <p className="mt-3 text-xs text-forest-green/50 font-dm-sans">
+        <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
           Released {formatDate(map.release_date)} ·{' '}
           <a
             href={extractUrl(map.source_url)}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-forest-green/70"
+            className="underline hover:text-secondary-ink"
           >
             Source
           </a>
         </p>
         {note && (
-          <p className="mt-1 text-xs text-forest-green/40 font-dm-sans">{note}</p>
+          <p className="mt-1 text-[14px] text-secondary-ink font-dm-sans">{note}</p>
         )}
       </div>
 

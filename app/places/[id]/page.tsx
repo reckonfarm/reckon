@@ -31,7 +31,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
     <>
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <p className="mb-4 font-dm-sans text-[15px]">
+        <p className="mb-4 font-dm-sans text-[16px]">
           <Link href="/places" className="font-semibold text-forest-green underline underline-offset-2">All places</Link>
         </p>
 
@@ -40,20 +40,20 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           <h1 className="mt-1 font-fraunces text-[32px] font-semibold leading-tight text-forest-green sm:text-[36px]">{place.name}</h1>
 
           {memory.length === 0 ? (
-            <p className="mt-4 font-dm-sans text-[17px] text-forest-green/80">
+            <p className="mt-4 font-dm-sans text-[17px] text-ink">
               Nothing logged here yet. The first entry starts its memory.
             </p>
           ) : (
             <ul className="mt-4 space-y-2">
               {memory.map(m => (
                 <li key={m.kind} className="font-dm-sans text-[17px] leading-snug text-forest-green">
-                  <span className="text-forest-green/80">{m.label}:</span> {m.answer}
+                  <span className="text-ink">{m.label}:</span> {m.answer}
                 </li>
               ))}
             </ul>
           )}
           {counts.entries > 0 && counts.sinceIso && (
-            <p className="mt-3 font-dm-sans text-[15px] text-forest-green/80">
+            <p className="mt-3 font-dm-sans text-[16px] text-ink">
               {counts.entries} {counts.entries === 1 ? 'entry' : 'entries'} here since {fmtDay(counts.sinceIso)}.
             </p>
           )}

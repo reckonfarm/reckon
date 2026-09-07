@@ -54,8 +54,8 @@ export default function DroughtCattleToggle() {
             className={[
               'flex-1 basis-0 inline-flex min-h-[52px] items-center justify-center whitespace-nowrap rounded-lg px-2 text-center font-dm-sans text-base transition-colors',
               isActive
-                ? 'bg-forest-green font-semibold text-white shadow-md shadow-forest-green/25'
-                : 'font-medium text-forest-green/65 hover:bg-forest-green/5 hover:text-forest-green',
+                ? 'bg-forest-green font-semibold text-white'
+                : 'font-medium text-ink hover:bg-forest-green/5 hover:text-brand',
             ].join(' ')}
           >
             {s.label}

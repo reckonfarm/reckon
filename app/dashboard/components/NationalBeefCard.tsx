@@ -21,27 +21,27 @@ function fmtDate(iso: string): string {
 function MetricLine({ label, read }: { label: string; read: NationalMetricRead | null }) {
   if (!read) {
     return (
-      <li className="flex items-baseline justify-between gap-3 font-dm-sans text-sm">
-        <span className="text-forest-green/70">{label}</span>
-        <span className="shrink-0 text-forest-green/40">— <span className="text-xs">warming up</span></span>
+      <li className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
+        <span className="text-secondary-ink">{label}</span>
+        <span className="shrink-0 text-secondary-ink">— <span className="text-[14px]">warming up</span></span>
       </li>
     )
   }
   return (
-    <li className="flex items-baseline justify-between gap-3 font-dm-sans text-sm">
-      <span className="text-forest-green/70">
+    <li className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
+      <span className="text-secondary-ink">
         {label}
-        {read.stale && <span className="ml-2 text-xs text-forest-green/40">as of {fmtDate(read.weekEnding)}</span>}
+        {read.stale && <span className="ml-2 text-[14px] text-secondary-ink">as of {fmtDate(read.weekEnding)}</span>}
       </span>
       <span className="shrink-0 tabular-nums">
-        <span className="font-semibold text-ink">${read.value.toFixed(2)}</span>
+        <span className="font-semibold text-ink">${read.value.toFixed(2)}</span><span className="text-secondary-ink">/cwt</span>
         {read.changePct != null && read.changePct !== 0 && (
           // Cattle benchmarks up = good for the seller — arrow and color agree
           // (lib/market-direction.ts: the rule holds even where it's invisible).
           (() => {
             const d = marketDelta(read.changePct! > 0, true)
             return (
-              <span className={`ml-2 text-xs font-semibold ${d.cls}`}>
+              <span className={`ml-2 text-[14px] font-semibold ${d.cls}`}>
                 {d.arrow} {Math.abs(read.changePct!).toFixed(1)}%
               </span>
             )
@@ -71,13 +71,13 @@ export default function NationalBeefCard({ result }: { result: NationalBeefResul
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           National price data temporarily unavailable — check back shortly.
         </p>
       )}
 
       {result.status === 'none' && (
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           National prices not loaded yet — check back shortly.
         </p>
       )}
@@ -89,7 +89,7 @@ export default function NationalBeefCard({ result }: { result: NationalBeefResul
             <MetricLine label="Feeder steers 500–599 lb · OKC" read={result.feeder500} />
             <MetricLine label="Feeder steers 700–799 lb · OKC" read={result.feeder700} />
           </ul>
-          <p className="mt-3 text-xs text-forest-green/40 font-dm-sans">
+          <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
             USDA AMS Market News · $/cwt · weekly change
             {newestWeek ? ` · week ending ${fmtDate(newestWeek)}` : ''}
           </p>

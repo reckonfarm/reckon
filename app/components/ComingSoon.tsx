@@ -107,7 +107,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
       <h2 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
         Coming soon
       </h2>
-      <p className="mt-2 font-dm-sans text-base leading-relaxed text-forest-green/60">
+      <p className="mt-2 font-dm-sans text-base leading-relaxed text-secondary-ink">
         Tap the ones you&apos;d use — it tells us what to build next.
       </p>
 
@@ -120,18 +120,18 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
             return (
               <div
                 key={f.key}
-                className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+                className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5"
               >
-                <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/10 px-2.5 py-0.5 font-dm-sans text-[11px] font-medium text-forest-green">
+                <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/10 px-2.5 py-0.5 font-dm-sans text-[14px] font-medium text-forest-green">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-forest-green" />
                   Live now
                 </span>
                 <p className="font-fraunces text-base font-semibold text-forest-green">{f.title}</p>
-                <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">{f.body}</p>
+                <p className="mt-1 font-dm-sans text-[16px] leading-relaxed text-secondary-ink">{f.body}</p>
                 <div className="mt-auto pt-4">
                   <Link
                     href={f.liveHref}
-                    className="block w-full rounded-lg bg-forest-green px-4 py-2 text-center font-dm-sans text-sm font-semibold text-white transition-colors hover:bg-forest-green/90"
+                    className="block w-full rounded-lg bg-forest-green px-4 py-2 text-center font-dm-sans text-[16px] font-semibold text-white transition-colors hover:bg-forest-green/90"
                   >
                     {f.liveCta ?? 'Open →'}
                   </Link>
@@ -143,15 +143,15 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
           return (
             <div
               key={f.key}
-              className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5 shadow-sm"
+              className="flex flex-col rounded-xl border border-forest-green/10 bg-white p-5"
             >
-              <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/8 px-2.5 py-0.5 font-dm-sans text-[11px] font-medium text-forest-green/60">
+              <span className="mb-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-forest-green/8 px-2.5 py-0.5 font-dm-sans text-[14px] font-medium text-secondary-ink">
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-rust/60" />
                 Coming soon
               </span>
 
               <p className="font-fraunces text-base font-semibold text-forest-green">{f.title}</p>
-              <p className="mt-1 font-dm-sans text-sm leading-relaxed text-forest-green/60">
+              <p className="mt-1 font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
                 {f.body}
               </p>
 
@@ -160,7 +160,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
                   <button
                     type="button"
                     disabled
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-forest-green/10 px-4 py-2 font-dm-sans text-sm font-semibold text-forest-green"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-forest-green/10 px-4 py-2 font-dm-sans text-[16px] font-semibold text-forest-green"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l3.5 3.5L15 7" />
@@ -180,11 +180,11 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
                         onKeyDown={e => {
                           if (e.key === 'Enter') onSubmitEmail(f.key)
                         }}
-                        className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 font-dm-sans text-sm text-forest-green placeholder:text-forest-green/30 focus:border-forest-green/40 focus:outline-none"
+                        className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 font-dm-sans text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/40 focus:outline-none"
                       />
                     )}
                     {st === 'error' && (
-                      <p className="font-dm-sans text-xs text-rust">
+                      <p className="font-dm-sans text-[14px] text-rust">
                         {signedIn
                           ? 'Something went wrong — try again.'
                           : 'Enter a valid email, then try again.'}
@@ -193,7 +193,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
                     <button
                       type="button"
                       onClick={() => (signedIn ? post(f.key) : onSubmitEmail(f.key))}
-                      className="w-full rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white transition-colors hover:bg-forest-green/90"
+                      className="w-full rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-semibold text-white transition-colors hover:bg-forest-green/90"
                     >
                       Notify me
                     </button>
@@ -203,7 +203,7 @@ export default function ComingSoon({ signedIn }: { signedIn: boolean }) {
                     type="button"
                     onClick={() => onNotify(f.key)}
                     disabled={st === 'sending'}
-                    className="w-full rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white transition-colors hover:bg-forest-green/90 disabled:opacity-60"
+                    className="w-full rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-semibold text-white transition-colors hover:bg-forest-green/90 disabled:opacity-60"
                   >
                     {st === 'sending' ? 'Sending…' : 'Notify me'}
                   </button>

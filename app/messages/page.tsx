@@ -45,7 +45,7 @@ interface ThreadMeta {
 }
 
 const INPUT_CLS =
-  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
+  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-[16px] font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
 
 function timeOf(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -202,14 +202,14 @@ function MessagesInner() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   if (authed === null) {
-    return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-sm text-forest-green/50 font-dm-sans">Loading…</p></main></>
+    return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-[16px] text-secondary-ink font-dm-sans">Loading…</p></main></>
   }
   if (!authed) {
     return (
       <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 text-center">
         <p className="font-fraunces text-xl font-semibold text-forest-green">Your messages</p>
-        <p className="mt-2 text-sm text-forest-green/60 font-dm-sans">Sign in to message buyers and sellers and make offers.</p>
-        <a href="/signin" className="mt-4 inline-block rounded-lg bg-forest-green px-6 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors">Sign in</a>
+        <p className="mt-2 text-[16px] text-secondary-ink font-dm-sans">Sign in to message buyers and sellers and make offers.</p>
+        <a href="/signin" className="mt-4 inline-block rounded-lg bg-forest-green px-6 py-3 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors">Sign in</a>
       </main></>
     )
   }
@@ -219,10 +219,10 @@ function MessagesInner() {
     return (
       <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">Messages</h1>
-        <p className="mt-1 text-sm text-forest-green/50 font-dm-sans">Private conversations and offers with buyers and sellers.</p>
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">Private conversations and offers with buyers and sellers.</p>
         {threads.length === 0 ? (
           <div className="mt-6 rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
-            <p className="font-dm-sans text-sm text-forest-green/55">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No conversations yet. Open a listing on the{' '}
               <Link href="/hay" className="underline hover:text-forest-green">Hay Network</Link> and tap &ldquo;Message&rdquo; to start one.
             </p>
@@ -231,21 +231,21 @@ function MessagesInner() {
           <ul className="mt-6 space-y-2">
             {threads.map(t => (
               <li key={t.id}>
-                <button onClick={() => openThread(t.id)} className="w-full rounded-xl border border-forest-green/10 bg-white px-4 py-3 text-left shadow-sm hover:bg-cream/50 transition-colors">
+                <button onClick={() => openThread(t.id)} className="w-full rounded-xl border border-forest-green/10 bg-white px-4 py-3 text-left hover:bg-cream/50 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-dm-sans text-sm font-semibold text-forest-green truncate">
+                    <span className="font-dm-sans text-[16px] font-semibold text-forest-green truncate">
                       {t.counterparty_name ?? 'Dryline member'}
-                      <span className="ml-2 font-normal text-forest-green/45">
+                      <span className="ml-2 font-normal text-secondary-ink">
                         {t.listing_hay_type ?? 'Hay'}{t.listing_county ? ` · ${t.listing_county}` : ''}
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
-                      {t.closed_status === 'closed' && <span className="rounded-full bg-forest-green/10 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-forest-green">Closed</span>}
-                      {t.closed_status === 'declined' && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium font-dm-sans text-gray-500">Ended</span>}
-                      {t.unread > 0 && <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rust px-1.5 text-[10px] font-semibold text-white">{t.unread}</span>}
+                      {t.closed_status === 'closed' && <span className="rounded-full bg-forest-green/10 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-forest-green">Closed</span>}
+                      {t.closed_status === 'declined' && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-gray-500">Ended</span>}
+                      {t.unread > 0 && <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rust px-1.5 text-[14px] font-semibold text-white">{t.unread}</span>}
                     </span>
                   </div>
-                  {t.last_snippet && <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55 truncate">{t.last_snippet}</p>}
+                  {t.last_snippet && <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink truncate">{t.last_snippet}</p>}
                 </button>
               </li>
             ))}
@@ -258,7 +258,7 @@ function MessagesInner() {
   // Conversation view
   return (
     <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-      <button onClick={backToList} className="mb-4 inline-flex items-center gap-1 text-sm font-dm-sans text-forest-green/60 hover:text-forest-green transition-colors">
+      <button onClick={backToList} className="mb-4 inline-flex items-center gap-1 text-[16px] font-dm-sans text-secondary-ink hover:text-forest-green transition-colors">
         ← All messages
       </button>
 
@@ -266,13 +266,13 @@ function MessagesInner() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="font-fraunces text-lg font-semibold text-forest-green">{meta.counterparty_name ?? 'Dryline member'}</h1>
-            <Link href={`/hay/${meta.listing_id}`} className="font-dm-sans text-xs text-forest-green/55 underline hover:text-forest-green">
+            <Link href={`/hay/${meta.listing_id}`} className="font-dm-sans text-[14px] text-secondary-ink underline hover:text-forest-green">
               {meta.listing_hay_type ?? 'Hay'}{meta.listing_county ? ` · ${meta.listing_county}` : ''}
             </Link>
           </div>
           {canInteract && (
             <button onClick={doClose} disabled={acting}
-              className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-medium text-forest-green hover:bg-cream disabled:opacity-50">
+              className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-medium text-forest-green hover:bg-cream disabled:opacity-50">
               Mark as closed
             </button>
           )}
@@ -282,20 +282,20 @@ function MessagesInner() {
       {/* Status banners */}
       {isClosed && (
         <div className="mb-3 rounded-xl border border-forest-green/15 bg-forest-green/5 px-4 py-3">
-          <p className="font-dm-sans text-sm font-medium text-forest-green">Deal closed.</p>
-          <Link href={`/hay/${meta?.listing_id}`} className="mt-1 inline-block font-dm-sans text-sm text-forest-green underline hover:text-forest-green/70">
+          <p className="font-dm-sans text-[16px] font-medium text-forest-green">Deal closed.</p>
+          <Link href={`/hay/${meta?.listing_id}`} className="mt-1 inline-block font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
             Leave a review →
           </Link>
         </div>
       )}
       {isDeclined && (
         <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-          <p className="font-dm-sans text-sm text-gray-600">This listing was sold to another buyer.</p>
+          <p className="font-dm-sans text-[16px] text-gray-600">This listing was sold to another buyer.</p>
         </div>
       )}
       {meta && !isClosed && !isDeclined && (meta.closed_status === 'buyer_marked' || meta.closed_status === 'seller_marked') && (
         <div className="mb-3 rounded-xl border border-forest-green/15 bg-cream px-4 py-2.5">
-          <p className="font-dm-sans text-xs text-forest-green/70">
+          <p className="font-dm-sans text-[14px] text-secondary-ink">
             {(meta.closed_status === 'buyer_marked') === (meta.role === 'buyer')
               ? 'You marked this closed — waiting for the other party to confirm.'
               : 'The other party marked this closed. Tap “Mark as closed” to confirm the deal.'}
@@ -306,38 +306,38 @@ function MessagesInner() {
       {/* Message stream */}
       <div ref={streamRef} className="mb-4 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-forest-green/10 bg-white px-4 py-4">
         {loadingThread && messages.length === 0 ? (
-          <p className="text-sm text-forest-green/40 font-dm-sans">Loading conversation…</p>
+          <p className="text-[16px] text-secondary-ink font-dm-sans">Loading conversation…</p>
         ) : messages.length === 0 ? (
-          <p className="text-sm text-forest-green/40 font-dm-sans">No messages yet — say hello.</p>
+          <p className="text-[16px] text-secondary-ink font-dm-sans">No messages yet — say hello.</p>
         ) : messages.map(m => {
           const mine = m.sender_user_id === myUserId
           if (m.message_type === 'system') {
-            return <p key={m.id} className="text-center font-dm-sans text-xs text-forest-green/45">{m.body}</p>
+            return <p key={m.id} className="text-center font-dm-sans text-[14px] text-secondary-ink">{m.body}</p>
           }
           if (m.message_type === 'offer') {
             const canAct = canInteract && m.offer_status === 'pending' && !mine
             return (
               <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div className="max-w-[85%] rounded-xl border border-rust/25 bg-rust/5 px-4 py-3">
-                  <p className="font-dm-sans text-xs font-semibold uppercase tracking-wide text-rust">Offer</p>
+                  <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-rust">Offer</p>
                   <p className="mt-0.5 font-fraunces text-lg font-semibold text-forest-green">
                     {m.offer_price_per_ton != null ? `$${m.offer_price_per_ton}/ton` : 'Price open'}
-                    {m.offer_tonnage != null && <span className="font-dm-sans text-sm font-normal text-forest-green/60"> · {m.offer_tonnage} tons</span>}
+                    {m.offer_tonnage != null && <span className="font-dm-sans text-[16px] font-normal text-secondary-ink"> · {m.offer_tonnage} tons</span>}
                   </p>
                   {m.offer_status && m.offer_status !== 'pending' && (
-                    <p className="mt-1 font-dm-sans text-xs font-medium text-forest-green/60 capitalize">{m.offer_status}</p>
+                    <p className="mt-1 font-dm-sans text-[14px] font-medium text-secondary-ink capitalize">{m.offer_status}</p>
                   )}
                   {m.offer_status === 'pending' && mine && (
-                    <p className="mt-1 font-dm-sans text-xs text-forest-green/45">Waiting for a response…</p>
+                    <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">Waiting for a response…</p>
                   )}
                   {canAct && counteringId !== m.id && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button onClick={() => offerAction(m.id, 'accept')} disabled={acting}
-                        className="rounded-lg bg-forest-green px-3 py-1.5 font-dm-sans text-xs font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">Accept</button>
+                        className="rounded-lg bg-forest-green px-3 py-1.5 font-dm-sans text-[14px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">Accept</button>
                       <button onClick={() => { setCounteringId(m.id); setCounterPrice(m.offer_price_per_ton?.toString() ?? ''); setCounterTons(m.offer_tonnage?.toString() ?? '') }} disabled={acting}
-                        className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-medium text-forest-green hover:bg-cream disabled:opacity-50">Counter</button>
+                        className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-medium text-forest-green hover:bg-cream disabled:opacity-50">Counter</button>
                       <button onClick={() => offerAction(m.id, 'decline')} disabled={acting}
-                        className="rounded-lg border border-rust/30 px-3 py-1.5 font-dm-sans text-xs font-medium text-rust hover:bg-rust/5 disabled:opacity-50">Decline</button>
+                        className="rounded-lg border border-rust/30 px-3 py-1.5 font-dm-sans text-[14px] font-medium text-rust hover:bg-rust/5 disabled:opacity-50">Decline</button>
                     </div>
                   )}
                   {canAct && counteringId === m.id && (
@@ -348,12 +348,12 @@ function MessagesInner() {
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => offerAction(m.id, 'counter')} disabled={acting}
-                          className="rounded-lg bg-forest-green px-3 py-1.5 font-dm-sans text-xs font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">Send counter</button>
-                        <button onClick={() => setCounteringId(null)} className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-xs font-medium text-forest-green hover:bg-cream">Cancel</button>
+                          className="rounded-lg bg-forest-green px-3 py-1.5 font-dm-sans text-[14px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">Send counter</button>
+                        <button onClick={() => setCounteringId(null)} className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-medium text-forest-green hover:bg-cream">Cancel</button>
                       </div>
                     </div>
                   )}
-                  <p className="mt-1 font-dm-sans text-[10px] text-forest-green/35">{timeOf(m.created_at)}</p>
+                  <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">{timeOf(m.created_at)}</p>
                 </div>
               </div>
             )
@@ -361,33 +361,33 @@ function MessagesInner() {
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] rounded-xl px-4 py-2 ${mine ? 'bg-forest-green text-cream' : 'bg-forest-green/8 text-forest-green'}`}>
-                <p className="font-dm-sans text-sm whitespace-pre-wrap">{m.body}</p>
-                <p className={`mt-0.5 font-dm-sans text-[10px] ${mine ? 'text-cream/60' : 'text-forest-green/40'}`}>{timeOf(m.created_at)}</p>
+                <p className="font-dm-sans text-[16px] whitespace-pre-wrap">{m.body}</p>
+                <p className={`mt-0.5 font-dm-sans text-[14px] ${mine ? 'text-cream' : 'text-secondary-ink'}`}>{timeOf(m.created_at)}</p>
               </div>
             </div>
           )
         })}
       </div>
 
-      {error && <p className="mb-2 font-dm-sans text-sm text-rust">{error}</p>}
+      {error && <p className="mb-2 font-dm-sans text-[16px] text-rust">{error}</p>}
 
       {/* Composer */}
       {canInteract ? (
-        <div className="rounded-xl border border-forest-green/10 bg-white px-4 py-3 shadow-sm">
+        <div className="rounded-xl border border-forest-green/10 bg-white px-4 py-3">
           {showOffer ? (
             <div className="space-y-2">
-              <p className="font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/50">Make an offer</p>
+              <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">Make an offer</p>
               <div className="flex gap-2">
                 <input type="number" min="0" value={offerPrice} onChange={e => setOfferPrice(e.target.value)} placeholder="$/ton" className={INPUT_CLS} />
                 <input type="number" min="0" value={offerTons} onChange={e => setOfferTons(e.target.value)} placeholder="tons" className={INPUT_CLS} />
               </div>
               <div className="flex gap-2">
                 <button onClick={sendOffer} disabled={sending}
-                  className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
+                  className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
                   {sending ? 'Sending…' : 'Send offer'}
                 </button>
                 <button onClick={() => { setShowOffer(false); setOfferPrice(''); setOfferTons('') }}
-                  className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream">Cancel</button>
+                  className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-cream">Cancel</button>
               </div>
             </div>
           ) : (
@@ -395,16 +395,16 @@ function MessagesInner() {
               <textarea value={text} onChange={e => setText(e.target.value)} rows={1} placeholder="Write a message…"
                 className={`${INPUT_CLS} resize-none`}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText() } }} />
-              <button onClick={() => setShowOffer(true)} className="shrink-0 rounded-lg border border-forest-green/20 px-3 py-2.5 font-dm-sans text-xs font-medium text-forest-green hover:bg-cream">$ Offer</button>
+              <button onClick={() => setShowOffer(true)} className="shrink-0 rounded-lg border border-forest-green/20 px-3 py-2.5 font-dm-sans text-[14px] font-medium text-forest-green hover:bg-cream">$ Offer</button>
               <button onClick={sendText} disabled={sending || !text.trim()}
-                className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
+                className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
                 {sending ? '…' : 'Send'}
               </button>
             </div>
           )}
         </div>
       ) : (
-        <p className="font-dm-sans text-xs text-forest-green/45">This conversation is closed.</p>
+        <p className="font-dm-sans text-[14px] text-secondary-ink">This conversation is closed.</p>
       )}
     </main></>
   )

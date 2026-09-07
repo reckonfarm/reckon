@@ -370,7 +370,10 @@ export default async function DashboardPage({
           of the fact the orientation bar and the selector already carry. */}
       <SiteHeader />
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      {/* Phase A2 — ONE column. Every element of the page shares this spine: the
+          county control, the heading, the tabs, and every section. Nothing on the
+          page is wider; an element that needs more width is the wrong element. */}
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <ScrollToTop />
 
         {/* ── County selector (flow, commit 4) ──────────────────────────────────
@@ -387,7 +390,7 @@ export default async function DashboardPage({
             weather / market tools, never a gate on the ledger. Same
             self-gating, RLS-scoped components as the county view's Today. */}
         {user && !selectedCounty && !fips && (
-          <div className="mx-auto mb-8 max-w-2xl space-y-4">
+          <div className="mb-8 space-y-4">
             <Suspense fallback={null}>
               <SinceYouWereHere />
             </Suspense>
@@ -405,10 +408,7 @@ export default async function DashboardPage({
         )}
 
         {(!user || !selectedCounty) && (
-          <section className="mb-8">
-            <label className="mb-2 block text-sm font-medium text-forest-green font-dm-sans">
-              Select County
-            </label>
+          <section className="mb-6" aria-label="County">
             <CountySelector selectedCounty={selectedCounty} />
           </section>
         )}
@@ -417,14 +417,14 @@ export default async function DashboardPage({
         {!fips && <EmptyState signedIn={!!user} />}
 
         {fips && !selectedCounty && (
-          <p className="text-sm text-forest-green/60 font-dm-sans">
+          <p className="text-[16px] text-secondary-ink font-dm-sans">
             County not found for FIPS {fips}.
           </p>
         )}
 
         {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
-          <div className="max-w-2xl mx-auto px-4 pb-16 space-y-4">
+          <div className="pb-16 space-y-4">
             <DashboardViewProvider initial={view}>
 
             {/* ── B1: compact orientation bar — WHICH county, before any money or market
@@ -444,9 +444,9 @@ export default async function DashboardPage({
                 // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
                   <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
-                  <p className="font-dm-sans text-xs text-forest-green/50" data-testid="operation-line">
+                  <p className="font-dm-sans text-[14px] text-secondary-ink" data-testid="operation-line">
                     {homeCounty
-                      ? `Operation · ${homeCounty.name}, ${homeCounty.state} · FIPS ${homeCounty.fips}`
+                      ? `Operation · ${homeCounty.name}, ${homeCounty.state}`
                       : 'Operation · No home county set'}
                     {(!homeCounty || homeCounty.fips !== selectedCounty.fips) && (
                       <> · Viewing {selectedCounty.name}, {selectedCounty.state}</>
@@ -456,9 +456,6 @@ export default async function DashboardPage({
               ) : (
                 <Heading level={1} className="!text-lg !leading-snug">
                   {selectedCounty.name}, {selectedCounty.state}
-                  <span className="ml-2 align-middle font-dm-sans text-xs font-normal text-forest-green/50">
-                    FIPS {selectedCounty.fips}
-                  </span>
                 </Heading>
               )}
               <div className="flex items-center gap-2">
@@ -700,7 +697,7 @@ function EmptyState({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-forest-green/8 mx-auto">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/60">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
           <circle cx="11" cy="11" r="8"/>
           <path d="m21 21-4.35-4.35"/>
         </svg>
@@ -708,7 +705,7 @@ function EmptyState({ signedIn }: { signedIn: boolean }) {
       <Heading level={3}>
         {signedIn ? 'Pick a county for the county tools' : 'Select a county to begin'}
       </Heading>
-      <p className="mt-2 max-w-xs text-[15px] text-forest-green/80 font-dm-sans">
+      <p className="mt-2 max-w-xs text-[16px] text-ink font-dm-sans">
         {signedIn
           ? 'Drought, program, weather, and market tools are by county. Your ledger above is here either way.'
           : 'Search above to view drought conditions and weekly history for any US county.'}

@@ -91,7 +91,7 @@ export default function WatchlistPage() {
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
           My Counties
         </h1>
-        <p className="mt-1 text-sm text-forest-green/50 font-dm-sans">
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
           Counties you&apos;re watching for drought conditions.
         </p>
 
@@ -105,12 +105,12 @@ export default function WatchlistPage() {
           ) : !authed ? (
             <div className="mt-8 border-2 border-dashed border-forest-green/20 rounded-xl p-8 text-center">
               <p className="font-fraunces text-xl text-forest-green mb-2">Track drought conditions in your counties</p>
-              <p className="text-sm text-forest-green/60 font-dm-sans mb-6">Get alerted when your counties hit LFP trigger thresholds. Sign in to save your watchlist.</p>
-              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
+              <p className="text-[16px] text-secondary-ink font-dm-sans mb-6">Get alerted when your counties hit LFP trigger thresholds. Sign in to save your watchlist.</p>
+              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-[16px] font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
             </div>
           ) : entries.length === 0 ? (
-            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center shadow-sm">
-              <p className="text-sm text-forest-green/60 font-dm-sans">
+            <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center">
+              <p className="text-[16px] text-secondary-ink font-dm-sans">
                 No counties watched yet.{' '}
                 <Link href="/dashboard" prefetch={false} className="underline hover:text-forest-green">
                   Search for a county
@@ -128,7 +128,7 @@ export default function WatchlistPage() {
                 return (
                   <li
                     key={entry.countyId}
-                    className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5"
+                    className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 sm:px-5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -137,25 +137,25 @@ export default function WatchlistPage() {
                             {entry.county.name}, {entry.county.state}
                           </h2>
                           {homeFips === entry.county.fips && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-semibold text-forest-green ring-1 ring-forest-green/20 font-dm-sans">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-forest-green/10 px-2 py-0.5 text-[14px] font-semibold text-forest-green ring-1 ring-forest-green/20 font-dm-sans">
                               <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 11.5 12 4l9 7.5M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9" /></svg>
                               Home
                             </span>
                           )}
                           {alert?.alerted && (
-                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-200 font-dm-sans">
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[14px] font-semibold text-red-700 ring-1 ring-red-200 font-dm-sans">
                               Alert
                             </span>
                           )}
                         </div>
                         {alert && (
                           <p className="mt-1">
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-dm-sans text-gray-600 ring-1 ring-gray-200">
+                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[14px] font-dm-sans text-gray-600 ring-1 ring-gray-200">
                               {highest ? `${highest.level} ${highest.label}` : 'No Drought'}
                             </span>
                           </p>
                         )}
-                        <p className="mt-0.5 text-xs text-forest-green/40 font-dm-sans">
+                        <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans">
                           FIPS {entry.county.fips}
                         </p>
                       </div>
@@ -165,7 +165,7 @@ export default function WatchlistPage() {
                           onClick={() => setHome(entry.county.fips)}
                           disabled={homeBusy}
                           className={[
-                            'inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium font-dm-sans transition-colors disabled:opacity-40',
+                            'inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[14px] font-medium font-dm-sans transition-colors disabled:opacity-40',
                             homeFips === entry.county.fips
                               ? 'bg-forest-green text-cream hover:bg-forest-green/90'
                               : 'border border-forest-green/20 text-forest-green hover:bg-cream',
@@ -179,14 +179,14 @@ export default function WatchlistPage() {
                         <Link
                           href={`/dashboard?fips=${entry.county.fips}`}
                           prefetch={false}
-                          className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"
+                          className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-[14px] font-medium text-forest-green font-dm-sans hover:bg-cream"
                         >
                           View Dashboard →
                         </Link>
                         <button
                           onClick={() => remove(entry.countyId)}
                           disabled={busy}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-[14px] font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
                         >
                           {busy ? '…' : 'Remove'}
                         </button>
@@ -198,7 +198,7 @@ export default function WatchlistPage() {
                         {alert.triggered.map(t => (
                           <li
                             key={t.level}
-                            className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-dm-sans text-red-700 ring-1 ring-red-200"
+                            className="rounded-full bg-red-50 px-2.5 py-0.5 text-[14px] font-dm-sans text-red-700 ring-1 ring-red-200"
                           >
                             {t.level} {t.label} — {t.pct.toFixed(1)}%
                           </li>

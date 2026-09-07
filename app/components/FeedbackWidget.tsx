@@ -99,7 +99,7 @@ export default function FeedbackWidget() {
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-sm font-medium text-forest-green shadow-lg shadow-forest-green/10 transition-transform hover:-translate-y-0.5"
+          className="flex min-h-[48px] items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-[16px] font-medium text-forest-green transition-transform hover:-translate-y-0.5"
           aria-label="Send feedback"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -108,7 +108,7 @@ export default function FeedbackWidget() {
           Feedback
         </button>
       ) : (
-        <div className="w-[18rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-forest-green/15 bg-cream p-4 shadow-xl shadow-forest-green/15">
+        <div className="w-[18rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-forest-green/15 bg-cream p-4 shadow-overlay">
           {status === 'done' ? (
             <div className="py-2 text-center">
               <div className="mb-1 text-2xl">🌱</div>
@@ -125,7 +125,7 @@ export default function FeedbackWidget() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setOpen(false)}
-                    className="rounded p-1 text-forest-green/40 transition-colors hover:text-forest-green/70"
+                    className="rounded-lg p-1 text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Close"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -135,7 +135,7 @@ export default function FeedbackWidget() {
                   </button>
                   <button
                     onClick={dismiss}
-                    className="rounded px-1.5 py-1 text-[11px] text-forest-green/40 transition-colors hover:text-forest-green/70"
+                    className="rounded-lg px-1.5 py-1 text-[14px] text-secondary-ink transition-colors hover:text-secondary-ink"
                     aria-label="Hide feedback for this visit"
                   >
                     Hide
@@ -150,10 +150,10 @@ export default function FeedbackWidget() {
                     <button
                       key={s.value}
                       onClick={() => setSentiment(active ? null : s.value)}
-                      className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl border py-2 text-[11px] transition-colors ${
+                      className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl border py-2 text-[14px] transition-colors ${
                         active
                           ? 'border-forest-green bg-forest-green/5 text-forest-green'
-                          : 'border-forest-green/15 text-forest-green/55 hover:border-forest-green/30'
+                          : 'border-forest-green/15 text-secondary-ink hover:border-forest-green/30'
                       }`}
                       aria-pressed={active}
                     >
@@ -170,14 +170,14 @@ export default function FeedbackWidget() {
                 placeholder="Anything on your mind? (optional)"
                 rows={3}
                 maxLength={2000}
-                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-sm text-forest-green placeholder:text-forest-green/35 focus:border-forest-green/40 focus:outline-none"
+                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/40 focus:outline-none"
               />
 
               <button
                 onClick={submit}
                 disabled={!canSend}
                 style={{ backgroundColor: '#8B3A2B' }}
-                className="w-full rounded-xl py-2.5 text-sm font-medium text-cream transition-opacity disabled:opacity-40"
+                className="w-full rounded-xl py-2.5 text-[16px] font-medium text-cream transition-opacity disabled:opacity-40"
               >
                 {status === 'sending' ? 'Sending…' : 'Send'}
               </button>

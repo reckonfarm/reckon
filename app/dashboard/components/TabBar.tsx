@@ -59,10 +59,10 @@ export default function TabBar({ tabs, activeTab, onChange }: Props) {
               }}
               onClick={() => onChange(tab.id)}
               className={[
-                'px-4 py-2.5 text-sm font-medium font-dm-sans whitespace-nowrap transition-colors',
+                'px-4 py-2.5 text-[16px] font-medium font-dm-sans whitespace-nowrap transition-colors',
                 activeTab === tab.id
                   ? 'border-b-2 border-forest-green text-forest-green'
-                  : 'text-forest-green/50 hover:text-forest-green/80',
+                  : 'text-ink hover:text-brand',
               ].join(' ')}
             >
               {tab.label}

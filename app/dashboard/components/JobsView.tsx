@@ -37,8 +37,8 @@ export function JobsViewSkeleton() {
       <style>{`@keyframes dlJobsPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
       {[0, 1, 2].map(i => (
         <div key={i} className="py-3" style={{ animation: 'dlJobsPulse 1.6s ease-in-out infinite' }}>
-          <div className="h-4 w-2/5 rounded bg-forest-green/10" />
-          <div className="mt-2 h-3 w-3/5 rounded bg-forest-green/10" />
+          <div className="h-4 w-2/5 rounded-lg bg-forest-green/10" />
+          <div className="mt-2 h-3 w-3/5 rounded-lg bg-forest-green/10" />
         </div>
       ))}
     </Card>
@@ -55,12 +55,12 @@ export default async function JobsView({ user }: { user: { id: string } | null }
   if (!user) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/70">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           The ranch ledger is private.
         </p>
         <Link
           href="/signin"
-          className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+          className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-[16px] font-medium text-cream transition-colors hover:bg-forest-green/90"
         >
           Sign in to see your jobs
         </Link>
@@ -77,7 +77,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
   if (error) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           Jobs are temporarily unavailable.
         </p>
       </Card>
@@ -104,12 +104,12 @@ export default async function JobsView({ user }: { user: { id: string } | null }
   if (visible.length === 0) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           {jobs.length === 0
             ? 'No jobs yet. Put a Scout on a machine and go to work.'
             : 'Nothing recent to show — the full list lives under All sessions.'}
         </p>
-        <Link href="/jobs" className="mt-2 inline-block font-dm-sans text-sm font-semibold text-forest-green/70 hover:text-forest-green">
+        <Link href="/jobs" className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
           All sessions →
         </Link>
       </Card>
@@ -129,9 +129,9 @@ export default async function JobsView({ user }: { user: { id: string } | null }
     <div className="space-y-5">
       {groups.map(g => (
         <section key={g.key}>
-          <h2 className="px-1 font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45">
+          <h2 className="px-1 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
             {g.key === today ? 'Today' : fmtDay(g.jobs[0].started_at)}
-            <span className="font-normal normal-case text-forest-green/40">
+            <span className="font-normal normal-case text-secondary-ink">
               {' · '}{plural(g.jobs.length, 'session')}{' · '}{fmtDuration(g.jobs.reduce((s, j) => s + j.duration_s, 0))}
             </span>
           </h2>
@@ -149,23 +149,23 @@ export default async function JobsView({ user }: { user: { id: string } | null }
                           {name ?? <>{fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT</>}
                           {live && <InProgressBadge />}
                         </p>
-                        <p className="mt-0.5 font-dm-sans text-xs text-forest-green/50">
+                        <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                           {name && (
                             <>
                               {fmtTime(j.started_at)} – {fmtTime(j.ended_at)} MT
-                              <span className="text-forest-green/25"> · </span>
+                              <span className="text-secondary-ink"> · </span>
                             </>
                           )}
                           {j.devices?.name ?? 'Unknown device'}
                           {bales && (
                             <>
-                              <span className="text-forest-green/25"> · </span>
-                              <span className="font-semibold text-forest-green/80">{bales}</span>
+                              <span className="text-secondary-ink"> · </span>
+                              <span className="font-semibold text-ink">{bales}</span>
                             </>
                           )}
                         </p>
                       </div>
-                      <p className="shrink-0 font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
+                      <p className="shrink-0 font-dm-sans text-[16px] font-semibold tabular-nums text-forest-green">
                         {fmtDuration(j.duration_s)}
                       </p>
                     </div>
@@ -177,7 +177,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
         </section>
       ))}
       <p className="text-center">
-        <Link href="/jobs" className="inline-block rounded-lg px-4 py-2 font-dm-sans text-sm text-forest-green/60 hover:text-forest-green">
+        <Link href="/jobs" className="inline-block rounded-lg px-4 py-2 font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           All sessions →
         </Link>
       </p>

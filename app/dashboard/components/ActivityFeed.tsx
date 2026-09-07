@@ -132,8 +132,8 @@ export function ActivityFeedSkeleton() {
       <style>{`@keyframes dlFeedPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
       {[0, 1, 2].map(i => (
         <div key={i} className="py-3" style={{ animation: 'dlFeedPulse 1.6s ease-in-out infinite' }}>
-          <div className="h-4 w-2/5 rounded bg-forest-green/10" />
-          <div className="mt-2 h-3 w-3/5 rounded bg-forest-green/10" />
+          <div className="h-4 w-2/5 rounded-lg bg-forest-green/10" />
+          <div className="mt-2 h-3 w-3/5 rounded-lg bg-forest-green/10" />
         </div>
       ))}
     </Card>
@@ -148,12 +148,12 @@ export default async function ActivityFeed() {
   if (!user) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/70">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           The ranch ledger is private.
         </p>
         <Link
           href="/signin"
-          className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+          className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-[16px] font-medium text-cream transition-colors hover:bg-forest-green/90"
         >
           Sign in to see your activity
         </Link>
@@ -171,7 +171,7 @@ export default async function ActivityFeed() {
   if (error) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           Activity is temporarily unavailable.
         </p>
       </Card>
@@ -183,7 +183,7 @@ export default async function ActivityFeed() {
   if (events.length === 0) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-forest-green/55">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           Nothing in the ledger yet. Decisions and device readings land here.
         </p>
       </Card>
@@ -202,15 +202,15 @@ export default async function ActivityFeed() {
                   {r.title}
                 </p>
                 {r.detail && (
-                  <p className="mt-0.5 truncate font-dm-sans text-xs text-forest-green/55">
+                  <p className="mt-0.5 truncate font-dm-sans text-[14px] text-secondary-ink">
                     {r.detail}
                   </p>
                 )}
-                <p className="mt-0.5 font-dm-sans text-xs text-forest-green/45">
+                <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                   {r.source ?? sourceLine(e)}
                 </p>
               </div>
-              <p className="shrink-0 font-dm-sans text-xs text-forest-green/50">
+              <p className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">
                 {whenLabel(e.ts)}
               </p>
             </div>
@@ -220,7 +220,7 @@ export default async function ActivityFeed() {
 
       {/* The cap, stated — never a silent truncation. */}
       {events.length === FEED_CAP && (
-        <p className="mt-2 text-center font-dm-sans text-xs text-forest-green/40">
+        <p className="mt-2 text-center font-dm-sans text-[14px] text-secondary-ink">
           Showing the last {FEED_CAP} — older entries are kept, not shown yet.
         </p>
       )}

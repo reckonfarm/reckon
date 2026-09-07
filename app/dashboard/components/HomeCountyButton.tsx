@@ -96,7 +96,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
         onClick={toggle}
         disabled={busy}
         className={[
-          'inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium font-dm-sans transition-colors disabled:opacity-40',
+          'inline-flex min-h-[48px] items-center gap-1.5 rounded-lg px-3 py-1.5 text-[16px] font-medium font-dm-sans transition-colors disabled:opacity-40',
           isHome
             ? 'bg-forest-green text-cream hover:bg-forest-green/90'
             : 'border border-forest-green/20 bg-white text-forest-green hover:bg-cream',
@@ -118,7 +118,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
       </button>
 
       {justSet && (
-        <span className="text-xs font-dm-sans text-forest-green/70">
+        <span className="text-[14px] font-dm-sans text-secondary-ink">
           Your dashboard opens here now
         </span>
       )}

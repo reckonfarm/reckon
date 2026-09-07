@@ -57,7 +57,7 @@ export default function SiteHeader({ center }: Props) {
     <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
 
-        <Link href="/" className="flex flex-col leading-tight">
+        <Link href="/" className="flex min-h-[48px] flex-col justify-center leading-tight">
           {/* The rope-line mark sits left of the wordmark (brand, commit 3). Its ink
               fills 44.8 of the file's 80 viewBox units, so the box is drawn at
               80/44.8 × the wordmark's cap height (Fraunces ≈ 0.7em: 14px at
@@ -74,13 +74,13 @@ export default function SiteHeader({ center }: Props) {
               Dryline
             </span>
           </span>
-          <span className="text-[11px] sm:text-xs leading-tight text-forest-green/50 font-dm-sans">
+          <span className="text-[14px] sm:text-[14px] leading-tight text-ink font-dm-sans">
             {TAGLINE}
           </span>
         </Link>
 
         {center && (
-          <p className="hidden text-sm text-forest-green/60 font-dm-sans sm:block">
+          <p className="hidden text-[16px] text-secondary-ink font-dm-sans sm:block">
             {center}
           </p>
         )}
@@ -92,14 +92,14 @@ export default function SiteHeader({ center }: Props) {
           <div className="hidden items-center gap-4 md:flex">
             <Link
               href="/watchlist"
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
             >
               My Counties
             </Link>
             {flagEnabled('marketplace') && (
               <Link
                 href="/hay"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Hay
               </Link>
@@ -111,7 +111,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/"
-                className="font-dm-sans text-sm font-medium text-forest-green hover:text-forest-green/80 transition-colors"
+                className="font-dm-sans text-[16px] font-medium text-forest-green hover:text-ink transition-colors"
               >
                 My Operation
               </Link>
@@ -119,7 +119,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/herd"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 My herd
               </Link>
@@ -128,7 +128,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/jobs"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Jobs
               </Link>
@@ -138,7 +138,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/devices"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Devices
               </Link>
@@ -146,10 +146,10 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('messaging') && (
               <Link
                 href="/messages"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Messages{unread > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[10px] font-semibold text-white align-middle">
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white align-middle">
                     {unread > 9 ? '9+' : unread}
                   </span>
                 )}
@@ -158,7 +158,7 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('marketplace') && (
               <Link
                 href="/radar"
-                className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Hay Radar
               </Link>
@@ -166,7 +166,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/profile"
-                className="max-w-[160px] truncate text-xs text-forest-green/40 font-dm-sans hover:text-forest-green transition-colors"
+                className="max-w-[160px] truncate text-[14px] text-ink font-dm-sans hover:text-brand transition-colors"
               >
                 {user.email}
               </Link>
@@ -178,14 +178,14 @@ export default function SiteHeader({ center }: Props) {
           {user ? (
             <button
               onClick={signOut}
-              className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green transition-colors"
+              className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
             >
               Sign out
             </button>
           ) : (
             <Link
               href="/signin"
-              className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
+              className="inline-flex min-h-[48px] items-center rounded-lg border border-forest-green/20 px-4 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
             >
               Sign in
             </Link>

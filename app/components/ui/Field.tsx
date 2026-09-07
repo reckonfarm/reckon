@@ -22,7 +22,7 @@ import {
 // 2D: inputs read at 17px and stand 48px tall — a lit cab at 5pm, a thumb in a glove.
 const CONTROL =
   'w-full min-h-[48px] rounded-lg border bg-surface px-3 py-2.5 font-dm-sans text-[17px] text-ink ' +
-  'outline-none transition-colors placeholder:text-muted/40 ' +
+  'outline-none transition-colors placeholder:text-secondary-ink ' +
   'focus:ring-2 focus:ring-accent/20 ' +
   'disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -70,7 +70,7 @@ export function Select({
       <svg
         aria-hidden="true"
         viewBox="0 0 20 20"
-        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/50"
+        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary-ink"
       >
         <path d="M6 8l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
@@ -117,18 +117,18 @@ export function Field({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="font-dm-sans text-sm font-medium text-ink">
+      <label htmlFor={id} className="font-dm-sans text-[16px] font-medium text-ink">
         {label}
         {required && <span aria-hidden="true" className="text-warning"> *</span>}
       </label>
       {control}
       {hint && !error && (
-        <p id={hintId} className="font-dm-sans text-xs text-muted/70">
+        <p id={hintId} className="font-dm-sans text-[14px] text-secondary-ink">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} className="font-dm-sans text-xs font-medium text-warning">
+        <p id={errorId} className="font-dm-sans text-[14px] font-medium text-warning">
           {error}
         </p>
       )}

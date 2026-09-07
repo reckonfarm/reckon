@@ -70,7 +70,7 @@ function usd(n: number, decimals = 2) {
 
 function EstimateBadge() {
   return (
-    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
+    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 border border-amber-200 font-dm-sans">
       Estimate
     </span>
   )
@@ -83,20 +83,20 @@ function Divider() {
 function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
   return (
     <div className={`flex items-start gap-3 py-2 ${isMax ? 'opacity-100' : 'opacity-60'}`}>
-      <span className={`mt-0.5 flex-shrink-0 text-sm font-dm-sans leading-none w-4 ${tier.triggered ? 'text-forest-green' : 'text-forest-green/25'}`}>
+      <span className={`mt-0.5 flex-shrink-0 text-[16px] font-dm-sans leading-none w-4 ${tier.triggered ? 'text-forest-green' : 'text-secondary-ink'}`}>
         {tier.triggered ? '✓' : '✗'}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-          <span className={`font-dm-sans text-xs ${tier.triggered ? 'text-forest-green font-medium' : 'text-forest-green/40'}`}>
+          <span className={`font-dm-sans text-[14px] ${tier.triggered ? 'text-forest-green font-medium' : 'text-secondary-ink'}`}>
             Tier {tier.tier} — {tier.label}
             {isMax && tier.triggered && (
-              <span className="ml-2 inline-block rounded-full bg-forest-green px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-cream">
+              <span className="ml-2 inline-block rounded-full bg-forest-green px-1.5 py-0.5 text-[14px] font-semibold uppercase tracking-wide text-cream">
                 Max
               </span>
             )}
           </span>
-          <span className={`font-dm-sans text-xs tabular-nums flex-shrink-0 ${tier.triggered ? 'text-forest-green/70' : 'text-forest-green/30'}`}>
+          <span className={`font-dm-sans text-[14px] tabular-nums flex-shrink-0 ${tier.triggered ? 'text-secondary-ink' : 'text-secondary-ink'}`}>
             {tier.payments} pmt{tier.payments !== 1 ? 's' : ''}
           </span>
         </div>
@@ -117,16 +117,16 @@ function PaymentBreakdown({
   const limitingCost = est.limitingStep === 2 ? est.step2! : est.step1
 
   return (
-    <div className="mt-2 space-y-1 rounded-md bg-forest-green/5 px-3 py-2.5 font-dm-sans text-xs text-forest-green/70">
+    <div className="mt-2 space-y-1 rounded-md bg-forest-green/5 px-3 py-2.5 font-dm-sans text-[14px] text-secondary-ink">
       {/* Step 1 */}
       <div className="flex justify-between gap-2">
         <span>
           Step 1 — head count:{' '}
-          <span className="text-forest-green/50">
+          <span className="text-secondary-ink">
             {est.headCount.toLocaleString()} × {usd(est.ratePerHead)}/head
           </span>
         </span>
-        <span className="tabular-nums text-forest-green/80 font-medium">
+        <span className="tabular-nums text-ink font-medium">
           {usd(est.step1)}/mo
         </span>
       </div>
@@ -136,16 +136,16 @@ function PaymentBreakdown({
         <div className="flex justify-between gap-2">
           <span>
             Step 2 — carrying cap:{' '}
-            <span className="text-forest-green/50">
+            <span className="text-secondary-ink">
               ({est.eligibleAcres?.toLocaleString()} acres ÷ {est.acresPerAU} ac/AU) × 30 × {usd(DAILY_FEED_RATE_2026, 4)}/day
             </span>
           </span>
-          <span className="tabular-nums text-forest-green/80 font-medium">
+          <span className="tabular-nums text-ink font-medium">
             {usd(est.step2)}/mo
           </span>
         </div>
       ) : (
-        <div className="text-forest-green/40">
+        <div className="text-secondary-ink">
           Step 2 — carrying cap: not entered (head-count method used)
         </div>
       )}
@@ -160,9 +160,9 @@ function PaymentBreakdown({
               : 'Step 1'}
           </span>
           {': '}
-          <span className="text-forest-green/50">{usd(limitingCost)} × 0.60</span>
+          <span className="text-secondary-ink">{usd(limitingCost)} × 0.60</span>
         </span>
-        <span className="tabular-nums text-forest-green/80 font-medium">
+        <span className="tabular-nums text-ink font-medium">
           {usd(est.monthlyPayment)}/mo
         </span>
       </div>
@@ -171,7 +171,7 @@ function PaymentBreakdown({
       <div className="flex justify-between gap-2">
         <span>
           × {est.numPayments} monthly payment{est.numPayments !== 1 ? 's' : ''}{' '}
-          <span className="text-forest-green/50">({tierLabel})</span>
+          <span className="text-secondary-ink">({tierLabel})</span>
         </span>
         <span className="tabular-nums font-semibold text-forest-green">
           {usd(est.grossEstimate, 0)}
@@ -183,7 +183,7 @@ function PaymentBreakdown({
         <div className="flex justify-between gap-2 border-t border-forest-green/10 pt-1">
           <span>
             Capped at program limit{' '}
-            <span className="text-forest-green/50">({usd(est.paymentCap, 0)}/yr per person)</span>
+            <span className="text-secondary-ink">({usd(est.paymentCap, 0)}/yr per person)</span>
           </span>
           <span className="tabular-nums font-semibold text-rust">
             {usd(est.cappedEstimate, 0)}
@@ -233,7 +233,7 @@ function ActionCards({ year, currentYear }: {
 
   return (
     <div id="action-cards" className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+      <p className="text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
         Next Steps
       </p>
 
@@ -242,7 +242,7 @@ function ActionCards({ year, currentYear }: {
         {/* Step 1 */}
         <div className="flex gap-3 p-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
               <line x1="16" y1="13" x2="8" y2="13"/>
@@ -251,10 +251,10 @@ function ActionCards({ year, currentYear }: {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+            <p className="text-[14px] font-semibold text-forest-green font-dm-sans">
               1. Report your acreage
             </p>
-            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+            <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               File an acreage report for all grazing land where the loss occurred. Required before your application can be approved.
             </p>
           </div>
@@ -263,19 +263,19 @@ function ActionCards({ year, currentYear }: {
         {/* Step 2 */}
         <div className="flex gap-3 p-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
               <circle cx="12" cy="10" r="3"/>
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+            <p className="text-[14px] font-semibold text-forest-green font-dm-sans">
               2. Contact your FSA office
             </p>
-            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+            <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               Call or visit your local FSA office to begin your LFP application. Bring livestock inventory records and grazing land documentation.
             </p>
-            <a href="https://www.farmers.gov/service-center-locator" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+            <a href="https://www.farmers.gov/service-center-locator" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
               Find your FSA office →
             </a>
           </div>
@@ -284,20 +284,20 @@ function ActionCards({ year, currentYear }: {
         {/* Step 3 */}
         <div className="flex gap-3 p-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+            <p className="text-[14px] font-semibold text-forest-green font-dm-sans">
               3. Complete Form CCC-853
             </p>
-            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+            <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               Submit the LFP application with supporting documentation to your FSA county office.
             </p>
-            <a href="https://www.fsa.usda.gov/Assets/USDA-FSA-Public/usdafiles/Farm-Bill/pdf/ccc853.pdf" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+            <a href="https://www.fsa.usda.gov/Assets/USDA-FSA-Public/usdafiles/Farm-Bill/pdf/ccc853.pdf" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
               Download Form CCC-853 →
             </a>
           </div>
@@ -306,7 +306,7 @@ function ActionCards({ year, currentYear }: {
         {/* Step 4 — deadline */}
         <div className="flex gap-3 p-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
               <line x1="16" y1="2" x2="16" y2="6"/>
               <line x1="8" y1="2" x2="8" y2="6"/>
@@ -314,23 +314,23 @@ function ActionCards({ year, currentYear }: {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+            <p className="text-[14px] font-semibold text-forest-green font-dm-sans">
               4. File by the deadline
             </p>
             {!deadline ? (
-              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
                 Ask your FSA office for the application deadline for {programYear} losses.
               </p>
             ) : signupClosed ? (
-              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
                 Applications for {programYear} losses were due {fmtDeadlineLong(deadline.deadline)}. Contact your FSA office if you have not yet enrolled.
               </p>
             ) : isUrgent(deadline) ? (
-              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
                 Applications for {programYear} losses are due by {fmtDeadlineLong(deadline.deadline)}. Do not wait — FSA offices get busy as the deadline approaches.
               </p>
             ) : (
-              <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+              <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
                 Applications for {programYear} losses are due {fmtDeadlineLong(deadline.deadline)} · verified {fmtVerifiedMonth(deadline)}.
               </p>
             )}
@@ -340,19 +340,19 @@ function ActionCards({ year, currentYear }: {
         {/* Step 5 — form pre-fill hook (future feature) */}
         <div className="flex gap-3 p-3 bg-forest-green/[0.03] rounded-b-xl">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-forest-green/8">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-forest-green/70">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary-ink">
               <path d="M12 20h9"/>
               <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-forest-green font-dm-sans">
+            <p className="text-[14px] font-semibold text-forest-green font-dm-sans">
               5. Pre-filled application
             </p>
-            <p className="mt-0.5 text-xs text-forest-green/60 font-dm-sans leading-relaxed">
+            <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               Coming soon — Dryline will pre-fill your CCC-853 with your county, drought dates, and livestock data so you walk into your FSA office ready to sign.
             </p>
-            <span className="mt-1 inline-block rounded-full bg-forest-green/10 px-2 py-0.5 text-xs font-semibold text-forest-green/70 font-dm-sans">
+            <span className="mt-1 inline-block rounded-full bg-forest-green/10 px-2 py-0.5 text-[14px] font-semibold text-secondary-ink font-dm-sans">
               Coming soon
             </span>
           </div>
@@ -459,7 +459,7 @@ function LivestockPanel({
   if (!eligibility) {
     return (
       <div className="space-y-3 p-4 sm:p-6">
-        <p className="text-sm text-forest-green/50 font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           LFP eligibility data not available — run the cron to populate drought data for this county.
         </p>
       </div>
@@ -504,14 +504,14 @@ function LivestockPanel({
       {pending ? (
         // Pending — meets OBBBA's new D2 threshold but NOT officially triggered. Amber, no
         // dollar, no "triggered"/sign-up call — same story as the banner/hero/alert siblings.
-        <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
-          <p className="font-dm-sans text-xs font-semibold uppercase tracking-wider text-amber-700">
+        <div className="rounded-xl bg-amber-50 p-4 border border-amber-200">
+          <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-amber-700">
             {droughtLabel(maxTier)}
           </p>
           <p className="mt-1 font-fraunces text-xl font-semibold text-amber-900 sm:text-2xl">
             Meets the new OBBBA D2 threshold — not yet official
           </p>
-          <p className="mt-2 font-dm-sans text-sm leading-relaxed text-amber-800">
+          <p className="mt-2 font-dm-sans text-[16px] leading-relaxed text-amber-800">
             FSA hasn&apos;t loaded the OBBBA rules into the 2026 eligibility maps yet, so this
             isn&apos;t officially triggered and there&apos;s no payment estimate. Keep your
             records, and{' '}
@@ -534,7 +534,7 @@ function LivestockPanel({
           <div>
             <div className="flex items-center">
               <p
-                className="font-dm-sans text-xs font-semibold uppercase tracking-wider"
+                className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider"
                 style={{ color: style.fg, opacity: 0.8 }}
               >
                 {droughtLabel(maxTier)}
@@ -548,13 +548,13 @@ function LivestockPanel({
               {payments}
             </p>
             <p
-              className="font-dm-sans text-sm"
+              className="font-dm-sans text-[16px]"
               style={{ color: style.fg, opacity: 0.85 }}
             >
               monthly LFP payment{payments !== 1 ? 's' : ''} — {tierLabel}
             </p>
             <p
-              className="mt-2 font-dm-sans text-sm font-medium"
+              className="mt-2 font-dm-sans text-[16px] font-medium"
               style={{ color: style.fg, opacity: 0.9 }}
             >
               You&apos;re triggered. Don&apos;t wait — sign up at your local FSA office.
@@ -562,11 +562,11 @@ function LivestockPanel({
           </div>
         ) : (
           <div>
-            <p className="font-dm-sans text-sm font-medium text-forest-green/60">
+            <p className="font-dm-sans text-[16px] font-medium text-secondary-ink">
               Not yet qualifying for LFP payments
             </p>
             {weeksUntilTier1 !== null && (
-              <p className="mt-2 font-dm-sans text-sm text-forest-green/80">
+              <p className="mt-2 font-dm-sans text-[16px] text-ink">
                 {currentD2Streak > 0
                   ? `Currently in D2 — ${currentD2Streak} consecutive week${currentD2Streak !== 1 ? 's' : ''} so far. ${weeksUntilTier1} more week${weeksUntilTier1 !== 1 ? 's' : ''} of D2 needed to reach tier 1 (1 payment).`
                   : '4 consecutive weeks of D2 (Severe) drought required for the first LFP payment.'}
@@ -594,15 +594,15 @@ function LivestockPanel({
 
             {/* Header */}
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+              <h3 className="text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
                 Payment Estimate
               </h3>
               <EstimateBadge />
             </div>
 
             {/* 60% explanation */}
-            <p className="text-xs text-forest-green/60 font-dm-sans">
-              FSA pays <span className="font-semibold text-forest-green/80">60%</span> of your
+            <p className="text-[14px] text-secondary-ink font-dm-sans">
+              FSA pays <span className="font-semibold text-ink">60%</span> of your
               monthly feed cost, for the number of months your county&apos;s drought qualifies.
               The 60% is applied to whichever is smaller — your herd&apos;s feed cost, or what
               your land can support by carrying capacity.
@@ -611,13 +611,13 @@ function LivestockPanel({
             {/* Livestock + head count */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">
                   Livestock type
                 </label>
                 <select
                   value={livestock}
                   onChange={e => { setLivestock(e.target.value as LivestockKind); setEstimateTouched(true) }}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 >
                   {PAYMENT_RATES_2026.map(r => (
                     <option key={r.kind} value={r.kind}>{r.label}</option>
@@ -626,7 +626,7 @@ function LivestockPanel({
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">
                   Head count
                 </label>
                 <input
@@ -634,7 +634,7 @@ function LivestockPanel({
                   min={1}
                   value={headCount}
                   onChange={e => { setHeadCount(parseInt(e.target.value, 10) || 0); setEstimateTouched(true) }}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
@@ -642,9 +642,9 @@ function LivestockPanel({
             {/* Carrying capacity (optional) */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">
                   Eligible grazing acres{' '}
-                  <span className="font-normal text-forest-green/35">(optional)</span>
+                  <span className="font-normal text-secondary-ink">(optional)</span>
                 </label>
                 <input
                   type="number"
@@ -652,14 +652,14 @@ function LivestockPanel({
                   placeholder="e.g. 640"
                   value={eligibleAcres}
                   onChange={e => setEligibleAcres(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/25 focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/60 font-dm-sans">
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">
                   Carrying capacity — acres per AU{' '}
-                  <span className="font-normal text-forest-green/35">(optional)</span>
+                  <span className="font-normal text-secondary-ink">(optional)</span>
                 </label>
                 <input
                   type="number"
@@ -668,7 +668,7 @@ function LivestockPanel({
                   placeholder="e.g. 5"
                   value={acresPerAU}
                   onChange={e => setAcresPerAU(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-forest-green/25 focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
@@ -680,16 +680,16 @@ function LivestockPanel({
                   <p className="font-fraunces text-3xl font-semibold text-forest-green sm:text-4xl">
                     {usd(estimate.cappedEstimate, 0)}
                   </p>
-                  <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-xs font-semibold text-white">
+                  <span className="rounded-full bg-forest-green px-2 py-0.5 font-dm-sans text-[14px] font-semibold text-white">
                     ✓ triggered
                   </span>
                 </div>
                 {estimate.isCapped && (
-                  <p className="mt-0.5 text-xs font-medium text-rust font-dm-sans">
+                  <p className="mt-0.5 text-[14px] font-medium text-rust font-dm-sans">
                     Estimated {usd(estimate.grossEstimate, 0)}; capped at {usd(estimate.paymentCap, 0)} program-year limit.
                   </p>
                 )}
-                <p className="mt-0.5 text-xs text-forest-green/50 font-dm-sans">
+                <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans">
                   2026 FSA rate · head-count{estimate.step2 !== null
                     ? estimate.limitingStep === 2 ? ' · carrying cap is limiting factor' : ' · head count is limiting factor'
                     : ' method (enter acres for carrying-cap comparison)'}
@@ -697,7 +697,7 @@ function LivestockPanel({
 
                 <PaymentBreakdown est={estimate} tierLabel={tierLabel} />
 
-                <p className="mt-2 text-xs text-forest-green/40 font-dm-sans">
+                <p className="mt-2 text-[14px] text-secondary-ink font-dm-sans">
                   Maximum LFP payment is 5 monthly payments per livestock category per
                   calendar year. FSA determines the final amount at enrollment — this estimate
                   does not account for payment limitations, sequestration, or prior-year
@@ -709,7 +709,7 @@ function LivestockPanel({
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-forest-green/40 font-dm-sans">
+              <p className="text-[14px] text-secondary-ink font-dm-sans">
                 {headCountValid ? 'Enter a valid head count to see estimate.' : 'Enter a valid head count to see estimate.'}
               </p>
             )}
@@ -721,7 +721,7 @@ function LivestockPanel({
 
       {/* ── Tier ladder ── */}
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+        <p className="mb-2 text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
           LFP Tier Ladder — {countyName}{pending ? ' (OBBBA — pending FSA)' : ''}
         </p>
         <div className="divide-y divide-forest-green/10">
@@ -735,44 +735,44 @@ function LivestockPanel({
 
       {/* ── Grazing period ── */}
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+        <p className="mb-2 text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
           Grazing Period
         </p>
 
         {allTypes && typeNames.length > 0 && (
           <div className="mb-1">
             {typeNames.length === 1 ? (
-              <p className="text-sm font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
+              <p className="text-[16px] font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
             ) : (
               <select
                 value={selectedType}
                 onChange={e => handleTypeChange(e.target.value)}
-                className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
               >
                 {typeNames.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             )}
-            <p className="mt-0.5 text-xs text-forest-green/40 font-dm-sans">
+            <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans">
               FSA Official · {fsaPeriod?.year ?? ''}
             </p>
           </div>
         )}
 
         {!allTypes && (
-          <p className="mb-1 text-xs text-forest-green/40 font-dm-sans">
+          <p className="mb-1 text-[14px] text-secondary-ink font-dm-sans">
             Grazing period not on file for this county. Your actual FSA-assigned period depends on your forage type. Enter your dates below or contact your local FSA office.
           </p>
         )}
 
         <div className="flex flex-wrap items-baseline gap-2">
-          <p className="text-xs text-forest-green font-dm-sans">
+          <p className="text-[14px] text-forest-green font-dm-sans">
             {formatDateShort(grazingPeriod.startDate)} → {formatDateShort(grazingPeriod.endDate)}
           </p>
           <button
             onClick={() => setShowGrazingEdit(v => !v)}
-            className="text-xs text-forest-green/50 underline hover:text-forest-green font-dm-sans"
+            className="text-[14px] text-secondary-ink underline hover:text-forest-green font-dm-sans"
           >
             {showGrazingEdit ? 'Cancel' : 'Customize dates'}
           </button>
@@ -782,33 +782,33 @@ function LivestockPanel({
           <div className="mt-3 space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/50 font-dm-sans">Start date</label>
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">Start date</label>
                 <input
                   type="date"
                   value={gsInput}
                   onChange={e => setGsInput(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-forest-green/50 font-dm-sans">End date</label>
+                <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">End date</label>
                 <input
                   type="date"
                   value={geInput}
                   onChange={e => setGeInput(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
             <button
               onClick={recalculate}
               style={{ color: '#ffffff' }}
-              className="rounded-lg bg-forest-green px-4 py-2 text-sm font-medium font-dm-sans hover:bg-forest-green/90"
+              className="rounded-lg bg-forest-green px-4 py-2 text-[16px] font-medium font-dm-sans hover:bg-forest-green/90"
             >
               Recalculate
             </button>
             {dateError && (
-              <p className="text-xs text-red-600 font-dm-sans">{dateError}</p>
+              <p className="text-[14px] text-red-600 font-dm-sans">{dateError}</p>
             )}
           </div>
         )}
@@ -818,7 +818,7 @@ function LivestockPanel({
 
       {/* ── OBBBA note ── */}
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-        <p className="text-xs text-amber-800 font-dm-sans">
+        <p className="text-[14px] text-amber-800 font-dm-sans">
           <span className="font-semibold">OBBBA update:</span> Tiers 1 and 2 (D2 Severe
           triggers) are new under the One Big Beautiful Bill Act, effective July 2025. Pre-OBBBA,
           D2 conditions produced no LFP payment. Tier 1 (1 payment) now triggers at 4 consecutive
@@ -828,7 +828,7 @@ function LivestockPanel({
 
       {/* ── Provenance ── */}
       <div className="space-y-1">
-        <p className="text-xs text-forest-green/40 font-dm-sans">
+        <p className="text-[14px] text-secondary-ink font-dm-sans">
           USDM data {dataAsOf ? `as of ${formatDateShort(dataAsOf)}` : '— no current reading on file'} ·{' '}
           <a
             href="https://droughtmonitor.unl.edu"
@@ -865,9 +865,9 @@ function RowCropPanel({
   if (!eligibility) {
     return (
       <div className="space-y-3 p-4 sm:p-6">
-        <p className="text-sm leading-relaxed text-forest-green/60 font-dm-sans">
+        <p className="text-[16px] leading-relaxed text-secondary-ink font-dm-sans">
           Drought eligibility data isn&apos;t available for this period — this is{' '}
-          <span className="font-medium text-forest-green/80">not</span> a finding that your county
+          <span className="font-medium text-ink">not</span> a finding that your county
           doesn&apos;t qualify. Check back shortly, or confirm with your county FSA office.
         </p>
       </div>
@@ -886,24 +886,24 @@ function RowCropPanel({
       <div className={[
         'rounded-xl p-4',
         qualifying
-          ? 'bg-amber-50 ring-1 ring-amber-200'
+          ? 'bg-amber-50 border border-amber-200'
           : 'bg-forest-green/5',
       ].join(' ')}>
         {qualifying ? (
           <div>
-            <p className="font-dm-sans text-xs font-semibold uppercase tracking-wider text-amber-700">
+            <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-amber-700">
               Secretarial Disaster Designation — Conditions Met
             </p>
-            <p className="mt-2 font-dm-sans text-sm font-medium text-amber-900">
+            <p className="mt-2 font-dm-sans text-[16px] font-medium text-amber-900">
               You may be eligible to apply for FSA Emergency Loans (EM).
             </p>
           </div>
         ) : (
           <div>
-            <p className="font-dm-sans text-xs font-semibold uppercase tracking-wider text-forest-green/50">
+            <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-secondary-ink">
               No Qualifying Trigger
             </p>
-            <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+            <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
               D2 for 8+ consecutive weeks, or D3 or D4 at any point during the growing season,
               triggers a Secretarial Disaster Designation under 7 CFR Part 759.
             </p>
@@ -919,7 +919,7 @@ function RowCropPanel({
       {qualifying && (
         <div className="space-y-3">
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+            <h3 className="text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
               FSA Emergency Loans (EM)
             </h3>
             <ul className="mt-2 space-y-1.5">
@@ -929,8 +929,8 @@ function RowCropPanel({
                 'Must apply at your local FSA service center during the application window.',
                 'Eligibility requires a qualifying loss and a Secretarial Disaster Designation for your county.',
               ].map(item => (
-                <li key={item} className="flex items-start gap-2 text-xs font-dm-sans text-forest-green/70">
-                  <span className="mt-0.5 shrink-0 text-forest-green/40">–</span>
+                <li key={item} className="flex items-start gap-2 text-[14px] font-dm-sans text-secondary-ink">
+                  <span className="mt-0.5 shrink-0 text-secondary-ink">–</span>
                   {item}
                 </li>
               ))}
@@ -941,16 +941,16 @@ function RowCropPanel({
             href="https://www.fsa.usda.gov/programs-and-services/farm-loan-programs/emergency-loan/index"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block rounded-lg border border-forest-green/20 px-3 py-2 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"
+            className="inline-block rounded-lg border border-forest-green/20 px-3 py-2 text-[14px] font-medium text-forest-green font-dm-sans hover:bg-cream"
           >
             FSA Emergency Loan Program →
           </a>
 
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-forest-green/50 font-dm-sans">
+            <h3 className="text-[14px] font-semibold uppercase tracking-wider text-secondary-ink font-dm-sans">
               Emergency Conservation Program (ECP)
             </h3>
-            <p className="mt-2 text-xs font-dm-sans text-forest-green/70">
+            <p className="mt-2 text-[14px] font-dm-sans text-secondary-ink">
               A <span className="font-medium text-forest-green">separate</span> program — not triggered by
               this drought designation. ECP cost-shares rehabilitation of disaster-damaged farmland and
               drought water infrastructure, and requires its own FSA-approved signup. Contact your local FSA
@@ -960,7 +960,7 @@ function RowCropPanel({
               href="https://www.fsa.usda.gov/programs-and-services/conservation-programs/emergency-conservation/index"
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2 inline-block rounded-lg border border-forest-green/20 px-3 py-2 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream"
+              className="mt-2 inline-block rounded-lg border border-forest-green/20 px-3 py-2 text-[14px] font-medium text-forest-green font-dm-sans hover:bg-cream"
             >
               FSA Emergency Conservation Program →
             </a>
@@ -971,8 +971,8 @@ function RowCropPanel({
       <Divider />
 
       <div className="rounded-lg bg-cream p-3">
-        <p className="text-xs font-semibold text-forest-green/60 font-dm-sans">Not shown here:</p>
-        <p className="mt-1 text-xs text-forest-green/50 font-dm-sans">
+        <p className="text-[14px] font-semibold text-secondary-ink font-dm-sans">Not shown here:</p>
+        <p className="mt-1 text-[14px] text-secondary-ink font-dm-sans">
           Emergency Relief Program (ERP) and Supplemental Disaster Relief Program (SDRP)
           eligibility depend on separate enrollment, crop insurance linkage, and FSA
           administrative determinations not derivable from USDM data alone. Contact your local
@@ -1015,11 +1015,11 @@ export default function ProgramStatus({
 
       {eligibility && eligibility.maxTier >= 1 && eligibility.enforcement === 'officially_eligible' && (
         <div className="mb-6 rounded-xl bg-forest-green px-5 py-4 text-cream">
-          <p className="font-dm-sans text-xs font-medium text-cream/60 uppercase tracking-wide mb-1">Estimated payment</p>
+          <p className="font-dm-sans text-[14px] font-medium text-cream uppercase tracking-wide mb-1">Estimated payment</p>
           <p className="font-fraunces text-3xl font-semibold text-cream">
             ~${Math.round(estimatePayment('beef_adult', 100, eligibility.payments).cappedEstimate).toLocaleString()}
           </p>
-          <p className="font-dm-sans text-xs text-cream/60 mt-1">
+          <p className="font-dm-sans text-[14px] text-cream mt-1">
             Based on 100 head beef cattle · {eligibility.payments} payment{eligibility.payments !== 1 ? 's' : ''} · Tier {eligibility.maxTier}
           </p>
           <div className="mt-3">
@@ -1042,10 +1042,10 @@ export default function ProgramStatus({
                   onClick={() => setYear(y)}
                   style={year === y ? { color: '#ffffff' } : undefined}
                   className={[
-                    'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
+                    'rounded-md px-3 py-1.5 text-[14px] font-semibold font-dm-sans transition-colors',
                     year === y
                       ? 'bg-forest-green'
-                      : 'text-forest-green/60 hover:text-forest-green',
+                      : 'text-secondary-ink hover:text-forest-green',
                   ].join(' ')}
                 >
                   {y === 'current' ? currentYear : priorYear}
@@ -1061,10 +1061,10 @@ export default function ProgramStatus({
                 onClick={() => handleModeChange(m)}
                 style={mode === m ? { color: '#ffffff' } : undefined}
                 className={[
-                  'rounded-md px-3 py-1.5 text-xs font-semibold font-dm-sans transition-colors',
+                  'rounded-md px-3 py-1.5 text-[14px] font-semibold font-dm-sans transition-colors',
                   mode === m
                     ? 'bg-forest-green'
-                    : 'text-forest-green/60 hover:text-forest-green',
+                    : 'text-secondary-ink hover:text-forest-green',
                 ].join(' ')}
               >
                 {m === 'livestock' ? 'Livestock' : 'Row Crop'}
@@ -1076,7 +1076,7 @@ export default function ProgramStatus({
 
       {year === 'prior' && (
         <div className="border-b border-forest-green/10 bg-amber-50/70 px-4 py-2 sm:px-6">
-          <p className="text-xs text-amber-800 font-dm-sans">
+          <p className="text-[14px] text-amber-800 font-dm-sans">
             {priorYear} LFP signup closed March 1, {String(parseInt(priorYear) + 1)}. Contact your FSA office if you have not enrolled.
           </p>
         </div>

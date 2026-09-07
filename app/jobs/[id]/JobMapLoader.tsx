@@ -8,7 +8,7 @@ const JobMapClient = dynamic(() => import('./JobMapClient'), {
   ssr: false,
   loading: () => (
     <div className="flex h-[420px] items-center justify-center rounded-xl border border-forest-green/10 bg-white">
-      <p className="font-dm-sans text-sm text-forest-green/50">Loading map…</p>
+      <p className="font-dm-sans text-[16px] text-secondary-ink">Loading map…</p>
     </div>
   ),
 })

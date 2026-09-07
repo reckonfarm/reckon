@@ -162,7 +162,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
   const onImagery = basemap === 'satellite'
   return (
     <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 12 }}>
-      <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
+      <div className="leaflet-control rounded-lg border border-gray-200 bg-white/95 px-3 py-2">
         {hasBales && (
           <div className="flex items-center gap-2">
             <span
@@ -171,7 +171,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
                 background: BALE_STYLE.fill, border: `2.5px solid ${BALE_STYLE.ring}`,
               }}
             />
-            <span className="font-dm-sans text-[11px] text-forest-green/70">bale</span>
+            <span className="font-dm-sans text-[14px] text-secondary-ink">bale</span>
           </div>
         )}
         {hasUnverified && (
@@ -182,7 +182,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
                 background: 'transparent', border: `2.5px dashed ${BALE_STYLE.unverifiedRing}`,
               }}
             />
-            <span className="font-dm-sans text-[11px] text-forest-green/70">unverified — go look</span>
+            <span className="font-dm-sans text-[14px] text-secondary-ink">unverified — go look</span>
           </div>
         )}
         {showGapChip && (
@@ -193,7 +193,7 @@ function Legend({ hasBales, hasUnverified, showGapChip, basemap }: {
             >
               <span style={{ width: 18, borderTop: `2px dashed ${style.gap}` }} />
             </span>
-            <span className="font-dm-sans text-[11px] text-forest-green/70">gap in data</span>
+            <span className="font-dm-sans text-[14px] text-secondary-ink">gap in data</span>
           </div>
         )}
       </div>
@@ -362,7 +362,7 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
               }}
             >
               <Popup>
-                <div className="font-dm-sans text-xs">
+                <div className="font-dm-sans text-[14px]">
                   <p className="font-semibold">Bale · {fmtTime(Date.parse(b.ts) / 1000)} MT</p>
                   <p className="mt-0.5 text-gray-500">
                     {verified ? 'clear detection' : 'unverified — go look'} · confidence {Math.round(b.confidence * 100)}%
@@ -384,14 +384,14 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
           the panes, so taps never fight the map's own event capture. */}
       <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
-        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-xs font-semibold shadow-sm">
+        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold">
           {(['satellite', 'street'] as const).map(b => (
             <button
               key={b}
               type="button"
               onClick={() => pickBasemap(b)}
               className={`px-3 py-2 capitalize transition-colors ${
-                basemap === b ? 'bg-forest-green text-white' : 'text-forest-green/70 hover:text-forest-green'
+                basemap === b ? 'bg-forest-green text-white' : 'text-secondary-ink hover:text-forest-green'
               }`}
             >
               {b}
@@ -402,8 +402,8 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
           <button
             type="button"
             onClick={toggleTrack}
-            className={`rounded-lg border border-gray-200 px-3 py-2 font-dm-sans text-xs font-semibold shadow-sm transition-colors ${
-              showTrack ? 'bg-forest-green text-white' : 'bg-white/95 text-forest-green/70 hover:text-forest-green'
+            className={`rounded-lg border border-gray-200 px-3 py-2 font-dm-sans text-[14px] font-semibold transition-colors ${
+              showTrack ? 'bg-forest-green text-white' : 'bg-white/95 text-secondary-ink hover:text-forest-green'
             }`}
           >
             Track
@@ -415,7 +415,7 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
         <button
           type="button"
           onClick={() => setFollowing(true)}
-          className="absolute bottom-6 left-3 z-[1000] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 font-dm-sans text-xs font-semibold text-forest-green shadow-sm hover:bg-white"
+          className="absolute bottom-6 left-3 z-[1000] rounded-lg border border-gray-200 bg-white/95 px-3 py-2 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-white"
         >
           ⌖ Recenter
         </button>

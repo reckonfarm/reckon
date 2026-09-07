@@ -43,10 +43,10 @@ export default function DashboardAccordion({
   }, [hashTarget])
 
   return (
-    <div className={`rounded-xl overflow-hidden ${highlight ? 'border-2 border-forest-green shadow-[0_0_0_4px_rgba(27,67,50,0.08)]' : 'border border-forest-green/10'}`}>
+    <div className={`rounded-xl overflow-hidden ${highlight ? 'border-2 border-forest-green' : 'border border-forest-green/10'}`}>
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-5 py-4 transition-colors text-left ${highlight ? 'bg-forest-green hover:bg-forest-green/90' : 'bg-white hover:bg-forest-green/5'}`}
+        className={`w-full flex min-h-[52px] items-center justify-between px-5 py-3 transition-colors text-left ${highlight ? 'bg-forest-green hover:bg-forest-green/90' : 'bg-white hover:bg-forest-green/5'}`}
         aria-expanded={open}
       >
         <div className="flex flex-col gap-0.5">
@@ -58,7 +58,7 @@ export default function DashboardAccordion({
             {title}
           </span>
           {preview && !open && (
-            <span className={`text-sm font-dm-sans ${highlight ? 'text-cream/70' : 'text-forest-green/50'}`}>
+            <span className={`text-[16px] font-dm-sans ${highlight ? 'text-cream' : 'text-secondary-ink'}`}>
               {preview}
             </span>
           )}
@@ -70,7 +70,7 @@ export default function DashboardAccordion({
             </span>
           )}
           <svg
-            className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${highlight ? 'text-cream/60' : 'text-forest-green/40'}`}
+            className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${highlight ? 'text-cream' : 'text-secondary-ink'}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

@@ -155,12 +155,12 @@ export default function BottomTabBar() {
         key={tab.href}
         href={tab.href}
         aria-current={active ? 'page' : undefined}
-        className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[11px] font-dm-sans transition-colors min-h-[56px] ${
-          active ? 'font-semibold text-forest-green' : 'font-medium text-forest-green/40 hover:text-forest-green/70'
+        className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[14px] font-dm-sans transition-colors min-h-[56px] ${
+          active ? 'font-semibold text-forest-green' : 'font-medium text-ink hover:text-brand'
         }`}
       >
         {tab.href === '/messages' && unread > 0 && (
-          <span className="absolute top-1 right-[calc(50%-18px)] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[9px] font-semibold text-white">
+          <span className="absolute top-1 right-[calc(50%-18px)] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -198,7 +198,7 @@ export default function BottomTabBar() {
         >
           <span
             className={`flex h-14 w-14 -translate-y-4 items-center justify-center rounded-full bg-forest-green text-cream ring-4 ring-cream transition-shadow ${
-              opActive ? 'shadow-lg shadow-forest-green/40' : 'shadow-md shadow-forest-green/25'
+              opActive ? '' : ''
             }`}
           >
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -208,8 +208,8 @@ export default function BottomTabBar() {
             </svg>
           </span>
           <span
-            className={`-mt-2.5 mb-1.5 text-[11px] font-dm-sans transition-colors ${
-              opActive ? 'font-semibold text-forest-green' : 'font-medium text-forest-green/70'
+            className={`-mt-2.5 mb-1.5 text-[14px] font-dm-sans transition-colors ${
+              opActive ? 'font-semibold text-forest-green' : 'font-medium text-ink'
             }`}
           >
             Operation

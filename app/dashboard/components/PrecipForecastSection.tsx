@@ -42,7 +42,7 @@ type Tab = (typeof TABS)[number]
 
 function ForecastBadge() {
   return (
-    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 font-dm-sans">
+    <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[14px] font-medium text-amber-700 border border-amber-200 font-dm-sans">
       Forecast — not a current observation
     </span>
   )
@@ -53,7 +53,7 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
 
   if (!discussion) {
     return (
-      <p className="text-sm text-forest-green/50 font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         Local forecast discussion temporarily unavailable. Visit{' '}
         <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" className="underline">
           weather.gov
@@ -83,24 +83,24 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
       <div className="space-y-3">
         {expanded ? (
           paragraphs.map((p, i) => (
-            <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+            <p key={i} className="text-[16px] text-forest-green font-dm-sans leading-relaxed">
               {p}
             </p>
           ))
         ) : (
-          <p className="text-sm text-forest-green font-dm-sans leading-relaxed">
+          <p className="text-[16px] text-forest-green font-dm-sans leading-relaxed">
             {preview}
           </p>
         )}
       </div>
       <button
         onClick={() => setExpanded(v => !v)}
-        className="text-xs font-dm-sans text-forest-green/50 hover:text-forest-green transition-colors"
+        className="text-[14px] font-dm-sans text-secondary-ink hover:text-forest-green transition-colors"
       >
         {expanded ? 'Collapse ↑' : 'Read full discussion ↓'}
       </button>
       <div className="border-t border-forest-green/10 pt-3">
-        <p className="text-xs text-forest-green/50 font-dm-sans">
+        <p className="text-[14px] text-secondary-ink font-dm-sans">
           NWS Area Forecast Discussion · {discussion.wfo} · Issued {issued}
         </p>
       </div>
@@ -141,10 +141,10 @@ function PrecipTooltip({
     month: 'short', day: 'numeric',
   })
   return (
-    <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 shadow-md text-xs font-dm-sans">
+    <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 text-[14px] font-dm-sans">
       <p className="font-semibold text-forest-green mb-1">{date}</p>
       {actual && <p className="text-forest-green">Actual: {actual.value.toFixed(2)}&quot;</p>}
-      {normal && <p className="text-forest-green/50">Normal: {normal.value.toFixed(2)}&quot;</p>}
+      {normal && <p className="text-secondary-ink">Normal: {normal.value.toFixed(2)}&quot;</p>}
       {/* Rain context follows the scrub: an event day shows "Rain that day"; a dry day
           shows the NEAREST event ("Last rain" before it, "Next rain" if ahead of the first). */}
       {tier > 0 && dayRain != null ? (
@@ -177,7 +177,7 @@ function RainMarker(props: { cx?: number; cy?: number; payload?: { tier?: number
 export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalResult; countyName?: string }) {
   if (data == null) {
     return (
-      <p className="text-sm text-forest-green/50 font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         No precipitation station data available for this county. Sparse rural counties may not have
         nearby COOP weather stations in the NOAA network.
       </p>
@@ -188,7 +188,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   // Never let an outage masquerade as "no nearby weather station has enough history."
   if (data === 'data_unavailable') {
     return (
-      <p className="text-sm text-forest-green/50 font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         Precipitation data is temporarily unavailable — check back shortly.
       </p>
     )
@@ -198,7 +198,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   // no station with usable normals + enough history exists, or normals are zero.
   if (data === 'no_qualifying_station' || data.ytdNormal === 0) {
     return (
-      <p className="text-sm text-forest-green/50 font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         No nearby weather station has enough reporting history this year to compare against its
         30-year normal. We&apos;d rather show nothing than a misleading total.
       </p>
@@ -324,8 +324,8 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           in the window yet. Station data lags a couple days; this is the honest
           "current as of" so the chart never looks wrong, just current-as-of-a-date. */}
       {throughDate && (
-        <p className="-mt-2 flex items-center justify-center gap-1.5 text-xs font-dm-sans font-medium text-forest-green/60">
-          <svg className="h-3.5 w-3.5 text-forest-green/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <p className="-mt-2 flex items-center justify-center gap-1.5 text-[14px] font-dm-sans font-medium text-secondary-ink">
+          <svg className="h-3.5 w-3.5 text-secondary-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Data through {fmtDate(throughDate)}
@@ -337,19 +337,19 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           <p className="text-2xl font-fraunces font-semibold text-forest-green">
             {ytdActual.toFixed(2)}&quot;
           </p>
-          <p className="text-xs text-forest-green/50 font-dm-sans mt-0.5">YTD Actual</p>
+          <p className="text-[14px] text-secondary-ink font-dm-sans mt-0.5">YTD Actual</p>
         </div>
         <div>
-          <p className="text-2xl font-fraunces font-semibold text-forest-green/60">
+          <p className="text-2xl font-fraunces font-semibold text-secondary-ink">
             {ytdNormal.toFixed(2)}&quot;
           </p>
-          <p className="text-xs text-forest-green/50 font-dm-sans mt-0.5">YTD Normal</p>
+          <p className="text-[14px] text-secondary-ink font-dm-sans mt-0.5">YTD Normal</p>
         </div>
         <div>
           <p className={`text-2xl font-fraunces font-semibold ${isDeficit ? 'text-red-600' : 'text-forest-green'}`}>
             {deficit >= 0 ? '+' : ''}{deficit.toFixed(2)}&quot;
           </p>
-          <p className="text-xs text-forest-green/50 font-dm-sans mt-0.5">
+          <p className="text-[14px] text-secondary-ink font-dm-sans mt-0.5">
             {isDeficit ? 'Deficit' : 'Surplus'} ({Math.abs(deficitPct).toFixed(0)}%)
           </p>
         </div>
@@ -359,14 +359,14 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           normal); grid mode is a clearly-labeled modeled estimate, never a gauge. */}
       {source === 'grid' ? (
         <>
-          <p className="text-xs text-forest-green/40 font-dm-sans">
+          <p className="text-[14px] text-secondary-ink font-dm-sans">
             PRISM county estimate{throughDate ? ` · current through ${fmtDate(throughDate)}` : ''}
             {' '}· no current NOAA station
             {context ? ` · normal from ${context.name}` : ''}{' '}
             · 1991–2020 (NOAA)
           </p>
           {context && (
-            <p className="text-xs text-forest-green/40 font-dm-sans">
+            <p className="text-[14px] text-secondary-ink font-dm-sans">
               Nearest full station: {context.name}
               {context.distanceMiles > 0 ? ` (${context.distanceMiles} mi)` : ''}
               {context.lastValid ? ` — last reported ${fmtDate(context.lastValid)}` : ''}
@@ -376,7 +376,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
       ) : outOfCounty ? (
         /* Out-of-county gauge: make the "outside the county" fact explicit, not just a mileage.
            Don't double "County" — some county names already include the word. */
-        <p className="text-xs text-forest-green/40 font-dm-sans">
+        <p className="text-[14px] text-secondary-ink font-dm-sans">
           Station: {label} — nearest current gauge, outside {
             countyName
               ? /\bcounty$/i.test(countyName.trim()) ? countyName.trim() : `${countyName.trim()} County`
@@ -387,7 +387,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           · NOAA/ACIS · 1991–2020 normals (NOAA)
         </p>
       ) : (
-        <p className="text-xs text-forest-green/40 font-dm-sans">
+        <p className="text-[14px] text-secondary-ink font-dm-sans">
           Station: {label}
           {distanceMiles > 0 ? ` (${distanceMiles} miles from county center)` : ''}
           {throughDate ? ` · through ${fmtDate(throughDate)}` : ''}{' '}
@@ -420,12 +420,12 @@ function CpcMapPanel({
       <div className="group relative cursor-pointer overflow-hidden rounded-lg" onClick={() => setOpen(true)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={imageUrl} alt={alt} className="w-full rounded-lg transition-opacity group-hover:opacity-90" loading="lazy" />
-        <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 rounded-lg bg-black/50 px-1.5 py-0.5 text-[14px] text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           Tap to enlarge
         </span>
       </div>
       <MapLightbox open={open} onClose={() => setOpen(false)} src={imageUrl} alt={alt} />
-      <p className="text-xs text-forest-green/50 font-dm-sans">
+      <p className="text-[14px] text-secondary-ink font-dm-sans">
         {label}
         {lastModified ? ` · Updated ${lastModified}` : ''}{' '}·{' '}
         <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
@@ -469,13 +469,13 @@ export default function PrecipForecastSection({
       <div className="p-4 sm:p-6" key={active}>
         {active === 'Local Discussion' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Official forecast discussion from your local National Weather Service office.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Official forecast discussion from your local National Weather Service office.</p>
             <LocalDiscussionPanel discussion={nwsDiscussion} />
           </>
         )}
         {active === '7-Day QPF' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Quantitative precipitation forecast showing expected rainfall totals over the next 7 days.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Quantitative precipitation forecast showing expected rainfall totals over the next 7 days.</p>
             <CpcMapPanel
               imageUrl="https://www.wpc.ncep.noaa.gov/qpf/p168i.gif"
               alt="WPC 7-Day Accumulated Precipitation Forecast"
@@ -488,7 +488,7 @@ export default function PrecipForecastSection({
         )}
         {active === '8-14 Day' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Probability of above or below normal precipitation over the next 8–14 days.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Probability of above or below normal precipitation over the next 8–14 days.</p>
             <CpcMapPanel
               imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/814day/814prcp.new.gif"
               alt="CPC 8-14 Day Precipitation Outlook"
@@ -500,7 +500,7 @@ export default function PrecipForecastSection({
         )}
         {active === 'Weeks 3-4' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Extended precipitation probability outlook for weeks 3 and 4.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Extended precipitation probability outlook for weeks 3 and 4.</p>
             <CpcMapPanel
               imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/WK34/gifs/WK34prcp.gif"
               alt="CPC Weeks 3-4 Precipitation Outlook"
@@ -512,7 +512,7 @@ export default function PrecipForecastSection({
         )}
         {active === 'Monthly' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Monthly precipitation outlook from NOAA&apos;s Climate Prediction Center.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Monthly precipitation outlook from NOAA&apos;s Climate Prediction Center.</p>
             <CpcMapPanel
               imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/30day/off14_prcp.gif"
               alt="CPC Monthly Precipitation Outlook"
@@ -524,7 +524,7 @@ export default function PrecipForecastSection({
         )}
         {active === 'Seasonal' && (
           <>
-            <p className="mb-3 text-xs text-forest-green/50 font-dm-sans">Seasonal precipitation outlook covering the next 3 months from NOAA&apos;s Climate Prediction Center.</p>
+            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Seasonal precipitation outlook covering the next 3 months from NOAA&apos;s Climate Prediction Center.</p>
             <CpcMapPanel
               imageUrl="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/lead01/off01_prcp.gif"
               alt="CPC Seasonal Precipitation Outlook"

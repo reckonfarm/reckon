@@ -76,7 +76,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
   const d = payload[0].payload
   if (!d.p) return null
   return (
-    <div className="rounded-lg border border-forest-green/15 bg-white px-3 py-2 font-dm-sans text-[15px] text-forest-green shadow-sm">
+    <div className="rounded-lg border border-forest-green/15 bg-white px-3 py-2 font-dm-sans text-[16px] text-forest-green">
       <p className="font-semibold">{fmtWithUnit(d.v, unit)}</p>
       <p>Sale {fmtDayYear(d.p.date)} · {d.p.cls} {bandLabel(d.p.band)}</p>
       <p>{d.p.head.toLocaleString('en-US')} head reported{d.p.thin ? ` · under ${THIN_HEAD_THRESHOLD}, thin` : ''}</p>
@@ -152,7 +152,7 @@ function SelectionStrip({ ordered, x0, x1, pickedKey, unit, onPick }: { ordered:
         const on = pickedKey === dotKey(d)
         return <span key={dotKey(d)} aria-hidden className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-sm ${on ? 'h-9 w-[4px] bg-rust' : 'h-6 w-[3px] bg-forest-green/50'}`} style={{ left: `${left}%` }} />
       })}
-      <span aria-hidden className="pointer-events-none absolute bottom-0 left-1.5 font-dm-sans text-[15px] leading-none text-forest-green/60">Slide or tap to pick a sale</span>
+      <span aria-hidden className="pointer-events-none absolute bottom-0 left-1.5 font-dm-sans text-[16px] leading-none text-secondary-ink">Slide or tap to pick a sale</span>
     </div>
   )
 }
@@ -188,7 +188,7 @@ function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; 
   const earlier = outside.filter(e => period && ms(e.date) < period.x0).length
   return (
     <div className="mt-3">
-      <p className="mb-2 font-dm-sans text-[15px] text-forest-green/80">
+      <p className="mb-2 font-dm-sans text-[16px] text-ink">
         {inside.length > 0
           ? <>Dated events on the chart (dashed lines) — tap a date for what happened and its source.</>
           : <>No dated events fall inside this chart&apos;s dates.</>}
@@ -211,20 +211,20 @@ function EventList({ events, picked, onPick, period }: { events: MarketEvent[]; 
         <div className="mt-2 rounded-lg border border-rust/20 bg-rust/[0.04] px-4 py-3 font-dm-sans text-[16px] leading-snug text-forest-green">
           <p className="font-semibold">{fmtDayYear(picked.date)} · {picked.title}</p>
           <p className="mt-1">{picked.description}</p>
-          <a href={picked.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block min-h-[44px] font-semibold text-forest-green underline underline-offset-2">Source: {picked.sourceName} →</a>
+          <a href={picked.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block min-h-[48px] font-semibold text-forest-green underline underline-offset-2">Source: {picked.sourceName} →</a>
         </div>
       )}
     </div>
   )
 }
 
-const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2 font-dm-sans text-[15px] leading-snug text-forest-green/80">{children}</p>
+const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2 font-dm-sans text-[16px] leading-snug text-ink">{children}</p>
 
 // Block 2.6B — the vertical axis names its unit in words, from the SAME `unit`
 // the title and the tooltip read, so a stale measure can never leave the axis
 // in one unit and the title in another. The smoke asserts the two agree.
 const AxisUnit = ({ unit }: { unit: string }) => (
-  <p className="mt-1 font-dm-sans text-[15px] text-forest-green/70" data-audit="axis-unit">Vertical axis · {unit}</p>
+  <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="axis-unit">Vertical axis · {unit}</p>
 )
 
 // A wrapping row of 48 px chips — never a horizontal scroll, never a shrunk
@@ -332,10 +332,10 @@ function SalesList({ ordered, unit, pickedKey, onPick }: { ordered: Dot[]; unit:
               className={`flex min-h-[48px] w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-2 text-left font-dm-sans text-[16px] tabular-nums ${on ? 'bg-forest-green/[0.06] text-forest-green' : 'text-forest-green hover:bg-forest-green/[0.03]'}`}>
               <span className="font-semibold">{fmtDayYear(d.p.date)}</span>
               <span>{fmtWithUnit(d.v, unit)}</span>
-              <span className="text-forest-green/80">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
-              <span className="text-forest-green/80">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
+              <span className="text-ink">{d.p.head.toLocaleString('en-US')} head{d.p.thin ? ' · thin' : ''}</span>
+              <span className="text-ink">{d.p.town === 'National' ? d.p.barn : d.p.town.replace(/,\s*[A-Z]{2}$/, '')}</span>
             </button>
-            <span className="block px-2 pb-1 font-dm-sans text-[15px] text-forest-green/80"><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} /></span>
+            <span className="block px-2 pb-1 font-dm-sans text-[16px] text-ink"><ReportEvidence barn={d.p.barn} date={d.p.date} head={d.p.head} slug={d.p.reportId} /></span>
           </li>
         )
       })}
@@ -439,12 +439,12 @@ export default function MarketsCharts(p: MarketsChartsProps) {
               <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3">
                 {bandsAvailable.length > 0 && (
                   <div>
-                    <p className="mb-2 font-dm-sans text-[15px] font-semibold text-forest-green">Weight band</p>
+                    <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Weight band</p>
                     <ChipRow<string> label="Weight band" value={bandSel} onChange={setBand} options={bandsAvailable.map(b => ({ value: b, label: bandLabel(b) }))} />
                   </div>
                 )}
                 <div>
-                  <p className="mb-2 font-dm-sans text-[15px] font-semibold text-forest-green">Measure</p>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Measure</p>
                   <ChipRow<Measure> label="Measure" value={measure} onChange={setMeasure} options={measureOptions} />
                 </div>
               </div>
@@ -501,7 +501,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Local · regional · national · {cls} {bandLabel(bandSel)} · {unit}</p>
           <ObservationChart seriesList={compareList} {...chartProps} />
-          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[15px]" data-audit="legend">
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[16px]" data-audit="legend">
             {compareList.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
           </ul>
           <Note>
@@ -588,7 +588,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
             {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'}
           </button>
-          <span className="font-dm-sans text-[15px] text-forest-green/80" data-audit="step-copy">
+          <span className="font-dm-sans text-[16px] text-ink" data-audit="step-copy">
             {step
               ? <>Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported.</>
               : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}

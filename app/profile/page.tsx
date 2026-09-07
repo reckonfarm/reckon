@@ -16,7 +16,7 @@ export default async function ProfilePage() {
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">Your profile</h1>
-        <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           {flagEnabled('marketplace')
             ? 'This is how buyers and sellers see you on the hay marketplace.'
             : 'Your operation, as Dryline knows it.'}
@@ -32,7 +32,7 @@ export default async function ProfilePage() {
           className="mt-5 flex min-h-[52px] items-center justify-between rounded-xl border border-forest-green/15 bg-white px-5 font-dm-sans text-base font-medium text-forest-green transition-colors hover:bg-forest-green/5"
         >
           <span>Your counties</span>
-          <span aria-hidden className="text-forest-green/40">›</span>
+          <span aria-hidden className="text-secondary-ink">›</span>
         </Link>
         <ProfileForm />
       </main>

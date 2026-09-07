@@ -53,10 +53,10 @@ function TapStatus() {
   return pending ? (
     <span
       aria-hidden
-      className="dl-strip-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent text-forest-green/50"
+      className="dl-strip-spin inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent text-secondary-ink"
     />
   ) : (
-    <span aria-hidden className="text-forest-green/40">›</span>
+    <span aria-hidden className="text-secondary-ink">›</span>
   )
 }
 
@@ -90,26 +90,26 @@ export default function ConditionsStrip({
     <a
       href={`/dashboard?fips=${fips}&view=drought`}
       onClick={dashboardView ? e => { e.preventDefault(); dashboardView.setView('drought') } : undefined}
-      className="flex min-h-[44px] flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"
+      className="flex min-h-[48px] flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"
     >
       <style>{`@keyframes dlStripSpin{to{transform:rotate(360deg)}}.dl-strip-spin{animation:dlStripSpin .6s linear infinite}`}</style>
       <span className="inline-flex items-center gap-2">
         <>
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-xs font-medium"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-dm-sans text-[14px] font-medium"
               style={{ backgroundColor: chip.bg, color: chip.text }}
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: chip.dot }} />
               {chipLabel}
             </span>
-            <span className="font-dm-sans text-[10px] text-forest-green/40">
+            <span className="font-dm-sans text-[14px] text-secondary-ink">
               USDM {fmtShort(reading.week_date)}
             </span>
         </>
       </span>
 
-      <span className="inline-flex items-center gap-2 font-dm-sans text-sm text-forest-green">
-        <span className="text-xs text-forest-green/50">Weather</span>
+      <span className="inline-flex items-center gap-2 font-dm-sans text-[16px] text-forest-green">
+        <span className="text-[14px] text-secondary-ink">Weather</span>
         <TapStatus />
       </span>
     </a>

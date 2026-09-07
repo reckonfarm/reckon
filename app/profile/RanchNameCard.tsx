@@ -67,12 +67,12 @@ export default function RanchNameCard() {
         <Field label="Ranch name" hint="How the operation is named across Dryline — it leads your dashboard.">
           <Input value={name} maxLength={RANCH_NAME_MAX} onChange={e => setName(e.target.value)} />
         </Field>
-        {error && <p className="font-dm-sans text-sm font-medium text-warning" role="alert">{error}</p>}
+        {error && <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>}
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={!dirty || saving || !name.trim()}>
             {saving ? 'Saving…' : 'Save name'}
           </Button>
-          {saved && <span className="font-dm-sans text-sm text-forest-green/60">Saved</span>}
+          {saved && <span className="font-dm-sans text-[16px] text-secondary-ink">Saved</span>}
         </div>
       </form>
     </Card>

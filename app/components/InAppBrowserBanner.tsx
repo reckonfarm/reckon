@@ -49,7 +49,7 @@ export default function InAppBrowserBanner() {
           <circle cx="12" cy="12" r="9" />
           <path d="M12 8h.01M11 12h1v4h1" />
         </svg>
-        <p className="flex-1 font-dm-sans text-xs leading-relaxed text-forest-green">
+        <p className="flex-1 font-dm-sans text-[14px] leading-relaxed text-forest-green">
           <span className="font-semibold">To stay signed in,</span> open Dryline in Safari — tap the
           <span className="font-medium"> ••• / share icon</span> and choose <span className="font-medium">Open in Browser</span>,
           or <span className="font-medium">Add to Home Screen</span> for an app that keeps you logged in.
@@ -57,7 +57,7 @@ export default function InAppBrowserBanner() {
         <button
           onClick={dismiss}
           aria-label="Dismiss"
-          className="-mr-1 flex-shrink-0 rounded p-1 text-forest-green/50 hover:text-forest-green"
+          className="-mr-1 flex-shrink-0 rounded-lg p-1 text-secondary-ink hover:text-forest-green"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 6 6 18M6 6l12 12" />

@@ -32,7 +32,7 @@ export function renderMarkdown(md: string): React.ReactNode {
     if (para.length === 0) return
     const lns = para
     blocks.push(
-      <p key={key++} className="mt-4 font-dm-sans text-sm leading-relaxed text-forest-green/70">
+      <p key={key++} className="mt-4 font-dm-sans text-sm leading-relaxed text-secondary-ink">
         {lns.map((ln, i) => (
           <Fragment key={i}>
             {i > 0 && <br />}
@@ -50,8 +50,8 @@ export function renderMarkdown(md: string): React.ReactNode {
     blocks.push(
       <ul key={key++} className="mt-3 space-y-1.5 pl-1">
         {items.map((item, i) => (
-          <li key={i} className="flex gap-2 font-dm-sans text-sm leading-relaxed text-forest-green/70">
-            <span className="mt-[2px] shrink-0 text-forest-green/40">•</span>
+          <li key={i} className="flex gap-2 font-dm-sans text-sm leading-relaxed text-secondary-ink">
+            <span className="mt-[2px] shrink-0 text-secondary-ink">•</span>
             <span>{renderInline(item)}</span>
           </li>
         ))}
@@ -89,7 +89,7 @@ export function renderMarkdown(md: string): React.ReactNode {
       blocks.push(
         <blockquote
           key={key++}
-          className="mt-4 border-l-2 border-forest-green/20 bg-forest-green/[0.03] py-2 pl-4 pr-3 font-dm-sans text-xs italic leading-relaxed text-forest-green/55"
+          className="mt-4 border-l-2 border-forest-green/20 bg-forest-green/[0.03] py-2 pl-4 pr-3 font-dm-sans text-[14px] italic leading-relaxed text-secondary-ink"
         >
           {renderInline(line.slice(2))}
         </blockquote>,

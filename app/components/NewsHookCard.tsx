@@ -70,7 +70,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
   return (
     <div>
-      <p className="mb-3 text-xs font-dm-sans font-medium uppercase tracking-wide text-forest-green/40">
+      <p className="mb-3 text-[14px] font-dm-sans font-medium uppercase tracking-wide text-secondary-ink">
         Headlines
       </p>
 
@@ -81,8 +81,8 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
           <style>{`@keyframes dlHookPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
           {[0, 1, 2].map(i => (
             <div key={i} className="py-3" style={{ animation: 'dlHookPulse 1.6s ease-in-out infinite' }}>
-              <div className="h-4 w-4/5 rounded bg-forest-green/10" />
-              <div className="mt-2 h-3 w-2/5 rounded bg-forest-green/10" />
+              <div className="h-4 w-4/5 rounded-lg bg-forest-green/10" />
+              <div className="mt-2 h-3 w-2/5 rounded-lg bg-forest-green/10" />
             </div>
           ))}
         </Card>
@@ -90,7 +90,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'error' && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-forest-green/55">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             Headlines are temporarily unavailable.
           </p>
         </Card>
@@ -98,7 +98,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'ready' && state.items.length === 0 && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-forest-green/55">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             No cattle-country headlines right now.
           </p>
         </Card>
@@ -113,7 +113,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
             <button
               onClick={() => setExpanded(!expanded)}
               aria-expanded={expanded}
-              className="min-h-[44px] w-full py-3 text-left font-dm-sans text-xs text-forest-green/50 transition-colors hover:text-forest-green"
+              className="min-h-[48px] w-full py-3 text-left font-dm-sans text-[14px] text-secondary-ink transition-colors hover:text-forest-green"
             >
               {expanded ? 'Fewer headlines ↑' : 'More headlines ↓'}
             </button>

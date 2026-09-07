@@ -76,19 +76,19 @@ export default function CountySearch() {
         aria-label="Search for a county"
         aria-autocomplete="list"
         aria-expanded={open}
-        className="w-full rounded-xl border border-forest-green/20 bg-white px-4 py-3 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 shadow-sm focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+        className="w-full rounded-xl border border-forest-green/20 bg-white px-4 py-3 text-[16px] font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30"
       />
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-forest-green/15 bg-white shadow-lg"
+          className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-forest-green/15 bg-white"
         >
           {results.map((county, i) => (
             <li key={county.fips} role="option" aria-selected={i === activeIdx}>
               <button
                 onMouseDown={() => select(county)}
                 className={[
-                  'w-full px-4 py-2.5 text-left text-sm font-dm-sans',
+                  'w-full px-4 py-2.5 text-left text-[16px] font-dm-sans',
                   i === activeIdx
                     ? 'bg-forest-green text-white'
                     : 'text-forest-green hover:bg-cream',

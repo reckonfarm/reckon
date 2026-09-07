@@ -7,10 +7,10 @@ import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 
 const INPUT_CLS =
-  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm text-forest-green placeholder:text-forest-green/30 focus:border-forest-green/50 focus:outline-none'
+  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
 
 const BTN_CLS =
-  'w-full rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
+  'w-full rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
@@ -51,18 +51,18 @@ export default function UpdatePasswordPage() {
       <main className="flex min-h-screen items-center justify-center bg-cream px-4">
         <div className="w-full max-w-sm">
           {!ready ? (
-            <p className="font-dm-sans text-sm text-forest-green/60">Loading…</p>
+            <p className="font-dm-sans text-[16px] text-secondary-ink">Loading…</p>
           ) : !hasSession ? (
             <>
               <p className="font-fraunces text-xl font-semibold text-forest-green">
                 Reset link invalid
               </p>
-              <p className="mt-2 font-dm-sans text-sm text-forest-green/60">
+              <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
                 This password reset link has expired or already been used.
               </p>
               <Link
                 href="/auth/reset"
-                className="mt-5 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
+                className="mt-5 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors"
               >
                 Request a new link
               </Link>
@@ -72,7 +72,7 @@ export default function UpdatePasswordPage() {
               <p className="font-fraunces text-2xl font-semibold text-forest-green">
                 Set a new password
               </p>
-              <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
+              <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
                 Choose a new password for your account.
               </p>
               <form onSubmit={updatePassword} className="mt-6 space-y-3">
@@ -97,7 +97,7 @@ export default function UpdatePasswordPage() {
                   minLength={6}
                   className={INPUT_CLS}
                 />
-                {error && <p className="font-dm-sans text-sm text-rust">{error}</p>}
+                {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
                 <button type="submit" disabled={loading} className={BTN_CLS}>
                   {loading ? 'Saving…' : 'Update password'}
                 </button>

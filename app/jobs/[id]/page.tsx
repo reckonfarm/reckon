@@ -221,7 +221,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       <SiteHeader />
       <AutoRefresh />
       <main className="mx-auto max-w-3xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
-        <Link href="/jobs" className="font-dm-sans text-sm text-forest-green/60 hover:text-forest-green">
+        <Link href="/jobs" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           ← All jobs
         </Link>
 
@@ -231,20 +231,20 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </Heading>
           {live && <InProgressBadge />}
           {dismissed && (
-            <span className="rounded-full bg-forest-green/10 px-2.5 py-1 font-dm-sans text-[11px] font-semibold uppercase tracking-wide text-forest-green/60">
+            <span className="rounded-full bg-forest-green/10 px-2.5 py-1 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
               Dismissed
             </span>
           )}
         </div>
-        <p className="mt-1 font-dm-sans text-sm text-forest-green/60">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           {name && (
             <>
               {fmtDay(job.started_at)}
-              <span className="text-forest-green/25"> · </span>
+              <span className="text-secondary-ink"> · </span>
             </>
           )}
           {fmtTime(job.started_at)} – {fmtTime(job.ended_at)} MT
-          <span className="text-forest-green/25"> · </span>
+          <span className="text-secondary-ink"> · </span>
           {job.devices?.name ?? 'Unknown device'}
         </p>
 
@@ -275,7 +275,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   (f.sweep.percentCut >= DONE_FILL_MIN_PERCENT || f.sweep.sweepIsFloor)
                 return (
                   <div key={f.index}>
-                    <p className="font-dm-sans text-sm text-forest-green/85">
+                    <p className="font-dm-sans text-[16px] text-ink">
                       <span className="font-semibold">Field {f.index}:</span>{' '}
                       {isCut && fSize != null ? (
                         <>Cut complete · about {fmtAcres(fSize)} acres</>
@@ -295,12 +295,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                       )}
                     </p>
                     {!isCut && f.boundary.status === 'estimate' && (
-                      <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
+                      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                         {estimateCaveat(f.boundary.estimateReasons)}
                       </p>
                     )}
                     {!isCut && f.sweep?.sweepIsFloor && (
-                      <p className="mt-0.5 font-dm-sans text-xs text-forest-green/55">
+                      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
                         {floorCaveat(f.sweep.floorReasons)}
                       </p>
                     )}
@@ -318,7 +318,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         )}
         {job.multi_field && !segmented && (
           <Card shadow="none" className="mt-4 border-warning/40 px-5 py-3">
-            <p className="font-dm-sans text-sm text-warning">
+            <p className="font-dm-sans text-[16px] text-warning">
               This track spans more than one work area. Acreage from its outline
               would include the road between them — treat area numbers with care.
             </p>
@@ -335,12 +335,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 {isBaler ? plural(detections.length, 'bale') : `${plural(detections.length, 'gate slam')}`}
               </p>
               {!isBaler && (
-                <span className="rounded-full bg-forest-green/10 px-2.5 py-1 font-dm-sans text-[11px] font-semibold uppercase tracking-wide text-forest-green/60">
+                <span className="rounded-full bg-forest-green/10 px-2.5 py-1 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
                   Unconfirmed
                 </span>
               )}
             </div>
-            <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+            <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
               {weakCount > 0 && (
                 <>{weakCount} of them unverified — dashed {weakCount === 1 ? 'pin' : 'pins'} on
                 the map, worth a look on the ground.{' '}</>
@@ -349,7 +349,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               ({baleRun.metrics.cut?.toLocaleString()} mg).
             </p>
             {baleRun.coverage < 0.9 && (
-              <p className="mt-2 font-dm-sans text-xs font-semibold text-warning">
+              <p className="mt-2 font-dm-sans text-[14px] font-semibold text-warning">
                 Only {Math.round(baleRun.coverage * 100)}% of this session&apos;s events reached the
                 ledger — the true count may be higher than what survived.
               </p>
@@ -357,7 +357,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             {/* Ground truth vs detector — stated side by side, never blended.
                 The detector's number stays the detector's number. */}
             {isBaler && actualBaleCount != null && (
-              <p className="mt-2 font-dm-sans text-xs text-forest-green/70">
+              <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
                 You counted <span className="font-semibold tabular-nums">{actualBaleCount.toLocaleString()}</span>
                 {' — '}the detector found <span className="font-semibold tabular-nums">{detections.length}</span>
                 {actualBaleCount === detections.length
@@ -376,7 +376,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {baleRun?.outcome === 'detected' && machine != null && !isBaler && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-dm-sans text-sm text-forest-green/70">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               A gate-slam pattern ({plural(baleRun.detection_count, 'slam')}) was detected here, but
               this session is labeled <span className="font-semibold">{machineLabel}</span> — bales
               aren&apos;t counted.
@@ -387,7 +387,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {isBaler && baleRun?.outcome !== 'detected' && (
           <Card shadow="none" className="mt-5 border-warning/40 px-5 py-4">
-            <p className="font-dm-sans text-sm text-warning">
+            <p className="font-dm-sans text-[16px] text-warning">
               {baleRun == null
                 ? 'This session is labeled Baler, but bale detection has not run for it — machine effectively unknown.'
                 : baleRun.outcome === 'insufficient_evidence'
@@ -409,7 +409,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 <p className="font-fraunces text-3xl font-semibold text-forest-green">
                   Cut complete
                 </p>
-                <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+                <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
                   about {fmtAcres(fieldAcres!)} acres — field traced from your outside rounds
                   {actualAcres != null && <> · you call the field {actualAcres}</>}
                 </p>
@@ -422,23 +422,23 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     : `${sweep.sweepIsFloor ? 'At least' : 'About'} ${fmtAcres(cutAcres!)} acres cut`}
                 </p>
                 {live && etaMinutes != null && (
-                  <p className="mt-0.5 font-fraunces text-xl font-semibold text-forest-green/80">
+                  <p className="mt-0.5 font-fraunces text-xl font-semibold text-ink">
                     About {fmtEtaMin(etaMinutes)} left · done ~{fmtDoneAt(etaMinutes)}
                   </p>
                 )}
-                <p className="mt-1.5 font-dm-sans text-sm text-forest-green/70">
+                <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
                   {live
                     ? <>{sweep.sweepIsFloor ? 'at least ' : ''}{fmtAcres(cutAcres!)} of about {fmtAcres(fieldAcres!)} acres</>
                     : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
                   {actualAcres != null && <> · you call the field {actualAcres}</>}
                 </p>
                 {isEstimate && boundary != null && (
-                  <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+                  <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
                     {estimateCaveat(boundary.estimateReasons)}
                   </p>
                 )}
                 {sweep.sweepIsFloor && (
-                  <p className="mt-1 font-dm-sans text-xs text-forest-green/55">
+                  <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
                     {floorCaveat(sweep.floorReasons)}
                   </p>
                 )}
@@ -462,7 +462,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             multi-field pages carry the reason per field in their own card. */}
         {!live && !segmented && boundary != null && !qualified && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-dm-sans text-sm text-forest-green/70">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               {boundary.status === 'unexplained'
                 ? 'No boundary — the only loops that closed here are turns inside a bigger working area, not a field edge. Percent and acres stay off.'
                 : boundary.status === 'no_loop'
@@ -475,10 +475,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         )}
         {mapping && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-fraunces text-3xl font-semibold text-forest-green/70">
+            <p className="font-fraunces text-3xl font-semibold text-secondary-ink">
               Mapping the field…
             </p>
-            <p className="mt-1.5 font-dm-sans text-sm text-forest-green/55">
+            <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
               The boundary draws itself as the outside rounds tie off. Percent cut
               starts once the loop closes.
             </p>
@@ -489,7 +489,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             a line of its own; it never mutes a field that qualified. */}
         {showResidue && (
           <Card shadow="none" className="mt-4 px-5 py-3">
-            <p className="font-dm-sans text-sm text-forest-green/70">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               About {Math.round(residueShare * 100)}% of this track isn&apos;t mapped to a field yet —
               cutting without a closed outside round of its own. It shows as track, not as acres.
             </p>
@@ -506,7 +506,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               boundaries={drawnBoundaries}
               fill={drawnFill}
             />
-            <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+            <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
               {balePins.length > 0
                 ? 'Each pin is a detected bale, where it dropped. Tap Track to see the machine’s path underneath.'
                 : anySweep
@@ -516,13 +516,13 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             {/* The honesty numbers, demoted to a quiet line — loud only when
                 something was actually lost. "Data received", never "coverage":
                 that word would collide with the field percent above. */}
-            <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+            <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
               {fmtDuration(job.duration_s)} working
-              <span className="text-forest-green/25"> · </span>
+              <span className="text-secondary-ink"> · </span>
               <span className={lowCoverage ? 'font-semibold text-warning' : ''}>{covPct}% data received</span>
             </p>
             {job.evicted_count > 0 && (
-              <p className={`mt-1 font-dm-sans text-xs ${lowCoverage ? 'text-warning' : 'text-forest-green/50'}`}>
+              <p className={`mt-1 font-dm-sans text-[14px] ${lowCoverage ? 'text-warning' : 'text-secondary-ink'}`}>
                 The device generated {(job.event_count + job.evicted_count).toLocaleString()} events
                 (seq {job.seq_start}–{job.seq_end}) but only {job.event_count.toLocaleString()} reached
                 the ledger before the on-device queue overwrote the rest. Everything here
@@ -532,12 +532,12 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </div>
         ) : (
           <Card shadow="none" className="mt-5 px-5 py-8 text-center">
-            <p className="font-dm-sans text-sm text-forest-green/55">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No GPS positions in this job — the device had no satellite fix.
             </p>
-            <p className="mt-2 font-dm-sans text-xs text-forest-green/50">
+            <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
               {fmtDuration(job.duration_s)} working
-              <span className="text-forest-green/25"> · </span>
+              <span className="text-secondary-ink"> · </span>
               <span className={lowCoverage ? 'font-semibold text-warning' : ''}>{covPct}% data received</span>
             </p>
           </Card>
@@ -551,7 +551,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             the track's own gaps). Only the card went. */}
         <AnnotationControls jobId={job.id} name={name} dismissed={dismissed} />
 
-        <p className="mt-6 font-dm-sans text-xs text-forest-green/40">
+        <p className="mt-6 font-dm-sans text-[14px] text-secondary-ink">
           Derived {new Date(job.derived_at).toLocaleDateString('en-US', { timeZone: RANCH_TZ, month: 'short', day: 'numeric', year: 'numeric' })}
           {' · '}{job.deriver_version}
           {baleRun && <>{' · '}{baleRun.detector_version}</>}

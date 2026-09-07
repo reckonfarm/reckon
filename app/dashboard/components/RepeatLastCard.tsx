@@ -57,9 +57,9 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
       <p className={EYEBROW}>Repeat last feeding</p>
       <p className="mt-2 font-fraunces text-[28px] font-semibold leading-tight text-forest-green sm:text-[32px]">
         {last.bales} {last.bales === 1 ? 'bale' : 'bales'}
-        {last.lotLabel && <span className="font-dm-sans text-[17px] font-medium text-forest-green/80"> · {last.lotLabel}</span>}
+        {last.lotLabel && <span className="font-dm-sans text-[17px] font-medium text-ink"> · {last.lotLabel}</span>}
       </p>
-      <p className="mt-1 font-dm-sans text-[15px] text-forest-green/75">
+      <p className="mt-1 font-dm-sans text-[16px] text-ink">
         {last.placeName ? `${last.placeName} · ` : ''}last logged {last.whenLabel}
       </p>
 
@@ -70,7 +70,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
           <button
             type="button"
             onClick={sameToday}
-            className="min-h-[56px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white shadow-sm shadow-forest-green/20 hover:bg-forest-green/90"
+            className="min-h-[56px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white hover:bg-forest-green/90"
           >
             Same today
           </button>
@@ -86,7 +86,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
       {made && made.state === 'synced' && (
         <div className="mt-3"><SaveStatus itemId={madeId!} /></div>
       )}
-      {error && <p role="alert" className="mt-3 font-dm-sans text-[15px] font-medium text-warning">{error}</p>}
+      {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-medium text-warning">{error}</p>}
     </Card>
   )
 }

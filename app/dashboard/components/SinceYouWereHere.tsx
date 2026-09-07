@@ -116,7 +116,7 @@ export default async function SinceYouWereHere() {
                 <span className="font-dm-sans text-[17px] leading-snug text-forest-green">
                   <span className="font-semibold">{author}</span> {what(r, placeName, lotName)}
                 </span>
-                <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-forest-green/80">{when(r.ts)}</span>
+                <span className="shrink-0 font-dm-sans text-[16px] tabular-nums text-ink">{when(r.ts)}</span>
               </Link>
             </li>
           )

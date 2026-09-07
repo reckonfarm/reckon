@@ -39,22 +39,22 @@ export default function MachineConfirm({ jobId, name, machine, proposedCount }: 
   }
 
   const chipCls =
-    'rounded-full border border-forest-green/20 px-3 py-1.5 font-dm-sans text-sm text-forest-green hover:bg-forest-green/5 disabled:opacity-50'
+    'rounded-full border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[16px] text-forest-green hover:bg-forest-green/5 disabled:opacity-50'
 
   // Already labeled: a quiet change affordance, not a question.
   if (machine != null) {
     const label = MACHINE_SUGGESTIONS.find(m => m.value === machine)?.label ?? machine
     return (
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <p className="font-dm-sans text-xs text-forest-green/50">
-          Machine: <span className="font-semibold text-forest-green/80">{label}</span>
+        <p className="font-dm-sans text-[14px] text-secondary-ink">
+          Machine: <span className="font-semibold text-ink">{label}</span>
         </p>
         {!othersOpen ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => setOthersOpen(true)}
-            className="font-dm-sans text-xs font-semibold text-forest-green/60 hover:text-forest-green disabled:opacity-50"
+            className="font-dm-sans text-[14px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
           >
             Change
           </button>
@@ -77,7 +77,7 @@ export default function MachineConfirm({ jobId, name, machine, proposedCount }: 
   // The proposal: one tap confirms and labels.
   return (
     <div className="mt-3">
-      <p className="font-dm-sans text-sm text-forest-green/70">
+      <p className="font-dm-sans text-[16px] text-secondary-ink">
         {proposedCount != null
           ? `Was this baling?`
           : `What machine was this?`}
@@ -87,7 +87,7 @@ export default function MachineConfirm({ jobId, name, machine, proposedCount }: 
           type="button"
           disabled={busy}
           onClick={() => run({ machine: 'baler', ...(name == null ? { name: 'Baling' } : {}) })}
-          className="rounded-full bg-forest-green px-4 py-1.5 font-dm-sans text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-full bg-forest-green px-4 py-1.5 font-dm-sans text-[16px] font-semibold text-white disabled:opacity-50"
         >
           Yes, baling
         </button>

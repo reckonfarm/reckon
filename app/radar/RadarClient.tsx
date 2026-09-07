@@ -106,7 +106,7 @@ export default function RadarClient() {
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
           Hay Radar
         </h1>
-        <p className="mt-1 text-sm text-forest-green/50 font-dm-sans">
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
           Saved hay searches. We email you the moment a new listing matches.
         </p>
 
@@ -118,22 +118,22 @@ export default function RadarClient() {
           ) : !authed ? (
             <div className="mt-8 rounded-xl border-2 border-dashed border-forest-green/20 p-8 text-center">
               <p className="font-fraunces text-xl text-forest-green mb-2">Let the hay come to you</p>
-              <p className="text-sm text-forest-green/60 font-dm-sans mb-6">
+              <p className="text-[16px] text-secondary-ink font-dm-sans mb-6">
                 Save a search — hay type, state, price, distance — and Dryline emails you when a new
                 listing matches. Sign in to set up your radar.
               </p>
-              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">
+              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-[16px] font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">
                 Sign in to get started
               </a>
             </div>
           ) : searches.length === 0 ? (
             <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
               <p className="font-fraunces text-base font-semibold text-forest-green">No saved searches yet</p>
-              <p className="mt-1 font-dm-sans text-sm text-forest-green/55 max-w-md mx-auto">
+              <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink max-w-md mx-auto">
                 Hay Radar watches new listings for you. Set your filters on the Hay Network and tap
                 &ldquo;Save this search&rdquo; — we&apos;ll email you the moment matching hay is posted.
               </p>
-              <Link href="/hay" className="mt-4 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors">
+              <Link href="/hay" className="mt-4 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors">
                 Browse the Hay Network →
               </Link>
             </div>
@@ -142,7 +142,7 @@ export default function RadarClient() {
               {searches.map(s => {
                 const working = busy.has(s.id)
                 return (
-                  <li key={s.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 shadow-sm sm:px-5">
+                  <li key={s.id} className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 sm:px-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -150,14 +150,14 @@ export default function RadarClient() {
                             {s.label || 'Saved search'}
                           </h2>
                           {!s.active && (
-                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-dm-sans text-gray-500 ring-1 ring-gray-200">
+                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[14px] font-dm-sans text-gray-500 ring-1 ring-gray-200">
                               Paused
                             </span>
                           )}
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {criteriaChips(s).map((c, i) => (
-                            <span key={i} className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-xs font-dm-sans text-forest-green/70 ring-1 ring-forest-green/15">
+                            <span key={i} className="inline-flex items-center rounded-full bg-forest-green/5 px-2 py-0.5 text-[14px] font-dm-sans text-secondary-ink ring-1 ring-forest-green/15">
                               {c}
                             </span>
                           ))}
@@ -168,14 +168,14 @@ export default function RadarClient() {
                         <button
                           onClick={() => toggle(s.id, !s.active)}
                           disabled={working}
-                          className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream disabled:opacity-40"
+                          className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-[14px] font-medium text-forest-green font-dm-sans hover:bg-cream disabled:opacity-40"
                         >
                           {working ? '…' : s.active ? 'Pause' : 'Resume'}
                         </button>
                         <button
                           onClick={() => remove(s.id)}
                           disabled={working}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-[14px] font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
                         >
                           {working ? '…' : 'Delete'}
                         </button>
@@ -184,7 +184,7 @@ export default function RadarClient() {
 
                     {s.matches.length > 0 && (
                       <div className="mt-3 border-t border-forest-green/8 pt-3">
-                        <p className="font-dm-sans text-xs font-semibold uppercase tracking-wide text-forest-green/45 mb-2">
+                        <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink mb-2">
                           Recent matches
                         </p>
                         <ul className="space-y-1.5">
@@ -192,12 +192,12 @@ export default function RadarClient() {
                             <li key={m.listing_id} className="flex items-center justify-between gap-3">
                               <Link
                                 href={`/hay/${m.listing_id}`}
-                                className="font-dm-sans text-sm text-forest-green underline hover:text-forest-green/70 truncate"
+                                className="font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink truncate"
                               >
                                 {m.hay_type ?? 'Hay'}{m.county_name ? ` — ${m.county_name}, ${m.state}` : ''}
                                 {m.listing_type !== 'donate' && m.price_per_ton != null ? ` · $${m.price_per_ton}/ton` : ''}
                               </Link>
-                              <span className="shrink-0 font-dm-sans text-xs text-forest-green/40">{matchDate(m.sent_at)}</span>
+                              <span className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">{matchDate(m.sent_at)}</span>
                             </li>
                           ))}
                         </ul>

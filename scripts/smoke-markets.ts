@@ -9,6 +9,11 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A5: unit in the heading and beside every price; head count beneath at meta; no essay
+//   • Phase A4: three radii, no shadows in main, 48 px links/buttons, 52 px LFP disclosure with Show/Hide, header targets
+//   • Phase A3: a real action fully inside the first viewport at 390×844 and 1440×900; caption above the image
+//   • Phase A2: one left edge at 390 and 1440; no FIPS in the heading; resting control + chooser with Cancel
+//   • Phase A1: from the painted page — no text under 14 px, no pair under 4.5:1, nav/answers ≥ 7:1
 //   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
 //   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
 //   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
@@ -26,6 +31,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
+import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -106,8 +112,11 @@ async function main() {
 
     record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
-    record('A3: match labels present', /Close match|Broader reference|Limited evidence/.test(body), (body.match(/Close match|Broader reference|Limited evidence/) ?? [''])[0])
-    record('A3: a thin reference says so — one price or a real range', !/Limited evidence/.test(body) || /All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt, not one price/.test(body), (body.match(/All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt[^.]*/) ?? [''])[0])
+    record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
+    record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
+    // Phase A5 — units live with the number or in the heading; the essay is gone.
+    record('A5: the auction heading carries the unit', /Auction prices · \$\/cwt/.test(body))
+    record('A5: no repeated disclaimer block under the auction rows', !/Close match = same class/.test(body) && !/head-weighted within each 100-lb band/.test(body))
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
@@ -303,7 +312,12 @@ async function main() {
       const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; cardW: number; cardInner: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
       record(`${width}px: every Markets control ≥ 48 px`, m.smallCount === 0, m.small.join(' | '))
-      record(`${width}px: no Markets text under 15 px (uppercase kicker labels excepted)`, m.tinyCount === 0, m.tiny.join(' | '))
+      // Phase A1 — measured from the painted page: no text under 14 px, no text pair under
+      // 4.5:1, and navigation / answers at 7:1 (computed color vs the composited backdrop).
+      const ta = await mp.evaluate(`${TEXT_AUDIT}(${JSON.stringify({ minPx: 14, minRatio: 4.5, essentialRatio: 7, root: 'main' })})`) as TextAudit & { tinyCount: number; lowCount: number; lowEssentialCount: number }
+      record(`${width}px: no text under 14 px on the Markets view`, ta.tinyCount === 0, ta.tiny.slice(0, 4).map(n => `${n.px}px "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`${width}px: every text pair ≥ 4.5:1 on the Markets view`, ta.lowCount === 0, ta.low.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`${width}px: navigation and answers ≥ 7:1 on the Markets view`, ta.lowEssentialCount === 0, ta.lowEssential.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
       // The chart fills its card, and the card fills the page but for the 16 px gutters.
       record(`${width}px: chart takes the width`, m.chartW >= m.cardInner - 2 && m.cardW >= width - 40, `chart ${m.chartW}px in a ${m.cardW}px card (inner ${m.cardInner}) of ${width}`)
       // a point tap opens the detail panel; an event chip opens its source
@@ -325,6 +339,15 @@ async function main() {
         await mp.screenshot({ path: `${process.env.SHOT_DIR}/markets-full-390.png`, fullPage: true }).catch(() => {})
       }
       await mctx.close()
+    }
+
+    // A4: My Counties (desktop header, signed in) is a 48 px target.
+    {
+        const dc = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const dp = await signIn(dc)
+        const mc = await dp.locator('header a[href="/watchlist"]').first().boundingBox().catch(() => null)
+        record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px`)
+        await dc.close()
     }
 
     // Herd page lot card
@@ -355,6 +378,80 @@ async function main() {
         record(`2.6A ${name}: no-coverage sentence and a Nearby label never co-occur`, !(noLocal && nearby))
         record(`2.6A ${name}: says no auction within the radius, and any reference is labeled regional with state + ~miles`, noLocal && (ref || !/Report ↗/.test(b)), ref ? (b.match(/Regional reference — [^·]+· ~[\d,]+ mi/) ?? [])[0] : 'no reference offered')
         await pp.close()
+      }
+      // ── Phase A4 — one surface system, measured on the public Today at 390 px: three radii
+      //    (8 / 12 / pill), no shadow on anything in main, every link/button ≥ 48 px, the LFP
+      //    disclosure a 52 px full row that says what it opens with visible Show/Hide. ──
+      {
+        const sc = await browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const sp = await sc.newPage()
+        await sp.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await sp.getByText(/Payment estimate and steps|LFP status/).first().waitFor({ timeout: 30_000 }).catch(() => {})
+        await sp.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+        const a4 = await sp.evaluate(`(function(){
+          var els = Array.from(document.querySelectorAll('main *'));
+          var radii = {}; var shadows = []; var small = [];
+          els.forEach(function(el){ var cs = getComputedStyle(el); var b = el.getBoundingClientRect(); if (b.width === 0 || b.height === 0) return;
+            var r = cs.borderTopLeftRadius; if (r && r !== '0px') { var px = parseFloat(r); var key = px >= b.height / 2 ? 'pill' : r; radii[key] = (radii[key] || 0) + 1; }
+            if (cs.boxShadow && cs.boxShadow !== 'none' && !el.closest('[role="dialog"], .fixed, [data-audit="selection-strip"]')) shadows.push(el.tagName + '.' + String(el.className).slice(0, 30));
+            if ((el.tagName === 'A' && el.getAttribute('href')) || el.tagName === 'BUTTON') { if (b.height < 48 && !el.closest('svg')) small.push((el.textContent || '').trim().slice(0, 24) + ' ' + Math.round(b.height) + 'px'); }
+          });
+          var lfp = Array.from(document.querySelectorAll('main button')).find(function(b){ return /Payment estimate and steps/.test(b.textContent || ''); });
+          return { radii: radii, shadows: shadows.slice(0, 6), small: small.slice(0, 8), smallCount: small.length, lfp: lfp ? { h: Math.round(lfp.getBoundingClientRect().height), w: Math.round(lfp.getBoundingClientRect().width), text: (lfp.textContent || '').split(/[\\t\\n\\r ]+/).join(' ').trim(), expanded: lfp.getAttribute('aria-expanded') } : null };
+        })()`) as { radii: Record<string, number>; shadows: string[]; small: string[]; smallCount: number; lfp: { h: number; w: number; text: string; expanded: string | null } | null }
+        const radiiKeys = Object.keys(a4.radii)
+        record('A4: three radii on the Today page — 8 px, 12 px, pill', radiiKeys.every(k => k === '8px' || k === '12px' || k === 'pill'), JSON.stringify(a4.radii))
+        record('A4: no shadow on ordinary surfaces in main', a4.shadows.length === 0, a4.shadows.join(' | '))
+        record('A4: every link and button on Today is at least 48 px tall', a4.smallCount === 0, a4.small.join(' | '))
+        record('A4: the LFP disclosure is a 52 px full row that says what it opens, with Show/Hide', !!a4.lfp && a4.lfp.h >= 52 && a4.lfp.w >= 300 && /Payment estimate and steps/.test(a4.lfp.text) && /Show|Hide/.test(a4.lfp.text) && a4.lfp.expanded != null, a4.lfp ? `${a4.lfp.h}×${a4.lfp.w} "${a4.lfp.text}" aria-expanded=${a4.lfp.expanded}` : 'no disclosure')
+        const signin = await sp.locator('header a[href="/signin"]').first().boundingBox().catch(() => null)
+        record('A4: the header Sign in is a 48 px target', !!signin && signin.height >= 48, `${signin?.height ?? 0}px`)
+        await sc.close()
+      }
+      // ── Phase A3 — the homepage has something to tap: at 390×844 and 1440×900 at least one
+      //    interactive element sits fully inside the first viewport, and the example image is
+      //    captioned above and placed after the actions. ──
+      for (const [w, h] of [[390, 844], [1440, 900]] as const) {
+        const lc = await browser.newContext({ baseURL: BASE, viewport: { width: w, height: h }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const lp = await lc.newPage()
+        await lp.goto('/', { waitUntil: 'domcontentloaded' })
+        await lp.getByText('Check my county').first().waitFor({ timeout: 30_000 }).catch(() => {})
+        const fold = await lp.evaluate(`(function(h){
+          var els = Array.from(document.querySelectorAll('main a[href], main button')).map(function(el){ var b = el.getBoundingClientRect(); return { text: (el.textContent||'').trim().slice(0,30), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; });
+          var inFold = els.filter(function(e){ return e.height > 0 && e.top >= 0 && e.bottom <= h; });
+          var img = document.querySelector('main img'); var cap = Array.from(document.querySelectorAll('main p')).find(function(p){ return /Example ranch record/i.test(p.textContent||''); });
+          var actions = document.querySelector('[data-audit="landing-actions"]');
+          return { inFold: inFold, imgTop: img ? Math.round(img.getBoundingClientRect().top + window.scrollY) : null, capTop: cap ? Math.round(cap.getBoundingClientRect().top + window.scrollY) : null, actionsBottom: actions ? Math.round(actions.getBoundingClientRect().bottom + window.scrollY) : null };
+        })(${h})`) as { inFold: { text: string; height: number }[]; imgTop: number | null; capTop: number | null; actionsBottom: number | null }
+        record(`A3 ${w}×${h}: a real action sits fully inside the first viewport`, fold.inFold.some(e => /Check my county|Try the ranch record/.test(e.text) && e.height >= 48), fold.inFold.map(e => `${e.text} ${e.height}px`).join(' | ') || 'nothing interactive above the fold')
+        if (w === 390) record('A3: the example image is captioned above and comes after the actions', fold.imgTop != null && fold.capTop != null && fold.actionsBottom != null && fold.capTop < fold.imgTop && fold.actionsBottom <= fold.capTop, `actions end ${fold.actionsBottom} · caption ${fold.capTop} · image ${fold.imgTop}`)
+        await lc.close()
+      }
+      // ── Phase A2 — one column: the county control, the heading, the tabs, and the first
+      //    section share one left edge at a phone width and on a desktop; no FIPS in the heading. ──
+      for (const width of [390, 1440]) {
+        const pc = await browser.newContext({ baseURL: BASE, viewport: { width, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const pp = await pc.newPage()
+        await pp.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pp.locator('[role="tablist"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+        const edges = await pp.evaluate(`(function(){
+          var x = function(sel){ var el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().left) : null; };
+          var h1 = document.querySelector('main h1');
+          return { control: x('[data-audit="county-control"]'), h1: h1 ? Math.round(h1.getBoundingClientRect().left) : null, tabs: x('[role="tablist"]'), section: x('main section, main [data-audit$="-card"]'), h1Text: h1 ? h1.textContent : '', chooserOpen: !!document.querySelector('#county-search') };
+        })()`) as { control: number | null; h1: number | null; tabs: number | null; section: number | null; h1Text: string; chooserOpen: boolean }
+        const xs = [edges.control, edges.h1, edges.tabs, edges.section].filter((v): v is number => v != null)
+        record(`A2 ${width}px: county control, heading, tabs, and first section share one left edge`, xs.length >= 3 && Math.max(...xs) - Math.min(...xs) <= 2, JSON.stringify(edges))
+        if (width === 390) {
+          record('A2: no FIPS in the heading', !/FIPS/.test(edges.h1Text), edges.h1Text.trim())
+          record('A2: the county rests as a statement with Change, not a search field', !edges.chooserOpen && /Change/.test((await pp.locator('[data-audit="county-control"]').innerText().catch(() => ''))))
+          await pp.locator('[data-audit="county-control"] button').first().click()
+          const chooser = await pp.locator('#county-search').count()
+          const cancelBox = await pp.locator('[data-audit="county-cancel"]').boundingBox().catch(() => null)
+          await pp.locator('[data-audit="county-cancel"]').click().catch(() => {})
+          const back = await pp.locator('[data-audit="county-control"]').innerText().catch(() => '')
+          record('A2: Change opens the chooser with a 48 px Cancel that keeps the county', chooser === 1 && !!cancelBox && cancelBox.height >= 48 && /Petroleum County/.test(back) && /Change/.test(back), `${cancelBox?.height ?? 0}px · after cancel: "${back.replace(/\s+/g, ' ').slice(0, 40)}"`)
+        }
+        await pc.close()
       }
       // ── Block 2.6D — no displayed "as of" date is in the future (Today view, five counties) ──
       const todayMs = Date.now() + 86_400_000   // a day of slack for the viewer's zone

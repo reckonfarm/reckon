@@ -54,7 +54,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
 
       {!editing ? (
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <p className="font-dm-sans text-sm text-forest-green/70">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             You reported{' '}
             {actualBaleCount != null && (
               <span className="font-semibold tabular-nums text-forest-green">
@@ -70,21 +70,21 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
             type="button"
             disabled={busy}
             onClick={() => setEditing(true)}
-            className="font-dm-sans text-xs font-semibold text-forest-green/60 hover:text-forest-green disabled:opacity-50"
+            className="font-dm-sans text-[14px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
           >
             Change
           </button>
         </div>
       ) : (
         <div className="mt-1">
-          <p className="font-dm-sans text-sm text-forest-green/70">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             What actually came off this field? Leave blank what doesn&apos;t apply.
           </p>
           <form
             className="mt-3 flex flex-wrap items-end gap-3"
             onSubmit={e => { e.preventDefault(); save() }}
           >
-            <label className="font-dm-sans text-xs text-forest-green/60">
+            <label className="font-dm-sans text-[14px] text-secondary-ink">
               Bales
               <input
                 value={bales}
@@ -95,7 +95,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
                 className="mt-1 block w-24 rounded-lg border border-forest-green/20 bg-white px-3 py-2 font-dm-sans text-base tabular-nums text-forest-green outline-none focus:border-forest-green/40"
               />
             </label>
-            <label className="font-dm-sans text-xs text-forest-green/60">
+            <label className="font-dm-sans text-[14px] text-secondary-ink">
               Acres
               <input
                 value={acres}
@@ -108,7 +108,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-semibold text-white disabled:opacity-50"
             >
               Save
             </button>
@@ -121,7 +121,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
                   setAcres(actualAcres != null ? String(actualAcres) : '')
                   setEditing(false)
                 }}
-                className="px-1 py-2 font-dm-sans text-xs font-semibold text-forest-green/50 hover:text-forest-green disabled:opacity-50"
+                className="px-1 py-2 font-dm-sans text-[14px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
               >
                 Cancel
               </button>
