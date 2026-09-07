@@ -92,14 +92,14 @@ export default function SiteHeader({ center }: Props) {
           <div className="hidden items-center gap-4 md:flex">
             <Link
               href="/watchlist"
-              className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+              className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
             >
               My Counties
             </Link>
             {flagEnabled('marketplace') && (
               <Link
                 href="/hay"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 Hay
               </Link>
@@ -119,7 +119,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/herd"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 My herd
               </Link>
@@ -128,7 +128,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/jobs"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 Jobs
               </Link>
@@ -138,7 +138,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/devices"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 Devices
               </Link>
@@ -146,7 +146,7 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('messaging') && (
               <Link
                 href="/messages"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 Messages{unread > 0 && (
                   <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white align-middle">
@@ -158,7 +158,7 @@ export default function SiteHeader({ center }: Props) {
             {user && flagEnabled('marketplace') && (
               <Link
                 href="/radar"
-                className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
               >
                 Hay Radar
               </Link>
@@ -166,7 +166,7 @@ export default function SiteHeader({ center }: Props) {
             {user && (
               <Link
                 href="/profile"
-                className="max-w-[160px] truncate text-[14px] text-secondary-ink font-dm-sans hover:text-forest-green transition-colors"
+                className="max-w-[160px] truncate text-[14px] text-ink font-dm-sans hover:text-brand transition-colors"
               >
                 {user.email}
               </Link>
@@ -178,7 +178,7 @@ export default function SiteHeader({ center }: Props) {
           {user ? (
             <button
               onClick={signOut}
-              className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+              className="font-dm-sans text-sm text-ink hover:text-brand transition-colors"
             >
               Sign out
             </button>

@@ -156,7 +156,7 @@ export default function BottomTabBar() {
         href={tab.href}
         aria-current={active ? 'page' : undefined}
         className={`relative flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 text-[14px] font-dm-sans transition-colors min-h-[56px] ${
-          active ? 'font-semibold text-forest-green' : 'font-medium text-secondary-ink hover:text-secondary-ink'
+          active ? 'font-semibold text-forest-green' : 'font-medium text-ink hover:text-brand'
         }`}
       >
         {tab.href === '/messages' && unread > 0 && (
@@ -209,7 +209,7 @@ export default function BottomTabBar() {
           </span>
           <span
             className={`-mt-2.5 mb-1.5 text-[14px] font-dm-sans transition-colors ${
-              opActive ? 'font-semibold text-forest-green' : 'font-medium text-secondary-ink'
+              opActive ? 'font-semibold text-forest-green' : 'font-medium text-ink'
             }`}
           >
             Operation

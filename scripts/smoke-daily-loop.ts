@@ -24,6 +24,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
+import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -220,6 +221,14 @@ async function main() {
     const homeUrl = page.url().replace(BASE, '')
     const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
     record('/home renders the home county Today stack', homeUrl.includes(`fips=${HOME_FIPS}`) && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
+    // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
+    // 4.5:1, navigation / answers at 7:1 — main and header both.
+    for (const root of ['main', 'header'] as const) {
+      const ta = await page.evaluate(`${TEXT_AUDIT}(${JSON.stringify({ minPx: 14, minRatio: 4.5, essentialRatio: 7, root })})`) as TextAudit & { tinyCount: number; lowCount: number; lowEssentialCount: number }
+      record(`A1: no text under 14 px in ${root} on the signed-in home`, ta.tinyCount === 0, ta.tiny.slice(0, 4).map(n => `${n.px}px "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`A1: every text pair ≥ 4.5:1 in ${root} on the signed-in home`, ta.lowCount === 0, ta.low.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`A1: navigation and answers ≥ 7:1 in ${root} on the signed-in home`, ta.lowEssentialCount === 0, ta.lowEssential.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
+    }
     for (const [fips, county] of [['30069', 'Petroleum'], ['30027', 'Fergus']]) {
       await page.goto(`/dashboard?fips=${fips}`, { waitUntil: 'domcontentloaded' })
       const h1 = await page.locator('h1').first().innerText().catch(() => '')

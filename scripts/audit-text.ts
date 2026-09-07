@@ -10,10 +10,11 @@
 
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { chromium } from '@playwright/test'
+import { chromium, type BrowserContext } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 import { TEXT_AUDIT, type TextAudit, type TextNode } from './lib/text-audit'
 
-for (const f of ['e2e/.env.e2e']) { const p = resolve(process.cwd(), f); if (existsSync(p)) for (const l of readFileSync(p, 'utf8').split('\n')) { const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(l); if (m && process.env[m[1]] == null) process.env[m[1]] = m[2].replace(/^"|"$/g, '') } }
+for (const f of ['.env.local', 'e2e/.env.e2e']) { const p = resolve(process.cwd(), f); if (existsSync(p)) for (const l of readFileSync(p, 'utf8').split('\n')) { const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(l); if (m && process.env[m[1]] == null) process.env[m[1]] = m[2].replace(/^"|"$/g, '') } }
 const BASE = process.env.BASE ?? 'https://www.dryline.farm'
 const BYPASS = BASE.includes('vercel.app') ? process.env.VERCEL_BYPASS : undefined
 const WIDTHS = [320, 375, 390, 430]
@@ -24,6 +25,17 @@ const SURFACES: [string, string, string[]][] = [
   ['markets', '/dashboard?fips=30069&view=markets', ['Report', 'head reported', 'sale']],
 ]
 const SAMPLES_NAMED = ['U.S. Drought Monitor', 'FIPS', '7-day forecast', 'NWS', 'National Weather Service', 'My Counties', 'Example ranch']
+// SIGNIN=testranch samples the signed-in chrome too (header links such as My Counties) as the Test Ranch owner — read-only.
+const SIGNIN = process.env.SIGNIN === 'testranch' ? 'kiehl.preston+testranch@gmail.com' : null
+async function signIn(ctx: BrowserContext) {
+  if (!SIGNIN) return
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: SIGNIN })
+  const p = await ctx.newPage()
+  await p.goto(`/auth/callback?token_hash=${link.data!.properties!.hashed_token}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
+  await p.waitForURL(u => u.pathname.startsWith('/dashboard'), { timeout: 20_000 }).catch(() => {})
+  await p.close()
+}
 
 type Row = { surface: string; width: number; sample: string; text: string; px: number; color: string; bg: string; ratio: number }
 
@@ -33,8 +45,10 @@ async function main() {
   const rows: Row[] = []
   let tinyTotal = 0, lowTotal = 0, lowEssTotal = 0, nodes = 0
   const worst: TextNode[] = []
+  const essentialSeen = new Set<string>()
   for (const width of WIDTHS) {
     const ctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    await signIn(ctx)
     const page = await ctx.newPage()
     for (const [name, path, waits] of SURFACES) {
       await page.goto(path, { waitUntil: 'domcontentloaded' })
@@ -51,6 +65,7 @@ async function main() {
       nodes += all.reduce((s, x) => s + x.total, 0); tinyTotal += tiny; lowTotal += low; lowEssTotal += lowEss
       console.log(`${String(width).padStart(3)}px ${name.padEnd(8)} text nodes ${String(all.reduce((s, x) => s + x.total, 0)).padStart(4)} · under 14px ${String(tiny).padStart(3)} · under 4.5:1 ${String(low).padStart(3)} · essential under 7:1 ${String(lowEss).padStart(3)}`)
       for (const x of all) { for (const n of [...x.low, ...x.tiny]) if (worst.length < 12 && !worst.some(w => w.text === n.text)) worst.push(n) }
+      if (process.env.ESSENTIAL && width === 390) for (const x of all) for (const n of x.lowEssential) if (!essentialSeen.has(n.text)) { essentialSeen.add(n.text); console.log(`    essential<7  ${String(n.ratio).padStart(5)}:1 ${String(n.px).padStart(4)}px w${n.weight} ${n.nav ? 'NAV ' : '    '}${n.tag.padEnd(6)} "${n.text}"`) }
       for (const x of all) for (const s of x.samples as (TextNode & { sample: string })[]) rows.push({ surface: name, width, sample: s.sample, text: s.text, px: s.px, color: s.color, bg: s.bg, ratio: s.ratio })
     }
     await ctx.close()

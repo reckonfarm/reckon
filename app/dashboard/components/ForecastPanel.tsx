@@ -8,6 +8,8 @@ import type { LocalForecast, NWSPeriod } from '@/lib/nws'
 // Rain-chance accent — the same water-blue used by the rain-event markers on the
 // rainfall graph, so "chance of rain" reads consistently across the weather view.
 const RAIN_BLUE = '#2563EB'
+const INK = '#20392E'           // --color-ink — the chance is the answer, so it reads at answer weight (12:1)
+const SECONDARY_INK = '#526257' // --color-secondary-ink
 
 // Condition class iconFor() resolves to; WeatherGlyph paints each as a custom brand SVG.
 export type IconKind = 'sun' | 'partly' | 'cloud' | 'rain' | 'snow' | 'storm'
@@ -152,14 +154,14 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                   Forest-green + muted: it's spray-planning context, not an alarm. */}
               {isWindy && (
                 <span
-                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[14px] font-semibold leading-none text-secondary-ink"
+                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[14px] font-semibold leading-none text-ink"
                   title={`Wind to ${d.windMph} mph`}
                 >
                   <WindGlyph size={12} />
                   {d.windMph}
                 </span>
               )}
-              <div className="text-[14px] font-dm-sans font-semibold leading-tight text-secondary-ink">{d.label}</div>
+              <div className="text-[14px] font-dm-sans font-semibold leading-tight text-ink">{d.label}</div>
               <div className="text-[14px] font-dm-sans leading-tight text-secondary-ink">{d.date}</div>
               <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>
               {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
@@ -169,12 +171,9 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               <div
                 className="font-dm-sans text-lg leading-none"
                 style={hasRain
-                  ? {
-                      color: RAIN_BLUE,
-                      opacity: 0.55 + 0.45 * (Math.min(d.precip!, 100) / 100),
-                      fontWeight: d.precip! >= 50 ? 700 : 600,
-                    }
-                  : { color: 'rgba(27,67,50,0.35)', fontWeight: 700 }}
+                  // Phase A1: opaque weather ink at every chance — weight, not opacity, carries the odds.
+                  ? { color: INK, fontWeight: d.precip! >= 50 ? 700 : 600 }
+                  : { color: SECONDARY_INK, fontWeight: 700 }}
               >
                 {d.precip != null ? `${d.precip}%` : '—'}
               </div>

@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A1: from the painted page — no text under 14 px, no pair under 4.5:1, nav/answers ≥ 7:1
 //   • Block 2.6I: every price-bearing component links to its USDA AMS report (shared evidence line)
 //   • Block 2.6H: point roles/labels, sizes by head, 48 px strip + Previous/Next, keyboard, list
 //   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
@@ -26,6 +27,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
+import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -303,7 +305,12 @@ async function main() {
       const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; cardW: number; cardInner: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
       record(`${width}px: every Markets control ≥ 48 px`, m.smallCount === 0, m.small.join(' | '))
-      record(`${width}px: no Markets text under 15 px (uppercase kicker labels excepted)`, m.tinyCount === 0, m.tiny.join(' | '))
+      // Phase A1 — measured from the painted page: no text under 14 px, no text pair under
+      // 4.5:1, and navigation / answers at 7:1 (computed color vs the composited backdrop).
+      const ta = await mp.evaluate(`${TEXT_AUDIT}(${JSON.stringify({ minPx: 14, minRatio: 4.5, essentialRatio: 7, root: 'main' })})`) as TextAudit & { tinyCount: number; lowCount: number; lowEssentialCount: number }
+      record(`${width}px: no text under 14 px on the Markets view`, ta.tinyCount === 0, ta.tiny.slice(0, 4).map(n => `${n.px}px "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`${width}px: every text pair ≥ 4.5:1 on the Markets view`, ta.lowCount === 0, ta.low.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
+      record(`${width}px: navigation and answers ≥ 7:1 on the Markets view`, ta.lowEssentialCount === 0, ta.lowEssential.slice(0, 4).map(n => `${n.ratio}:1 "${n.text.slice(0, 24)}"`).join(' | '))
       // The chart fills its card, and the card fills the page but for the 16 px gutters.
       record(`${width}px: chart takes the width`, m.chartW >= m.cardInner - 2 && m.cardW >= width - 40, `chart ${m.chartW}px in a ${m.cardW}px card (inner ${m.cardInner}) of ${width}`)
       // a point tap opens the detail panel; an event chip opens its source
