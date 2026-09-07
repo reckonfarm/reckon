@@ -34,7 +34,7 @@ select conrelid::regclass as tbl, conname, pg_get_constraintdef(oid)
  where contype = 'u'
    and ((conrelid = 'public.operation_profiles'::regclass   and conkey = array[(select attnum from pg_attribute where attrelid = 'public.operation_profiles'::regclass and attname = 'user_id')])
      or (conrelid = 'public.herd_estimate_history'::regclass and array_length(conkey, 1) = 2
-         and (select array_agg(attname order by attname) from pg_attribute where attrelid = conrelid and attnum = any(conkey)) = array['snapshot_date','user_id']));
+         and (select array_agg(attname::text order by attname::text) from pg_attribute where attrelid = conrelid and attnum = any(conkey)) = array['snapshot_date','user_id']::text[]));
 
 -- 1) Re-backfill: insert what is missing, update what the blob has newer ------
 insert into public.herd_lots (id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_by, updated_by, created_at, updated_at)
@@ -75,7 +75,7 @@ begin
      where contype = 'u'
        and ((conrelid = 'public.operation_profiles'::regclass and conkey = array[(select attnum from pg_attribute where attrelid = 'public.operation_profiles'::regclass and attname = 'user_id')])
          or (conrelid = 'public.herd_estimate_history'::regclass and array_length(conkey, 1) = 2
-             and (select array_agg(attname order by attname) from pg_attribute where attrelid = conrelid and attnum = any(conkey)) = array['snapshot_date','user_id']))
+             and (select array_agg(attname::text order by attname::text) from pg_attribute where attrelid = conrelid and attnum = any(conkey)) = array['snapshot_date','user_id']::text[]))
   loop
     execute format('alter table %s drop constraint %I', c.tbl, c.conname);
     raise notice 'dropped % on %', c.conname, c.tbl;
