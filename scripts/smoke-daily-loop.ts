@@ -379,7 +379,7 @@ async function main() {
     await page.getByRole('button', { name: /^Undo/ }).click()
     await page.waitForTimeout(13_000)
     record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: 'Same today' }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
-    await page.getByRole('button', { name: 'Change' }).click()
+    await page.getByRole('button', { name: 'Different today' }).click()
     const changed = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('2B: Change opens the sheet pre-filled', changed === '2', `bales "${changed}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
