@@ -146,7 +146,10 @@ export async function getEvent(supabase: SupabaseClient, userId: string, id: str
   if (!data) return null
   const row = data as ActivityRow & { ranch_id: string }
   const names = await namesFor(supabase, userId, [row])
-  const { data: m } = await supabase.from('ranch_members').select('role').eq('ranch_id', row.ranch_id).eq('user_id', row.user_id).maybeSingle()
+  // The caller only saw this row through their own membership (043); the actor's
+  // role is read with the service role because a member's own row is all the
+  // client policy on ranch_members shows.
+  const { data: m } = await createServiceClient().from('ranch_members').select('role').eq('ranch_id', row.ranch_id).eq('user_id', row.user_id).maybeSingle()
   const actorRole: EventDetail['actorRole'] = m?.role === 'owner' ? 'owner' : m ? 'member' : 'former member'
   return { row, names, actorRole, line: describeEvent(row, names), quantity: quantityOf(row), placeId: str(row.payload.place_id) ?? str(row.payload.to_place_id), lotId: str(row.payload.herd_lot_id) }
 }
@@ -156,7 +159,7 @@ export async function filterOptions(supabase: SupabaseClient, userId: string): P
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return { people: [], places: [], lots: [] }
   const [{ data: members }, { data: places }, lots] = await Promise.all([
-    supabase.from('ranch_members').select('user_id').eq('ranch_id', ranchId),
+    createServiceClient().from('ranch_members').select('user_id').eq('ranch_id', ranchId),
     supabase.from('places').select('id, name').eq('ranch_id', ranchId).order('name'),
     getRanchLotsIncludingRetired(supabase, userId),
   ])
