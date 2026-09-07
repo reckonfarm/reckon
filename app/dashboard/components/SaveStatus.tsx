@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState } from '@/lib/outbox'
+import SaveReceipt from '@/app/components/SaveReceipt'
 
 // ─── Save status — the honest answer to "did that save?" (Block 2A) ───────────
 // Sits directly under Log it. Shows the most recent entry's state in the four
@@ -74,6 +75,15 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
 
   return (
     <div role="status" aria-live="polite" className={`rounded-lg px-4 py-3 font-dm-sans ${TONE[shown]}`}>
+      {shown === 'synced' ? (
+        // Block 5C — one receipt: what was recorded, what it meant, the exact entry.
+        <div className="flex items-start gap-3">
+          <Dot state={shown} />
+          <div className="min-w-0 flex-1">
+            <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} tone="strip" />
+          </div>
+        </div>
+      ) : (
       <div className="flex items-center gap-3">
         <Dot state={shown} />
         <div className="min-w-0 flex-1">
@@ -104,12 +114,6 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
           <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[16px] font-semibold text-amber-900 hover:bg-amber-100">Sync now</button>
         )}
       </div>
-      {shown === 'synced' && item.consequence && item.consequence.lines.length > 0 && (
-        <ul className="mt-3 space-y-1 border-t border-forest-green/10 pt-3">
-          {item.consequence.lines.map((l, i) => (
-            <li key={i} className={i === 0 ? 'text-[17px] font-semibold text-forest-green' : 'text-[16px] text-ink'}>{l}</li>
-          ))}
-        </ul>
       )}
     </div>
   )

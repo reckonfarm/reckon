@@ -53,6 +53,7 @@ export interface OutboxItem {
   syncedAt?: number
   consequence?: Consequence         // what the server said it meant (2C)
   serverId?: string
+  owner?: string                    // the signed-in user id this entry was saved under (Block 5D)
 }
 
 export const STATE_LABEL: Record<OutboxState, string> = {
@@ -63,6 +64,11 @@ export const STATE_LABEL: Record<OutboxState, string> = {
 }
 
 const KEY = 'dryline_outbox_v1'
+// Block 5D: the user id the phone's private state belongs to (written by
+// lib/private-state on every auth change). An entry saved under one person is
+// never uploaded under another — the guard in flush() below.
+export const OWNER_KEY = 'dryline_session_uid'
+const ownerNow = (): string | null => { try { return localStorage.getItem(OWNER_KEY) } catch { return null } }
 const SYNCED_TTL_MS = 6 * 60 * 60 * 1000   // synced entries linger for the status line, then drop
 const RETRY_TIMER_MS = 20_000
 const MAX_ITEMS = 200
@@ -142,6 +148,7 @@ export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0
     attempts: 0,
     holdUntil: Date.now() + hold,
     undoable: holdMs > 0,
+    owner: ownerNow() ?? undefined,
   }
   write([...read(), item])            // throws → caller shows "Couldn't save"
   scheduleFlush(hold)
@@ -154,6 +161,13 @@ export function cancel(id: string): boolean {
   if (!item || item.state !== 'local' || inFlight === id) return false
   try { write(read().filter(i => i.id !== id)) } catch { /* keep */ }
   return true
+}
+
+/** Block 5D: drop everything on the phone — sign-out or an account switch. */
+export function clearOutbox(): void {
+  try { localStorage.removeItem(KEY) } catch { /* private mode */ }
+  cache = []
+  for (const l of listeners) l()
 }
 
 /** Discard a failed entry (the person chose not to fix it). */
@@ -229,6 +243,12 @@ export async function flush(): Promise<void> {
   try {
     for (;;) {
       const now = Date.now()
+      // Block 5D: an entry saved under a different person than the one signed in
+      // now is dropped, never uploaded as theirs (the account-switch guard
+      // clears the outbox too; this holds if the sync timer wins that race).
+      const owner = ownerNow()
+      const foreign = read().filter(i => i.owner && owner && i.owner !== owner)
+      if (foreign.length) { try { write(read().filter(i => !foreign.includes(i))) } catch { /* keep */ } }
       const next = read().find(i => (i.state === 'local' || i.state === 'queued') && (!i.holdUntil || i.holdUntil <= now))
       if (!next) break
       await uploadOne(next)

@@ -265,6 +265,13 @@ async function main() {
     const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2C: the answer — recorded, remaining from the count, no invented runway',
       /4 bales recorded/.test(strip1) && /196 bales on hand \(from your count of 200/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))
+    // Block 5C — one receipt: the strip's link opens the exact entry it just made.
+    {
+      const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
+      const ob = await outbox(page)
+      const latestId = ob.length ? ob[ob.length - 1].id : null
+      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
+    }
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
     record('exactly one row under the client-minted id', !!id1 && (await rowsFor(id1)) === 1 && (await feedRows()) === 1, `id ${id1.slice(0, 8)}… rows=${id1 ? await rowsFor(id1) : '-'} feeds=${await feedRows()}`)
@@ -503,6 +510,40 @@ async function main() {
           record('5B: a corrected entry offers no second correction (correct the current entry instead)', again === 0, `${again} correct button(s) on the original`)
         }
       }
+    }
+
+    // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
+    // Private content disappears at once — the page, the storage, the receipt —
+    // and nothing of the first person survives into the second's session, with
+    // or without a clean sign-out in between.
+    {
+      const PRIVATE_KEYS = ['dryline_outbox_v1', 'manual_log_draft_v1', 'manual_log_last_lot', 'manual_log_last_place', 'dryline_hay_draft_v1', 'farmer_type', 'dryline_session_uid']
+      await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[role="status"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+      const beforeText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const keysBefore = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
+      record('5D: before sign-out the page holds private content and the phone holds private keys', /SMOKE-DAILY-LOOP/.test(beforeText) && /bales/.test(beforeText) && keysBefore.includes('dryline_outbox_v1') && keysBefore.includes('dryline_session_uid'), `keys: ${keysBefore.join(', ')}`)
+      page.once('dialog', d => void d.accept())   // "entries not synced" guard, should not fire — everything synced
+      await page.getByRole('button', { name: 'Sign out' }).click()
+      await page.waitForURL(u => u.pathname === '/' || u.pathname === '/signin', { timeout: 30_000 }).catch(() => {})
+      await page.waitForLoadState('domcontentloaded')
+      const afterText = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const keysAfter = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
+      const signIn = await page.locator('a[href^="/signin"]').count() + (/sign in/i.test(afterText) ? 1 : 0)   // the public page offers a way in, in whatever words
+      record('5D: after sign-out — fresh signed-out page, no ranch name, no quantities, no receipt, no private keys', !/SMOKE-DAILY-LOOP/.test(afterText) && !/Fed \d+ bales/.test(afterText) && !/bales on hand/.test(afterText) && !/Synced to ranch/.test(afterText) && keysAfter.length === 0 && signIn >= 1, `url ${page.url().replace(BASE, '') || '/'} · keys left: ${keysAfter.join(', ') || 'none'} · sign-in links ${signIn}`)
+      // Account switch WITHOUT a clean sign-out: plant a stale outbox item under A's id, then open B's magic link in the same browser.
+      await page.evaluate(([outboxKey, ownerKey, uid]: string[]) => {
+        localStorage.setItem(ownerKey, uid)
+        localStorage.setItem(outboxKey, JSON.stringify([{ id: 'aaaaaaaa-0000-4000-8000-000000000001', body: { id: 'aaaaaaaa-0000-4000-8000-000000000001', type: 'hay_fed', bales: 99 }, label: 'Fed 99 bales', createdAt: Date.now(), state: 'synced', syncedAt: Date.now(), attempts: 1, owner: uid, consequence: { lines: ['99 bales recorded', '1 bales on hand (from your count of 100 on Mon)'] } }]))
+      }, ['dryline_outbox_v1', 'dryline_session_uid', userId])
+      const linkB = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL_B })
+      const thB = linkB.data?.properties?.hashed_token
+      await page.goto(`/auth/callback?token_hash=${thB}&type=magiclink&next=/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 }).catch(() => {})
+      await page.waitForTimeout(2_500)
+      const bText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const bState = await page.evaluate(([outboxKey, ownerKey]: string[]) => ({ outbox: localStorage.getItem(outboxKey), owner: localStorage.getItem(ownerKey) }), ['dryline_outbox_v1', 'dryline_session_uid'])
+      record('5D: signed in as another person without a sign-out — the first person\'s receipt and outbox are gone, the phone is theirs now', !/Fed 99 bales/.test(bText) && !/99 bales recorded/.test(bText) && (bState.outbox === null || bState.outbox === '[]') && bState.owner !== userId && !!bState.owner, `owner ${bState.owner === userId ? 'STILL A' : 'B'} · outbox ${bState.outbox ?? 'none'} · receipt shown: ${/Fed 99 bales/.test(bText)}`)
     }
 
     // ── no page errors / 5xx during the run is not tracked here; the invariant smoke covers it ──

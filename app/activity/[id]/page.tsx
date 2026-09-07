@@ -9,6 +9,7 @@ import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import CorrectionActions from './CorrectionActions'
 import { consequenceFor } from '@/lib/log-consequence'
 import { isManualEventType } from '@/lib/manual-log'
+import SaveReceipt from '@/app/components/SaveReceipt'
 
 // ─── /activity/[id] — the exact event (Block 5A) + its correction chain (5B) ──
 // Opened by its stable id from a handoff row, a Recently logged row, a place, or
@@ -67,10 +68,17 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">{fmtDay(row.ts, 'long')}, recorded by {names.person(row.user_id)}.</p>
 
         {saved === '1' && (
-          <p className="mt-3 rounded-lg bg-forest-green/[0.06] px-4 py-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="event-saved">
-            Saved. {isVoid ? 'The entry it voids is marked and no longer counts.' : 'This entry now stands; the one it corrects is marked and no longer counts.'}
-            {receipt.length > 0 && <span className="mt-1 block font-normal" data-audit="event-consequence">{receipt.join(' · ')}</span>}
-          </p>
+          // Block 5C — the same receipt every save gets; this page IS the entry, so the link goes to the one it replaced.
+          <div className="mt-3" data-audit="event-saved">
+            <SaveReceipt
+              headline={isVoid ? 'Saved — entry voided' : 'Saved — entry corrected'}
+              label={isVoid ? 'The entry it voids is marked and no longer counts.' : 'This entry now stands; the one it corrects is marked and no longer counts.'}
+              lines={receipt}
+              eventId={original?.id ?? null}
+              eventLabel={isVoid ? 'Open the voided entry' : 'Open the entry it corrects'}
+            />
+            <span hidden data-audit="event-consequence">{receipt.join(' · ')}</span>
+          </div>
         )}
 
         {replaced && (

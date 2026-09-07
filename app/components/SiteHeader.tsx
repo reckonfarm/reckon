@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase-browser'
 import { flagDisabled, flagEnabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
 import { hasUnsynced } from '@/lib/outbox'
+import { bindPrivateStateTo, signOutEverywhere } from '@/lib/private-state'
 
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
 // overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
@@ -27,10 +28,13 @@ export default function SiteHeader({ center }: Props) {
     // hits the network to re-validate the token; on poor signal it can hang or
     // reject, which (with no catch) left the header stuck on "Sign in" for a
     // signed-in user. onAuthStateChange keeps it in sync afterwards.
+    // Block 5D: whoever is signed in owns the phone's private state; state
+    // written under someone else is cleared before any surface reads it.
     supabase.auth.getSession()
-      .then(({ data }) => setUser(data.session?.user ?? null))
+      .then(({ data }) => { bindPrivateStateTo(data.session?.user?.id ?? null); setUser(data.session?.user ?? null) })
       .catch(() => { /* local read only — never strand the header */ })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      bindPrivateStateTo(session?.user?.id ?? null)
       setUser(session?.user ?? null)
     })
     return () => subscription.unsubscribe()
@@ -49,8 +53,10 @@ export default function SiteHeader({ center }: Props) {
   async function signOut() {
     // Block 2A: anything still on the phone would be orphaned by a sign-out.
     if (hasUnsynced() && !window.confirm('Some entries have not synced to the ranch yet. Sign out anyway and lose them?')) return
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    // Block 5D: end the session, clear every private key, and load a fresh
+    // signed-out document — nothing of this person stays on the screen or in
+    // storage for the next one holding the phone.
+    await signOutEverywhere('/')
   }
 
   return (
