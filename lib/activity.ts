@@ -166,7 +166,9 @@ export async function filterOptions(supabase: SupabaseClient, userId: string): P
   const ids = (members ?? []).map(m => m.user_id as string)
   const { data: profiles } = ids.length ? await createServiceClient().from('profiles').select('id, display_name, email').in('id', ids) : { data: [] }
   return {
-    people: (profiles ?? []).map(p => ({ id: p.id as string, name: ((p.display_name as string | null)?.trim() || (p.email as string | null) || 'Someone') })).sort((a, b) => a.name.localeCompare(b.name)),
+    // Every member is listed — a member with no profiles row yet is still a person
+    // whose entries can be filtered, named the way the record's lines name them.
+    people: ids.map(id => { const p = (profiles ?? []).find(x => x.id === id); return { id, name: ((p?.display_name as string | null)?.trim() || (p?.email as string | null) || 'Someone on the ranch') } }).sort((a, b) => a.name.localeCompare(b.name)),
     places: (places ?? []).map(p => ({ id: p.id as string, name: p.name as string })),
     lots: (lots as Lot[]).map(l => ({ id: l.id, name: lotLabel(l) })),
   }
