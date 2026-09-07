@@ -396,7 +396,10 @@ async function main() {
     // so a ping can be IN FLIGHT when this fixture reset runs and land after it (seen
     // 2026-09-07: POST /api/seen 47 ms before the reset, stamp written after it). Let the
     // re-armed ping fire first, then restore the unstamped B that 2E's sequence starts from.
-    await pageB.waitForTimeout(5_500)
+    // 2026-09-07 again on the 5A preview: a SECOND re-armed ping landed 64 ms after the
+    // reset even with the wait, so park B's page where no ping can fire before resetting.
+    await pageB.goto('about:blank').catch(() => {})
+    await pageB.waitForTimeout(1_500)
     const resetRes = await admin.from('ranch_members').update({ last_seen_at: null }).eq('user_id', userIdB).select('last_seen_at')
     if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} reset →`, JSON.stringify(resetRes.data), resetRes.error?.message ?? '')
 
