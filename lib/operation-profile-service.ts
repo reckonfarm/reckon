@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createClient } from './supabase-server'
 import { resolveRanchId } from './ranch-membership'
+import { getRanchLots } from './herd-lots'
 
 // ─── Operation profile service (read/write path) ─────────────────────────────────
 //
@@ -105,8 +106,12 @@ export async function getOperationProfile(
     return { status: 'data_unavailable' }
   }
 
-  const profile = data as OperationProfile | null
-  if (!profile || isEmptyProfile(profile)) return { status: 'empty' }
+  // Block 4B: the herd is the ranch's herd_lots rows, not the blob on this row.
+  const lots = await getRanchLots(supabase, user.id)
+  const profile = data ? ({ ...(data as OperationProfile), herd: (lots.length ? { lots } : null) as unknown as Json }) : null
+  // No profile row yet but the ranch has lots (a member who never set a county): still a herd.
+  if (!profile) return lots.length ? { status: 'ok', profile: { id: '', user_id: user.id, ranch_id: ranchId, county_fips: null, herd: { lots } as unknown as Json, crops: null, created_at: '', updated_at: '' } } : { status: 'empty' }
+  if (isEmptyProfile(profile)) return { status: 'empty' }
 
   return { status: 'ok', profile }
 }

@@ -6,7 +6,6 @@ import {
   type OperationProfileInput,
   type Json,
 } from '@/lib/operation-profile-service'
-import { normalizeHerd } from '@/lib/herd'
 import { BARN_GEO } from '@/lib/barn-geo'
 
 // Thin verification route over the operation_profiles data layer. The auth + RLS
@@ -71,17 +70,10 @@ export async function PATCH(req: NextRequest) {
   // herd is the typed lot structure (lib/herd.ts). null clears it; otherwise normalizeHerd
   // rejects malformed lots and fills defaults/timestamps on sparse ones. We store the
   // NORMALIZED herd so defaults persist instead of being re-derived on every read.
+  // Block 4B: lots are rows now — edited one at a time at /api/herd/lots, never as a
+  // whole-herd blob (a blob write from two members is last-writer-wins on every lot).
   if ('herd' in body) {
-    const val = (body as Record<string, unknown>).herd
-    if (val === null) {
-      input.herd = null
-    } else {
-      const result = normalizeHerd(val)
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: 400 })
-      }
-      input.herd = result.herd as unknown as Json
-    }
+    return NextResponse.json({ error: 'Lots are edited one at a time: POST /api/herd/lots, PATCH or DELETE /api/herd/lots/{id}.' }, { status: 400 })
   }
 
   if (Object.keys(input).length === 0) {

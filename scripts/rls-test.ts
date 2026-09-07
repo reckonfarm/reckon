@@ -88,6 +88,7 @@ async function teardown(label: string) {
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
   }
   n += (await admin.from('devices').delete().like('hardware_id', `${PREFIX}%`).select('id')).data?.length ?? 0
   n += (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
@@ -128,12 +129,11 @@ async function seed(side: Side): Promise<Fixture> {
     .select('id').single()
   if (dErr) throw new Error(`device ${side}: ${dErr.message}`)
 
-  // Block 4A — the ranch's herd: one lot on the RANCH's operation_profiles row (050).
+  // Block 4B — the ranch's herd: one lot ROW on herd_lots (051), plus the ranch's profile row (050).
   const lotId = randomUUID(), lotName = `${PREFIX}${side}-lot`
-  const { error: hErr } = await admin.from('operation_profiles').insert({
-    user_id: userId, ranch_id: ranchId, county_fips: '30069',
-    herd: { lots: [{ id: lotId, class: 'steers', name: lotName, head_count: 40, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] },
-  })
+  const { error: pErr2 } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranchId, county_fips: '30069' })
+  if (pErr2) throw new Error(`profile ${side}: ${pErr2.message}`)
+  const { error: hErr } = await admin.from('herd_lots').insert({ id: lotId, ranch_id: ranchId, class: 'steers', name: lotName, head_count: 40, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_by: userId, updated_by: userId })
   if (hErr) throw new Error(`herd ${side}: ${hErr.message}`)
 
   const eventIds: string[] = []
@@ -161,6 +161,17 @@ async function userClient(side: Who): Promise<SupabaseClient> {
 }
 function anonClient(): SupabaseClient {
   return createClient(URL_!, ANON!, { auth: { autoRefreshToken: false, persistSession: false } })
+}
+// A route call as this person: the same session JWT as a Bearer (lib/auth-user).
+async function api(c: SupabaseClient, path: string, body: unknown, method: 'POST' | 'PATCH' | 'DELETE' = 'POST'): Promise<{ status: number; json: Record<string, unknown> }> {
+  const { data: { session } } = await c.auth.getSession()
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${session?.access_token ?? ''}`, ...(process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {}) },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({})) as Record<string, unknown>
+  return { status: res.status, json }
 }
 
 // ─── Assertions ───────────────────────────────────────────────────────────────
@@ -255,10 +266,10 @@ async function isolationChecks(side: Side, c: SupabaseClient) {
 // the gate.
 async function lotsChecks() {
   const a = fx.A!, b = fx.B!
+  // Block 4B — lots are rows on herd_lots; "no row" = the ranch is invisible to this session.
   const lotsOf = async (c: SupabaseClient, ranchId: string) => {
-    const { data, error } = await c.from('operation_profiles').select('herd').eq('ranch_id', ranchId).maybeSingle()
-    const lots = (data as { herd?: { lots?: { id: string; name?: string }[] } } | null)?.herd?.lots
-    return { error, lots: Array.isArray(lots) ? lots : null }
+    const { data, error } = await c.from('herd_lots').select('id, name, head_count, updated_at').eq('ranch_id', ranchId).is('retired_at', null).order('created_at')
+    return { error, lots: data && data.length ? (data as { id: string; name?: string; head_count: number; updated_at: string }[]) : null }
   }
   const A = await userClient('A'), B = await userClient('B')
   {
@@ -283,17 +294,30 @@ async function lotsChecks() {
     const r = await lotsOf(D, b.ranchId)
     record('member D (hand)', 'reads ranch B\'s lots → no row', !r.error && r.lots === null, r.error?.message ?? (r.lots ? 'VISIBLE' : 'no row'))
   }
-  // A member edits the ranch's herd; the owner reads the edit on the SAME row.
+  // ── Block 4B — the whole reason for rows: two members editing DIFFERENT lots never
+  //    overwrite each other; a same-lot edit that lost the race is refused, not applied. ──
   {
-    const renamed = `${a.lotName}-renamed-by-D`
-    const { data, error } = await D.from('operation_profiles').update({ herd: { lots: [{ id: a.lotId, class: 'steers', name: renamed, head_count: 41, avg_weight: 550, weight_unit: 'lb', frame: 'Medium and Large', weaned: true, sale_windows: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }] } }).eq('ranch_id', a.ranchId).select('id')
-    const r = await lotsOf(A, a.ranchId)
-    record('member D (hand)', 'edits the ranch\'s herd and the owner reads the edit', !error && (data?.length ?? 0) === 1 && r.lots?.[0]?.name === renamed, error?.message ?? `owner sees "${r.lots?.[0]?.name}"`)
+    const made = await api(D, '/api/herd/lots', { class: 'heifers', name: `${PREFIX}A-lot2-by-D`, head_count: 12, avg_weight: 600, weight_unit: 'lb' }, 'POST')
+    const first = (await lotsOf(A, a.ranchId)).lots?.find(l => l.id === a.lotId)
+    const edit = await api(A, `/api/herd/lots/${a.lotId}`, { class: 'steers', name: `${a.lotName}-renamed-by-A`, head_count: 41, avg_weight: 550, weight_unit: 'lb', expected_updated_at: first?.updated_at ?? null }, 'PATCH')
+    const after = (await lotsOf(A, a.ranchId)).lots ?? []
+    const lot1 = after.find(l => l.id === a.lotId), lot2 = after.find(l => l.name === `${PREFIX}A-lot2-by-D`)
+    record('members A + D', 'edit DIFFERENT lots: both changes persist, neither overwrote the other', made.status === 201 && edit.status === 200 && lot1?.name === `${a.lotName}-renamed-by-A` && lot1?.head_count === 41 && !!lot2 && lot2.head_count === 12, `${made.status}/${edit.status} · ${after.length} lots · lot1 "${lot1?.name}" ${lot1?.head_count} · lot2 ${lot2 ? 'present' : 'MISSING'}`)
+    const stale = await api(D, `/api/herd/lots/${a.lotId}`, { class: 'steers', name: `${a.lotName}-stale-by-D`, head_count: 99, avg_weight: 550, weight_unit: 'lb', expected_updated_at: first?.updated_at ?? null }, 'PATCH')
+    const still = (await lotsOf(A, a.ranchId)).lots?.find(l => l.id === a.lotId)
+    record('member D (hand)', 'same-lot edit with a stale updated_at → 409, the other edit stands', stale.status === 409 && still?.name === `${a.lotName}-renamed-by-A` && still?.head_count === 41, `${stale.status} ${String(stale.json.code ?? stale.json.error ?? '')} · "${still?.name}" ${still?.head_count}`)
+    const fresh = await api(D, `/api/herd/lots/${a.lotId}`, { class: 'steers', name: `${a.lotName}-then-by-D`, head_count: 42, avg_weight: 550, weight_unit: 'lb', expected_updated_at: still?.updated_at ?? null }, 'PATCH')
+    record('member D (hand)', 'the same edit with the CURRENT updated_at → 200 and the owner reads it', fresh.status === 200 && (await lotsOf(A, a.ranchId)).lots?.find(l => l.id === a.lotId)?.name === `${a.lotName}-then-by-D`, `${fresh.status}`)
+    const gone = await api(A, `/api/herd/lots/${lot2?.id ?? ''}`, {}, 'DELETE')
+    const live = (await lotsOf(A, a.ranchId)).lots ?? []
+    const { data: retired } = await admin.from('herd_lots').select('retired_at').eq('id', lot2?.id ?? '').maybeSingle()
+    record('user A (owner)', 'retires a lot: gone from the live list, row kept with retired_at', gone.status === 200 && live.length === 1 && !!retired?.retired_at, `${gone.status} · live ${live.length} · retired_at ${retired?.retired_at ? 'set' : 'NULL'}`)
   }
   {
-    const { data, error } = await B.from('operation_profiles').update({ herd: { lots: [] } }).eq('ranch_id', a.ranchId).select('id')
+    const { data, error } = await B.from('herd_lots').update({ head_count: 1 }).eq('ranch_id', a.ranchId).select('id')
+    const { data: ins, error: insErr } = await B.from('herd_lots').insert({ ranch_id: a.ranchId, class: 'cows', head_count: 5, avg_weight: 1200, weight_unit: 'lb', created_by: b.userId }).select('id')
     const r = await lotsOf(A, a.ranchId)
-    record('user B (other ranch)', 'update ranch A\'s herd → 0 rows, lots intact', (!!error || (data?.length ?? 0) === 0) && r.lots?.length === 1, error?.message ?? `${data?.length ?? 0} row(s) updated · ${r.lots?.length} lot(s) left`)
+    record('user B (other ranch)', 'update or insert on ranch A\'s lots → rejected, lots intact', (!!error || (data?.length ?? 0) === 0) && (!!insErr || (ins?.length ?? 0) === 0) && (r.lots?.length ?? 0) >= 1 && r.lots!.every(l => l.head_count !== 1), `${error?.message ?? `${data?.length ?? 0} updated`} · ${insErr?.message ?? `${ins?.length ?? 0} inserted`}`)
   }
   {
     const { error } = await admin.from('ranch_members').delete().eq('ranch_id', a.ranchId).eq('user_id', du.user.id)

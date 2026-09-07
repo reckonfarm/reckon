@@ -75,7 +75,9 @@ async function main() {
     { id: steers, class: 'steers', name: 'Steer calves', head_count: 180, avg_weight: 550, weight_unit: 'lb', ...stamp },
     { id: heifers, class: 'heifers', name: 'Replacement heifers', head_count: 40, avg_weight: 600, weight_unit: 'lb', ...stamp },
   ]
-  must(await admin.from('operation_profiles').insert({ user_id: owner.id, county_fips: HOME_FIPS, herd: { lots } }).select('id'), 'operation profile')
+  // Block 4B: lots are rows on herd_lots; the profile row carries the county and the pin.
+  must(await admin.from('operation_profiles').insert({ user_id: owner.id, ranch_id: ranchId, county_fips: HOME_FIPS }).select('id'), 'operation profile')
+  must(await admin.from('herd_lots').insert(lots.map(l => ({ id: l.id, ranch_id: ranchId, class: l.class, name: l.name, head_count: l.head_count, avg_weight: l.avg_weight, weight_unit: l.weight_unit, frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, created_by: owner.id, updated_by: owner.id }))).select('id'), 'herd lots')
 
   const stack = must(await admin.from('places').insert({ user_id: owner.id, ranch_id: ranchId, name: 'North stackyard', kind: 'stackyard' }).select('id').single(), 'stackyard') as { id: string }
   const pasture = must(await admin.from('places').insert({ user_id: owner.id, ranch_id: ranchId, name: 'Home pasture', kind: 'pasture' }).select('id').single(), 'pasture') as { id: string }
