@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@/app/components/ui/Card'
 import { Button } from '@/app/components/ui/Button'
-import { createClient } from '@/lib/supabase-browser'
+import { signOutEverywhere } from '@/lib/private-state'
 import type { InviteView } from '@/lib/invitations'
 
 const CTA = 'inline-flex min-h-[52px] w-full items-center justify-center rounded-lg px-5 font-dm-sans text-[17px] font-semibold'
@@ -35,8 +35,8 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
   }, [view.state, matches])
 
   async function signOutAndSwitch() {
-    await createClient().auth.signOut().catch(() => {})
-    window.location.assign(`/signin?next=${next}`)
+    // Block 5D: an account switch clears the previous person's private state too.
+    await signOutEverywhere(`/signin?next=${next}`)
   }
 
   const ranch = view.ranch_name ?? 'a ranch'
