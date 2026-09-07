@@ -52,7 +52,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
         className={`flex min-h-[180px] items-center justify-center p-6 text-center ${className}`}
       >
         <div>
-          <p className="text-sm font-medium text-secondary-ink font-dm-sans">{displayTitle}</p>
+          <p className="text-[16px] font-medium text-secondary-ink font-dm-sans">{displayTitle}</p>
           <p className="mt-1 text-[14px] text-secondary-ink font-dm-sans">
             Official map updating — check back after the next Tuesday release.
           </p>

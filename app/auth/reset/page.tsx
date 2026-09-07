@@ -6,10 +6,10 @@ import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 
 const INPUT_CLS =
-  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
+  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
 
 const BTN_CLS =
-  'w-full rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
+  'w-full rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
 
 export default function ResetPasswordPage() {
   const [email, setEmail]     = useState('')
@@ -42,14 +42,14 @@ export default function ResetPasswordPage() {
               <p className="font-fraunces text-2xl font-semibold text-forest-green">
                 Check your email
               </p>
-              <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+              <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
                 If an account exists for{' '}
                 <strong className="text-forest-green">{email}</strong>, we sent a
                 link to reset your password.
               </p>
               <Link
                 href="/signin"
-                className="mt-6 inline-block font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="mt-6 inline-block font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green transition-colors"
               >
                 ← Back to sign in
               </Link>
@@ -59,7 +59,7 @@ export default function ResetPasswordPage() {
               <p className="font-fraunces text-2xl font-semibold text-forest-green">
                 Reset your password
               </p>
-              <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+              <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
                 Enter your email and we&apos;ll send you a reset link.
               </p>
               <form onSubmit={sendReset} className="mt-6 space-y-3">
@@ -73,14 +73,14 @@ export default function ResetPasswordPage() {
                   autoFocus
                   className={INPUT_CLS}
                 />
-                {error && <p className="font-dm-sans text-sm text-rust">{error}</p>}
+                {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
                 <button type="submit" disabled={loading} className={BTN_CLS}>
                   {loading ? 'Sending…' : 'Send reset link'}
                 </button>
               </form>
               <Link
                 href="/signin"
-                className="mt-6 inline-block font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors"
+                className="mt-6 inline-block font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green transition-colors"
               >
                 ← Back to sign in
               </Link>

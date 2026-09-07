@@ -41,7 +41,7 @@ function TriggeredBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
   const { payments, maxTier } = eligibility
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-dm-sans text-sm text-secondary-ink">
+      <p className="font-dm-sans text-[16px] text-secondary-ink">
         <span className="font-semibold text-forest-green">
           {payments} monthly payment{payments !== 1 ? 's' : ''} triggered
         </span>
@@ -57,7 +57,7 @@ function TriggeredBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
 function PendingBody() {
   return (
     <div className="flex flex-col gap-2">
-      <p className="font-dm-sans text-sm text-secondary-ink">
+      <p className="font-dm-sans text-[16px] text-secondary-ink">
         Meets the new OBBBA D2 threshold — not yet official with FSA.
       </p>
     </div>
@@ -69,7 +69,7 @@ function BuildingBody({ eligibility }: { eligibility: LfpEligibilityResult }) {
   const streak = eligibility.currentD2Streak
   const left   = eligibility.weeksUntilTier1 ?? Math.max(0, 4 - streak)
   return (
-    <p className="font-dm-sans text-sm text-secondary-ink">
+    <p className="font-dm-sans text-[16px] text-secondary-ink">
       <span className="font-semibold text-forest-green">{streak} week{streak !== 1 ? 's' : ''}</span>
       {' '}into a D2 (Severe) run
       {left > 0
@@ -132,14 +132,14 @@ export default function LfpAlertCard({
 
       {unavailable || !eligibility ? (
         // Honest degraded state — never a false zero or fabricated status.
-        <p className="text-sm text-secondary-ink font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           Drought status temporarily unavailable — check back shortly.
         </p>
       ) : (
         <>
           {eligibility.periodStatus === 'not_started' ? (
             // Block 2.6D — a period that has not begun has no status yet; say that, not "no trigger".
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               The LFP grazing period for {countyLabel(countyName)} ({fmtAsOf(eligibility.grazingPeriod.startDate)} – {fmtAsOf(eligibility.grazingPeriod.endDate)}) hasn&apos;t started — status applies once it begins.
             </p>
           ) : eligibility.enforcement === 'officially_eligible' ? (
@@ -149,7 +149,7 @@ export default function LfpAlertCard({
           ) : eligibility.currentD2Streak > 0 ? (
             <BuildingBody eligibility={eligibility} />
           ) : (
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No D2+ drought trigger for {countyLabel(countyName)} right now.
             </p>
           )}

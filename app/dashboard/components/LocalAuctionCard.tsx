@@ -3,7 +3,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { isThin, matchLabel, scopeLabel, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { isThin, scopeLabel, thinEvidence } from '@/lib/market-scope'
 import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
 import ReportEvidence from '@/app/components/ReportEvidence'
 
@@ -28,42 +28,34 @@ const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
 // The one no-local sentence, shared by the no-coverage state and the regional-reference state.
 const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
-function MatchChip({ label }: { label: string }) {
-  const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 border border-amber-200'
-  return <span className={`rounded-lg px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
-}
 
-// One band line: precise $/cwt only when the head count clears the floor.
-function BandLine({ cls, b, saleDate }: { cls: string; b: BandRead; saleDate: string }) {
+// One band line (A5): class and weight left, price and unit right, the sample beneath
+// at meta. "4 head · limited sample" replaces the chip and the sentence; a real range
+// stays a range and says so. The heading carries the unit and the sale date once.
+function BandLine({ cls, b }: { cls: string; b: BandRead }) {
   const thin = isThin(b.head)
-  const label = matchLabel({ exactBracket: true, headCount: b.head })
   const ev = thin ? thinEvidence(b.priceLow, b.priceHigh, b.avgPrice, b.head) : null
   return (
     <li className="py-2">
-      <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
-        <span className="text-forest-green">{cls} {bandLabel(b.band)}</span>
+      <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[17px]">
+        <span className="text-ink">{cls} {bandLabel(b.band)}</span>
         <span className="shrink-0 tabular-nums">
-          {ev ? (
-            <span className="font-semibold text-ink">{ev.figure}</span>
-          ) : (
-            <span className="font-semibold text-ink">${b.avgPrice.toFixed(2)}</span>
-          )}
+          <span className="font-semibold text-ink">{ev ? ev.figure : `$${b.avgPrice.toFixed(2)}`}</span>
+          <span className="text-secondary-ink">/cwt</span>
           {!thin && b.wowPct != null && b.wowPct !== 0 && (() => {
             const d = marketDelta(b.wowPct! > 0, true)
-            return <span className={`ml-2 text-[15px] font-semibold ${d.cls}`}>{d.arrow} {Math.abs(b.wowPct!).toFixed(1)}%</span>
+            return <span className={`ml-2 text-[16px] font-semibold ${d.cls}`}>{d.arrow} {Math.abs(b.wowPct!).toFixed(1)}%</span>
           })()}
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
-        <MatchChip label={label} />
-        <span>{fmtInt(b.head)} head reported · sale {fmtDate(saleDate)}</span>
-        {ev && <span>· {ev.note}</span>}
+      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
+        {fmtInt(b.head)} head{thin ? ' · limited sample' : ''}{ev && !ev.single ? ' · a range, not one price' : ''}
       </p>
     </li>
   )
 }
 
-function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; saleDate: string }) {
+function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   const thin = isThin(c.head)
   const ev = thin ? thinEvidence(c.priceLow, c.priceHigh, c.avgPrice, c.head) : null
   const name = kind === 'cows'
@@ -71,21 +63,18 @@ function CullLine({ c, kind, saleDate }: { c: CullRead; kind: 'cows' | 'bulls'; 
     : (c.gradeKnown && c.grade !== 'All' ? `Slaughter bulls · yield ${c.grade}` : 'Slaughter bulls')
   return (
     <li className="py-2">
-      <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
-        <span className="text-forest-green">{name}</span>
-        <span className="shrink-0 tabular-nums font-semibold">
-          {ev ? <span className="text-ink">{ev.figure}</span> : <span className="text-ink">${c.avgPrice.toFixed(2)}</span>}
+      <div className="flex items-baseline justify-between gap-3 font-dm-sans text-[17px]">
+        <span className="text-ink">{name}</span>
+        <span className="shrink-0 tabular-nums">
+          <span className="font-semibold text-ink">{ev ? ev.figure : `$${c.avgPrice.toFixed(2)}`}</span>
+          <span className="text-secondary-ink">/cwt</span>
         </span>
       </div>
-      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
-        <MatchChip label={matchLabel({ exactBracket: c.gradeKnown, headCount: c.head })} />
-        <span>
-          {fmtInt(c.head)} head · {c.rows} {c.rows === 1 ? 'lot' : 'lots'}
-          {c.avgWeight != null ? ` · ~${fmtInt(c.avgWeight)} lb live` : ''}
-          {c.dressing ? ` · ${c.dressing.toLowerCase()} dressing` : ''}
-          {' · '}sale {fmtDate(saleDate)}
-        </span>
-        {ev && <span>· {ev.note}</span>}
+      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
+        {fmtInt(c.head)} head · {c.rows} {c.rows === 1 ? 'lot' : 'lots'}
+        {c.avgWeight != null ? ` · ~${fmtInt(c.avgWeight)} lb live` : ''}
+        {c.dressing ? ` · ${c.dressing.toLowerCase()} dressing` : ''}
+        {thin ? ' · limited sample' : ''}{ev && !ev.single ? ' · a range, not one price' : ''}
       </p>
     </li>
   )
@@ -96,7 +85,7 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
       <div className="mb-3">
         <p className={EYEBROW}>Cattle markets</p>
-        <Heading level={5} className="mt-1">Auction reference</Heading>
+        <Heading level={5} className="mt-1">Auction prices · $/cwt</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (
@@ -119,42 +108,39 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
             <p className="mb-2 font-dm-sans text-[16px] text-ink">{NO_LOCAL_LINE}.</p>
           )}
           {/* Scope — the barn, never a county. */}
-          <p className="font-dm-sans text-[15px] font-semibold text-forest-green">
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">
             {scopeLabel(
               result.pinned ? { kind: 'pinned', town: shortTown(result.town) }
               : result.beyondHaul ? { kind: 'reference', town: result.town, miles: result.miles }
               : { kind: 'nearby', town: shortTown(result.town) },
             )}
           </p>
-          <p className="mt-0.5 font-dm-sans text-[15px] text-ink">
+          <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
             <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
 
           <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-            {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} saleDate={result.saleDate} />)}
-            {result.classes.map(c => c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} saleDate={result.saleDate} />))}
+            {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
+            {result.classes.map(c => c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />))}
           </ul>
 
           {(result.cullCows.length > 0 || result.slaughterBulls.length > 0) && (
             <div className="mt-4">
-              <p className={EYEBROW}>Culls · slaughter prices, not breeding value</p>
+              <p className={EYEBROW}>Culls · slaughter prices, not breeding value · $/cwt</p>
               <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" saleDate={result.saleDate} />)}
-                {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" saleDate={result.saleDate} />)}
+                {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" />)}
+                {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" />)}
               </ul>
             </div>
           )}
 
           {result.receipts != null && (
-            <p className="mt-3 font-dm-sans text-[15px] tabular-nums text-ink">
+            <p className="mt-3 font-dm-sans text-[16px] tabular-nums text-ink">
               {fmtInt(result.receipts)} receipts
               {result.receiptsWeekAgo != null && ` · wk ago ${fmtInt(result.receiptsWeekAgo)}`}
               {result.receiptsYearAgo != null && ` · yr ago ${fmtInt(result.receiptsYearAgo)}`}
             </p>
           )}
-          <p className="mt-2 font-dm-sans text-[15px] text-ink">
-            $/cwt, head-weighted within each 100-lb band · Close match = same class and weight bracket with {THIN_HEAD_THRESHOLD}+ head · Limited evidence = fewer than {THIN_HEAD_THRESHOLD} head reported.
-          </p>
         </>
       )}
     </Card>

@@ -71,7 +71,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
 
   return (
     <div className="mt-1.5">
-      <p className="font-dm-sans text-sm text-secondary-ink">
+      <p className="font-dm-sans text-[16px] text-secondary-ink">
         Looks like you finished this field — mark it cut?
       </p>
       <div className="mt-1.5 flex flex-wrap gap-2">
@@ -79,7 +79,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
           type="button"
           disabled={busy}
           onClick={() => run('cut')}
-          className="rounded-full bg-forest-green px-4 py-1.5 font-dm-sans text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-full bg-forest-green px-4 py-1.5 font-dm-sans text-[16px] font-semibold text-white disabled:opacity-50"
         >
           Mark it cut
         </button>
@@ -87,7 +87,7 @@ export default function FieldCutConfirm({ jobId, fieldIndex, status, proposed }:
           type="button"
           disabled={busy}
           onClick={() => run('dismissed')}
-          className="rounded-full border border-forest-green/20 px-3 py-1.5 font-dm-sans text-sm text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+          className="rounded-full border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[16px] text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
         >
           Not yet
         </button>

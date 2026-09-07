@@ -148,7 +148,7 @@ export default async function JobsPage({
       <AutoRefresh />
       <main className="mx-auto max-w-2xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
         <Heading level={1} className="!text-2xl sm:!text-3xl">Jobs</Heading>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           Work sessions, read straight off the machine. Nobody wrote anything down.
         </p>
         <DeviceLiveness devices={liveDevices} />
@@ -156,7 +156,7 @@ export default async function JobsPage({
         <div className="mt-6 space-y-5">
           {error && (
             <Card shadow="none" className="px-5 py-6 text-center">
-              <p className="font-dm-sans text-sm text-secondary-ink">
+              <p className="font-dm-sans text-[16px] text-secondary-ink">
                 Jobs are temporarily unavailable.
               </p>
             </Card>
@@ -164,7 +164,7 @@ export default async function JobsPage({
 
           {!error && visible.length === 0 && (
             <Card shadow="none" className="px-5 py-8 text-center">
-              <p className="font-dm-sans text-sm text-secondary-ink">
+              <p className="font-dm-sans text-[16px] text-secondary-ink">
                 {jobs.length === 0
                   ? 'No jobs yet. Put a Scout on a machine and go to work.'
                   : 'Nothing to show — every session is minor or dismissed. Show all below.'}
@@ -177,7 +177,7 @@ export default async function JobsPage({
               <h2 className="px-1 font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-secondary-ink">
                 Today
               </h2>
-              <p className="mt-2 px-1 pb-1 font-dm-sans text-sm text-secondary-ink">
+              <p className="mt-2 px-1 pb-1 font-dm-sans text-[16px] text-secondary-ink">
                 No sessions yet today.
               </p>
             </section>
@@ -226,7 +226,7 @@ export default async function JobsPage({
                             </p>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
+                            <p className="font-dm-sans text-[16px] font-semibold tabular-nums text-forest-green">
                               {fmtDuration(j.duration_s)}
                             </p>
                             {/* Data received is spoken only when it's a problem —
@@ -272,7 +272,7 @@ export default async function JobsPage({
             <div className="pt-1 text-center">
               <Link
                 href={showAll ? '/jobs' : '/jobs?all=1'}
-                className="inline-block rounded-lg px-4 py-2 font-dm-sans text-sm text-secondary-ink hover:text-forest-green"
+                className="inline-block rounded-lg px-4 py-2 font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green"
               >
                 {showAll
                   ? 'Back to the working list'

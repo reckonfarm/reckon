@@ -43,10 +43,10 @@ export default function Error({
             We could not load the data. This may be a temporary issue with a data source.
           </p>
           <div className="flex gap-3 justify-center">
-            <button onClick={reset} className="inline-flex items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-semibold text-cream hover:bg-forest-green/90 transition-colors">
+            <button onClick={reset} className="inline-flex items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-cream hover:bg-forest-green/90 transition-colors">
               Try again
             </button>
-            <Link href="/" className="inline-flex items-center gap-2 rounded-xl border border-forest-green/20 px-5 py-2.5 font-dm-sans text-sm font-semibold text-forest-green hover:bg-forest-green/5 transition-colors">
+            <Link href="/" className="inline-flex items-center gap-2 rounded-xl border border-forest-green/20 px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5 transition-colors">
               Go home
             </Link>
           </div>

@@ -453,7 +453,7 @@ export async function WeatherViewBody({
 
       {!history.length && (
         <Card shadow="none" className="px-6 py-8 text-center">
-          <p className="text-sm text-secondary-ink font-dm-sans">
+          <p className="text-[16px] text-secondary-ink font-dm-sans">
             No drought data yet for this county.
           </p>
         </Card>
@@ -485,7 +485,7 @@ export async function WeatherViewBody({
               )}
 
               {lfpOfficial && bannerDefaultEstimate > 0 && (
-                <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
+                <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
                   {cashToHayTons != null && hayAvgPrice != null
                     ? `Your estimated LFP payment (~$${Math.round(bannerDefaultEstimate).toLocaleString()}) could buy roughly ${cashToHayTons.toLocaleString()} ton${cashToHayTons !== 1 ? 's' : ''} of hay delivered to ${selectedCounty.name} County.`
                     : `Your estimated LFP payment is ~$${Math.round(bannerDefaultEstimate).toLocaleString()}.`}
@@ -494,7 +494,7 @@ export async function WeatherViewBody({
 
               <Link
                 href={`/hay?deliverTo=${selectedCounty.fips}&type=sell`}
-                className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
+                className="mt-3 block w-full rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-[16px] font-semibold text-white text-center hover:bg-forest-green/90 transition-colors"
               >
                 Browse hay delivered to {selectedCounty.name} →
               </Link>
@@ -661,7 +661,7 @@ export async function HayViewBody({
             of the dashboard and can't trap the user). Copy is edited in one place
             after the calibration drive; render-only, no score/backend tie-in. */}
         <DashboardAccordion title="How the Hay Score works">
-          <div className="space-y-4 font-dm-sans text-sm leading-relaxed text-ink">
+          <div className="space-y-4 font-dm-sans text-[16px] leading-relaxed text-ink">
             <p>
               Each county gets a 0–100 score for how its hay outlook is shaping up this
               season. Greener is better, redder is worse. It&rsquo;s built from four things:
@@ -708,13 +708,13 @@ export async function HayViewBody({
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
             href="/hay"
-            className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+            className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-medium text-cream transition-colors hover:bg-forest-green/90"
           >
             Browse all hay
           </Link>
           <Link
             href="/hay"
-            className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-forest-green/20 bg-white px-4 font-dm-sans text-sm font-medium text-forest-green transition-colors hover:bg-forest-green/5"
+            className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-lg border border-forest-green/20 bg-white px-4 font-dm-sans text-[16px] font-medium text-forest-green transition-colors hover:bg-forest-green/5"
           >
             Post a listing
           </Link>

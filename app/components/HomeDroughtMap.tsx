@@ -17,7 +17,7 @@ export default function HomeDroughtMap() {
       <div className="relative" style={{ height: MAP_HEIGHT }}>
         {/* Flat branded placeholder — instant first paint, intentionally not a map. */}
         <div className="absolute inset-0 flex items-center justify-center bg-forest-green/5">
-          <span className="font-dm-sans text-sm font-medium text-secondary-ink animate-pulse">
+          <span className="font-dm-sans text-[16px] font-medium text-secondary-ink animate-pulse">
             Loading drought map…
           </span>
         </div>

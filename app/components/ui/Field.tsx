@@ -117,7 +117,7 @@ export function Field({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="font-dm-sans text-sm font-medium text-ink">
+      <label htmlFor={id} className="font-dm-sans text-[16px] font-medium text-ink">
         {label}
         {required && <span aria-hidden="true" className="text-warning"> *</span>}
       </label>

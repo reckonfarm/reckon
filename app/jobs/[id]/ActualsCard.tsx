@@ -54,7 +54,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
 
       {!editing ? (
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <p className="font-dm-sans text-sm text-secondary-ink">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             You reported{' '}
             {actualBaleCount != null && (
               <span className="font-semibold tabular-nums text-forest-green">
@@ -77,7 +77,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
         </div>
       ) : (
         <div className="mt-1">
-          <p className="font-dm-sans text-sm text-secondary-ink">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             What actually came off this field? Leave blank what doesn&apos;t apply.
           </p>
           <form
@@ -108,7 +108,7 @@ export default function ActualsCard({ jobId, actualBaleCount, actualAcres }: {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-semibold text-white disabled:opacity-50"
             >
               Save
             </button>

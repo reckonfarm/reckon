@@ -94,7 +94,7 @@ function buildDays(periods: NWSPeriod[]): DayRow[] {
 function UnavailableCard() {
   return (
     <Card className="p-4 sm:p-6">
-      <p className="text-sm text-secondary-ink font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         Forecast temporarily unavailable — check back shortly.
       </p>
     </Card>

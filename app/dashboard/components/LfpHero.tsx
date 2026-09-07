@@ -111,10 +111,10 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
             <div key={i} className={`h-2 flex-1 rounded-full ${i < filled ? 'bg-forest-green' : 'bg-forest-green/10'}`} />
           ))}
         </div>
-        <p className="font-dm-sans text-sm text-secondary-ink">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           <span className="font-medium tabular-nums text-forest-green">{filled}</span> of 4 consecutive D2 (Severe) weeks
         </p>
-        <p className="font-dm-sans text-sm leading-relaxed text-secondary-ink">
+        <p className="font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
           {currentD2Streak > 0
             ? `${left} more consecutive week${left !== 1 ? 's' : ''} of D2 would trigger Tier 1 — 1 monthly payment.`
             : 'Four consecutive weeks of D2 (Severe) drought would trigger Tier 1 — 1 monthly payment.'}
@@ -141,7 +141,7 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
               key={t.tier}
               className={`flex items-center justify-between gap-3 border-l-2 py-2 pl-3 ${reached ? 'border-forest-green' : 'border-forest-green/10'}`}
             >
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-dm-sans text-sm">
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-dm-sans text-[16px]">
                 <span className={reached ? 'font-medium text-forest-green' : 'text-secondary-ink'}>
                   {shortLabel(t.label)}
                 </span>
@@ -151,14 +151,14 @@ function ProgressTracker({ eligibility }: { eligibility: LfpEligibilityResult })
                   </span>
                 )}
               </span>
-              <span className={`shrink-0 font-dm-sans text-sm tabular-nums ${reached ? 'text-forest-green' : 'text-secondary-ink'}`}>
+              <span className={`shrink-0 font-dm-sans text-[16px] tabular-nums ${reached ? 'text-forest-green' : 'text-secondary-ink'}`}>
                 {t.payments} pmt{t.payments !== 1 ? 's' : ''}
               </span>
             </li>
           )
         })}
       </ol>
-      <p className="font-dm-sans text-sm leading-relaxed text-secondary-ink">
+      <p className="font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
         {pending
           ? `Your county meets the Tier ${maxTier} threshold under OBBBA's new D2 rule, but FSA hasn't implemented it yet — so it's not officially triggered.`
           : `Your county has reached Tier ${maxTier} — ${payments} monthly payment${payments !== 1 ? 's' : ''}. You're paid at your highest qualifying tier.`}
@@ -203,7 +203,7 @@ async function DeltaLine({ fips, official }: { fips: string; official: boolean }
       text = `Unchanged ${sincePhrase(delta.priorWeek, delta.currentWeek)}.`
       break
   }
-  return <p className="font-dm-sans text-sm text-secondary-ink">{text}</p>
+  return <p className="font-dm-sans text-[16px] text-secondary-ink">{text}</p>
 }
 
 export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
@@ -232,7 +232,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
 
       {/* a. County + severity chip — small, orienting, above the hero */}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <span className="font-dm-sans text-sm font-medium text-secondary-ink">
+        <span className="font-dm-sans text-[16px] font-medium text-secondary-ink">
           {countyName}
         </span>
         <span
@@ -248,10 +248,10 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       <div className="mt-7 sm:mt-8">
         {official ? (
           <>
-            <p className="font-fraunces text-5xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-6xl">
+            <p className="type-main-number text-ink">
               ~${Math.round(refEstimate!).toLocaleString()}
             </p>
-            <p className="mt-3 font-dm-sans text-sm text-secondary-ink">
+            <p className="mt-3 font-dm-sans text-[16px] text-secondary-ink">
               estimated LFP payment
             </p>
           </>
@@ -268,7 +268,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       </div>
 
       {/* c. Plain-language line — small, gray, money/decision framing under the hero */}
-      <p className="mt-4 max-w-xl font-dm-sans text-sm leading-relaxed text-secondary-ink">
+      <p className="mt-4 max-w-xl font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
         {official
           ? `Your county qualifies for ${payments} monthly LFP payment${payments !== 1 ? 's' : ''} — ${tierLabel}. Estimate assumes ~100 head of adult beef cattle; your herd may differ.`
           : pending
@@ -284,7 +284,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       {official && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg bg-forest-green/[0.06] px-4 py-3">
           <div>
-            <p className="font-dm-sans text-sm font-medium text-forest-green">
+            <p className="font-dm-sans text-[16px] font-medium text-forest-green">
               Tier {maxTier} triggered — FSA signup is open now.
             </p>
             <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
@@ -293,7 +293,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
           </div>
           <a
             href="#eligibility-math"
-            className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-semibold text-white hover:bg-forest-green/90 transition-colors"
+            className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-[16px] font-semibold text-white hover:bg-forest-green/90 transition-colors"
           >
             View FSA checklist →
           </a>
@@ -301,7 +301,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
       )}
       {pending && (
         <div className="mt-6 rounded-lg bg-amber-50 px-4 py-3 border border-amber-200">
-          <p className="font-dm-sans text-sm leading-relaxed text-amber-800">
+          <p className="font-dm-sans text-[16px] leading-relaxed text-amber-800">
             Expected to qualify once FSA updates — keep your records, and{' '}
             <a
               href={FSA_OFFICE_LOCATOR}

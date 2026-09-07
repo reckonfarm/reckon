@@ -104,10 +104,10 @@ export default async function SellerPage(
         <SiteHeader />
         <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 text-center">
           <p className="font-fraunces text-xl font-semibold text-forest-green">Seller not found</p>
-          <p className="mt-2 text-sm text-secondary-ink font-dm-sans">
+          <p className="mt-2 text-[16px] text-secondary-ink font-dm-sans">
             This seller profile doesn&apos;t exist or has been removed.
           </p>
-          <Link href="/hay" className="mt-4 inline-block text-sm font-dm-sans font-medium text-forest-green underline hover:text-secondary-ink">
+          <Link href="/hay" className="mt-4 inline-block text-[16px] font-dm-sans font-medium text-forest-green underline hover:text-secondary-ink">
             ← Back to Hay Network
           </Link>
         </main>
@@ -168,7 +168,7 @@ export default async function SellerPage(
 
         <Link
           href="/hay"
-          className="inline-flex items-center gap-1 text-sm font-dm-sans text-secondary-ink hover:text-forest-green transition-colors mb-6"
+          className="inline-flex items-center gap-1 text-[16px] font-dm-sans text-secondary-ink hover:text-forest-green transition-colors mb-6"
         >
           ← Back to Hay Network
         </Link>
@@ -188,13 +188,13 @@ export default async function SellerPage(
           </div>
 
           {(profile.operation_type || profile.region) && (
-            <p className="mt-1 text-sm font-dm-sans text-secondary-ink">
+            <p className="mt-1 text-[16px] font-dm-sans text-secondary-ink">
               {[profile.operation_type, profile.region].filter(Boolean).join(' · ')}
             </p>
           )}
 
           {/* Rating + sales */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-dm-sans text-sm">
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-dm-sans text-[16px]">
             {(profile.seller_review_count ?? 0) > 0 ? (
               <span className="text-ink">
                 {renderStars(profile.seller_avg_rating ?? 0)}
@@ -213,7 +213,7 @@ export default async function SellerPage(
           </div>
 
           {profile.bio && (
-            <p className="mt-4 text-sm font-dm-sans text-ink leading-relaxed whitespace-pre-wrap">
+            <p className="mt-4 text-[16px] font-dm-sans text-ink leading-relaxed whitespace-pre-wrap">
               {profile.bio}
             </p>
           )}
@@ -223,7 +223,7 @@ export default async function SellerPage(
         <Heading level={5} className="mt-8 mb-4">
           Reviews
           {(profile.seller_review_count ?? 0) > 0 && (
-            <span className="ml-2 font-dm-sans text-sm font-normal text-secondary-ink">
+            <span className="ml-2 font-dm-sans text-[16px] font-normal text-secondary-ink">
               {renderStars(profile.seller_avg_rating ?? 0)} {(profile.seller_avg_rating ?? 0).toFixed(1)} · {profile.seller_review_count}
             </span>
           )}
@@ -231,7 +231,7 @@ export default async function SellerPage(
 
         {reviews.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-10 text-center">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No reviews yet. Reviews appear after a completed hay deal on Dryline.
             </p>
           </div>
@@ -240,7 +240,7 @@ export default async function SellerPage(
             {reviews.map(r => (
               <Card as="li" key={r.id} className="px-4 py-4 sm:px-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-dm-sans text-sm text-rust">{renderStars(r.rating)}</span>
+                  <span className="font-dm-sans text-[16px] text-rust">{renderStars(r.rating)}</span>
                   {r.verified_deal && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[14px] font-medium font-dm-sans text-green-700 ring-1 ring-green-200">
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -257,7 +257,7 @@ export default async function SellerPage(
                   <span className="ml-auto font-dm-sans text-[14px] text-secondary-ink">{reviewDate(r.created_at)}</span>
                 </div>
                 {r.comment && (
-                  <p className="mt-2 font-dm-sans text-sm text-ink leading-relaxed whitespace-pre-wrap">
+                  <p className="mt-2 font-dm-sans text-[16px] text-ink leading-relaxed whitespace-pre-wrap">
                     {r.comment}
                   </p>
                 )}
@@ -273,7 +273,7 @@ export default async function SellerPage(
 
         {listings.length === 0 ? (
           <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               This seller has no active listings right now.
             </p>
           </div>
@@ -312,7 +312,7 @@ export default async function SellerPage(
                         <Heading level={5}>
                           {l.hay_type}
                           {l.cutting_number != null && (
-                            <span className="font-dm-sans text-sm font-normal text-secondary-ink ml-1">
+                            <span className="font-dm-sans text-[16px] font-normal text-secondary-ink ml-1">
                               — {ORDINALS[l.cutting_number]} cut
                             </span>
                           )}
@@ -339,7 +339,7 @@ export default async function SellerPage(
                         )}
                       </div>
 
-                      <p className="mt-1 text-sm text-secondary-ink font-dm-sans">
+                      <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
                         {county?.name}, {county?.state}
                       </p>
 
@@ -349,7 +349,7 @@ export default async function SellerPage(
                       </div>
 
                       {l.description && (
-                        <p className="mt-2 text-sm text-secondary-ink font-dm-sans line-clamp-2">
+                        <p className="mt-2 text-[16px] text-secondary-ink font-dm-sans line-clamp-2">
                           {l.description}
                         </p>
                       )}

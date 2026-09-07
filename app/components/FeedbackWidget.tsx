@@ -99,7 +99,7 @@ export default function FeedbackWidget() {
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="flex min-h-[48px] items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-sm font-medium text-forest-green transition-transform hover:-translate-y-0.5"
+          className="flex min-h-[48px] items-center gap-2 rounded-full border border-forest-green/15 bg-cream px-4 py-2.5 text-[16px] font-medium text-forest-green transition-transform hover:-translate-y-0.5"
           aria-label="Send feedback"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -170,14 +170,14 @@ export default function FeedbackWidget() {
                 placeholder="Anything on your mind? (optional)"
                 rows={3}
                 maxLength={2000}
-                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-sm text-forest-green placeholder:text-secondary-ink focus:border-forest-green/40 focus:outline-none"
+                className="mb-3 w-full resize-none rounded-xl border border-forest-green/15 bg-white/60 px-3 py-2 text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/40 focus:outline-none"
               />
 
               <button
                 onClick={submit}
                 disabled={!canSend}
                 style={{ backgroundColor: '#8B3A2B' }}
-                className="w-full rounded-xl py-2.5 text-sm font-medium text-cream transition-opacity disabled:opacity-40"
+                className="w-full rounded-xl py-2.5 text-[16px] font-medium text-cream transition-opacity disabled:opacity-40"
               >
                 {status === 'sending' ? 'Sending…' : 'Send'}
               </button>

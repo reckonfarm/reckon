@@ -59,7 +59,7 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(p => (
           <li key={p.place_id ?? 'none'} className="flex items-baseline justify-between gap-3 py-2">
-            <span className="font-dm-sans text-sm text-forest-green">
+            <span className="font-dm-sans text-[16px] text-forest-green">
               {p.name ?? (p.place_id ? 'Unnamed place' : 'No place given')}
             </span>
             <span className="shrink-0 text-right">
@@ -78,7 +78,7 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
           <p className={EYEBROW}>
             County estimate · not a gauge
           </p>
-          <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
             <span className="font-semibold tabular-nums text-forest-green">{inches(estimate.ytdActual)}</span>
             {' '}this year vs {inches(estimate.ytdNormal)} normal ·{' '}
             <span className="tabular-nums">{Math.round((estimate.ytdActual / estimate.ytdNormal) * 100)}%</span> of normal

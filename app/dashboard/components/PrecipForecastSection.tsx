@@ -53,7 +53,7 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
 
   if (!discussion) {
     return (
-      <p className="text-sm text-secondary-ink font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         Local forecast discussion temporarily unavailable. Visit{' '}
         <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" className="underline">
           weather.gov
@@ -83,12 +83,12 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
       <div className="space-y-3">
         {expanded ? (
           paragraphs.map((p, i) => (
-            <p key={i} className="text-sm text-forest-green font-dm-sans leading-relaxed">
+            <p key={i} className="text-[16px] text-forest-green font-dm-sans leading-relaxed">
               {p}
             </p>
           ))
         ) : (
-          <p className="text-sm text-forest-green font-dm-sans leading-relaxed">
+          <p className="text-[16px] text-forest-green font-dm-sans leading-relaxed">
             {preview}
           </p>
         )}
@@ -177,7 +177,7 @@ function RainMarker(props: { cx?: number; cy?: number; payload?: { tier?: number
 export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalResult; countyName?: string }) {
   if (data == null) {
     return (
-      <p className="text-sm text-secondary-ink font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         No precipitation station data available for this county. Sparse rural counties may not have
         nearby COOP weather stations in the NOAA network.
       </p>
@@ -188,7 +188,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   // Never let an outage masquerade as "no nearby weather station has enough history."
   if (data === 'data_unavailable') {
     return (
-      <p className="text-sm text-secondary-ink font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         Precipitation data is temporarily unavailable — check back shortly.
       </p>
     )
@@ -198,7 +198,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
   // no station with usable normals + enough history exists, or normals are zero.
   if (data === 'no_qualifying_station' || data.ytdNormal === 0) {
     return (
-      <p className="text-sm text-secondary-ink font-dm-sans">
+      <p className="text-[16px] text-secondary-ink font-dm-sans">
         No nearby weather station has enough reporting history this year to compare against its
         30-year normal. We&apos;d rather show nothing than a misleading total.
       </p>

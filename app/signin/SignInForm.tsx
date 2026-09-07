@@ -7,13 +7,13 @@ import { createClient } from '@/lib/supabase-browser'
 import { trackEvent } from '@/lib/analytics'
 
 const INPUT_CLS =
-  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
+  'w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-[16px] text-forest-green placeholder:text-secondary-ink focus:border-forest-green/50 focus:outline-none'
 
 const BTN_CLS =
-  'w-full min-h-[48px] rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
+  'w-full min-h-[48px] rounded-lg bg-forest-green px-4 py-3 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors'
 
 const LINK_CLS =
-  'inline-flex min-h-[48px] items-center font-dm-sans text-sm text-secondary-ink hover:text-forest-green transition-colors'
+  'inline-flex min-h-[48px] items-center font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green transition-colors'
 
 // Shown only when explicitly enabled, so we can ship password without Google.
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'
@@ -191,7 +191,7 @@ export default function SignInForm({
         <p className="font-fraunces text-2xl font-semibold text-forest-green">
           Check your email
         </p>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           We sent a 6-digit code to{' '}
           <strong className="text-forest-green">{email}</strong>.
         </p>
@@ -214,7 +214,7 @@ export default function SignInForm({
               className="w-full rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-2xl font-semibold tracking-[0.35em] text-forest-green text-center placeholder:text-secondary-ink placeholder:font-normal placeholder:text-base placeholder:tracking-normal focus:border-forest-green/50 focus:outline-none"
             />
           </div>
-          {error && <p className="font-dm-sans text-sm text-rust">{error}</p>}
+          {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
           <button type="submit" disabled={loading || code.length < 6} className={BTN_CLS}>
             {loading ? 'Verifying…' : 'Sign in'}
           </button>
@@ -227,7 +227,7 @@ export default function SignInForm({
             ← Use a different email
           </button>
           {resendIn > 0 ? (
-            <span className="font-dm-sans text-sm text-secondary-ink tabular-nums">
+            <span className="font-dm-sans text-[16px] text-secondary-ink tabular-nums">
               Resend in {resendIn}s
             </span>
           ) : (
@@ -247,7 +247,7 @@ export default function SignInForm({
         <p className="font-fraunces text-2xl font-semibold text-forest-green">
           Sign in to Dryline
         </p>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           We&apos;ll send a 6-digit code to your email.
         </p>
         <form onSubmit={sendCode} className="mt-6 space-y-3">
@@ -261,7 +261,7 @@ export default function SignInForm({
             autoFocus
             className={INPUT_CLS}
           />
-          {error && <p className="font-dm-sans text-sm text-rust">{error}</p>}
+          {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
           <button type="submit" disabled={loading} className={BTN_CLS}>
             {loading ? 'Sending…' : 'Send code'}
           </button>
@@ -289,7 +289,7 @@ export default function SignInForm({
         <p className="font-fraunces text-2xl font-semibold text-forest-green">
           Confirm your email
         </p>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           We sent a confirmation link to{' '}
           <strong className="text-forest-green">{email}</strong>. Click it to
           finish creating your account, then you&apos;ll be signed in.
@@ -319,7 +319,7 @@ export default function SignInForm({
       <p className="font-fraunces text-2xl font-semibold text-forest-green">
         {isSignup ? 'Create your account' : 'Sign in to Dryline'}
       </p>
-      <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+      <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
         {isSignup
           ? 'Use your email and a password.'
           : 'Welcome back. Enter your email and password.'}
@@ -331,7 +331,7 @@ export default function SignInForm({
             type="button"
             onClick={signInGoogle}
             disabled={loading}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-sm font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-forest-green/20 bg-white px-4 py-3 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-forest-green/5 disabled:opacity-50 transition-colors"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
@@ -373,7 +373,7 @@ export default function SignInForm({
           minLength={6}
           className={INPUT_CLS}
         />
-        {error && <p className="font-dm-sans text-sm text-rust">{error}</p>}
+        {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
         <button type="submit" disabled={loading} className={BTN_CLS}>
           {loading
             ? (isSignup ? 'Creating…' : 'Signing in…')
@@ -396,7 +396,7 @@ export default function SignInForm({
         </Link>
       )}
 
-      <p className="mt-4 font-dm-sans text-sm text-secondary-ink">
+      <p className="mt-4 font-dm-sans text-[16px] text-secondary-ink">
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
           type="button"

@@ -55,12 +55,12 @@ export default function AuthCallbackPage() {
             <p className="font-fraunces text-xl font-semibold text-forest-green">
               Sign-in link invalid
             </p>
-            <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
+            <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
               {authError}
             </p>
             <Link
               href="/signin"
-              className="mt-5 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
+              className="mt-5 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors"
             >
               Sign in with a code instead
             </Link>
@@ -74,7 +74,7 @@ export default function AuthCallbackPage() {
     <>
       <SiteHeader />
       <main className="flex min-h-screen items-center justify-center bg-cream px-4">
-        <p className="font-dm-sans text-sm text-secondary-ink">Signing you in…</p>
+        <p className="font-dm-sans text-[16px] text-secondary-ink">Signing you in…</p>
       </main>
     </>
   )

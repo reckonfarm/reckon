@@ -65,14 +65,14 @@ export default async function DevicesPage() {
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
         <Heading level={1} className="!text-2xl sm:!text-3xl">Devices</Heading>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           Every sensor on the place, and when it last checked in.
         </p>
 
         <div className="mt-6 space-y-3">
           {error && (
             <Card shadow="none" className="px-5 py-6 text-center">
-              <p className="font-dm-sans text-sm text-secondary-ink">
+              <p className="font-dm-sans text-[16px] text-secondary-ink">
                 Devices are temporarily unavailable.
               </p>
             </Card>
@@ -80,7 +80,7 @@ export default async function DevicesPage() {
 
           {!error && devices.length === 0 && (
             <Card shadow="none" className="px-5 py-8 text-center">
-              <p className="font-dm-sans text-sm text-secondary-ink">
+              <p className="font-dm-sans text-[16px] text-secondary-ink">
                 No devices yet. Dryline hardware reports here.
               </p>
             </Card>
@@ -106,7 +106,7 @@ export default async function DevicesPage() {
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
+                  <p className="font-dm-sans text-[16px] font-semibold tabular-nums text-forest-green">
                     {d.battery_pct != null ? `${d.battery_pct}%` : '—'}
                   </p>
                   <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">

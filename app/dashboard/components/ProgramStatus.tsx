@@ -83,7 +83,7 @@ function Divider() {
 function TierRow({ tier, isMax }: { tier: LfpTierStatus; isMax: boolean }) {
   return (
     <div className={`flex items-start gap-3 py-2 ${isMax ? 'opacity-100' : 'opacity-60'}`}>
-      <span className={`mt-0.5 flex-shrink-0 text-sm font-dm-sans leading-none w-4 ${tier.triggered ? 'text-forest-green' : 'text-secondary-ink'}`}>
+      <span className={`mt-0.5 flex-shrink-0 text-[16px] font-dm-sans leading-none w-4 ${tier.triggered ? 'text-forest-green' : 'text-secondary-ink'}`}>
         {tier.triggered ? '✓' : '✗'}
       </span>
       <div className="flex-1 min-w-0">
@@ -459,7 +459,7 @@ function LivestockPanel({
   if (!eligibility) {
     return (
       <div className="space-y-3 p-4 sm:p-6">
-        <p className="text-sm text-secondary-ink font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           LFP eligibility data not available — run the cron to populate drought data for this county.
         </p>
       </div>
@@ -511,7 +511,7 @@ function LivestockPanel({
           <p className="mt-1 font-fraunces text-xl font-semibold text-amber-900 sm:text-2xl">
             Meets the new OBBBA D2 threshold — not yet official
           </p>
-          <p className="mt-2 font-dm-sans text-sm leading-relaxed text-amber-800">
+          <p className="mt-2 font-dm-sans text-[16px] leading-relaxed text-amber-800">
             FSA hasn&apos;t loaded the OBBBA rules into the 2026 eligibility maps yet, so this
             isn&apos;t officially triggered and there&apos;s no payment estimate. Keep your
             records, and{' '}
@@ -548,13 +548,13 @@ function LivestockPanel({
               {payments}
             </p>
             <p
-              className="font-dm-sans text-sm"
+              className="font-dm-sans text-[16px]"
               style={{ color: style.fg, opacity: 0.85 }}
             >
               monthly LFP payment{payments !== 1 ? 's' : ''} — {tierLabel}
             </p>
             <p
-              className="mt-2 font-dm-sans text-sm font-medium"
+              className="mt-2 font-dm-sans text-[16px] font-medium"
               style={{ color: style.fg, opacity: 0.9 }}
             >
               You&apos;re triggered. Don&apos;t wait — sign up at your local FSA office.
@@ -562,11 +562,11 @@ function LivestockPanel({
           </div>
         ) : (
           <div>
-            <p className="font-dm-sans text-sm font-medium text-secondary-ink">
+            <p className="font-dm-sans text-[16px] font-medium text-secondary-ink">
               Not yet qualifying for LFP payments
             </p>
             {weeksUntilTier1 !== null && (
-              <p className="mt-2 font-dm-sans text-sm text-ink">
+              <p className="mt-2 font-dm-sans text-[16px] text-ink">
                 {currentD2Streak > 0
                   ? `Currently in D2 — ${currentD2Streak} consecutive week${currentD2Streak !== 1 ? 's' : ''} so far. ${weeksUntilTier1} more week${weeksUntilTier1 !== 1 ? 's' : ''} of D2 needed to reach tier 1 (1 payment).`
                   : '4 consecutive weeks of D2 (Severe) drought required for the first LFP payment.'}
@@ -617,7 +617,7 @@ function LivestockPanel({
                 <select
                   value={livestock}
                   onChange={e => { setLivestock(e.target.value as LivestockKind); setEstimateTouched(true) }}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 >
                   {PAYMENT_RATES_2026.map(r => (
                     <option key={r.kind} value={r.kind}>{r.label}</option>
@@ -634,7 +634,7 @@ function LivestockPanel({
                   min={1}
                   value={headCount}
                   onChange={e => { setHeadCount(parseInt(e.target.value, 10) || 0); setEstimateTouched(true) }}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
@@ -652,7 +652,7 @@ function LivestockPanel({
                   placeholder="e.g. 640"
                   value={eligibleAcres}
                   onChange={e => setEligibleAcres(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
 
@@ -668,7 +668,7 @@ function LivestockPanel({
                   placeholder="e.g. 5"
                   value={acresPerAU}
                   onChange={e => setAcresPerAU(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green placeholder:text-secondary-ink focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
@@ -742,12 +742,12 @@ function LivestockPanel({
         {allTypes && typeNames.length > 0 && (
           <div className="mb-1">
             {typeNames.length === 1 ? (
-              <p className="text-sm font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
+              <p className="text-[16px] font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
             ) : (
               <select
                 value={selectedType}
                 onChange={e => handleTypeChange(e.target.value)}
-                className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
               >
                 {typeNames.map(name => (
                   <option key={name} value={name}>{name}</option>
@@ -787,7 +787,7 @@ function LivestockPanel({
                   type="date"
                   value={gsInput}
                   onChange={e => setGsInput(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
               <div>
@@ -796,14 +796,14 @@ function LivestockPanel({
                   type="date"
                   value={geInput}
                   onChange={e => setGeInput(e.target.value)}
-                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-sm font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
+                  className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
                 />
               </div>
             </div>
             <button
               onClick={recalculate}
               style={{ color: '#ffffff' }}
-              className="rounded-lg bg-forest-green px-4 py-2 text-sm font-medium font-dm-sans hover:bg-forest-green/90"
+              className="rounded-lg bg-forest-green px-4 py-2 text-[16px] font-medium font-dm-sans hover:bg-forest-green/90"
             >
               Recalculate
             </button>
@@ -865,7 +865,7 @@ function RowCropPanel({
   if (!eligibility) {
     return (
       <div className="space-y-3 p-4 sm:p-6">
-        <p className="text-sm leading-relaxed text-secondary-ink font-dm-sans">
+        <p className="text-[16px] leading-relaxed text-secondary-ink font-dm-sans">
           Drought eligibility data isn&apos;t available for this period — this is{' '}
           <span className="font-medium text-ink">not</span> a finding that your county
           doesn&apos;t qualify. Check back shortly, or confirm with your county FSA office.
@@ -894,7 +894,7 @@ function RowCropPanel({
             <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-amber-700">
               Secretarial Disaster Designation — Conditions Met
             </p>
-            <p className="mt-2 font-dm-sans text-sm font-medium text-amber-900">
+            <p className="mt-2 font-dm-sans text-[16px] font-medium text-amber-900">
               You may be eligible to apply for FSA Emergency Loans (EM).
             </p>
           </div>
@@ -903,7 +903,7 @@ function RowCropPanel({
             <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wider text-secondary-ink">
               No Qualifying Trigger
             </p>
-            <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
+            <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
               D2 for 8+ consecutive weeks, or D3 or D4 at any point during the growing season,
               triggers a Secretarial Disaster Designation under 7 CFR Part 759.
             </p>

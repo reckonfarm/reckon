@@ -119,7 +119,7 @@ export default async function SeasonTotals({ heading = true }: { heading?: boole
       <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
         {stats.map(s => (
           <div key={s.label}>
-            <p className="font-fraunces text-2xl font-semibold tabular-nums text-forest-green">{s.value}</p>
+            <p className="type-secondary-number text-ink">{s.value}</p>
             <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">{s.label}</p>
             {s.sub && <p className="font-dm-sans text-[14px] text-secondary-ink">{s.sub}</p>}
           </div>

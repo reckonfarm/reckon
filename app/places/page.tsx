@@ -28,7 +28,7 @@ export default async function PlacesPage() {
             {places.map(p => (
               <Link key={p.id} href={`/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 py-3">
                 <span className="font-dm-sans text-[17px] font-semibold text-forest-green">{p.name}</span>
-                <span className="font-dm-sans text-[15px] text-ink">{p.kind}</span>
+                <span className="font-dm-sans text-[16px] text-ink">{p.kind}</span>
               </Link>
             ))}
           </Card>

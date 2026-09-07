@@ -91,7 +91,7 @@ export default function WatchlistPage() {
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
           My Counties
         </h1>
-        <p className="mt-1 text-sm text-secondary-ink font-dm-sans">
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
           Counties you&apos;re watching for drought conditions.
         </p>
 
@@ -105,12 +105,12 @@ export default function WatchlistPage() {
           ) : !authed ? (
             <div className="mt-8 border-2 border-dashed border-forest-green/20 rounded-xl p-8 text-center">
               <p className="font-fraunces text-xl text-forest-green mb-2">Track drought conditions in your counties</p>
-              <p className="text-sm text-secondary-ink font-dm-sans mb-6">Get alerted when your counties hit LFP trigger thresholds. Sign in to save your watchlist.</p>
-              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
+              <p className="text-[16px] text-secondary-ink font-dm-sans mb-6">Get alerted when your counties hit LFP trigger thresholds. Sign in to save your watchlist.</p>
+              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-[16px] font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">Sign in to get started</a>
             </div>
           ) : entries.length === 0 ? (
             <div className="rounded-xl border border-forest-green/10 bg-white px-6 py-12 text-center">
-              <p className="text-sm text-secondary-ink font-dm-sans">
+              <p className="text-[16px] text-secondary-ink font-dm-sans">
                 No counties watched yet.{' '}
                 <Link href="/dashboard" prefetch={false} className="underline hover:text-forest-green">
                   Search for a county

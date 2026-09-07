@@ -268,7 +268,7 @@ function NewsCard({
           left; timestamp + external-link affordance right-aligned on the same row. */}
       <div className="mb-2.5 flex items-center gap-2">
         <SourceFavicon link={item.link} source={item.source} size={20} />
-        <span className="font-dm-sans text-sm font-semibold text-secondary-ink">
+        <span className="font-dm-sans text-[16px] font-semibold text-secondary-ink">
           {item.source}
         </span>
         {item.regional && !hideRegionalBadge && <NearYouBadge />}
@@ -287,7 +287,7 @@ function NewsCard({
         {item.title}
       </Heading>
       {item.snippet && (
-        <p className="mt-2 line-clamp-2 font-dm-sans text-sm leading-relaxed text-secondary-ink">
+        <p className="mt-2 line-clamp-2 font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
           {item.snippet}
         </p>
       )}
@@ -339,7 +339,7 @@ function TierHeader({ title, count }: { title: string; count: number }) {
   return (
     <div className="mb-4 flex items-baseline gap-2">
       <Heading level={3}>{title}</Heading>
-      <span className="font-dm-sans text-sm font-medium text-secondary-ink">{count}</span>
+      <span className="font-dm-sans text-[16px] font-medium text-secondary-ink">{count}</span>
     </div>
   )
 }
@@ -350,7 +350,7 @@ function LoadMore({ label, onClick }: { label: string; onClick: () => void }) {
       <button
         type="button"
         onClick={onClick}
-        className="inline-flex items-center rounded-lg border border-forest-green/20 px-5 py-2.5 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+        className="inline-flex items-center rounded-lg border border-forest-green/20 px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
       >
         {label}
       </button>
@@ -362,7 +362,7 @@ function LoadMore({ label, onClick }: { label: string; onClick: () => void }) {
 // still renders. Never a fabricated item.
 function TierEmpty({ text }: { text: string }) {
   return (
-    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-sm text-secondary-ink">
+    <p className="rounded-xl border border-forest-green/10 bg-white px-5 py-6 text-center font-dm-sans text-[16px] text-secondary-ink">
       {text}
     </p>
   )
@@ -394,13 +394,13 @@ function UnavailablePanel({ onRetry }: { onRetry: () => void }) {
       <p className="font-fraunces text-base font-semibold text-forest-green">
         News briefly unavailable
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
         We couldn&apos;t reach the news sources just now — back shortly.
       </p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-4 inline-flex items-center rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+        className="mt-4 inline-flex items-center rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-[16px] font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
       >
         Try again
       </button>
@@ -414,7 +414,7 @@ function EmptyPanel() {
       <p className="font-fraunces text-base font-semibold text-forest-green">
         No cattle-country headlines right now
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
         Nothing new from our sources at the moment — check back soon.
       </p>
     </div>
@@ -428,13 +428,13 @@ function FilterEmptyPanel({ label, onClear }: { label: string; onClear: () => vo
       <p className="font-fraunces text-base font-semibold text-forest-green">
         Nothing in {label} right now
       </p>
-      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-sm leading-relaxed text-secondary-ink">
+      <p className="mx-auto mt-1 max-w-sm font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
         No headlines match this filter at the moment.
       </p>
       <button
         type="button"
         onClick={onClear}
-        className="mt-4 inline-flex items-center rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
+        className="mt-4 inline-flex items-center rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-[16px] font-semibold text-forest-green transition-colors hover:bg-forest-green/5"
       >
         Show all news
       </button>
@@ -469,7 +469,7 @@ function FilterBar({
             onClick={() => onChange(f.key)}
             aria-pressed={isActive}
             className={
-              'rounded-full px-4 py-2 font-dm-sans text-sm font-semibold transition-colors ' +
+              'rounded-full px-4 py-2 font-dm-sans text-[16px] font-semibold transition-colors ' +
               (isActive
                 ? 'bg-forest-green text-white'
                 : 'border border-forest-green/20 text-secondary-ink hover:border-forest-green/40 hover:text-forest-green')
@@ -547,7 +547,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <div>
           <Heading level={2}>Cattle Country</Heading>
-          <p className="mt-1 font-dm-sans text-sm leading-relaxed text-secondary-ink">
+          <p className="mt-1 font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
             The headlines moving cattle, hay, and ranch markets.
           </p>
         </div>
@@ -596,7 +596,7 @@ export default function MarketsNews({ fips }: { fips?: string | null }) {
                   <div>
                     <TierHeader title={hasAnyLocal ? 'National' : 'Top stories'} count={national.length} />
                     {!hasAnyLocal && region === null && (
-                      <p className="mb-4 -mt-1 font-dm-sans text-sm leading-relaxed text-secondary-ink">
+                      <p className="mb-4 -mt-1 font-dm-sans text-[16px] leading-relaxed text-secondary-ink">
                         Set your county to see Northern Plains news.
                       </p>
                     )}

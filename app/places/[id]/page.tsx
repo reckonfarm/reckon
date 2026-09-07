@@ -31,7 +31,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
     <>
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <p className="mb-4 font-dm-sans text-[15px]">
+        <p className="mb-4 font-dm-sans text-[16px]">
           <Link href="/places" className="font-semibold text-forest-green underline underline-offset-2">All places</Link>
         </p>
 
@@ -53,7 +53,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             </ul>
           )}
           {counts.entries > 0 && counts.sinceIso && (
-            <p className="mt-3 font-dm-sans text-[15px] text-ink">
+            <p className="mt-3 font-dm-sans text-[16px] text-ink">
               {counts.entries} {counts.entries === 1 ? 'entry' : 'entries'} here since {fmtDay(counts.sinceIso)}.
             </p>
           )}

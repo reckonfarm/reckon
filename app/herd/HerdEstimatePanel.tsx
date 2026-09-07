@@ -19,7 +19,7 @@ import { dollarsPerCwtMove, matchLabel, scopeLabel, sensitivityLine, thinEvidenc
 
 function MatchChip({ label }: { label: string }) {
   const tone = label === 'Close match' ? 'bg-forest-green/[0.08] text-forest-green' : label === 'Broader reference' ? 'bg-forest-green/[0.05] text-ink' : 'bg-amber-50 text-amber-900 border border-amber-200'
-  return <span className={`rounded-lg px-1.5 py-0.5 font-dm-sans text-[15px] font-semibold ${tone}`}>{label}</span>
+  return <span className={`rounded-lg px-1.5 py-0.5 font-dm-sans text-[16px] font-semibold ${tone}`}>{label}</span>
 }
 function formatUSD(n: number): string {
   return '$' + Math.round(n).toLocaleString('en-US')
@@ -87,28 +87,28 @@ function LotCard({ l }: { l: LotValuation }) {
           <p className="font-dm-sans text-[16px] font-semibold text-ink">{l.label}</p>
           {priced ? (
             <>
-              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[15px] text-ink">
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-dm-sans text-[16px] text-ink">
                 <MatchChip label={label!} />
                 {src!.cull && <span className="rounded-lg bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 border border-amber-200">Cull price — salvage, not breeding value</span>}
               </p>
-              <p className="mt-1 font-dm-sans text-[15px] text-ink">
+              <p className="mt-1 font-dm-sans text-[16px] text-ink">
                 {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · <ReportEvidence barn={src!.barn_name} date={src!.report_date} head={src!.head_count} slug={src!.slug_id} />
               </p>
-              <p className="font-dm-sans text-[15px] text-ink">
+              <p className="font-dm-sans text-[16px] text-ink">
                 {src!.mars_class ?? 'class'}{src!.exact_bracket ? ` · ${src!.matched.split(' / ').slice(-1)[0]}` : ' · class average, no exact bracket'} · {src!.head_count != null ? `${src!.head_count.toLocaleString('en-US')} head reported` : 'head count not reported'} ·{' '}
                 {l.thin
                   ? (() => { const ev = thinEvidence(src!.avg_price_min, src!.avg_price_max, src!.avg_price, src!.head_count ?? 0, src!.price_basis === 'cwt' ? 'cwt' : 'hd'); return ev.single ? <>{ev.note}</> : <>{ev.figure}/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'} reported range, not one price</> })()
                   : <><span className="tabular-price">${src!.avg_price}</span>/{src!.price_basis === 'cwt' ? 'cwt' : 'hd'}</>}
               </p>
-              {sens && <p className="mt-1 font-dm-sans text-[15px] font-medium text-forest-green">{sens}</p>}
+              {sens && <p className="mt-1 font-dm-sans text-[16px] font-medium text-forest-green">{sens}</p>}
             </>
           ) : (
-            <p className="mt-0.5 font-dm-sans text-[15px] text-ink">{l.reason}</p>
+            <p className="mt-0.5 font-dm-sans text-[16px] text-ink">{l.reason}</p>
           )}
         </div>
         <p className="shrink-0 text-right font-dm-sans text-[17px] font-semibold tabular-price text-ink">
           {!priced ? '—' : l.thin
-            ? <><span className="block text-[15px] font-medium text-ink">under {THIN_HEAD_THRESHOLD} head</span>{fmtThinRange(l.value_low!, l.value_high!)}</>
+            ? <><span className="block text-[16px] font-medium text-ink">under {THIN_HEAD_THRESHOLD} head</span>{fmtThinRange(l.value_low!, l.value_high!)}</>
             : formatUSD(l.value!)}
         </p>
       </div>
@@ -119,8 +119,8 @@ function LotCard({ l }: { l: LotValuation }) {
 function Stub({ line }: { line: string }) {
   return (
     <Card shadow="sm" className="px-6 py-8 text-center">
-      <p className="font-dm-sans text-sm font-semibold text-ink">We&rsquo;re building this</p>
-      <p className="mx-auto mt-1 max-w-xs font-dm-sans text-sm text-secondary-ink">{line}</p>
+      <p className="font-dm-sans text-[16px] font-semibold text-ink">We&rsquo;re building this</p>
+      <p className="mx-auto mt-1 max-w-xs font-dm-sans text-[16px] text-secondary-ink">{line}</p>
     </Card>
   )
 }
@@ -149,8 +149,8 @@ function VolumeCard({ v }: { v: VolumeRow }) {
   return (
     <Card shadow="sm" className="p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-dm-sans text-sm font-medium text-ink">{v.commodity}</p>
-        <p className="font-dm-sans text-sm">
+        <p className="font-dm-sans text-[16px] font-medium text-ink">{v.commodity}</p>
+        <p className="font-dm-sans text-[16px]">
           <span className="tabular-price font-semibold text-ink">{v.receipts ?? '—'}</span>
           <span className="text-secondary-ink"> head</span>
           {wk != null && (
@@ -180,7 +180,7 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
             {trend.volume.map(v => <VolumeCard key={v.commodity} v={v} />)}
           </div>
         ) : (
-          <p className="mt-1 font-dm-sans text-sm text-secondary-ink">No nearby auction this week — volume shows once a local barn reports.</p>
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">No nearby auction this week — volume shows once a local barn reports.</p>
         )}
       </div>
 
@@ -190,7 +190,7 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
           <p className={EYEBROW}>This week&rsquo;s range</p>
           <div className="mt-2 space-y-1">
             {trend.spread.map((s, i) => (
-              <p key={i} className="font-dm-sans text-sm text-ink">
+              <p key={i} className="font-dm-sans text-[16px] text-ink">
                 {s.label}: <span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'}
               </p>
             ))}
@@ -202,7 +202,7 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
       <div>
         <p className={EYEBROW}>Your herd value</p>
         {trend.herd.status === 'ready' ? (
-          <p className="mt-1 font-dm-sans text-sm">
+          <p className="mt-1 font-dm-sans text-[16px]">
             <DeltaUSD abs={trend.herd.abs} />{' '}
             <span className="text-secondary-ink">
               since {fmtShort(trend.herd.sinceDate)}
@@ -210,9 +210,9 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
             </span>
           </p>
         ) : trend.herd.status === 'accruing' ? (
-          <p className="mt-1 font-dm-sans text-sm text-secondary-ink">Tracking daily — your week-over-week change appears here in a couple days.</p>
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Tracking daily — your week-over-week change appears here in a couple days.</p>
         ) : (
-          <p className="mt-1 font-dm-sans text-sm text-secondary-ink">Temporarily unavailable.</p>
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Temporarily unavailable.</p>
         )}
       </div>
 
@@ -222,7 +222,7 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
           <p className={EYEBROW}>Price movement</p>
           <div className="mt-1 space-y-1">
             {trend.priceDeltas.map((p, i) => (
-              <p key={i} className="font-dm-sans text-sm">
+              <p key={i} className="font-dm-sans text-[16px]">
                 <span className="text-ink">{p.label}:</span>{' '}
                 {p.status === 'ready' && p.cwt != null ? (
                   <>
@@ -254,7 +254,7 @@ function OutlookCard({ l }: { l: OutlookLot }) {
     <Card shadow="sm" className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-dm-sans text-sm font-semibold text-ink">{l.label}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-ink">{l.label}</p>
 
           {l.state === 'priced' && f ? (
             <>
@@ -330,8 +330,8 @@ export default function HerdEstimatePanel({ estimate, trend, outlook }: { estima
         >
           {heroHeadline(estimate)}
         </p>
-        <p className="mt-2 font-dm-sans text-sm text-secondary-ink">{heroSubline(estimate)}</p>
-        {heroSensitivity(estimate) && <p className="mt-2 font-dm-sans text-[15px] font-medium text-forest-green">{heroSensitivity(estimate)}</p>}
+        <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">{heroSubline(estimate)}</p>
+        {heroSensitivity(estimate) && <p className="mt-2 font-dm-sans text-[16px] font-medium text-forest-green">{heroSensitivity(estimate)}</p>}
       </div>
 
       <Segmented<'now' | 'trend' | 'outlook'>

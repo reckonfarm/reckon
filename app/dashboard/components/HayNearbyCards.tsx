@@ -68,7 +68,7 @@ export default function HayNearbyCards({
   if (listings.length === 0) {
     return (
       <Card shadow="none" className="px-6 py-8 text-center">
-        <p className="text-sm text-secondary-ink font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           No hay for sale listed near you yet.
         </p>
       </Card>
@@ -112,7 +112,7 @@ export default function HayNearbyCards({
                 <Heading level={5}>
                   {l.hayType ?? 'Hay'}
                   {l.cuttingNumber != null && (
-                    <span className="font-dm-sans text-sm font-normal text-secondary-ink ml-1">
+                    <span className="font-dm-sans text-[16px] font-normal text-secondary-ink ml-1">
                       — {ORDINALS[l.cuttingNumber]} cut
                     </span>
                   )}
@@ -150,7 +150,7 @@ export default function HayNearbyCards({
               </div>
 
               {/* Location + distance (always shown — this is the ranking signal) */}
-              <p className="mt-1 text-sm text-secondary-ink font-dm-sans">
+              <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
                 {l.countyName}, {l.state}
                 <span className="ml-1 text-secondary-ink">· {l.miles} mi away</span>
               </p>
@@ -179,7 +179,7 @@ export default function HayNearbyCards({
               </div>
 
               {l.description && (
-                <p className="mt-2 text-sm text-secondary-ink font-dm-sans line-clamp-2">
+                <p className="mt-2 text-[16px] text-secondary-ink font-dm-sans line-clamp-2">
                   {l.description}
                 </p>
               )}

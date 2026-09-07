@@ -58,7 +58,7 @@ export default function DashboardAccordion({
             {title}
           </span>
           {preview && !open && (
-            <span className={`text-sm font-dm-sans ${highlight ? 'text-cream' : 'text-secondary-ink'}`}>
+            <span className={`text-[16px] font-dm-sans ${highlight ? 'text-cream' : 'text-secondary-ink'}`}>
               {preview}
             </span>
           )}

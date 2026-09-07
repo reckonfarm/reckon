@@ -101,15 +101,15 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
         <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {stats.map(s => (
             <div key={s.label}>
-              <p className="font-fraunces text-[32px] font-semibold leading-none tabular-nums text-forest-green">{s.value}</p>
-              <p className="mt-1.5 font-dm-sans text-[15px] text-ink">{s.label}</p>
+              <p className="type-main-number text-ink">{s.value}</p>
+              <p className="mt-1.5 font-dm-sans text-[16px] text-ink">{s.label}</p>
               {s.sub && <p className="font-dm-sans text-[14px] text-ink">{s.sub}</p>}
             </div>
           ))}
         </div>
       )}
       {rateLine && (
-        <p className="mt-3 font-dm-sans text-[15px] text-ink">{rateLine}</p>
+        <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
       )}
       {range && (
         <p className="mt-3 font-dm-sans text-[14px] text-ink">

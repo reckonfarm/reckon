@@ -34,7 +34,7 @@ function fmtDate(s: string): string {
 // the picked-rung detail. It governs EVERY price the card shows.
 function BasisRiskLine() {
   return (
-    <p className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.03] px-3 py-2 font-dm-sans text-sm leading-relaxed text-ink">
+    <p className="mt-3 rounded-lg border border-forest-green/15 bg-forest-green/[0.03] px-3 py-2 font-dm-sans text-[16px] leading-relaxed text-ink">
       This is the CME national index floor, not your local cash price — your basis to
       the local market varies.
     </p>
@@ -49,7 +49,7 @@ function BasisRiskLine() {
 function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: number | null; onSel: (i: number | null) => void }) {
   return (
     <div className="mt-4 border-t border-forest-green/10 pt-3">
-      <p className="font-dm-sans text-[15px] font-medium text-ink">
+      <p className="font-dm-sans text-[16px] font-medium text-ink">
         Selling later? Pick the endorsement that ends nearest your sale date — the floor and premium above follow the pick.
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -90,12 +90,12 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
 
   return (
     <>
-      <p className="font-fraunces text-4xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-5xl" data-audit="lrp-hero">
+      <p className="type-main-number text-ink" data-audit="lrp-hero">
         ${shown.floor.toFixed(2)}
         <span className="ml-1 font-dm-sans text-lg font-medium text-ink"> /cwt</span>
       </p>
 
-      <p className="mt-2 font-dm-sans text-sm text-ink" data-audit="lrp-subline">
+      <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="lrp-subline">
         LRP price floor · {commodity}{type ? ` (${type})` : ''}
         {shown.weeks ? ` · ${shown.weeks}-wk endorsement` : ''}
         {pct ? ` · ${pct}% coverage` : ''}
@@ -105,7 +105,7 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
       <BasisRiskLine />
 
       {/* Real detail for the rung on show: producer premium + endorsement end date. */}
-      <p className="mt-3 font-dm-sans text-sm text-ink" data-audit="lrp-detail">
+      <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="lrp-detail">
         {shown.premium > 0 && <>${shown.premium.toFixed(2)}/cwt premium after subsidy</>}
         {shown.premium > 0 && shown.ends ? ' · ' : ''}
         {shown.ends && <>coverage ends {fmtDate(shown.ends)}</>}
@@ -120,12 +120,12 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
 
       {/* Stale note — show the data, but never as "today". */}
       {lrp.stale && (
-        <p className="mt-3 font-dm-sans text-[15px] text-ink">
+        <p className="mt-3 font-dm-sans text-[16px] text-ink">
           Latest available — as of {fmtDate(lrp.effective_date)}.
         </p>
       )}
 
-      <p className="mt-3 text-[15px] text-ink font-dm-sans">
+      <p className="mt-3 text-[16px] text-ink font-dm-sans">
         {lrp.source} · LRP · effective {fmtDate(lrp.effective_date)}
       </p>
     </>
@@ -141,13 +141,13 @@ export default function LrpMarketsCard({ result }: { result: LrpResult }) {
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="text-sm text-ink font-dm-sans">
+        <p className="text-[16px] text-ink font-dm-sans">
           LRP data temporarily unavailable — check back shortly.
         </p>
       )}
 
       {result.status === 'none' && (
-        <p className="text-sm text-ink font-dm-sans">
+        <p className="text-[16px] text-ink font-dm-sans">
           LRP prices not loaded yet — check back shortly.
         </p>
       )}

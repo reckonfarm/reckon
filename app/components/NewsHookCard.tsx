@@ -90,7 +90,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'error' && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-secondary-ink">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             Headlines are temporarily unavailable.
           </p>
         </Card>
@@ -98,7 +98,7 @@ export default function NewsHookCard({ fips }: { fips?: string | null }) {
 
       {state.phase === 'ready' && state.items.length === 0 && (
         <Card shadow="none" className="px-5 py-6 text-center">
-          <p className="font-dm-sans text-sm text-secondary-ink">
+          <p className="font-dm-sans text-[16px] text-secondary-ink">
             No cattle-country headlines right now.
           </p>
         </Card>

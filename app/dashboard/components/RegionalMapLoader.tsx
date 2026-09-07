@@ -11,7 +11,7 @@ import type { RegionalMapClientProps } from './RegionalMapClient'
 const RegionalMapClient = dynamic(() => import('./RegionalMapClient'), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[400px] items-center justify-center rounded-xl border border-forest-green/10 bg-white font-dm-sans text-sm text-secondary-ink">
+    <div className="flex h-[400px] items-center justify-center rounded-xl border border-forest-green/10 bg-white font-dm-sans text-[16px] text-secondary-ink">
       Loading map…
     </div>
   ),

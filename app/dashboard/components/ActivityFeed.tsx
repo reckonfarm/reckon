@@ -148,12 +148,12 @@ export default async function ActivityFeed() {
   if (!user) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-secondary-ink">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           The ranch ledger is private.
         </p>
         <Link
           href="/signin"
-          className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-sm font-medium text-cream transition-colors hover:bg-forest-green/90"
+          className="mt-3 inline-flex min-h-[48px] items-center justify-center rounded-lg bg-forest-green px-5 font-dm-sans text-[16px] font-medium text-cream transition-colors hover:bg-forest-green/90"
         >
           Sign in to see your activity
         </Link>
@@ -171,7 +171,7 @@ export default async function ActivityFeed() {
   if (error) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-secondary-ink">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           Activity is temporarily unavailable.
         </p>
       </Card>
@@ -183,7 +183,7 @@ export default async function ActivityFeed() {
   if (events.length === 0) {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
-        <p className="font-dm-sans text-sm text-secondary-ink">
+        <p className="font-dm-sans text-[16px] text-secondary-ink">
           Nothing in the ledger yet. Decisions and device readings land here.
         </p>
       </Card>

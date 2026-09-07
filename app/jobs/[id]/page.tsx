@@ -221,7 +221,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       <SiteHeader />
       <AutoRefresh />
       <main className="mx-auto max-w-3xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
-        <Link href="/jobs" className="font-dm-sans text-sm text-secondary-ink hover:text-forest-green">
+        <Link href="/jobs" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           ← All jobs
         </Link>
 
@@ -236,7 +236,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             </span>
           )}
         </div>
-        <p className="mt-1 font-dm-sans text-sm text-secondary-ink">
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           {name && (
             <>
               {fmtDay(job.started_at)}
@@ -275,7 +275,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                   (f.sweep.percentCut >= DONE_FILL_MIN_PERCENT || f.sweep.sweepIsFloor)
                 return (
                   <div key={f.index}>
-                    <p className="font-dm-sans text-sm text-ink">
+                    <p className="font-dm-sans text-[16px] text-ink">
                       <span className="font-semibold">Field {f.index}:</span>{' '}
                       {isCut && fSize != null ? (
                         <>Cut complete · about {fmtAcres(fSize)} acres</>
@@ -318,7 +318,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
         )}
         {job.multi_field && !segmented && (
           <Card shadow="none" className="mt-4 border-warning/40 px-5 py-3">
-            <p className="font-dm-sans text-sm text-warning">
+            <p className="font-dm-sans text-[16px] text-warning">
               This track spans more than one work area. Acreage from its outline
               would include the road between them — treat area numbers with care.
             </p>
@@ -376,7 +376,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {baleRun?.outcome === 'detected' && machine != null && !isBaler && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               A gate-slam pattern ({plural(baleRun.detection_count, 'slam')}) was detected here, but
               this session is labeled <span className="font-semibold">{machineLabel}</span> — bales
               aren&apos;t counted.
@@ -387,7 +387,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
         {isBaler && baleRun?.outcome !== 'detected' && (
           <Card shadow="none" className="mt-5 border-warning/40 px-5 py-4">
-            <p className="font-dm-sans text-sm text-warning">
+            <p className="font-dm-sans text-[16px] text-warning">
               {baleRun == null
                 ? 'This session is labeled Baler, but bale detection has not run for it — machine effectively unknown.'
                 : baleRun.outcome === 'insufficient_evidence'
@@ -409,7 +409,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                 <p className="font-fraunces text-3xl font-semibold text-forest-green">
                   Cut complete
                 </p>
-                <p className="mt-1.5 font-dm-sans text-sm text-secondary-ink">
+                <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
                   about {fmtAcres(fieldAcres!)} acres — field traced from your outside rounds
                   {actualAcres != null && <> · you call the field {actualAcres}</>}
                 </p>
@@ -426,7 +426,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
                     About {fmtEtaMin(etaMinutes)} left · done ~{fmtDoneAt(etaMinutes)}
                   </p>
                 )}
-                <p className="mt-1.5 font-dm-sans text-sm text-secondary-ink">
+                <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
                   {live
                     ? <>{sweep.sweepIsFloor ? 'at least ' : ''}{fmtAcres(cutAcres!)} of about {fmtAcres(fieldAcres!)} acres</>
                     : <>of about {fmtAcres(fieldAcres!)} — field traced from your outside rounds</>}
@@ -462,7 +462,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             multi-field pages carry the reason per field in their own card. */}
         {!live && !segmented && boundary != null && !qualified && (
           <Card shadow="none" className="mt-5 px-5 py-4">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               {boundary.status === 'unexplained'
                 ? 'No boundary — the only loops that closed here are turns inside a bigger working area, not a field edge. Percent and acres stay off.'
                 : boundary.status === 'no_loop'
@@ -478,7 +478,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             <p className="font-fraunces text-3xl font-semibold text-secondary-ink">
               Mapping the field…
             </p>
-            <p className="mt-1.5 font-dm-sans text-sm text-secondary-ink">
+            <p className="mt-1.5 font-dm-sans text-[16px] text-secondary-ink">
               The boundary draws itself as the outside rounds tie off. Percent cut
               starts once the loop closes.
             </p>
@@ -489,7 +489,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
             a line of its own; it never mutes a field that qualified. */}
         {showResidue && (
           <Card shadow="none" className="mt-4 px-5 py-3">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               About {Math.round(residueShare * 100)}% of this track isn&apos;t mapped to a field yet —
               cutting without a closed outside round of its own. It shows as track, not as acres.
             </p>
@@ -532,7 +532,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
           </div>
         ) : (
           <Card shadow="none" className="mt-5 px-5 py-8 text-center">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No GPS positions in this job — the device had no satellite fix.
             </p>
             <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">

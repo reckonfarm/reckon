@@ -34,7 +34,7 @@ export default function NotFound() {
           <p className="font-dm-sans text-secondary-ink mb-6">
             This page does not exist. Search for your county to check drought conditions and FSA program status.
           </p>
-          <Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-semibold text-cream hover:bg-forest-green/90 transition-colors">
+          <Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-cream hover:bg-forest-green/90 transition-colors">
             Search counties
           </Link>
         </div>

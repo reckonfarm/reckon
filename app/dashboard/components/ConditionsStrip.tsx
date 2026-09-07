@@ -108,7 +108,7 @@ export default function ConditionsStrip({
         </>
       </span>
 
-      <span className="inline-flex items-center gap-2 font-dm-sans text-sm text-forest-green">
+      <span className="inline-flex items-center gap-2 font-dm-sans text-[16px] text-forest-green">
         <span className="text-[14px] text-secondary-ink">Weather</span>
         <TapStatus />
       </span>

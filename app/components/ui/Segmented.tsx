@@ -98,7 +98,7 @@ export function Segmented<T extends string>({
             onKeyDown={e => onKeyDown(e, i)}
             className={[
               'relative z-10 flex-1 basis-0 min-h-[48px] inline-flex items-center justify-center rounded-lg px-3',
-              'font-dm-sans text-sm whitespace-nowrap transition-colors',
+              'font-dm-sans text-[16px] whitespace-nowrap transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
               selected ? 'font-semibold text-accent' : 'font-medium text-brand hover:text-brand',
             ].join(' ')}

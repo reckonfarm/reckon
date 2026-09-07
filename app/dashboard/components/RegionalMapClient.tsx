@@ -833,7 +833,7 @@ export default function RegionalMapClient({ center, countyLabel, fips, runtime =
               type="button"
               onClick={() => setTab(id)}
               aria-pressed={tab === id}
-              className={`rounded-md px-3 py-1.5 font-dm-sans text-sm font-medium transition-colors ${
+              className={`rounded-md px-3 py-1.5 font-dm-sans text-[16px] font-medium transition-colors ${
                 tab === id ? 'bg-forest-green text-cream' : 'text-secondary-ink hover:text-forest-green'
               }`}
             >

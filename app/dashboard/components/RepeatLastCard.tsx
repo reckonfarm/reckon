@@ -59,7 +59,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
         {last.bales} {last.bales === 1 ? 'bale' : 'bales'}
         {last.lotLabel && <span className="font-dm-sans text-[17px] font-medium text-ink"> · {last.lotLabel}</span>}
       </p>
-      <p className="mt-1 font-dm-sans text-[15px] text-ink">
+      <p className="mt-1 font-dm-sans text-[16px] text-ink">
         {last.placeName ? `${last.placeName} · ` : ''}last logged {last.whenLabel}
       </p>
 
@@ -86,7 +86,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
       {made && made.state === 'synced' && (
         <div className="mt-3"><SaveStatus itemId={madeId!} /></div>
       )}
-      {error && <p role="alert" className="mt-3 font-dm-sans text-[15px] font-medium text-warning">{error}</p>}
+      {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-medium text-warning">{error}</p>}
     </Card>
   )
 }

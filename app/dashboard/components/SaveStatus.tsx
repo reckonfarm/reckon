@@ -78,7 +78,7 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
         <Dot state={shown} />
         <div className="min-w-0 flex-1">
           <p className="text-[17px] font-semibold leading-snug">{STATE_LABEL[shown]}</p>
-          <p className="mt-0.5 text-[15px] leading-snug opacity-80">
+          <p className="mt-0.5 text-[16px] leading-snug opacity-80">
             {item.label}
             {shown === 'queued' && item.lastError ? ` · ${item.lastError}` : ''}
             {shown === 'failed' && item.lastError ? ` · ${item.lastError}` : ''}
@@ -89,25 +89,25 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
           <button
             type="button"
             onClick={() => { cancel(held.id) }}
-            className="min-h-[48px] shrink-0 rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[15px] font-semibold text-forest-green hover:bg-forest-green/5"
+            className="min-h-[48px] shrink-0 rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5"
           >
             Undo · {secondsLeft}s
           </button>
         )}
         {shown === 'failed' && (
           <div className="flex shrink-0 flex-col gap-1">
-            <button type="button" onClick={() => retry(item.id)} className="min-h-[48px] rounded-lg bg-forest-green px-4 font-dm-sans text-[15px] font-semibold text-white hover:bg-forest-green/90">Try again</button>
+            <button type="button" onClick={() => retry(item.id)} className="min-h-[48px] rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-white hover:bg-forest-green/90">Try again</button>
             <button type="button" onClick={() => discard(item.id)} className="px-2 font-dm-sans text-[14px] font-semibold text-red-900/70 hover:text-red-900">Discard</button>
           </div>
         )}
         {shown === 'queued' && !held && (
-          <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[15px] font-semibold text-amber-900 hover:bg-amber-100">Sync now</button>
+          <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[16px] font-semibold text-amber-900 hover:bg-amber-100">Sync now</button>
         )}
       </div>
       {shown === 'synced' && item.consequence && item.consequence.lines.length > 0 && (
         <ul className="mt-3 space-y-1 border-t border-forest-green/10 pt-3">
           {item.consequence.lines.map((l, i) => (
-            <li key={i} className={i === 0 ? 'text-[17px] font-semibold text-forest-green' : 'text-[15px] text-ink'}>{l}</li>
+            <li key={i} className={i === 0 ? 'text-[17px] font-semibold text-forest-green' : 'text-[16px] text-ink'}>{l}</li>
           ))}
         </ul>
       )}

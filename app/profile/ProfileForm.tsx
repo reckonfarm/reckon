@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { flagEnabled } from '@/lib/flags'
 
 const INPUT_CLS =
-  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
+  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-[16px] font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
 
 interface Profile {
   id:                  string
@@ -111,7 +111,7 @@ export default function ProfileForm() {
 
   if (loadError) {
     return (
-      <p className="mt-8 rounded-xl border border-rust/20 bg-rust/5 px-4 py-3 text-sm font-dm-sans text-rust">
+      <p className="mt-8 rounded-xl border border-rust/20 bg-rust/5 px-4 py-3 text-[16px] font-dm-sans text-rust">
         {loadError}
       </p>
     )
@@ -124,7 +124,7 @@ export default function ProfileForm() {
         {/* Email — read-only */}
         <Field label="Email">
           <div className="flex items-center rounded-xl border border-forest-green/15 bg-cream px-4 py-2.5">
-            <span className="text-sm font-dm-sans text-secondary-ink">{email ?? '—'}</span>
+            <span className="text-[16px] font-dm-sans text-secondary-ink">{email ?? '—'}</span>
           </div>
           <p className="mt-1 text-[14px] font-dm-sans text-secondary-ink">Your sign-in email can&apos;t be changed here.</p>
         </Field>
@@ -211,7 +211,7 @@ export default function ProfileForm() {
               className="mt-0.5 h-4 w-4 accent-forest-green"
             />
             <span>
-              <span className="block text-sm font-medium font-dm-sans text-forest-green">
+              <span className="block text-[16px] font-medium font-dm-sans text-forest-green">
                 Email me when a buyer near me is looking for hay I have
               </span>
               <span className="mt-0.5 block text-[14px] font-dm-sans text-secondary-ink">
@@ -224,19 +224,19 @@ export default function ProfileForm() {
         )}
 
         {saveError && (
-          <p className="text-sm font-dm-sans text-rust">{saveError}</p>
+          <p className="text-[16px] font-dm-sans text-rust">{saveError}</p>
         )}
 
         <div className="flex items-center gap-3">
           <button
             onClick={save}
             disabled={saving}
-            className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+            className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving…' : 'Save profile'}
           </button>
           {saved && (
-            <span className="inline-flex items-center gap-1 font-dm-sans text-sm font-medium text-forest-green">
+            <span className="inline-flex items-center gap-1 font-dm-sans text-[16px] font-medium text-forest-green">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>

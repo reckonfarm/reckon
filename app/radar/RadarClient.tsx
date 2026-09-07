@@ -106,7 +106,7 @@ export default function RadarClient() {
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">
           Hay Radar
         </h1>
-        <p className="mt-1 text-sm text-secondary-ink font-dm-sans">
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">
           Saved hay searches. We email you the moment a new listing matches.
         </p>
 
@@ -118,22 +118,22 @@ export default function RadarClient() {
           ) : !authed ? (
             <div className="mt-8 rounded-xl border-2 border-dashed border-forest-green/20 p-8 text-center">
               <p className="font-fraunces text-xl text-forest-green mb-2">Let the hay come to you</p>
-              <p className="text-sm text-secondary-ink font-dm-sans mb-6">
+              <p className="text-[16px] text-secondary-ink font-dm-sans mb-6">
                 Save a search — hay type, state, price, distance — and Dryline emails you when a new
                 listing matches. Sign in to set up your radar.
               </p>
-              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-sm font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">
+              <a href="/signin" className="inline-block bg-forest-green text-cream font-dm-sans text-[16px] font-medium px-6 py-3 rounded-lg hover:bg-forest-green/90 transition-colors">
                 Sign in to get started
               </a>
             </div>
           ) : searches.length === 0 ? (
             <div className="rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
               <p className="font-fraunces text-base font-semibold text-forest-green">No saved searches yet</p>
-              <p className="mt-1 font-dm-sans text-sm text-secondary-ink max-w-md mx-auto">
+              <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink max-w-md mx-auto">
                 Hay Radar watches new listings for you. Set your filters on the Hay Network and tap
                 &ldquo;Save this search&rdquo; — we&apos;ll email you the moment matching hay is posted.
               </p>
-              <Link href="/hay" className="mt-4 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors">
+              <Link href="/hay" className="mt-4 inline-block rounded-lg bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors">
                 Browse the Hay Network →
               </Link>
             </div>
@@ -192,7 +192,7 @@ export default function RadarClient() {
                             <li key={m.listing_id} className="flex items-center justify-between gap-3">
                               <Link
                                 href={`/hay/${m.listing_id}`}
-                                className="font-dm-sans text-sm text-forest-green underline hover:text-secondary-ink truncate"
+                                className="font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink truncate"
                               >
                                 {m.hay_type ?? 'Hay'}{m.county_name ? ` — ${m.county_name}, ${m.state}` : ''}
                                 {m.listing_type !== 'donate' && m.price_per_ton != null ? ` · $${m.price_per_ton}/ton` : ''}

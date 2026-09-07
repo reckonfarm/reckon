@@ -209,7 +209,7 @@ export async function TodayJobs() {
                       )}
                     </p>
                   </div>
-                  <p className="shrink-0 font-dm-sans text-sm font-semibold tabular-nums text-forest-green">
+                  <p className="shrink-0 font-dm-sans text-[16px] font-semibold tabular-nums text-forest-green">
                     {fmtDuration(j.duration_s)}
                   </p>
                 </div>

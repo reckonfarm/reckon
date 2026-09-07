@@ -16,12 +16,14 @@ import type { HTMLAttributes, ReactNode } from 'react'
 //   5 = text-lg               (card / accordion / chart titles, compact headline)
 type Level = 1 | 2 | 3 | 4 | 5
 
+// Phase A5 — the roles from the token file. Only the page heading is serif; every
+// section and card title is DM Sans, so a card is not a headline.
 const SIZES: Record<Level, string> = {
-  1: 'text-3xl sm:text-4xl leading-tight',
-  2: 'text-3xl leading-tight',
-  3: 'text-2xl leading-snug',
-  4: 'text-xl leading-snug',
-  5: 'text-lg leading-snug',
+  1: 'type-page-heading',
+  2: 'type-section-heading',
+  3: 'type-section-heading',
+  4: 'font-dm-sans text-[18px] leading-6 font-semibold',
+  5: 'font-dm-sans text-[18px] leading-6 font-semibold',
 }
 
 export function Heading({
@@ -32,7 +34,7 @@ export function Heading({
 }: { level?: Level; className?: string; children: ReactNode } & HTMLAttributes<HTMLHeadingElement>) {
   const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5'
   return (
-    <Tag className={`font-fraunces font-semibold text-ink ${SIZES[level]} ${className}`} {...rest}>
+    <Tag className={`text-ink ${SIZES[level]} ${className}`} {...rest}>
       {children}
     </Tag>
   )

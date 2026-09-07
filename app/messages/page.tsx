@@ -45,7 +45,7 @@ interface ThreadMeta {
 }
 
 const INPUT_CLS =
-  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-sm font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
+  'w-full rounded-xl border border-forest-green/20 bg-white px-4 py-2.5 text-[16px] font-dm-sans text-forest-green placeholder-forest-green/40 focus:outline-none focus:ring-2 focus:ring-forest-green/30'
 
 function timeOf(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -202,14 +202,14 @@ function MessagesInner() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   if (authed === null) {
-    return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-sm text-secondary-ink font-dm-sans">Loading…</p></main></>
+    return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-[16px] text-secondary-ink font-dm-sans">Loading…</p></main></>
   }
   if (!authed) {
     return (
       <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 text-center">
         <p className="font-fraunces text-xl font-semibold text-forest-green">Your messages</p>
-        <p className="mt-2 text-sm text-secondary-ink font-dm-sans">Sign in to message buyers and sellers and make offers.</p>
-        <a href="/signin" className="mt-4 inline-block rounded-lg bg-forest-green px-6 py-3 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors">Sign in</a>
+        <p className="mt-2 text-[16px] text-secondary-ink font-dm-sans">Sign in to message buyers and sellers and make offers.</p>
+        <a href="/signin" className="mt-4 inline-block rounded-lg bg-forest-green px-6 py-3 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 transition-colors">Sign in</a>
       </main></>
     )
   }
@@ -219,10 +219,10 @@ function MessagesInner() {
     return (
       <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">Messages</h1>
-        <p className="mt-1 text-sm text-secondary-ink font-dm-sans">Private conversations and offers with buyers and sellers.</p>
+        <p className="mt-1 text-[16px] text-secondary-ink font-dm-sans">Private conversations and offers with buyers and sellers.</p>
         {threads.length === 0 ? (
           <div className="mt-6 rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
-            <p className="font-dm-sans text-sm text-secondary-ink">
+            <p className="font-dm-sans text-[16px] text-secondary-ink">
               No conversations yet. Open a listing on the{' '}
               <Link href="/hay" className="underline hover:text-forest-green">Hay Network</Link> and tap &ldquo;Message&rdquo; to start one.
             </p>
@@ -233,7 +233,7 @@ function MessagesInner() {
               <li key={t.id}>
                 <button onClick={() => openThread(t.id)} className="w-full rounded-xl border border-forest-green/10 bg-white px-4 py-3 text-left hover:bg-cream/50 transition-colors">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-dm-sans text-sm font-semibold text-forest-green truncate">
+                    <span className="font-dm-sans text-[16px] font-semibold text-forest-green truncate">
                       {t.counterparty_name ?? 'Dryline member'}
                       <span className="ml-2 font-normal text-secondary-ink">
                         {t.listing_hay_type ?? 'Hay'}{t.listing_county ? ` · ${t.listing_county}` : ''}
@@ -258,7 +258,7 @@ function MessagesInner() {
   // Conversation view
   return (
     <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-      <button onClick={backToList} className="mb-4 inline-flex items-center gap-1 text-sm font-dm-sans text-secondary-ink hover:text-forest-green transition-colors">
+      <button onClick={backToList} className="mb-4 inline-flex items-center gap-1 text-[16px] font-dm-sans text-secondary-ink hover:text-forest-green transition-colors">
         ← All messages
       </button>
 
@@ -282,15 +282,15 @@ function MessagesInner() {
       {/* Status banners */}
       {isClosed && (
         <div className="mb-3 rounded-xl border border-forest-green/15 bg-forest-green/5 px-4 py-3">
-          <p className="font-dm-sans text-sm font-medium text-forest-green">Deal closed.</p>
-          <Link href={`/hay/${meta?.listing_id}`} className="mt-1 inline-block font-dm-sans text-sm text-forest-green underline hover:text-secondary-ink">
+          <p className="font-dm-sans text-[16px] font-medium text-forest-green">Deal closed.</p>
+          <Link href={`/hay/${meta?.listing_id}`} className="mt-1 inline-block font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
             Leave a review →
           </Link>
         </div>
       )}
       {isDeclined && (
         <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-          <p className="font-dm-sans text-sm text-gray-600">This listing was sold to another buyer.</p>
+          <p className="font-dm-sans text-[16px] text-gray-600">This listing was sold to another buyer.</p>
         </div>
       )}
       {meta && !isClosed && !isDeclined && (meta.closed_status === 'buyer_marked' || meta.closed_status === 'seller_marked') && (
@@ -306,9 +306,9 @@ function MessagesInner() {
       {/* Message stream */}
       <div ref={streamRef} className="mb-4 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-forest-green/10 bg-white px-4 py-4">
         {loadingThread && messages.length === 0 ? (
-          <p className="text-sm text-secondary-ink font-dm-sans">Loading conversation…</p>
+          <p className="text-[16px] text-secondary-ink font-dm-sans">Loading conversation…</p>
         ) : messages.length === 0 ? (
-          <p className="text-sm text-secondary-ink font-dm-sans">No messages yet — say hello.</p>
+          <p className="text-[16px] text-secondary-ink font-dm-sans">No messages yet — say hello.</p>
         ) : messages.map(m => {
           const mine = m.sender_user_id === myUserId
           if (m.message_type === 'system') {
@@ -322,7 +322,7 @@ function MessagesInner() {
                   <p className="font-dm-sans text-[14px] font-semibold uppercase tracking-wide text-rust">Offer</p>
                   <p className="mt-0.5 font-fraunces text-lg font-semibold text-forest-green">
                     {m.offer_price_per_ton != null ? `$${m.offer_price_per_ton}/ton` : 'Price open'}
-                    {m.offer_tonnage != null && <span className="font-dm-sans text-sm font-normal text-secondary-ink"> · {m.offer_tonnage} tons</span>}
+                    {m.offer_tonnage != null && <span className="font-dm-sans text-[16px] font-normal text-secondary-ink"> · {m.offer_tonnage} tons</span>}
                   </p>
                   {m.offer_status && m.offer_status !== 'pending' && (
                     <p className="mt-1 font-dm-sans text-[14px] font-medium text-secondary-ink capitalize">{m.offer_status}</p>
@@ -361,7 +361,7 @@ function MessagesInner() {
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] rounded-xl px-4 py-2 ${mine ? 'bg-forest-green text-cream' : 'bg-forest-green/8 text-forest-green'}`}>
-                <p className="font-dm-sans text-sm whitespace-pre-wrap">{m.body}</p>
+                <p className="font-dm-sans text-[16px] whitespace-pre-wrap">{m.body}</p>
                 <p className={`mt-0.5 font-dm-sans text-[14px] ${mine ? 'text-cream' : 'text-secondary-ink'}`}>{timeOf(m.created_at)}</p>
               </div>
             </div>
@@ -369,7 +369,7 @@ function MessagesInner() {
         })}
       </div>
 
-      {error && <p className="mb-2 font-dm-sans text-sm text-rust">{error}</p>}
+      {error && <p className="mb-2 font-dm-sans text-[16px] text-rust">{error}</p>}
 
       {/* Composer */}
       {canInteract ? (
@@ -383,11 +383,11 @@ function MessagesInner() {
               </div>
               <div className="flex gap-2">
                 <button onClick={sendOffer} disabled={sending}
-                  className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
+                  className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
                   {sending ? 'Sending…' : 'Send offer'}
                 </button>
                 <button onClick={() => { setShowOffer(false); setOfferPrice(''); setOfferTons('') }}
-                  className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-sm font-medium text-forest-green hover:bg-cream">Cancel</button>
+                  className="rounded-lg border border-forest-green/20 px-4 py-2 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-cream">Cancel</button>
               </div>
             </div>
           ) : (
@@ -397,7 +397,7 @@ function MessagesInner() {
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText() } }} />
               <button onClick={() => setShowOffer(true)} className="shrink-0 rounded-lg border border-forest-green/20 px-3 py-2.5 font-dm-sans text-[14px] font-medium text-forest-green hover:bg-cream">$ Offer</button>
               <button onClick={sendText} disabled={sending || !text.trim()}
-                className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
+                className="shrink-0 rounded-lg bg-forest-green px-4 py-2.5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50">
                 {sending ? '…' : 'Send'}
               </button>
             </div>

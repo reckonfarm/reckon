@@ -188,7 +188,7 @@ export default function HerdForm() {
         </p>
 
         <div className="mt-3">
-          <p className="mb-1.5 font-dm-sans text-sm font-medium text-ink">Class</p>
+          <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink">Class</p>
           <div role="group" aria-label="Class" className="flex flex-wrap gap-2">
             {LOT_CLASSES.map(c => {
               const on = dClass === c
@@ -199,7 +199,7 @@ export default function HerdForm() {
                   aria-pressed={on}
                   onClick={() => setDClass(c)}
                   className={[
-                    'min-h-[48px] rounded-lg border px-3 font-dm-sans text-sm transition-colors',
+                    'min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
                     on ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent hover:bg-accent/5',
                   ].join(' ')}
@@ -252,7 +252,7 @@ export default function HerdForm() {
           <button
             type="button"
             onClick={() => setShowDetail(s => !s)}
-            className="font-dm-sans text-sm font-medium text-brand hover:text-accent"
+            className="font-dm-sans text-[16px] font-medium text-brand hover:text-accent"
           >
             {showDetail ? 'Hide details' : 'Sharpen details (optional)'}
           </button>
@@ -267,7 +267,7 @@ export default function HerdForm() {
 
               {dClass !== '' && isFeeder(dClass) && (
                 <div>
-                  <p className="mb-1.5 font-dm-sans text-sm font-medium text-ink">Weaned</p>
+                  <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink">Weaned</p>
                   <Segmented<'weaned' | 'unweaned'>
                     ariaLabel="Weaned"
                     value={dWeaned ? 'weaned' : 'unweaned'}
@@ -278,7 +278,7 @@ export default function HerdForm() {
               )}
 
               <div>
-                <p className="mb-1.5 font-dm-sans text-sm font-medium text-ink">Sale windows</p>
+                <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink">Sale windows</p>
                 <p className="mb-2 font-dm-sans text-[14px] text-secondary-ink">
                   When you expect to sell. Leave empty if you&rsquo;re not sure yet.
                 </p>
@@ -311,13 +311,13 @@ export default function HerdForm() {
           )}
         </div>
 
-        {errorMsg && <p className="mt-3 font-dm-sans text-sm font-medium text-warning">{errorMsg}</p>}
+        {errorMsg && <p className="mt-3 font-dm-sans text-[16px] font-medium text-warning">{errorMsg}</p>}
 
         <div className="mt-4 flex items-center gap-4">
           <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'}>
             {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add lot' : 'Save changes'}
           </Button>
-          <button type="button" onClick={cancel} className="font-dm-sans text-sm text-secondary-ink hover:text-ink">
+          <button type="button" onClick={cancel} className="font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
             Cancel
           </button>
         </div>
@@ -331,7 +331,7 @@ export default function HerdForm() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-dm-sans text-base font-semibold text-ink">{lotLabel(lot)}</p>
-            <p className="mt-0.5 font-dm-sans text-sm text-ink">
+            <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
               {/* A named lot keeps its class in view on the detail line. */}
               {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
               <span className="tabular-price">{lot.head_count}</span> head ·{' '}
@@ -344,14 +344,14 @@ export default function HerdForm() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-4">
-            <button type="button" onClick={() => openEdit(lot)} className="font-dm-sans text-sm font-medium text-accent hover:text-brand">
+            <button type="button" onClick={() => openEdit(lot)} className="font-dm-sans text-[16px] font-medium text-accent hover:text-brand">
               Edit
             </button>
             <button
               type="button"
               onClick={() => removeLot(lot.id)}
               disabled={status === 'saving'}
-              className="font-dm-sans text-sm text-secondary-ink hover:text-warning disabled:opacity-50"
+              className="font-dm-sans text-[16px] text-secondary-ink hover:text-warning disabled:opacity-50"
             >
               Remove
             </button>
@@ -374,7 +374,7 @@ export default function HerdForm() {
     return (
       <div className="mt-8">
         <Card shadow="none" className="border-warning/30 bg-warning/[0.06] px-4 py-3">
-          <p className="font-dm-sans text-sm text-warning">{loadError}</p>
+          <p className="font-dm-sans text-[16px] text-warning">{loadError}</p>
         </Card>
       </div>
     )
@@ -383,13 +383,13 @@ export default function HerdForm() {
   return (
     <div className="mt-8 space-y-4">
       {status === 'saved' && (
-        <p className="font-dm-sans text-sm font-medium text-up">Saved ✓</p>
+        <p className="font-dm-sans text-[16px] font-medium text-up">Saved ✓</p>
       )}
 
       {lots.length === 0 && editing !== 'new' && (
         <Card shadow="soft" className="px-6 py-10 text-center">
           <p className="font-fraunces text-xl font-semibold text-ink">Add your first lot</p>
-          <p className="mx-auto mt-2 max-w-sm font-dm-sans text-sm text-secondary-ink">
+          <p className="mx-auto mt-2 max-w-sm font-dm-sans text-[16px] text-secondary-ink">
             Tell us what you&rsquo;re running — a class, a head count, an average weight. A few
             seconds a lot, and you can sharpen the details later.
           </p>

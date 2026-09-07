@@ -99,11 +99,11 @@ export default async function FrontDoor() {
                   >
                     Join the winter pilot
                   </Link>
-                  <p className="mt-3 font-dm-sans text-[15px] leading-relaxed text-ink">
+                  <p className="mt-3 font-dm-sans text-[16px] leading-relaxed text-ink">
                     Billing isn&rsquo;t live yet, so the honest ask is a pilot, not a purchase. Pricing will be per ranch, not per head.
                   </p>
                 </div>
-                <ul className="space-y-3 font-dm-sans text-[15px] leading-relaxed text-forest-green sm:max-w-xs">
+                <ul className="space-y-3 font-dm-sans text-[16px] leading-relaxed text-forest-green sm:max-w-xs">
                   <li><span className="font-semibold">Who it&rsquo;s for.</span> Cow-calf and hay operations with more than one person doing chores.</li>
                   <li><span className="font-semibold">What works today, no hardware.</span> Feed, hay, rain, cattle moved and worked — logged in two taps, saved on the phone first, synced when there&rsquo;s signal. Repeat yesterday&rsquo;s feeding. See what changed since you last checked. Every place keeps its own memory.</li>
                   <li><span className="font-semibold">What isn&rsquo;t built yet.</span> Hay accounting beyond bales fed and on hand, and billing.</li>
@@ -114,7 +114,7 @@ export default async function FrontDoor() {
 
           {/* ── 6. The county tools keep a door; Markets keeps an honest module ── */}
           <section className="mt-10 text-center">
-            <p className="font-dm-sans text-[15px] text-ink">
+            <p className="font-dm-sans text-[16px] text-ink">
               <Link href="/dashboard" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2">Check county drought, programs, and markets</Link>
               {' '}— free, no account needed.
             </p>

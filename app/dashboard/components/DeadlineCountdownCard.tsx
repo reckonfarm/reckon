@@ -106,7 +106,7 @@ function Hero({ d }: { d: UpcomingDeadline }) {
       <p className="font-fraunces text-3xl font-semibold leading-none tracking-tight tabular-nums text-forest-green sm:text-4xl">
         {countdownText(d.daysUntil)}
       </p>
-      <p className="mt-2 font-dm-sans text-sm text-secondary-ink">
+      <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">
         <DeadlineTitle d={d} lead />
         <span className="text-secondary-ink"> · {fmtDate(d.deadline_date)}</span>
       </p>
@@ -136,7 +136,7 @@ export default function DeadlineCountdownCard({
       </div>
 
       {result.status === 'data_unavailable' && (
-        <p className="text-sm text-secondary-ink font-dm-sans">
+        <p className="text-[16px] text-secondary-ink font-dm-sans">
           Deadline data temporarily unavailable — check back shortly.
         </p>
       )}
@@ -157,7 +157,7 @@ export default function DeadlineCountdownCard({
           {result.deadlines.length > 1 && (
             <ul className="mt-4 space-y-2 border-t border-forest-green/[0.08] pt-3">
               {result.deadlines.slice(1).map((d, i) => (
-                <li key={i} className="flex items-baseline justify-between gap-3 font-dm-sans text-sm">
+                <li key={i} className="flex items-baseline justify-between gap-3 font-dm-sans text-[16px]">
                   <span className="text-secondary-ink">
                     <DeadlineTitle d={d} lead={false} />
                   </span>

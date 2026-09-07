@@ -9,6 +9,7 @@
 //   • the history card renders with the carried-forward toggle and date ticks
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
+//   • Phase A5: unit in the heading and beside every price; head count beneath at meta; no essay
 //   • Phase A4: three radii, no shadows in main, 48 px links/buttons, 52 px LFP disclosure with Show/Hide, header targets
 //   • Phase A3: a real action fully inside the first viewport at 390×844 and 1440×900; caption above the image
 //   • Phase A2: one left edge at 390 and 1440; no FIPS in the heading; resting control + chooser with Cancel
@@ -111,8 +112,11 @@ async function main() {
 
     record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
-    record('A3: match labels present', /Close match|Broader reference|Limited evidence/.test(body), (body.match(/Close match|Broader reference|Limited evidence/) ?? [''])[0])
-    record('A3: a thin reference says so — one price or a real range', !/Limited evidence/.test(body) || /All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt, not one price/.test(body), (body.match(/All [\d,]+ head reported at \$[\d.]+\/cwt|reported range \$\d+–\$\d+\/cwt[^.]*/) ?? [''])[0])
+    record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
+    record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
+    // Phase A5 — units live with the number or in the heading; the essay is gone.
+    record('A5: the auction heading carries the unit', /Auction prices · \$\/cwt/.test(body))
+    record('A5: no repeated disclaimer block under the auction rows', !/Close match = same class/.test(body) && !/head-weighted within each 100-lb band/.test(body))
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])

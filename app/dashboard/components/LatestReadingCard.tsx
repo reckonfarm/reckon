@@ -72,7 +72,7 @@ function Hero({ latest }: { latest: Reading }) {
     <div className="flex items-center gap-3">
       {cat !== null ? (
         <span
-          className="inline-flex h-9 w-12 flex-shrink-0 items-center justify-center rounded-md text-sm font-bold font-dm-sans"
+          className="inline-flex h-9 w-12 flex-shrink-0 items-center justify-center rounded-md text-[16px] font-bold font-dm-sans"
           style={{ backgroundColor: USDM_HEX[cat], color: '#000' }}
           aria-label={`Current drought category D${cat}`}
         >
@@ -87,7 +87,7 @@ function Hero({ latest }: { latest: Reading }) {
         <p className="font-fraunces text-lg font-semibold leading-tight text-forest-green">
           {cat !== null ? `D${cat} · ${CAT_NAME[cat]}` : 'No drought'}
         </p>
-        <p className="font-dm-sans text-sm text-secondary-ink">{coverage}</p>
+        <p className="font-dm-sans text-[16px] text-secondary-ink">{coverage}</p>
       </div>
     </div>
   )
