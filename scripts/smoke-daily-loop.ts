@@ -54,6 +54,9 @@ const results: { check: string; pass: boolean; detail: string; skip?: boolean }[
 const record = (check: string, pass: boolean, detail = '') => { results.push({ check, pass, detail }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${check}${detail ? ` — ${detail}` : ''}`) }
 const skip = (check: string, detail: string) => { results.push({ check, pass: true, detail, skip: true }); console.log(`SKIP  ${check} — ${detail}`) }
 
+// The ranch day, not the UTC day: between 00:00 and 06:00 UTC the two differ, and a count
+// stamped 'tomorrow' would make today's feeding read as before the count (seen 2026-09-07 05:10 UTC).
+const ranchDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
 let userId = ''
 let userIdB = ''
 let ranchId = ''
@@ -91,7 +94,7 @@ async function seed() {
   // A counted baseline of 200 bales as of today, so the 2C answer can say what is left.
   const { error: bErr } = await admin.from('events').insert({
     user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_inventory', ts: new Date().toISOString(),
-    payload: { source: 'manual', schema_version: 1, place_id: null, bales: 200, as_of: new Date().toISOString().slice(0, 10) }, schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, place_id: null, bales: 200, as_of: ranchDay() }, schema_version: 1,
   })
   if (bErr) throw new Error(`baseline: ${bErr.message}`)
   // Member B on the same ranch (2E: the second person).
