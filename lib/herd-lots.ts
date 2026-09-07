@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveRanchId } from './ranch-membership'
 import { normalizeLot, type Lot } from './herd'
+import { createServiceClient } from './supabase'
 
 // ─── The ranch's cattle lots — real rows (Block 4B, migration 051) ─────────────
 // One row per lot on herd_lots, membership-gated (043 shape). Two members
@@ -11,12 +12,12 @@ import { normalizeLot, type Lot } from './herd'
 // name forever. Every read and write here runs on the USER-SCOPED client — the
 // policy is the gate; user ids are recorded as authorship, never as grants.
 
-const LOT_COLUMNS = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at'
+const LOT_COLUMNS = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at, updated_by'
 
 interface LotRow {
   id: string; ranch_id: string; class: Lot['class']; name: string | null; head_count: number; avg_weight: number | string
   weight_unit: Lot['weight_unit']; frame: Lot['frame']; weaned: boolean; sale_windows: Lot['sale_windows'] | null
-  created_at: string; updated_at: string; retired_at: string | null
+  created_at: string; updated_at: string; retired_at: string | null; updated_by?: string | null
 }
 
 function rowToLot(r: LotRow): Lot {
@@ -53,7 +54,7 @@ export async function getRanchLotsIncludingRetired(supabase: SupabaseClient, use
 
 export type LotWrite =
   | { ok: true; lot: Lot }
-  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string }
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; changed_by?: string | null; changed_at?: string | null }
 
 // Create — the row is the ranch's; created_by / updated_by record who.
 export async function createLot(supabase: SupabaseClient, raw: unknown): Promise<LotWrite> {
@@ -89,8 +90,14 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   if (data && data.length === 1) return { ok: true, lot: rowToLot(data[0] as LotRow) }
   // Nothing moved: distinguish "gone" from "changed under you".
   const { data: current } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('id', id).maybeSingle()
-  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: 'That lot is no longer on the ranch.' }
-  return { ok: false, status: 409, error: 'Someone else changed this lot since you opened it. Reload to see their version, then make your change.' }
+  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: 'That lot was retired while you had it open. Nothing of yours was written; it is off the live list now.' }
+  // Say WHO and WHEN, and what was kept: the row was not written, the other person's
+  // version is what the form now shows, and the editor's entries are still in the form.
+  const row = current as LotRow
+  const { data: changer } = row.updated_by ? await createServiceClient().from('profiles').select('display_name, email').eq('id', row.updated_by).maybeSingle() : { data: null }
+  const name = (changer as { display_name?: string | null; email?: string | null } | null)?.display_name?.trim() || (changer as { email?: string | null } | null)?.email || 'Someone else on the ranch'
+  const at = new Date(row.updated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })
+  return { ok: false, status: 409, changed_by: name, changed_at: row.updated_at, error: `${name} changed this lot at ${at}, while you had it open. Your change was not saved over theirs — their version is on the screen now, and your entries are still in the form. Check theirs, then save yours again.` }
 }
 
 // Retire — the lot leaves the pickers and the estimate; its name still resolves.

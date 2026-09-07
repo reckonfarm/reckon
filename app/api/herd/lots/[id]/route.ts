@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { expected_updated_at, ...fields } = body as Record<string, unknown>
   const expected = typeof expected_updated_at === 'string' && expected_updated_at ? expected_updated_at : null
   const r = await updateLot(s.supabase, id, fields, expected)
-  return r.ok ? NextResponse.json({ lot: r.lot }) : NextResponse.json({ error: r.error, code: r.status === 409 ? 'stale' : undefined }, { status: r.status })
+  return r.ok ? NextResponse.json({ lot: r.lot }) : NextResponse.json({ error: r.error, code: r.status === 409 ? 'stale' : undefined, changed_by: r.changed_by ?? undefined, changed_at: r.changed_at ?? undefined }, { status: r.status })
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
