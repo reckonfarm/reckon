@@ -8,6 +8,7 @@ import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from '@/li
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import LastSeenPing from './LastSeenPing'
+import { notSuperseded } from '@/lib/ledger-effective'
 
 // ─── Since you last checked (Block 2E) ────────────────────────────────────────
 // What the OTHER people (and the alert service) put in the ranch ledger since
@@ -23,7 +24,7 @@ const CAP = 12
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-interface Row { id: string; user_id: string; type: string; ts: string; ingested_at: string; payload: Record<string, unknown> }
+interface Row { id: string; user_id: string; type: string; ts: string; ingested_at: string; payload: Record<string, unknown>; supersedes_event_id: string | null; voided_at: string | null }
 
 function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: unknown) => string | null): string {
   const p = r.payload
@@ -71,10 +72,13 @@ export default async function SinceYouWereHere() {
   const lastSeen = (member as { last_seen_at?: string | null }).last_seen_at ?? null
   const since = lastSeen ?? isoHoursAgo(24)
 
-  const { data } = await supabase
+  // Block 5B: a correction or a void recorded since the visit IS news (its
+  // ingested_at is now, whatever day the work was); the original it replaced
+  // is not — its replacement speaks for it.
+  const { data } = await notSuperseded(supabase
     .from('events')
-    .select('id, user_id, type, ts, ingested_at, payload')
-    .in('type', [...MANUAL_EVENT_TYPES, 'alert'])
+    .select('id, user_id, type, ts, ingested_at, payload, supersedes_event_id, voided_at')
+    .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
     .gt('ingested_at', since)
     .neq('user_id', user.id)
     .order('ingested_at', { ascending: false })
@@ -114,7 +118,7 @@ export default async function SinceYouWereHere() {
             <li key={r.id}>
               <Link href={href} className="flex min-h-[56px] items-center justify-between gap-3 py-2" data-audit="since-row">
                 <span className="font-dm-sans text-[17px] leading-snug text-forest-green">
-                  <span className="font-semibold">{author}</span> {what(r, placeName, lotName)}
+                  <span className="font-semibold">{author}</span> {r.voided_at ? 'voided: ' : r.supersedes_event_id ? 'corrected: ' : ''}{what(r, placeName, lotName)}
                 </span>
                 <span className="shrink-0 font-dm-sans text-[16px] tabular-nums text-ink">{when(r.ts)}</span>
               </Link>

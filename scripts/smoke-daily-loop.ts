@@ -463,6 +463,48 @@ async function main() {
     const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
+    // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
+    // Original, current value, editor, reason, and the resulting balance all
+    // visible. Balance read from the receipt the save lands on and from the
+    // status strip before it — the same ledger read (lib/hay/queries, through
+    // the chain). Skips without migration 054.
+    {
+      const probe = await admin.from('events').select('superseded_by').limit(1)
+      if (probe.error) skip('5B: correct 6 → 4 on the phone', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
+      else {
+        await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(1_000)
+        await logFeed(page, 6)
+        const seq6 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
+        // The answer lines follow the sync by a beat; read the strip until they are there (≤ 8 s).
+        let strip6 = ''
+        for (let i = 0; i < 32 && !/bales? on hand/.test(strip6); i++) { strip6 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip6)) await page.waitForTimeout(250) }
+        const onHand6 = parseInt((strip6.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
+        const { data: six } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '6').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+        record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Synced to ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
+        if (six) {
+          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          await page.locator('[data-audit="correct-entry"]').click()
+          await page.getByLabel('Bales', { exact: true }).fill('4')
+          await page.locator('[data-audit="correction-reason"]').fill('was 4, typed 6')
+          await page.locator('[data-audit="correction-save"]').click()
+          await page.waitForURL(/\/activity\/[0-9a-f-]{36}\?saved=1/, { timeout: 30_000 }).catch(() => {})
+          await page.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
+          const d = async (k: string) => (await page.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+          const line = await d('line'), who = await d('who'), corrects = await d('corrects'), reason = await d('reason'), receipt = await d('consequence')
+          const onHand4 = parseInt((receipt.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
+          record('5B: the correction lands on its own entry — current value, editor, what it corrects, reason', /Fed 4 bales/.test(line) && /Smoke A/.test(who) && /owner/.test(who) && /Fed 6 bales/.test(corrects) && /was 4, typed 6/.test(reason), `${line} · ${who} · corrects ${corrects} · ${reason}`)
+          record('5B: the resulting balance is on the receipt and moved by exactly the 2 bales corrected', Number.isFinite(onHand4) && onHand4 === onHand6 + 2, `on hand ${onHand6} → ${onHand4}`)
+          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          const replaced = (await page.locator('[data-audit="event-replaced"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+          const struck = await page.locator('h1[data-audit="event-line"].line-through').count()
+          record('5B: the original stays readable, struck through, and names the current value, who changed it, and why', /Current: Fed 4 bales/.test(replaced) && /Changed by Smoke A/.test(replaced) && /was 4, typed 6/.test(replaced) && struck === 1, replaced.slice(0, 160))
+          const again = await page.locator('[data-audit="correct-entry"]').count()
+          record('5B: a corrected entry offers no second correction (correct the current entry instead)', again === 0, `${again} correct button(s) on the original`)
+        }
+      }
+    }
+
     // ── no page errors / 5xx during the run is not tracked here; the invariant smoke covers it ──
   } finally {
     await browser.close()

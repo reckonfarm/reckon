@@ -463,6 +463,87 @@ async function activityChecks() {
   }
 }
 
+// ─── Block 5B — corrections through the API, and the balance through the chain ──
+// The rule the order calls out (and a rancher catches in December): a correction
+// dated BEFORE a physical count must not shift that count's consumption; one
+// dated AFTER it must. Ranch A gets a counted baseline (Sep 1, 40 bales), one
+// feeding before it (Aug 30, 6) and one after (Sep 3, 6) — Kiehl's 1-before /
+// 8-after and Test Ranch's 21-before / 3-after are the same shape. The balance
+// is read the way the phone reads it: the consequence line the correct / void
+// routes return, from lib/hay/queries through the effective filter.
+// Needs migration 054 on BASE's database; skips (never fails) without it.
+async function correctionChecks() {
+  const a = fx.A!
+  const probe = await admin.from('events').select('superseded_by').limit(1)
+  if (probe.error) { record('(skipped)', 'Block 5B correction checks — migration 054 not applied', true, probe.error.message.slice(0, 70)); return }
+  const A = await userClient('A'), B = await userClient('B')
+  const seed = async (type: string, ts: string, payload: Record<string, unknown>) => {
+    const { data, error } = await admin.from('events').insert({ user_id: a.userId, ranch_id: a.ranchId, type, ts, payload: { source: 'manual', schema_version: 1, place_id: null, ...payload }, schema_version: 1 }).select('id').single()
+    if (error) throw new Error(`seed ${type}: ${error.message}`)
+    a.eventIds.push(data.id as string)
+    return data.id as string
+  }
+  await seed('hay_inventory', '2026-09-01T18:00:00Z', { bales: 40, as_of: '2026-09-01' })
+  const before = await seed('hay_fed', '2026-08-30T18:00:00Z', { bales: 6, herd_lot_id: null })
+  const after = await seed('hay_fed', '2026-09-03T18:00:00Z', { bales: 6, herd_lot_id: null })
+  const onHandOf = (j: Record<string, unknown>) => {
+    const lines = ((j.consequence as { lines?: string[] } | undefined)?.lines ?? [])
+    const m = lines.map(l => l.match(/^(-?[\d,]+) bales? on hand \(from your count of ([\d,]+) on /)).find(Boolean)
+    return m ? { onHand: parseInt(m[1].replace(/,/g, ''), 10), counted: parseInt(m[2].replace(/,/g, ''), 10), lines } : { onHand: NaN, counted: NaN, lines }
+  }
+  const ev = (j: Record<string, unknown>) => (j.event ?? {}) as Record<string, unknown>
+
+  // 1) Correct the feeding BEFORE the count 6 → 4: on hand stays 34 (40 − the 6 after).
+  const c1 = await api(A, `/api/activity/${before}/correct`, { bales: 4, reason: 'was 4, typed 6' })
+  const b1 = onHandOf(c1.json)
+  record('user A (owner)', 'correct a feeding BEFORE the count (6→4): balance does not shift pre-count consumption past the count (34)', c1.status === 201 && b1.onHand === 34 && b1.counted === 40, `${c1.status} · ${b1.lines.join(' | ') || (c1.json.error as string)}`)
+  {
+    const orig = await api(A, `/api/activity/${before}`, undefined, 'GET')
+    const head = await api(A, `/api/activity/${String(ev(c1.json).id)}`, undefined, 'GET')
+    record('user A (owner)', 'original → superseded_by = correction; correction → supersedes = original; both readable', orig.status === 200 && head.status === 200 && ev(orig.json).superseded_by === ev(c1.json).id && ev(head.json).supersedes_event_id === before, `${orig.status}/${head.status}`)
+  }
+  // 2) Correct the feeding AFTER the count 6 → 4: on hand adjusts 34 → 36.
+  const c2 = await api(A, `/api/activity/${after}/correct`, { bales: 4, reason: 'was 4' })
+  const b2 = onHandOf(c2.json)
+  record('user A (owner)', 'correct a feeding AFTER the count (6→4): balance adjusts 34 → 36', c2.status === 201 && b2.onHand === 36, `${c2.status} · ${b2.lines[1] ?? (c2.json.error as string)}`)
+  // 3) A second correction of the same original is refused; correct the current entry instead.
+  const again = await api(A, `/api/activity/${after}/correct`, { bales: 5, reason: 'again' })
+  record('user A (owner)', 'a correction never applies twice: correcting the superseded original → 409', again.status === 409, `${again.status} ${String(again.json.error ?? '')}`)
+  // 4) Wrong date: the after-count feeding (now 4 bales) really happened Aug 29 — before the count. On hand 36 → 40.
+  const head2 = String(ev(c2.json).id)
+  const c3 = await api(A, `/api/activity/${head2}/correct`, { ts: '2026-08-29T18:00:00Z', reason: 'wrong day' })
+  const b3 = onHandOf(c3.json)
+  record('user A (owner)', 'wrong date: re-dating the post-count feeding to before the count lifts it out of that count\'s consumption (36 → 40)', c3.status === 201 && b3.onHand === 40 && ev(c3.json).ts === '2026-08-29T18:00:00+00:00', `${c3.status} · on hand ${b3.onHand} · ts ${String(ev(c3.json).ts)}`)
+  // 5) Wrong lot and wrong place on the current entry, one at a time; the balance is unmoved (40).
+  const c4 = await api(A, `/api/activity/${String(ev(c3.json).id)}/correct`, { herd_lot_id: a.lotId, reason: 'wrong lot' })
+  record('user A (owner)', 'wrong lot: the correction carries the lot; balance unmoved', c4.status === 201 && (ev(c4.json).payload as Record<string, unknown>).herd_lot_id === a.lotId && onHandOf(c4.json).onHand === 40, `${c4.status} · lot ${String((ev(c4.json).payload as Record<string, unknown> | undefined)?.herd_lot_id)}`)
+  const c5 = await api(A, `/api/activity/${String(ev(c4.json).id)}/correct`, { place_id: a.placeId, reason: 'wrong place' })
+  record('user A (owner)', 'wrong place: the correction carries the place; balance unmoved', c5.status === 201 && (ev(c5.json).payload as Record<string, unknown>).place_id === a.placeId && onHandOf(c5.json).onHand === 40, `${c5.status} · place ${String((ev(c5.json).payload as Record<string, unknown> | undefined)?.place_id)}`)
+  // 6) Void: reverse the pre-count feeding's current entry (4 bales, Aug 30). Both stay; on hand still 40 (it was before the count).
+  const v1 = await api(A, `/api/activity/${String(ev(c1.json).id)}/void`, { reason: 'never happened' })
+  record('user A (owner)', 'void the pre-count entry: a reversal row with voided_at; balance unmoved (40)', v1.status === 201 && typeof ev(v1.json).voided_at === 'string' && ev(v1.json).supersedes_event_id === ev(c1.json).id && onHandOf(v1.json).onHand === 40, `${v1.status} · ${(onHandOf(v1.json).lines[0] ?? (v1.json.error as string))}`)
+  const vAgain = await api(A, `/api/activity/${String(ev(v1.json).id)}/correct`, { bales: 9, reason: 'x' })
+  record('user A (owner)', 'a void cannot be corrected → 409', vAgain.status === 409, `${vAgain.status}`)
+  // 7) A void of a feeding AFTER the count moves the balance: seed one more after-count feeding (5 bales) then void it.
+  const extra = await seed('hay_fed', '2026-09-04T18:00:00Z', { bales: 5, herd_lot_id: null })
+  const v2 = await api(A, `/api/activity/${extra}/void`, { reason: 'double-logged' })
+  record('user A (owner)', 'void a feeding AFTER the count: the reversal lifts it out of the balance (35 → 40)', v2.status === 201 && onHandOf(v2.json).onHand === 40, `${v2.status} · on hand ${onHandOf(v2.json).onHand}`)
+  // 8) The record still shows every row: original, corrections, voids — nothing deleted.
+  {
+    const { count } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', a.ranchId).eq('type', 'hay_fed')
+    record('user A (owner)', 'nothing deleted: every hay_fed row of the chain is still on the record', count === 10, `${count} hay_fed rows (2 seeds + 5 corrections + 2 voids + 1 extra)`)
+  }
+  // 9) Ranch B cannot touch A's chain: correcting A's event → 404 (invisible), voiding → 404.
+  const cross = await api(B, `/api/activity/${after}/correct`, { bales: 1, reason: 'not mine' })
+  const crossV = await api(B, `/api/activity/${String(ev(c5.json).id)}/void`, { reason: 'not mine' })
+  record('user B (owner)', 'cannot correct or void ranch A\'s entries → 404 / 404', cross.status === 404 && crossV.status === 404, `${cross.status} / ${crossV.status}`)
+  // 10) Idempotent on client id: the same correction id twice → 200 duplicate, one row.
+  const cid = randomUUID()
+  const first = await api(A, `/api/activity/${String(ev(c5.json).id)}/correct`, { id: cid, bales: 3, reason: 'retry test' })
+  const second = await api(A, `/api/activity/${String(ev(c5.json).id)}/correct`, { id: cid, bales: 3, reason: 'retry test' })
+  record('user A (owner)', 'a retried correction with the same client id lands once (201 then 200 duplicate)', first.status === 201 && second.status === 200 && second.json.duplicate === true && ev(second.json).id === cid, `${first.status} / ${second.status}`)
+}
+
 async function removedMemberChecks() {
   const me = fx.A!
   const { error } = await admin.from('ranch_members').delete().eq('ranch_id', me.ranchId).eq('user_id', me.userId)
@@ -543,6 +624,7 @@ async function main() {
     await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
     await lotsChecks()          // Block 4A — needs migration 050
     await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
+    await correctionChecks()    // Block 5B — needs migration 054 (skips without it)
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')

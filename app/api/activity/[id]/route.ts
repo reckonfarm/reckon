@@ -19,6 +19,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       id: e.row.id, type: e.row.type, actor: e.names.person(e.row.user_id), actor_id: e.row.user_id, actor_role: e.actorRole,
       line: e.line, quantity: e.quantity, place_id: e.placeId, lot_id: e.lotId,
       work_time: e.row.ts, recorded_at: e.row.ingested_at, synced: Boolean(e.row.ingested_at),
+      // Block 5B — the chain, both ways.
+      supersedes_event_id: e.row.supersedes_event_id ?? null, superseded_by: e.row.superseded_by ?? null, voided_at: e.row.voided_at ?? null, correction_reason: e.row.correction_reason ?? null,
+      current_id: e.head.id, can_correct: e.canCorrect,
     },
   })
 }

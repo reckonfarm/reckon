@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dayKey } from '@/lib/jobs/format'
+import { effective } from '@/lib/ledger-effective'
 
 // ─── Rain ledger — what the operator measured, by place ──────────────────────
 //
@@ -78,11 +79,11 @@ export async function getRainLedger(
   opts: { since?: string; now?: number } = {},
 ): Promise<RainLedger> {
   try {
-    let q = supabase
+    let q = effective(supabase   // Block 5B: through the correction chain
       .from('events')
       .select('id, ts, payload')
       .eq('type', 'rain')
-      .eq('payload->>source', 'manual')
+      .eq('payload->>source', 'manual'))
       .order('ts', { ascending: true })
     if (opts.since) q = q.gte('ts', opts.since)
     const { data, error } = await q

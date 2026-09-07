@@ -84,7 +84,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                       <li key={r.id}>
                         <Link href={`/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="activity-row">
                           <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink">
-                            <span className="font-semibold">{page.names.person(r.user_id)}</span> · {describeEvent(r, page.names)}
+                            <span className="font-semibold">{page.names.person(r.user_id)}</span> · {r.superseded_by ? <s className="decoration-2" data-audit="row-superseded">{describeEvent(r, page.names)}</s> : describeEvent(r, page.names)}
+                            {r.superseded_by && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink">corrected</span>}
+                            {r.supersedes_event_id && !r.voided_at && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink" data-audit="row-correction">correction</span>}
                           </span>
                           <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{fmtTime(r.ts)}</span>
                         </Link>

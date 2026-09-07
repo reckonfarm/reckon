@@ -3,6 +3,7 @@ import { fmtDay, fmtTime, todayKey, dayKey } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import RepeatLastCard, { type LastFeeding } from './RepeatLastCard'
+import { effective } from '@/lib/ledger-effective'
 
 // The most recent feeding the ranch logged by hand, resolved to words (lot
 // label, place name, when), handed to the client card. RLS-scoped read on
@@ -24,11 +25,11 @@ function whenLabel(iso: string): string {
 
 export default async function RepeatLastFeeding() {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data } = await effective(supabase   // Block 5B: the last feeding that STANDS
     .from('events')
     .select('id, ts, payload')
     .eq('type', 'hay_fed')
-    .eq('payload->>source', 'manual')
+    .eq('payload->>source', 'manual'))
     .order('ts', { ascending: false })
     .limit(1)
     .maybeSingle()
