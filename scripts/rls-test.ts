@@ -46,11 +46,13 @@ const PREFIX = 'RLS-TEST-'
 const USERS = {
   A: { email: 'rls-test-a@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
   B: { email: 'rls-test-b@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
+  // C: the invited person (Phase A2) — starts with NO ranch, joins A by invitation.
+  C: { email: 'rls-test-c@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
   // D: a second member of ranch A (Block 4A) — the hand who must see the ranch's lots.
   D: { email: 'rls-test-d@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
 }
 type Side = 'A' | 'B'
-type Who = Side | 'D'
+type Who = Side | 'C' | 'D'
 const OTHER: Record<Side, Side> = { A: 'B', B: 'A' }
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -79,7 +81,7 @@ async function teardown(label: string) {
   // Order respects FKs: events → devices → places → members → ranches → users.
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
   const ids = (users?.users ?? [])
-    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.D.email)
+    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.C.email || u.email === USERS.D.email)
     .map(u => u.id)
   let n = 0
   if (ids.length) {
@@ -259,6 +261,100 @@ async function isolationChecks(side: Side, c: SupabaseClient) {
   }
 }
 
+// ─── Phase A2 — the invite flow, end to end, through the routes ───────────────
+// ranch_members keeps NO client INSERT policy; membership is written only by
+// POST /api/invitations/accept after the token and the email check out.
+async function invitationChecks() {
+  const a = fx.A!, b = fx.B!
+  const { data: cu, error: cErr } = await admin.auth.admin.createUser({ email: USERS.C.email, password: USERS.C.password, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}C` } })
+  if (cErr || !cu.user) throw new Error(`createUser C: ${cErr?.message}`)
+  const cId = cu.user.id
+  const A = await userClient('A'), B = await userClient('B'), C = await userClient('C')
+  const membersOf = async (ranchId: string, userId: string) => (await admin.from('ranch_members').select('user_id', { count: 'exact', head: true }).eq('ranch_id', ranchId).eq('user_id', userId)).count ?? 0
+  const tokenOf = (url: unknown) => (typeof url === 'string' ? url.split('/invite/')[1] ?? '' : '')
+
+  // THE one that matters most: a valid session writing itself into ranch_members → rejected.
+  {
+    const { data, error } = await B.from('ranch_members').insert({ ranch_id: a.ranchId, user_id: b.userId, role: 'owner' }).select('user_id')
+    const rows = await membersOf(a.ranchId, b.userId)
+    record('user B (session)', `direct INSERT into ranch_members (ranch A) → rejected, 0 rows`, (!!error || (data?.length ?? 0) === 0) && rows === 0, error?.message ?? (rows ? 'INSERTED' : `${data?.length ?? 0} returned`))
+  }
+  {
+    const { data, error } = await A.from('ranch_members').insert({ ranch_id: a.ranchId, user_id: cId, role: 'member' }).select('user_id')
+    const rows = await membersOf(a.ranchId, cId)
+    record('user A (owner)', `direct INSERT into ranch_members (own ranch, for C) → rejected, 0 rows`, (!!error || (data?.length ?? 0) === 0) && rows === 0, error?.message ?? (rows ? 'INSERTED' : `${data?.length ?? 0} returned`))
+  }
+
+  // Owner A invites C.
+  const inv = await api(A, '/api/invitations', { email: USERS.C.email, role: 'member' })
+  const token = tokenOf(inv.json.acceptUrl)
+  record('user A (owner)', 'POST /api/invitations → 201 with an accept link', inv.status === 201 && token.length > 20, `${inv.status} ${String(inv.json.error ?? '')}`.trim())
+
+  // Wrong email accepts → rejected, no membership.
+  {
+    const r = await api(B, '/api/invitations/accept', { token })
+    record('user B (wrong email)', 'accept A\'s invitation for C → 403, no membership', r.status === 403 && (await membersOf(a.ranchId, b.userId)) === 0, `${r.status} ${String(r.json.code ?? r.json.error ?? '')}`)
+  }
+  // Invited user accepts → sees exactly that ranch, nothing else.
+  {
+    const r = await api(C, '/api/invitations/accept', { token })
+    const { data: ranches } = await C.from('ranches').select('id')
+    const { data: bEvents } = await C.from('events').select('id').in('id', b.eventIds)
+    record('user C (invited)', 'accept → 200 joined; sees exactly ranch A and none of ranch B', r.status === 200 && r.json.status === 'joined' && (ranches?.length ?? 0) === 1 && ranches?.[0]?.id === a.ranchId && (bEvents?.length ?? 0) === 0,
+      `${r.status} ${String(r.json.status ?? r.json.error ?? '')} · ranches ${ranches?.length ?? 0} · B events ${bEvents?.length ?? 0}`)
+  }
+  // Reused token → no second membership.
+  {
+    const r = await api(C, '/api/invitations/accept', { token })
+    record('user C (invited)', 'accept the same token again → still exactly one membership', r.status === 200 && r.json.status === 'already_member' && (await membersOf(a.ranchId, cId)) === 1, `${r.status} ${String(r.json.status ?? r.json.error ?? '')} · memberships ${await membersOf(a.ranchId, cId)}`)
+  }
+  // Non-owner attempts to invite / remove → rejected.
+  {
+    const r = await api(C, '/api/invitations', { email: 'rls-test-nobody@dryline.farm', role: 'member' })
+    record('user C (member)', 'POST /api/invitations → 403', r.status === 403, `${r.status} ${String(r.json.error ?? '')}`)
+  }
+  {
+    const r = await api(C, '/api/members/remove', { user_id: a.userId })
+    record('user C (member)', 'POST /api/members/remove (owner A) → 403, A still an owner', r.status === 403 && (await membersOf(a.ranchId, a.userId)) === 1, `${r.status} ${String(r.json.error ?? '')}`)
+  }
+  // Last owner attempts self-removal → rejected.
+  {
+    const r = await api(A, '/api/members/remove', { user_id: a.userId })
+    record('user A (owner)', 'remove self as the last owner → 409, still a member', r.status === 409 && (await membersOf(a.ranchId, a.userId)) === 1, `${r.status} ${String(r.json.error ?? '')}`)
+  }
+  // Invitations are readable only by members of that ranch.
+  {
+    const { data: mine } = await C.from('invitations').select('id').eq('ranch_id', a.ranchId)
+    const { data: theirs } = await C.from('invitations').select('id').eq('ranch_id', b.ranchId)
+    const { data: anonRows, error: anonErr } = await anonClient().from('invitations').select('id').limit(5)
+    record('user C (member)', 'read own ranch\'s invitations → ≥1 row; other ranch\'s → 0; anonymous → 0', (mine?.length ?? 0) >= 1 && (theirs?.length ?? 0) === 0 && (!!anonErr || (anonRows?.length ?? 0) === 0), `own ${mine?.length ?? 0} · other ${theirs?.length ?? 0} · anon ${anonRows?.length ?? 0}`)
+  }
+  // Revoked token → rejected (B invites C, revokes, C tries).
+  {
+    const made = await api(B, '/api/invitations', { email: USERS.C.email, role: 'member' })
+    const t2 = tokenOf(made.json.acceptUrl)
+    const rev = await api(B, '/api/invitations/revoke', { id: (made.json.invite as { id?: string } | undefined)?.id ?? '' })
+    const r = await api(C, '/api/invitations/accept', { token: t2 })
+    record('user C (invited)', 'revoked token → 410, no membership on ranch B', made.status === 201 && rev.status === 200 && r.status === 410 && (await membersOf(b.ranchId, cId)) === 0, `${made.status}/${rev.status}/${r.status} ${String(r.json.code ?? '')}`)
+  }
+  // Expired token → rejected (seeded with the service role, already past its expiry).
+  {
+    const t3 = `${PREFIX}expired-${randomBytes(16).toString('hex')}`
+    const { error } = await admin.from('invitations').insert({ ranch_id: b.ranchId, invited_email: USERS.C.email, role: 'member', token_hash: createHash('sha256').update(t3).digest('hex'), created_by: b.userId, expires_at: new Date(Date.now() - 3_600_000).toISOString() })
+    const r = await api(C, '/api/invitations/accept', { token: t3 })
+    record('user C (invited)', 'expired token → 410, no membership on ranch B', !error && r.status === 410 && r.json.code === 'expired' && (await membersOf(b.ranchId, cId)) === 0, `${error?.message ?? r.status} ${String(r.json.code ?? '')}`)
+  }
+  // Removed member → loses reads on everything, including rows they authored.
+  {
+    const { data: own, error: insErr } = await C.from('events').insert({ user_id: cId, ranch_id: a.ranchId, type: 'rls_test', ts: new Date().toISOString(), payload: { rls_test: true, by: 'C' }, schema_version: 1, dedup_key: `${PREFIX}C:${Date.now()}` }).select('id').single()
+    const rm = await api(A, '/api/members/remove', { user_id: cId })
+    const { data: after } = await C.from('events').select('id').eq('id', own?.id ?? '')
+    const { data: ranchesAfter } = await C.from('ranches').select('id')
+    record('user A (owner)', 'POST /api/members/remove (member C) → 200', rm.status === 200 && (await membersOf(a.ranchId, cId)) === 0, `${rm.status} ${String(rm.json.error ?? '')}`)
+    record('removed member C', 'reads its own authored event and the ranch → 0 rows', !insErr && !!own?.id && (after?.length ?? 0) === 0 && (ranchesAfter?.length ?? 0) === 0, insErr?.message ?? `event ${after?.length ?? 0} · ranches ${ranchesAfter?.length ?? 0}`)
+  }
+}
+
 // ─── Block 4A — cattle lots belong to the ranch (050) ─────────────────────────
 // A member sees the ranch's lots, a second ranch's lots stay invisible, a member
 // can edit the ranch's herd and the owner sees the edit, and a removed member
@@ -404,6 +500,7 @@ async function main() {
     await isolationChecks('B', await userClient('B'))
     await anonymousChecks()
     await ingestChecks()
+    await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
     await lotsChecks()          // Block 4A — needs migration 050
     await removedMemberChecks() // last — it removes A's membership
   } finally {

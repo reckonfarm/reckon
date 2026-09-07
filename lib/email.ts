@@ -232,3 +232,37 @@ export async function sendHayRadarMatch(params: HayRadarMatchEmailParams): Promi
 
   if (error) throw new Error(`Resend error: ${error.message}`)
 }
+
+// ─── Invitation (Phase A2) ────────────────────────────────────────────────────
+// The invite link goes by email through Resend, the same sender the alerts use.
+// The route ALSO returns the link to the inviter, so when email is disabled
+// (previews) or simply slow, the link can be texted — a legitimate v1 for a ranch.
+
+export interface InviteEmailParams { to: string; inviterName: string; ranchName: string; role: 'owner' | 'member'; acceptUrl: string; expiresAt: string }
+
+export async function sendInviteEmail(p: InviteEmailParams): Promise<boolean> {
+  if (emailsDisabled()) return false
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) return false
+  const resend = new Resend(apiKey)
+  const expires = new Date(p.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  const text = [
+    `${p.inviterName} invited you to ${p.ranchName} on Dryline.`,
+    '',
+    `You'll be able to see and log feed, hay counts, rain, and ranch work${p.role === 'owner' ? ', and add or remove people' : ''}.`,
+    '',
+    `Accept the invitation: ${p.acceptUrl}`,
+    '',
+    `This link works until ${expires} and only for ${p.to}.`,
+    '',
+    'Dryline — your ranch, on the record.',
+  ].join('\n')
+  const { error } = await resend.emails.send({
+    from: 'Dryline <alerts@dryline.farm>',
+    to: p.to,
+    subject: `${p.inviterName} invited you to ${p.ranchName}`,
+    text,
+  })
+  if (error) throw new Error(`Resend error: ${error.message}`)
+  return true
+}
