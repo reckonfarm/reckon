@@ -230,7 +230,7 @@ async function main() {
       const sheetLinks = await linkIn('[data-audit="point-sheet"]')
       record('2.6I: a picked point links to its report', sheetLinks >= 1, `${sheetLinks} link(s)`)
       const sheetEvidence = (await page.locator('[data-audit="point-sheet"] [data-audit="report-evidence"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
-      record('2.6I: the evidence line reads "Barn · Mon D · N head · Report ↗"', /^.+ · [A-Z][a-z]{2} \d{1,2} · [\d,]+ head( · rev \d+)? · Report ↗$/.test(sheetEvidence), sheetEvidence)
+      record('2.6I: the evidence line reads "Barn · Mon D · Reference sale: N head · Report ↗"', /^.+ · [A-Z][a-z]{2} \d{1,2} · Reference sale: [\d,]+ head( · rev \d+)? · Report ↗$/.test(sheetEvidence), sheetEvidence)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       const hrefs = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="report-link"]')).map(function(e){ return e.getAttribute('href') })`) as string[]
       record('2.6I: every report link points at the USDA AMS report page for its slug', hrefs.length > 0 && hrefs.every(h => /^https:\/\/mymarketnews\.ams\.usda\.gov\/viewReport\/\d+$/.test(h)), [...new Set(hrefs)].join(' '))

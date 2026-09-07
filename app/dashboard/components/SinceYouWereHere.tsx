@@ -50,9 +50,10 @@ function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
 
 const isoHoursAgo = (h: number) => new Date(Date.now() - h * 3600 * 1000).toISOString()
 
+// The work day on every line (5F): "today 6:01 PM", "yesterday 6:01 PM", "Sep 1 6:01 PM".
 function when(iso: string): string {
   const d = dayKey(iso)
-  if (d === todayKey()) return fmtTime(iso)
+  if (d === todayKey()) return `today ${fmtTime(iso)}`
   if (d === dayKey(Date.now() - 86_400_000)) return `yesterday ${fmtTime(iso)}`
   return `${fmtDay(iso)} ${fmtTime(iso)}`
 }
@@ -108,7 +109,7 @@ export default async function SinceYouWereHere() {
   return (
     <Card shadow="soft" className="p-4 sm:p-5">
       <LastSeenPing />
-      <p className={EYEBROW}>{lastSeen ? 'Since you last checked' : 'Since yesterday'}</p>
+      <p className={EYEBROW}>{lastSeen ? 'Recorded since you last checked' : 'Recorded since yesterday'}</p>
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(r => {
           const author = r.type === 'alert' ? 'Dryline' : (authors.get(r.user_id) ?? 'Someone on the ranch')
@@ -126,6 +127,10 @@ export default async function SinceYouWereHere() {
           )
         })}
       </ul>
+      {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work
+          was done — so an entry logged today for Tuesday's feeding rightly appears here,
+          dated Tuesday. */}
+      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="since-note">Newest recorded first · each line shows when the work was done.</p>
     </Card>
   )
 }

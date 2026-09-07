@@ -14,7 +14,9 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 //                before upload so Undo can pull it back before anything
 //                leaves the phone (the ledger is append-only; there is no
 //                undo after sync, so the hold IS the undo window).
-//   Change     → opens the Log it sheet pre-filled with these values.
+//   Different today → opens the Log it sheet pre-filled with these values, for a
+//                NEW feeding with changes (5F: never 'Change' — correcting the
+//                old feeding is Correct this entry on its event page).
 // The status strip for the entry it made renders right here, with the Undo
 // countdown, so the answer to "did that save?" is where the thumb is.
 
@@ -79,7 +81,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
             onClick={change}
             className="min-h-[56px] rounded-lg border border-forest-green/25 px-5 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5"
           >
-            Change
+            Different today
           </button>
         </div>
       )}
