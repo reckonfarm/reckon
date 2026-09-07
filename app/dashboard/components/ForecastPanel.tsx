@@ -168,13 +168,15 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
                   with the value (same RAIN_BLUE, opacity ramps 55%→100% across 0–100%,
                   heavier weight from 50%) so a 70% reads louder than a 15%. Styling only —
-                  the number itself is untouched; 0% / missing stay the faint gray. */}
+                  the number itself is untouched; a missing chance shows an em dash in the quiet color. */}
               <div
                 className="font-dm-sans text-lg leading-none"
                 style={hasRain
                   // Phase A1: opaque weather ink at every chance — weight, not opacity, carries the odds.
                   ? { color: INK, fontWeight: d.precip! >= 50 ? 700 : 600 }
-                  : { color: SECONDARY_INK, fontWeight: 700 }}
+                  // A 0% chance is still the answer — ink, not the quiet color (the audit's 7:1 rule
+                  // for an 18 px number; 6.47:1 in secondary-ink failed the daily loop 2026-09-07).
+                  : { color: d.precip != null ? INK : SECONDARY_INK, fontWeight: 700 }}
               >
                 {d.precip != null ? `${d.precip}%` : '—'}
               </div>
