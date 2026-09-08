@@ -197,7 +197,7 @@ export async function getEvent(supabase: SupabaseClient, userId: string, id: str
 }
 
 // The people and places a filter can name (for the filter controls).
-export async function filterOptions(supabase: SupabaseClient, userId: string): Promise<{ people: { id: string; name: string }[]; places: { id: string; name: string }[]; lots: { id: string; name: string }[] }> {
+export async function filterOptions(supabase: SupabaseClient, userId: string): Promise<{ people: { id: string; name: string }[]; places: { id: string; name: string }[]; lots: { id: string; name: string; retired?: boolean }[] }> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return { people: [], places: [], lots: [] }
   const [{ data: members }, { data: places }, lots] = await Promise.all([
@@ -212,6 +212,6 @@ export async function filterOptions(supabase: SupabaseClient, userId: string): P
     // whose entries can be filtered, named the way the record's lines name them.
     people: ids.map(id => { const p = (profiles ?? []).find(x => x.id === id); return { id, name: ((p?.display_name as string | null)?.trim() || (p?.email as string | null) || 'Someone on the ranch') } }).sort((a, b) => a.name.localeCompare(b.name)),
     places: (places ?? []).map(p => ({ id: p.id as string, name: p.name as string })),
-    lots: (lots as Lot[]).map(l => ({ id: l.id, name: lotLabel(l) })),
+    lots: (lots as Lot[]).map(l => ({ id: l.id, name: lotLabel(l), ...(l.retired_at ? { retired: true } : {}) })),   // retired lots are named, and say so (6A)
   }
 }

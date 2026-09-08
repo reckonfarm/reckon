@@ -6,14 +6,24 @@ import { navigateTo } from '@/lib/standalone-nav'
 import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
 
-// ─── Correct this entry · Void this entry (Block 5B) ─────────────────────────
-// From an event that currently stands. The correction form pre-fills the
-// original's values and asks what changed and why; a void asks only why.
+// ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
+// From an event that currently stands. A correction is a crossed-out number on
+// paper: the draft starts as the WHOLE original — every value, every stored
+// reference — and the save sends only what changed (a field-level patch; the
+// server keeps everything else). Three rules the Sept 8 audit wrote:
+//   · The form holds until the lot and place names resolve. A slow option
+//     load never rewrites a stored id; the id is the draft, the list only
+//     names it.
+//   · A reference the ranch's lists no longer name is UNRESOLVED, shown as
+//     such, and kept. It is not permission to clear the field.
+//   · The only path to "no lot" / "no place" is the explicit Clear action.
 // Saving posts ONE superseding row (client-minted id, so a retry never lands
 // twice) and lands on the new entry, which shows both values, who changed it,
-// when, and the reason. The original stays where it was, marked.
+// when, and the reason. The original stays where it was, marked. A void asks
+// only why.
 
-interface Option { id: string; name: string }
+interface Option { id: string; name: string; retired?: boolean }
+type Options = { state: 'loading' } | { state: 'ready'; places: Option[]; lots: Option[] } | { state: 'failed' }
 export interface Editable {
   id: string
   type: string
@@ -21,50 +31,88 @@ export interface Editable {
   values: Record<string, unknown>
 }
 
-const inputCls = 'mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink'
+const REF_KEYS = ['herd_lot_id', 'place_id', 'from_place_id', 'to_place_id'] as const
+type RefKey = typeof REF_KEYS[number]
+const NUM_KEYS = ['bales', 'inches', 'count', 'head'] as const
+type NumKey = typeof NUM_KEYS[number]
+type Draft = Record<RefKey | NumKey | 'what' | 'as_of' | 'date' | 'time' | 'reason', string>
+
+const inputCls = 'mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink disabled:opacity-70'
 const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
+const hintCls = 'mt-1 font-dm-sans text-[14px] text-secondary-ink'
+const clearCls = 'mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[14px] font-semibold text-ink'
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '')
 
 // Work time as the phone's local date + time fields (America/Denver is the
-// ranch; the phone is on the ranch).
+// ranch; the phone is on the ranch). Only sent when one of them changed, so an
+// untouched work time keeps its seconds.
 function localParts(iso: string): { date: string; time: string } {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
   return { date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, time: `${pad(d.getHours())}:${pad(d.getMinutes())}` }
 }
 
+function fromOriginal(event: Editable): Draft {
+  const v = event.values, t = localParts(event.ts)
+  return {
+    bales: num(v.bales), inches: num(v.inches), count: num(v.count), head: num(v.head),
+    what: str(v.what), as_of: str(v.as_of),
+    herd_lot_id: str(v.herd_lot_id), place_id: str(v.place_id), from_place_id: str(v.from_place_id), to_place_id: str(v.to_place_id),
+    date: t.date, time: t.time, reason: '',
+  }
+}
+
 export default function CorrectionActions({ event }: { event: Editable }) {
   const router = useRouter()
   const [mode, setMode] = useState<'idle' | 'correct' | 'void'>('idle')
-  const [places, setPlaces] = useState<Option[]>([])
-  const [lots, setLots] = useState<Option[]>([])
+  const [draft, setDraft] = useState<Draft>(() => fromOriginal(event))
+  const [options, setOptions] = useState<Options>({ state: 'loading' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [clientId] = useState(() => newEventId())
-  const initial = localParts(event.ts)
   const v = event.values
+  const initial = localParts(event.ts)
+  const set = (k: keyof Draft, value: string) => setDraft(d => ({ ...d, [k]: value }))
 
   useEffect(() => {
     if (mode !== 'correct') return
-    fetch('/api/activity/options').then(r => (r.ok ? r.json() : null)).then(j => { if (j) { setPlaces(j.places ?? []); setLots(j.lots ?? []) } }).catch(() => {})
+    let cancelled = false
+    setOptions({ state: 'loading' })
+    fetch('/api/activity/options').then(r => (r.ok ? r.json() : null))
+      .then((j: { places?: Option[]; lots?: Option[] } | null) => { if (!cancelled) setOptions(j ? { state: 'ready', places: j.places ?? [], lots: j.lots ?? [] } : { state: 'failed' }) })
+      .catch(() => { if (!cancelled) setOptions({ state: 'failed' }) })
+    return () => { cancelled = true }
   }, [mode])
 
-  async function submit(kind: 'correct' | 'void', form: FormData) {
-    setBusy(true); setError(null)
-    const body: Record<string, unknown> = { id: clientId, reason: String(form.get('reason') ?? '') }
-    if (kind === 'correct') {
-      const date = String(form.get('date') ?? ''), time = String(form.get('time') ?? '')
-      if (date && time) body.ts = new Date(`${date}T${time}:00`).toISOString()
-      const numField = (k: string) => { const raw = form.get(k); if (raw != null && raw !== '') body[k] = Number(raw) }
-      const strField = (k: string) => { if (form.has(k)) body[k] = String(form.get(k) ?? '') || null }
-      switch (event.type) {
-        case 'hay_fed': numField('bales'); strField('herd_lot_id'); strField('place_id'); break
-        case 'rain': numField('inches'); strField('place_id'); break
-        case 'bales_stacked': numField('count'); strField('place_id'); break
-        case 'hay_inventory': numField('bales'); if (form.get('as_of')) body.as_of = String(form.get('as_of')); strField('place_id'); break
-        case 'cattle_moved': numField('head'); strField('from_place_id'); strField('to_place_id'); break
-        case 'cattle_worked': numField('head'); if (form.has('what')) body.what = String(form.get('what') ?? ''); strField('place_id'); break
-      }
+  // The patch: only the keys whose draft differs from the original. A cleared
+  // reference is an explicit null; an untouched one is not in the body at all.
+  function patch(): Record<string, unknown> {
+    const p: Record<string, unknown> = {}
+    const numKey = (k: NumKey) => { if (draft[k] !== '' && Number(draft[k]) !== v[k]) p[k] = Number(draft[k]) }
+    const refKey = (k: RefKey) => { if (draft[k] !== str(v[k])) p[k] = draft[k] || null }
+    switch (event.type) {
+      case 'hay_fed': numKey('bales'); refKey('herd_lot_id'); refKey('place_id'); break
+      case 'rain': numKey('inches'); refKey('place_id'); break
+      case 'bales_stacked': numKey('count'); refKey('place_id'); break
+      case 'hay_inventory': numKey('bales'); if (draft.as_of && draft.as_of !== str(v.as_of)) p.as_of = draft.as_of; refKey('place_id'); break
+      case 'cattle_moved': numKey('head'); refKey('from_place_id'); refKey('to_place_id'); break
+      case 'cattle_worked': numKey('head'); if (draft.what.trim() && draft.what !== str(v.what)) p.what = draft.what; refKey('place_id'); break
     }
+    if (draft.date && draft.time && (draft.date !== initial.date || draft.time !== initial.time)) p.ts = new Date(`${draft.date}T${draft.time}:00`).toISOString()
+    return p
+  }
+
+  async function submit(kind: 'correct' | 'void') {
+    setError(null)
+    const body: Record<string, unknown> = { id: clientId, reason: draft.reason }
+    if (kind === 'correct') {
+      const p = patch()
+      if (Object.keys(p).length === 0) { setError('Nothing changed — change a value or the time, or cancel.'); return }
+      Object.assign(body, p)
+    }
+    setBusy(true)
     try {
       const res = await fetch(`/api/activity/${event.id}/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({})) as { event?: { id: string }; error?: string }
@@ -75,14 +123,32 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     }
   }
 
-  const placeSelect = (name: string, current: unknown, label = 'Place') => (
-    <label className={labelCls}>{label}
-      <select name={name} defaultValue={typeof current === 'string' ? current : ''} className={inputCls}>
-        <option value="">No place</option>
-        {places.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-    </label>
-  )
+  // A stored reference, named by the list once it loads. The stored id is the
+  // draft from the first render; the list only labels it. While the names load
+  // the control is held; if they never come, the id stays as recorded.
+  const refSelect = (key: RefKey, label: string, kind: 'lot' | 'place') => {
+    const stored = str(v[key]), value = draft[key]
+    const list = options.state === 'ready' ? (kind === 'lot' ? options.lots : options.places) : []
+    const resolved = list.find(o => o.id === value)
+    const unresolved = options.state === 'ready' && value !== '' && !resolved
+    const held = options.state !== 'ready'
+    return (
+      <div key={key}>
+        <label className={labelCls}>{label}
+          <select name={key} value={value} disabled={held} onChange={e => set(key, e.target.value)} className={inputCls} data-audit={`correction-${key}`} data-resolved={unresolved ? 'no' : resolved ? 'yes' : 'pending'}>
+            {held && value !== '' && <option value={value}>{options.state === 'loading' ? `Loading ${kind} names…` : `Stored ${kind} (names unavailable)`}</option>}
+            {unresolved && <option value={value}>Unresolved {kind} · {value.slice(0, 8)}</option>}
+            {(value === '' || held) && <option value="">No {kind}</option>}
+            {!held && list.map(o => <option key={o.id} value={o.id}>{o.name}{o.retired ? ' · retired' : ''}</option>)}
+          </select>
+        </label>
+        {unresolved && <p className={hintCls} data-audit={`correction-unresolved-${key}`}>This {kind} isn&apos;t on the ranch&apos;s list now (removed or renamed). It stays on the entry unless you clear it.</p>}
+        {resolved?.retired && <p className={hintCls}>A retired {kind}. It stays on the entry unless you clear it.</p>}
+        {value === '' && stored !== '' && <p className={hintCls} data-audit={`correction-cleared-${key}`}>Cleared — the correction will carry no {kind}.</p>}
+        {value !== '' && !held && <button type="button" onClick={() => set(key, '')} className={clearCls} data-audit={`correction-clear-${key}`}>Clear {kind}</button>}
+      </div>
+    )
+  }
 
   if (mode === 'idle') {
     return (
@@ -93,43 +159,46 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     )
   }
 
+  const holding = mode === 'correct' && options.state === 'loading'
+  const numInput = (key: NumKey, label: string, lim: { min: number; max: number }, extra: Record<string, string> = {}) => (
+    <label className={labelCls}>{label}<input name={key} type="number" min={lim.min} max={lim.max} value={draft[key]} onChange={e => set(key, e.target.value)} className={inputCls} required {...extra} /></label>
+  )
+
   return (
-    <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode, new FormData(e.currentTarget)) }} data-audit={`${mode}-form`}>
+    <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode) }} data-audit={`${mode}-form`}>
       <p className="font-dm-sans text-[17px] font-semibold text-ink">{mode === 'correct' ? 'What was it really?' : 'Void this entry?'}</p>
       <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">
         {mode === 'correct'
-          ? 'The original stays on the record, crossed out. Your correction stands in its place and every balance follows it.'
+          ? 'The original stays on the record, crossed out. Your correction stands in its place and every balance follows it. What you leave alone stays exactly as recorded.'
           : 'The entry stays on the record, marked void, and stops counting. Nothing is deleted.'}
       </p>
       {mode === 'correct' && (
+        <p className={hintCls} role="status" data-audit="correction-options" data-state={options.state}>
+          {options.state === 'loading' ? 'Loading lot and place names…' : options.state === 'failed' ? 'Lot and place names couldn’t load — those stay as recorded. You can still correct the other values.' : ''}
+        </p>
+      )}
+      {mode === 'correct' && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {event.type === 'hay_fed' && <label className={labelCls}>Bales<input name="bales" type="number" inputMode="numeric" min={LIMITS.bales.min} max={LIMITS.bales.max} defaultValue={typeof v.bales === 'number' ? v.bales : ''} className={inputCls} required /></label>}
-          {event.type === 'hay_fed' && (
-            <label className={labelCls}>Fed to
-              <select name="herd_lot_id" defaultValue={typeof v.herd_lot_id === 'string' ? v.herd_lot_id : ''} className={inputCls}>
-                <option value="">No lot</option>
-                {lots.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            </label>
-          )}
-          {event.type === 'rain' && <label className={labelCls}>Inches<input name="inches" type="number" inputMode="decimal" step="0.01" min={LIMITS.inches.min} max={LIMITS.inches.max} defaultValue={typeof v.inches === 'number' ? v.inches : ''} className={inputCls} required /></label>}
-          {event.type === 'bales_stacked' && <label className={labelCls}>Bales stacked<input name="count" type="number" inputMode="numeric" min={LIMITS.count.min} max={LIMITS.count.max} defaultValue={typeof v.count === 'number' ? v.count : ''} className={inputCls} required /></label>}
-          {event.type === 'hay_inventory' && <label className={labelCls}>Bales on hand<input name="bales" type="number" inputMode="numeric" min={LIMITS.onHand.min} max={LIMITS.onHand.max} defaultValue={typeof v.bales === 'number' ? v.bales : ''} className={inputCls} required /></label>}
-          {event.type === 'hay_inventory' && <label className={labelCls}>Counted as of<input name="as_of" type="date" defaultValue={typeof v.as_of === 'string' ? v.as_of : ''} className={inputCls} required /></label>}
-          {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && <label className={labelCls}>Head<input name="head" type="number" inputMode="numeric" min={LIMITS.head.min} max={LIMITS.head.max} defaultValue={typeof v.head === 'number' ? v.head : ''} className={inputCls} required /></label>}
-          {event.type === 'cattle_worked' && <label className={labelCls}>What was done<input name="what" type="text" maxLength={LIMITS.what.maxLen} defaultValue={typeof v.what === 'string' ? v.what : ''} className={inputCls} required /></label>}
-          {event.type === 'cattle_moved' ? (<>{placeSelect('from_place_id', v.from_place_id, 'From')}{placeSelect('to_place_id', v.to_place_id, 'To')}</>) : placeSelect('place_id', v.place_id)}
-          <label className={labelCls}>Work date<input name="date" type="date" defaultValue={initial.date} className={inputCls} required /></label>
-          <label className={labelCls}>Work time<input name="time" type="time" defaultValue={initial.time} className={inputCls} required /></label>
+          {event.type === 'hay_fed' && numInput('bales', 'Bales', LIMITS.bales, { inputMode: 'numeric' })}
+          {event.type === 'hay_fed' && refSelect('herd_lot_id', 'Fed to', 'lot')}
+          {event.type === 'rain' && numInput('inches', 'Inches', LIMITS.inches, { inputMode: 'decimal', step: '0.01' })}
+          {event.type === 'bales_stacked' && numInput('count', 'Bales stacked', LIMITS.count, { inputMode: 'numeric' })}
+          {event.type === 'hay_inventory' && numInput('bales', 'Bales on hand', LIMITS.onHand, { inputMode: 'numeric' })}
+          {event.type === 'hay_inventory' && <label className={labelCls}>Counted as of<input name="as_of" type="date" value={draft.as_of} onChange={e => set('as_of', e.target.value)} className={inputCls} required /></label>}
+          {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && numInput('head', 'Head', LIMITS.head, { inputMode: 'numeric' })}
+          {event.type === 'cattle_worked' && <label className={labelCls}>What was done<input name="what" type="text" maxLength={LIMITS.what.maxLen} value={draft.what} onChange={e => set('what', e.target.value)} className={inputCls} required /></label>}
+          {event.type === 'cattle_moved' ? (<>{refSelect('from_place_id', 'From', 'place')}{refSelect('to_place_id', 'To', 'place')}</>) : refSelect('place_id', 'Place', 'place')}
+          <label className={labelCls}>Work date<input name="date" type="date" value={draft.date} onChange={e => set('date', e.target.value)} className={inputCls} required /></label>
+          <label className={labelCls}>Work time<input name="time" type="time" value={draft.time} onChange={e => set('time', e.target.value)} className={inputCls} required /></label>
         </div>
       )}
       <label className={`${labelCls} mt-3`}>{mode === 'correct' ? 'What changed, and why' : 'Why'}
-        <input name="reason" type="text" maxLength={500} placeholder={mode === 'correct' ? 'e.g. was 4, typed 6' : 'e.g. logged on the wrong ranch'} className={inputCls} data-audit="correction-reason" />
+        <input name="reason" type="text" maxLength={500} value={draft.reason} onChange={e => set('reason', e.target.value)} placeholder={mode === 'correct' ? 'e.g. was 4, typed 6' : 'e.g. logged on the wrong ranch'} className={inputCls} data-audit="correction-reason" />
       </label>
       {error && <p className="mt-3 font-dm-sans text-[16px] font-semibold text-rust" role="alert" data-audit="correction-error">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-3">
-        <button type="submit" disabled={busy} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand disabled:opacity-60" data-audit="correction-save">{busy ? 'Saving…' : mode === 'correct' ? 'Save correction' : 'Void it'}</button>
-        <button type="button" disabled={busy} onClick={() => { setMode('idle'); setError(null) }} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">Cancel</button>
+        <button type="submit" disabled={busy || holding} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand disabled:opacity-60" data-audit="correction-save">{busy ? 'Saving…' : holding ? 'Loading names…' : mode === 'correct' ? 'Save correction' : 'Void it'}</button>
+        <button type="button" disabled={busy} onClick={() => { setMode('idle'); setError(null); setDraft(fromOriginal(event)) }} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">Cancel</button>
       </div>
     </form>
   )

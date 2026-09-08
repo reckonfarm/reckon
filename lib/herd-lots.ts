@@ -26,6 +26,7 @@ function rowToLot(r: LotRow): Lot {
     id: r.id, class: r.class, head_count: r.head_count, avg_weight: Number(r.avg_weight), weight_unit: r.weight_unit,
     frame: r.frame, weaned: r.weaned, sale_windows: Array.isArray(r.sale_windows) ? r.sale_windows : [],
     ...(r.name ? { name: r.name } : {}), ...(isLotPurpose(r.purpose) ? { purpose: r.purpose } : {}), created_at: r.created_at, updated_at: r.updated_at,
+    ...(r.retired_at ? { retired_at: r.retired_at } : {}),
   }
 }
 
