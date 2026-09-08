@@ -33,6 +33,7 @@ import ProgramStatus from './components/ProgramStatusLoader'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
+import CountyBanner from '@/app/components/CountyBanner'
 import NewsHookCard from '@/app/components/NewsHookCard'
 import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
@@ -403,6 +404,8 @@ export async function DashboardShell({
           page is wider; an element that needs more width is the wrong element. */}
       <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
+        {/* Block 6B — one short first-visit banner on the public county page; the county data stays first. */}
+        {!priv && !user && selectedCounty && <CountyBanner />}
 
         {/* ── County selector (flow, commit 4) ──────────────────────────────────
                The public county page's whole job is picking a county, so signed
