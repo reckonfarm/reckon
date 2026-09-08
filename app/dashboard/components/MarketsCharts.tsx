@@ -623,8 +623,9 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           </details>
         </div>
       )}
-      {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
-      {picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
+      {/* Dated events belong to the cattle chart; the Market-context instance does not repeat them. */}
+      {mode !== 'context' && view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
+      {mode !== 'context' && picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
     </Card>
     </div>
   )

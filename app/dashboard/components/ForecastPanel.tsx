@@ -194,8 +194,8 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
       {/* A phone sees about four days at once; these move the strip a few days either way
           (Block 6B). Every day is a button, so the keyboard reaches each one directly. */}
       <div className="mt-1 flex justify-between sm:hidden">
-        <button type="button" onClick={() => scrollBy(-1)} className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-earlier">‹ Earlier days</button>
-        <button type="button" onClick={() => scrollBy(1)} className="min-h-[44px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-later">Later days ›</button>
+        <button type="button" onClick={() => scrollBy(-1)} className="min-h-[48px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-earlier">‹ Earlier days</button>
+        <button type="button" onClick={() => scrollBy(1)} className="min-h-[48px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-later">Later days ›</button>
       </div>
       {/* Detail-on-demand: tapping a day reveals NWS's prose for that day (kept hidden
           by default so the strip stays compact). */}
