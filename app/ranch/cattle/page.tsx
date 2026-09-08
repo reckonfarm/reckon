@@ -4,6 +4,10 @@ import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
 import { lastWorkByLot } from '@/lib/ranch-summary'
+import { createServiceClient } from '@/lib/supabase'
+import { getHerdAnchor } from '@/lib/herd-anchor'
+import { getOperationProfile } from '@/lib/operation-profile-service'
+import HerdEstimatePanel from './HerdEstimatePanel'
 import SiteHeader from '@/app/components/SiteHeader'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import HerdForm from './HerdForm'
@@ -23,10 +27,22 @@ export default async function CattlePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/cattle')
   const lots = await getRanchLots(supabase, user.id)
-  const [lastWork, purposeSupported] = await Promise.all([
+  const [lastWork, purposeSupported, profileResult] = await Promise.all([
     lastWorkByLot(supabase, lots.map(l => l.id)).catch(() => ({})),
     lotPurposeSupported(supabase).catch(() => false),
+    getOperationProfile({ supabase, user }).catch(() => null),
   ])
+  // The herd estimate stays here, BELOW the one lot list, until 6B folds it into
+  // Markets (the markets suite reads it from this page; 6B moves those checks).
+  let estimate = null, trend = null, outlook = null
+  if (lots.length > 0) {
+    const { data: prof } = await createServiceClient().from('profiles').select('home_county_fips').eq('id', user.id).maybeSingle()
+    const homeFips = (prof as { home_county_fips: string | null } | null)?.home_county_fips ?? null
+    if (homeFips) {
+      const anchor = await getHerdAnchor({ lots, homeFips, supabase, ranchId: profileResult?.status === 'ok' ? profileResult.profile.ranch_id ?? null : null }).catch(() => null)
+      estimate = anchor?.estimate ?? null; trend = anchor?.trend ?? null; outlook = anchor?.outlook ?? null
+    }
+  }
   return (
     <>
       <SiteHeader />
@@ -37,6 +53,11 @@ export default async function CattlePage() {
           What you&rsquo;re running, by lot. Values and comparisons are on <Link href="/markets" className="font-semibold text-brand underline underline-offset-2">Markets</Link>.
         </p>
         <HerdForm initialLots={lots} lastWork={lastWork} purposeSupported={purposeSupported} />
+        {estimate && (
+          <div className="mt-8">
+            <HerdEstimatePanel estimate={estimate} trend={trend} outlook={outlook} />
+          </div>
+        )}
       </main>
     </>
   )

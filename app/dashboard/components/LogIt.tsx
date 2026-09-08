@@ -479,6 +479,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         for them, a failed load is said out loud, and "no lot" reads as what it is. A lot
         is never created from here. */}
     <Field label="Fed to" hint={lotsError ? undefined : lots && lots.length === 0 ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : undefined}>
+      <div>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
       ) : (
@@ -492,6 +493,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           Couldn&rsquo;t load your lots. <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="font-semibold underline underline-offset-2">Try again</button> — or record without one.
         </p>
       )}
+      </div>
     </Field>
     {placeField()}
     {n1.trim() !== '' && Number.isFinite(Number(n1)) && (
