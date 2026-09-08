@@ -839,7 +839,7 @@ export async function MarketsViewBody({
       <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
       {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
       <section className="space-y-3" aria-labelledby="price-protection-h" data-audit="price-protection">
-        <h2 id="price-protection-h" className={EYEBROW}>Price protection · LRP references</h2>
+        <h2 id="price-protection-h" className={`${EYEBROW} !text-ink`}>Price protection · LRP references</h2>
         {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
         <LrpMarketsCard result={lrpResult} />
       </section>

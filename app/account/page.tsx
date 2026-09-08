@@ -32,17 +32,17 @@ export default async function AccountPage() {
         <h1 className="mt-1 type-page-heading text-ink">{user.email}</h1>
 
         <section className="mt-6" aria-labelledby="acct-identity">
-          <h2 id="acct-identity" className={EYEBROW}>Identity</h2>
+          <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>Identity</h2>
           <ProfileForm />
         </section>
 
         <section className="mt-6" aria-labelledby="acct-ranch">
-          <h2 id="acct-ranch" className={EYEBROW}>Ranch settings</h2>
+          <h2 id="acct-ranch" className={`${EYEBROW} !text-ink`}>Ranch settings</h2>
           <RanchNameCard />
         </section>
 
         <section className="mt-6" aria-labelledby="acct-crew">
-          <h2 id="acct-crew" className={EYEBROW}>Crew and access</h2>
+          <h2 id="acct-crew" className={`${EYEBROW} !text-ink`}>Crew and access</h2>
           <RanchPeopleCard />
           {flagEnabled('messaging') && (
             <Card className="mt-3 px-5 py-4">
@@ -52,7 +52,7 @@ export default async function AccountPage() {
         </section>
 
         <section className="mt-6" aria-labelledby="acct-prefs">
-          <h2 id="acct-prefs" className={EYEBROW}>Preferences</h2>
+          <h2 id="acct-prefs" className={`${EYEBROW} !text-ink`}>Preferences</h2>
           <Card className="px-5 py-4">
             <ul className="divide-y divide-rule">
               <li><Link href="/weather/locations" className={link} data-audit="pref-counties">My Counties →</Link><p className="font-dm-sans text-[15px] text-secondary-ink">Home county, watched counties, and alert preferences.</p></li>
@@ -62,7 +62,7 @@ export default async function AccountPage() {
         </section>
 
         <section className="mt-6" aria-labelledby="acct-help">
-          <h2 id="acct-help" className={EYEBROW}>Help</h2>
+          <h2 id="acct-help" className={`${EYEBROW} !text-ink`}>Help</h2>
           <Card className="px-5 py-4">
             <p className="font-dm-sans text-[16px] text-ink">Questions or something wrong? Write to <a href={`mailto:${CONTACT_EMAIL}`} className={link}>{CONTACT_EMAIL}</a>.</p>
             <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{OPERATOR_NAME}. <Link href="/terms" className="underline underline-offset-2">Terms</Link> · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link></p>
@@ -71,7 +71,7 @@ export default async function AccountPage() {
         </section>
 
         <section className="mt-6" aria-labelledby="acct-signout">
-          <h2 id="acct-signout" className={EYEBROW}>Sign out</h2>
+          <h2 id="acct-signout" className={`${EYEBROW} !text-ink`}>Sign out</h2>
           <Card className="px-5 py-4">
             <p className="font-dm-sans text-[16px] text-ink">Signing out clears everything private from this phone — the outbox, drafts, and receipts — before the next person picks it up.</p>
             <SignOutButton />

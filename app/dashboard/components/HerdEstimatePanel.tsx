@@ -126,7 +126,7 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
   if (!trend) return <Stub line="Price history is temporarily unavailable — check back shortly." />
   return (
     <section className="space-y-4" data-audit="price-history" aria-labelledby="price-history-h">
-      <h2 id="price-history-h" className={EYEBROW}>Price history{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</h2>
+      <h2 id="price-history-h" className={`${EYEBROW} !text-ink`}>Price history{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</h2>
       {/* THIS WEEK'S RANGE — one price is one price, never "$X–$X" */}
       {trend.spread.length > 0 && (
         <div>
