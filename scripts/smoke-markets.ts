@@ -361,13 +361,16 @@ async function main() {
         await dc.close()
     }
 
-    // Herd page lot card
-    await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+    // The herd estimate panel — on Markets since Block 6B (1); /ranch/cattle is lot identity only.
+    await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})
     const herd = await text(page)
-    record('A4: herd page lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
-    record('A2: herd page scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
-    record('2.6I: the herd page lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
+    record('A4: the Markets lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
+    record('A2: the Markets lot card scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
+    record('2.6I: the Markets lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
+    await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+    const cattle = await text(page)
+    record('6B: /ranch/cattle is lot identity only — no price, no sensitivity line, the market link instead', !/Every \$1\/cwt/.test(cattle) && !/\$[\d,]{3,}/.test(cattle) && (await page.locator('[data-audit="lot-market-link"]').count()) >= 1, cattle.slice(0, 120))
 
     // ── Block 2.6A — out-of-state counties: never "Nearby", never contradicting ──
     // Signed OUT (the public county view the audit walked). A county with no supported

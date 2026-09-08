@@ -23,6 +23,7 @@ import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import HerdValueCard from './HerdValueCard'
+import HerdEstimatePanel from './HerdEstimatePanel'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
@@ -805,6 +806,9 @@ export async function MarketsViewBody({
       {/* Herd value — the one herd surface on the dashboard, here between the
           read and the cash it's priced at (views2, commit 2; was on Today). */}
       {anchor && <HerdValueCard anchor={anchor} />}
+      {/* Block 6B (1): the herd estimate panel (Now · Trend · Outlook) lives on Markets now;
+          /ranch/cattle is lot identity only. Commits 2–3 fold and rename its panels. */}
+      {anchor && <HerdEstimatePanel estimate={anchor.estimate} trend={anchor.trend} outlook={anchor.outlook} />}
       {homeFips && (
         <Suspense fallback={null}>
           <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
