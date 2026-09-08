@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getHayLedger, type RunOutVerdict } from './hay/queries'
+import { explainOnHand } from './hay/explain'
 import { getRainLedger } from './rain/queries'
 import { fmtDay, plural, ranchYearStart } from './jobs/format'
 import type { ManualEventType } from './manual-log'
@@ -52,12 +53,9 @@ export async function consequenceFor(
         const ledger = await getHayLedger(supabase, { since: ranchYearStart() })
         const { onHand, fed, runOut } = ledger.summary
         if (onHand) {
-          const b = onHand.baseline
-          lines.push(
-            onHand.bales < 0
-              ? `Hay on hand reads ${onHand.bales.toLocaleString()} — more fed than your ${ranchDay(b.asOf)} count of ${b.bales.toLocaleString()} allows; recount when you can`
-              : `${onHand.bales.toLocaleString()} ${onHand.bales === 1 ? 'bale' : 'bales'} on hand (from your count of ${b.bales.toLocaleString()} on ${ranchDay(b.asOf)}, ${onHand.fedSince.bales.toLocaleString()} fed since)`,
-          )
+          // 6C: the complete equation, the same one the Hay panel states, ranch-scoped.
+          const x = explainOnHand(onHand)
+          lines.push(x.shortfall ? `${x.equation} — ${x.shortfall}` : `${x.equation}, ${x.scope}`)
         } else if (fed) {
           lines.push(`${fed.bales.toLocaleString()} bales fed over ${plural(fed.days, 'day')} this season — no stack count yet, so no "remaining"`)
         }

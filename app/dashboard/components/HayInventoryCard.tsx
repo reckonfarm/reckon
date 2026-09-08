@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { getHayLedger } from '@/lib/hay/queries'
+import { explainOnHand } from '@/lib/hay/explain'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { LedgerPanel } from './LedgerTabs'
@@ -55,22 +56,19 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
   const { stacked, fed, burnRate, onHand, runOut, range } = summary
 
   const stats: { value: string; label: string; sub?: string }[] = []
+  // 6C: on hand is explained by ONE complete equation — counted + added − fed —
+  // the same words the receipt after a feeding uses (lib/hay/explain), ranch-scoped.
+  let equation: { line: string; note: string | null } | null = null
   if (onHand) {
     const b = onHand.baseline
-    const count = `${ranchDay(b.asOf)} count`
     const age = daysBetween(b.asOf, todayKey())
-    let sub: string
-    if (onHand.bales < 0) {
-      sub = `more fed than your ${count} of ${plural(b.bales, 'bale')}; log a new count.`
-    } else if (age > STALE_BASELINE_DAYS) {
-      sub = `from your ${count}, ${age} days ago · a fresh count would help.`
-    } else {
-      sub = `from your ${count}`
-    }
+    const x = explainOnHand(onHand)
+    const stale = age > STALE_BASELINE_DAYS ? `That count is ${age} days old · a fresh count would help.` : null
+    equation = { line: `${x.equation}, ${x.scope}.`, note: x.shortfall ? `${x.shortfall[0].toUpperCase()}${x.shortfall.slice(1)}.` : stale }
     stats.push({
       value: onHand.bales.toLocaleString(),
       label: onHand.bales === 1 ? 'bale on hand' : 'bales on hand',
-      sub,
+      sub: `across the ranch · since your ${ranchDay(b.asOf)} count`,
     })
   }
   if (stacked) {
@@ -107,6 +105,9 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
             </div>
           ))}
         </div>
+      )}
+      {equation && (
+        <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="hay-equation">{equation.line}{equation.note ? ` ${equation.note}` : ''}</p>
       )}
       {rateLine && (
         <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
