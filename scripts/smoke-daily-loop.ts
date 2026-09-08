@@ -353,22 +353,23 @@ async function main() {
     const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
     record('2F: place page opens with its memory', h1p === placeName && /Last recorded feeding: today .*2 bales/.test(bodyP), `h1 "${h1p}" · ${(bodyP.match(/Last recorded feeding:[^·]*·[^L]{0,40}/) ?? [''])[0]}`)
-    await page.getByRole('tab', { name: 'Last feeding' }).click()
+    await page.getByRole('tab', { name: 'Last recorded feeding' }).click()
     const chip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2F: "Last feeding" chip answers', /Last recorded feeding: today .*2 bales/.test(chip), chip.slice(0, 100))
-    const feedHere = page.getByRole('button', { name: 'Log feed here' })
+    const feedHere = page.locator('[data-audit="record-here"]')   // Block 6A: one primary Record here — it opens the picker with the place set
     await feedHere.click()
+    await page.locator('[data-audit="tile-hay_fed"]').click()
     // The place list loads when the sheet opens; the pre-filled value shows once its option exists.
     await page.getByLabel('Where').locator('option', { hasText: placeName }).waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
     const prefilled = await page.getByLabel('Where').inputValue().catch(() => '')
-    record('2F: "Log feed here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
+    record('2F: "Record here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
     await page.getByRole('button', { name: 'Cancel' }).click()
 
     // ── 2B: repeat last — two taps from a cold open, undo, one row ──
     const beforeRepeat = await feedRows()
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
-    const same = page.getByRole('button', { name: 'Same today' })
+    const same = page.getByRole('button', { name: /^Record \d+ bales? now$/ })
     await same.waitFor({ timeout: 20_000 }).catch(() => {})
     const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2B: Repeat last feeding card shows the last feeding', await same.count() > 0 && /2 bales/.test(cardText) && cardText.includes(placeName), cardText.slice(0, 100))
@@ -379,11 +380,11 @@ async function main() {
     record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Synced to ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
     // Undo within the window: nothing leaves the phone.
     const beforeUndo = await feedRows()
-    await page.getByRole('button', { name: 'Same today' }).click()
+    await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).click()
     await page.getByRole('button', { name: /^Undo/ }).click()
     await page.waitForTimeout(13_000)
-    record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: 'Same today' }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
-    await page.getByRole('button', { name: 'Different today' }).click()
+    record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
+    await page.getByRole('button', { name: 'Adjust first' }).click()
     const changed = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('2B: Change opens the sheet pre-filled', changed === '2', `bales "${changed}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -482,7 +483,7 @@ async function main() {
     // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
     //  "since you last checked" news and break 2E's fixed sequence.)
     await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
     await page.waitForTimeout(800)
     const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
@@ -545,6 +546,21 @@ async function main() {
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       record('6A: the sheet offers verbs with Count apart; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+    }
+
+    // ── Block 6A (9): the copy queue, as rendered ──
+    {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const tabs = await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const repeatButtons = await page.locator('button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^Record \d+ bales? now$/.test(t) || t === 'Adjust first'))
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const countyDrought = await page.getByRole('heading', { name: 'County drought' }).count()
+      const latestReading = await page.getByText('Latest Reading', { exact: true }).count()
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })
+      const nameHint = await page.getByText('Name shown on your work entries').count()
+      const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
+      record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
     }
 
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──

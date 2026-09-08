@@ -10,11 +10,11 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 // ─── Repeat last feeding (Block 2B) — the ten-second path ─────────────────────
 // Most feedings are yesterday's feeding. The server component hands in the
 // most recent hay_fed line (group, place, quantity); this card offers it back:
-//   Same today → saved on the phone NOW under its own id, with a 10 s hold
+//   Record {n} bales now → saved on the phone NOW under its own id, with a 10 s hold
 //                before upload so Undo can pull it back before anything
 //                leaves the phone (the ledger is append-only; there is no
 //                undo after sync, so the hold IS the undo window).
-//   Different today → opens the Log it sheet pre-filled with these values, for a
+//   Adjust first → opens the record sheet pre-filled with these values, for a
 //                NEW feeding with changes (5F: never 'Change' — correcting the
 //                old feeding is Correct this entry on its event page).
 // The status strip for the entry it made renders right here, with the Undo
@@ -74,14 +74,14 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
             onClick={sameToday}
             className="min-h-[56px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white hover:bg-forest-green/90"
           >
-            Same today
+            Record {last.bales} {last.bales === 1 ? 'bale' : 'bales'} now
           </button>
           <button
             type="button"
             onClick={change}
             className="min-h-[56px] rounded-lg border border-forest-green/25 px-5 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5"
           >
-            Different today
+            Adjust first
           </button>
         </div>
       )}

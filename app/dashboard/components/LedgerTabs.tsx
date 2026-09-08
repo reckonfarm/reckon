@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
 // ─── The three ledgers as tabs (views2, commit 4) ──────────────────────────────
@@ -24,14 +26,14 @@ export type LedgerTab = 'season' | 'hay' | 'logged'
 const TABS: LedgerTab[] = ['season', 'hay', 'logged']
 
 const LABELS: Record<LedgerTab, string> = {
-  season: 'This season',
+  season: 'Jobs this season',
   hay: 'Hay',
-  logged: 'Recently logged',
+  logged: 'Activity',
 }
 
 // Plain-spoken, and each says what would fill it.
-const EMPTY: Record<LedgerTab, string> = {
-  season: 'No machine sessions this season. Bales baled, acres cut, and working time come from a Scout on a machine; feed, counts, rain, and cattle work go in with Log it above and show under Recently logged.',
+const EMPTY: Record<LedgerTab, ReactNode> = {
+  season: <>No jobs recorded this season. Your manual entries are in <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</>,
   hay: 'No hay logged this season yet. Log a count of the stack, bales stacked, or hay fed.',
   logged: 'Nothing logged yet. Log it is right above.',
 }

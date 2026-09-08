@@ -155,11 +155,12 @@ export default function ProfileForm() {
         </Field>
 
         <Field label="Display name">
+          <p className="mb-1 font-dm-sans text-[14px] text-secondary-ink">Name shown on your work entries</p>
           <input
             type="text"
             value={displayName}
             onChange={e => setDisplayName(e.target.value)}
-            placeholder="How buyers see you — e.g. Bar K Ranch"
+            placeholder="e.g. Bar K Ranch"
             maxLength={60}
             className={INPUT_CLS}
           />
@@ -187,6 +188,8 @@ export default function ProfileForm() {
           />
         </Field>
 
+        {/* Block 6A: buyer-facing fields stay behind the marketplace flag (hidden, never dropped). */}
+        {flagEnabled('marketplace') && (
         <Field label="Bio">
           <textarea
             value={bio}
@@ -198,6 +201,7 @@ export default function ProfileForm() {
           />
           <p className="mt-1 text-right text-[14px] font-dm-sans text-secondary-ink">{bio.length}/500</p>
         </Field>
+        )}
 
         {/* Buyer-demand alerts opt-in — marketplace feature, rides its flag (the saved
             preference is untouched; the control just disappears while flagged off). */}

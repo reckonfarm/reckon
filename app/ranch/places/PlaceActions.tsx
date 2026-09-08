@@ -10,7 +10,7 @@ import type { PlaceMemory } from '@/lib/places/history'
 
 const CHIP_ORDER: PlaceMemory['kind'][] = ['feeding', 'rain', 'stacked', 'count', 'moved', 'worked', 'device']
 const CHIP_LABEL: Record<PlaceMemory['kind'], string> = {
-  feeding: 'Last feeding', rain: 'Last rain', stacked: 'Last stacked', count: 'Last count',
+  feeding: 'Last recorded feeding', rain: 'Last rain', stacked: 'Last stacked', count: 'Last count',
   moved: 'Last move', worked: 'Last worked', device: 'Last reading',
 }
 
