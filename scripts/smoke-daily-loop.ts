@@ -660,6 +660,55 @@ async function main() {
       if (prior) await page.setViewportSize(prior)
     }
 
+    // ── Block 6 (6G): a move and cattle work can name a lot ─────────────────────
+    // Optional, "Unassigned" plain; a move records the move and never changes a
+    // head count; work against a lot becomes its last recorded work.
+    {
+      // A fresh lot for this block (the seed lot was archived by an earlier check).
+      const lot6g = randomUUID(), LOT6G = `${PREFIX} Pairs`
+      const { error: l6Err } = await admin.from('herd_lots').insert({ id: lot6g, ranch_id: ranchId, class: 'cows', name: LOT6G, head_count: 44, avg_weight: 1200, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (l6Err) throw new Error(`6G lot: ${l6Err.message}`)
+      const headBefore = async () => parseInt((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-head"]').innerText().catch(() => 'NaN')).replace(/,/g, ''), 10)
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const head0 = await headBefore()
+      // cattle work naming the lot
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /^Record work/ }).first().click()
+      await page.getByRole('button', { name: /^Record cattle work/ }).click()
+      await page.getByLabel('Worked').fill('12')
+      await page.getByLabel('What').fill('pregged')
+      await page.locator('[data-audit="lot-for-work"]').waitFor({ timeout: 15_000 })
+      await page.locator('[data-audit="lot-for-work"]').selectOption({ label: LOT6G })
+      await page.getByLabel('Where').selectOption({ label: `${PREFIX} West stack` })
+      await page.getByRole('button', { name: 'Record work', exact: true }).click()
+      await watchStates(page, 'Synced to ranch', 20_000, 'Pregged 12 head')
+      const { data: worked } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_worked').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      await page.goto(`/ranch/activity/${worked?.id}`, { waitUntil: 'domcontentloaded' })
+      const wLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), wWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('6G: cattle work names a lot — stored, on the entry, and in the line', worked?.payload?.herd_lot_id === lot6g && wLot === LOT6G && /Pregged 12 head of SMOKE-DAILY-LOOP Pairs at .*West stack/.test(wWhat), `lot "${wLot}" · "${wWhat}"`)
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const lastWork = (await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-last-work"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('6G: the lot card\'s last recorded work is the cattle work', /pregged 12 head/.test(lastWork), lastWork.slice(0, 100))
+      // a move naming the lot — recorded, and the head count untouched
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /^Record work/ }).first().click()
+      await page.getByRole('button', { name: /^Move cattle/ }).click()
+      await page.getByLabel('Moved').fill('5')
+      await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
+      const hintId = await page.locator('[data-audit="lot-for-move"]').getAttribute('aria-describedby')
+      const moveHint = hintId ? (await page.locator(`#${hintId}`).innerText().catch(() => '')).replace(/\s+/g, ' ') : ''
+      await page.locator('[data-audit="lot-for-move"]').selectOption({ label: LOT6G })
+      await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
+      await page.getByRole('button', { name: 'Record move', exact: true }).click()
+      await watchStates(page, 'Synced to ranch', 20_000, 'Moved 5 head')
+      const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
+      const mLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const head1 = await headBefore()
+      record('6G: a move names a lot, says on the field that it never changes a head count, and the count stays', moved?.payload?.herd_lot_id === lot6g && mLot === LOT6G && /Moved 5 head of SMOKE-DAILY-LOOP Pairs to .*West stack/.test(mWhat) && /never changes a lot/.test(moveHint) && head1 === head0 && Number.isFinite(head0), `lot "${mLot}" · "${mWhat}" · head ${head0} → ${head1} · hint "${moveHint.slice(0, 60)}"`)
+    }
+
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
     // Original, current value, editor, reason, and the resulting balance all
     // visible. Balance read from the receipt the save lands on and from the

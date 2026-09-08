@@ -124,6 +124,7 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         head: boundedNumber(body.head, 'head', LIMITS.head.min, LIMITS.head.max, true),
         from_place_id: optionalUuid(body.from_place_id, 'from_place_id'),
         to_place_id: optionalUuid(body.to_place_id, 'to_place_id'),
+        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch moved — optional, never changes a head count
       }
     case 'cattle_worked': {
       const what = typeof body.what === 'string' ? body.what.trim().slice(0, LIMITS.what.maxLen) : ''
@@ -132,6 +133,7 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         ...base,
         head: boundedNumber(body.head, 'head', LIMITS.head.min, LIMITS.head.max, true),
         what,
+        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch was worked — optional
       }
     }
     // A counted baseline: "N bales on hand as of D". The hay ledger

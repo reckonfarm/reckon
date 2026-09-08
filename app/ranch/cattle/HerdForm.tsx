@@ -57,7 +57,7 @@ function formatMonth(ym: string): string {
   return `${d.toLocaleDateString('en-US', { month: 'short' })} ’${d.toLocaleDateString('en-US', { year: '2-digit' })}`
 }
 
-export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
+export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; what?: string | null; head?: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
   const [loading, setLoading] = useState(!initialLots)
@@ -369,7 +369,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
             </p>
             {work && (
               <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-last-work">
-                Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="underline underline-offset-2">{work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
+                Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="underline underline-offset-2">{work.what ? `${work.what}${work.head != null ? ` ${work.head.toLocaleString('en-US')} head` : ''}` : work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
               </p>
             )}
             <p className="mt-1">
