@@ -1198,7 +1198,7 @@ export default function HayPage() {
               )}
               {saveDone && (
                 <span className="inline-flex items-center font-dm-sans text-xs font-medium text-forest-green">
-                  Saved — see it on <Link href="/radar" className="ml-1 underline">Hay Radar</Link>
+                  Saved — see it on <Link href="/weather/radar" className="ml-1 underline">Hay Radar</Link>
                 </span>
               )}
             </div>

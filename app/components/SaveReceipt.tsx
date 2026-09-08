@@ -28,7 +28,7 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
         </ul>
       )}
       {eventId && (
-        <Link href={`/activity/${eventId}`} className="mt-2 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
+        <Link href={`/ranch/activity/${eventId}`} className="mt-2 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
           {eventLabel} →
         </Link>
       )}

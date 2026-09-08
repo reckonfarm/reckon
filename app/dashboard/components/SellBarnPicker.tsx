@@ -34,9 +34,11 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
 
   return (
     <div className="rounded-lg border border-forest-green/10 bg-white px-4 py-3" data-audit="sell-pin">
-      <label className="block font-dm-sans text-[16px] font-semibold text-forest-green" htmlFor="sell-barn">Where I sell</label>
+      <label className="block font-dm-sans text-[16px] font-semibold text-forest-green" htmlFor="sell-barn">Preferred sale barn</label>
+      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink" id="sell-barn-help">Shown first; prices come from that barn&rsquo;s reports.</p>
       <select
         id="sell-barn"
+        aria-describedby="sell-barn-help"
         value={current ?? ''}
         disabled={busy}
         onChange={e => void save(e.target.value)}

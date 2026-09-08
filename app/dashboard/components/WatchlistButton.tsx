@@ -147,7 +147,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
       {showAdded && (
         <span className="text-[14px] font-dm-sans text-secondary-ink">
           Added to{' '}
-          <Link href="/watchlist" className="underline hover:text-forest-green">
+          <Link href="/weather/locations" className="underline hover:text-forest-green">
             My Counties
           </Link>
         </span>

@@ -69,7 +69,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       const res = await fetch(`/api/activity/${event.id}/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({})) as { event?: { id: string }; error?: string }
       if (!res.ok || !json.event) { setError(json.error ?? `Could not save (${res.status})`); setBusy(false); return }
-      navigateTo(router, `/activity/${json.event.id}?saved=1`)
+      navigateTo(router, `/ranch/activity/${json.event.id}?saved=1`)
     } catch {
       setError('No connection — the entry is unchanged. Try again when you have signal.'); setBusy(false)
     }

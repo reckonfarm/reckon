@@ -41,7 +41,7 @@ export interface Names {
   lot: (id: unknown) => string | null
   person: (userId: string) => string
 }
-export interface ActivityFilters { actor?: string | null; place?: string | null; lot?: string | null; from?: string | null; to?: string | null }
+export interface ActivityFilters { actor?: string | null; place?: string | null; lot?: string | null; from?: string | null; to?: string | null; since?: string | null }   // since = recorded (ingested_at) after this instant — Today's "View all N updates"
 export interface ActivityPage { rows: ActivityRow[]; names: Names; nextCursor: string | null; ranchId: string; filters: ActivityFilters }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -145,6 +145,7 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
   if (filters.lot) q = q.eq('payload->>herd_lot_id', filters.lot)
   if (filters.from && DAY.test(filters.from)) q = q.gte('ts', ranchDayStartIso(filters.from))
   if (filters.to && DAY.test(filters.to)) q = q.lt('ts', ranchDayEndIso(filters.to))
+  if (filters.since && !Number.isNaN(Date.parse(filters.since))) q = q.gt('ingested_at', new Date(filters.since).toISOString())
   if (cursor) {
     const [cts, cid] = cursor.split('|')
     if (cts && cid) q = q.or(`ts.lt.${cts},and(ts.eq.${cts},id.lt.${cid})`)

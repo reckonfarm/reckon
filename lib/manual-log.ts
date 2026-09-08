@@ -40,6 +40,7 @@ export const LIMITS = {
   count:  { min: 1, max: 10000 },
   head:   { min: 1, max: 20000 },
   what:   { maxLen: 80 },
+  note:   { maxLen: 200 },
   onHand: { min: 0, max: 100000 }, // 0 is honest ("stack's empty")
 } as const
 
@@ -49,7 +50,7 @@ export type ManualPayload = {
   place_id: string | null
 } & (
   | { inches: number }
-  | { bales: number; herd_lot_id: string | null }
+  | { bales: number; herd_lot_id: string | null; note?: string; stock_place_id?: string | null }
   | { count: number }
   | { head: number; from_place_id: string | null; to_place_id: string | null }
   | { head: number; what: string }
@@ -103,12 +104,18 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
       const inches = boundedNumber(body.inches, 'inches', LIMITS.inches.min, LIMITS.inches.max, false)
       return { ...base, inches: Math.round(inches * 100) / 100 }
     }
-    case 'hay_fed':
+    case 'hay_fed': {
+      // Block 6A: a note and the stack the hay came from, both optional, behind "More".
+      const note = typeof body.note === 'string' ? body.note.trim().slice(0, LIMITS.note.maxLen) : ''
+      const stock = optionalUuid(body.stock_place_id, 'stock_place_id')
       return {
         ...base,
         bales: boundedNumber(body.bales, 'bales', LIMITS.bales.min, LIMITS.bales.max, true),
         herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),
+        ...(note ? { note } : {}),
+        ...(stock ? { stock_place_id: stock } : {}),
       }
+    }
     case 'bales_stacked':
       return { ...base, count: boundedNumber(body.count, 'count', LIMITS.count.min, LIMITS.count.max, true) }
     case 'cattle_moved':

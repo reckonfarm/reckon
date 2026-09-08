@@ -136,16 +136,17 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
   // give it a moment, then go there directly and check the header for the
   // signed-in email — the cookie is what matters, not the hand-off.
   await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
-  await page.waitForURL(u => u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
   if (process.env.DEBUG_SIGNIN) {
     await page.waitForTimeout(6000)
     console.log('   after callback:', page.url().replace(BASE, ''), (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     console.log('   cookies:', (await ctx.cookies()).map(c => `${c.name.slice(0, 28)}@${c.domain}${c.secure ? ' secure' : ''} ${c.sameSite}`).join(' | '))
   }
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
-  // The header paints "Sign in" first and swaps to the email once the browser
-  // client has read the session — wait for the swap, not the first paint.
-  await page.locator('header').getByText(email).waitFor({ timeout: 20_000 }).catch(async () => {
+  await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
+  // The header paints "Sign in" first and swaps to the Account button once the
+  // browser client has read the session (Block 6A: the email lives on /account
+  // now) — wait for the swap, not the first paint.
+  await page.locator('header [data-audit="account-button"]').waitFor({ timeout: 20_000 }).catch(async () => {
     const header = await page.locator('header').innerText().catch(() => '')
     throw new Error(`sign-in did not stick (header: ${header.replace(/\s+/g, ' ').slice(0, 120)})`)
   })
@@ -175,12 +176,13 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
 const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
-  await page.getByRole('button', { name: /^Log it/ }).click()
-  await page.getByRole('button', { name: /Hay fed/ }).click()
+  await page.getByRole('button', { name: /^Record work/ }).click()
+  await page.getByRole('button', { name: /^Feed hay/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
-  if (opts.lot) await page.getByLabel('Fed to').selectOption({ label: opts.lot })
-  const save = page.getByRole('button', { name: 'Save', exact: true })
+  if (opts.lot) { await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {}); await page.locator('[data-audit="fed-to"]').selectOption({ label: opts.lot }) }
+  const save = page.getByRole('button', { name: 'Record feeding', exact: true })
+  await save.waitFor({ timeout: 15_000 }).catch(() => {})   // Block 6A: Save waits for the lots to load
   if (opts.doubleTap) {
     // Two clicks in the same tick, straight at the DOM — faster than a thumb.
     await save.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click() })
@@ -229,14 +231,15 @@ async function main() {
   })
   try {
     let page = await signIn(ctx)
-    record('signed in', page.url().includes('/dashboard'), page.url().replace(BASE, ''))
+    record('signed in', page.url().includes('/today'), page.url().replace(BASE, ''))
 
     // ── invariant ──
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
-    const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
-    record('/home renders the home county Today stack', homeUrl.includes(`fips=${HOME_FIPS}`) && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
+    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).count() > 0
+    // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
+    record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
     // 4.5:1, navigation / answers at 7:1 — main and header both.
     for (const root of ['main', 'header'] as const) {
@@ -258,7 +261,7 @@ async function main() {
     record('county search responds', r.status() === 200 && Array.isArray(j) && j.length > 0, `${r.status()} ${Date.now() - t} ms`)
 
     // ── 2A: online save, four states in order, one row under the client id ──
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await logFeed(page, 4)
     const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
@@ -268,8 +271,9 @@ async function main() {
     // Block 5E — Today, reordered: quick record above the ledgers, the ledger strip open on Hay,
     // conditions and the forecast below, and no news feed on the signed-in Today.
     {
-      const y = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? b.y : NaN }
-      const yRepeat = await y('text=Repeat last feeding'), yLog = await y('button:has-text("Log it")'), yTabs = await y('[role="tablist"][aria-label="Ledgers"]'), yForecast = await y('text=7-day forecast')
+      // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
+      const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
+      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('text=7-day forecast')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const headlines = await page.getByText('Headlines', { exact: true }).count()
       record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · 7-day forecast, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
@@ -279,7 +283,7 @@ async function main() {
       const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
       const ob = await outbox(page)
       const latestId = ob.length ? ob[ob.length - 1].id : null
-      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
+      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/ranch/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
     }
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
@@ -316,7 +320,7 @@ async function main() {
     await ctx.setOffline(false)
     page = await ctx.newPage()
     page.on('dialog', d => void d.accept())
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     const seqFq = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 5 bales')
     record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Synced to ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
 
@@ -328,12 +332,12 @@ async function main() {
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 
     // ── half-typed sheet survives a reload ──
-    await page.getByRole('button', { name: /^Log it/ }).click()
-    await page.getByRole('button', { name: /Hay fed/ }).click()
+    await page.getByRole('button', { name: /^Record work/ }).click()
+    await page.getByRole('button', { name: /^Feed hay/ }).click()
     await page.getByLabel('Hay fed').fill('7')
     await page.reload({ waitUntil: 'domcontentloaded' })
-    const btn = await page.getByRole('button', { name: /^Log it/ }).innerText().catch(() => '')
-    await page.getByRole('button', { name: /^Log it/ }).click()
+    const btn = await page.getByRole('button', { name: /^Record work/ }).innerText().catch(() => '')
+    await page.getByRole('button', { name: /^Record work/ }).click()
     const restored = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('half-typed sheet survives a reload', /finish/.test(btn) && restored === '7', `button "${btn}" · bales "${restored}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -342,29 +346,30 @@ async function main() {
     const placeName = `${PREFIX} West stack`
     await logFeed(page, 2, { place: placeName })
     await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
-    await page.goto('/places', { waitUntil: 'domcontentloaded' })
-    const placeLink = page.locator(`main a[href="/places/${placeId}"]`)
+    await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+    const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
-    await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
     record('2F: place page opens with its memory', h1p === placeName && /Last recorded feeding: today .*2 bales/.test(bodyP), `h1 "${h1p}" · ${(bodyP.match(/Last recorded feeding:[^·]*·[^L]{0,40}/) ?? [''])[0]}`)
-    await page.getByRole('tab', { name: 'Last feeding' }).click()
+    await page.getByRole('tab', { name: 'Last recorded feeding' }).click()
     const chip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2F: "Last feeding" chip answers', /Last recorded feeding: today .*2 bales/.test(chip), chip.slice(0, 100))
-    const feedHere = page.getByRole('button', { name: 'Log feed here' })
+    const feedHere = page.locator('[data-audit="record-here"]')   // Block 6A: one primary Record here — it opens the picker with the place set
     await feedHere.click()
+    await page.locator('[data-audit="tile-hay_fed"]').click()
     // The place list loads when the sheet opens; the pre-filled value shows once its option exists.
     await page.getByLabel('Where').locator('option', { hasText: placeName }).waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
     const prefilled = await page.getByLabel('Where').inputValue().catch(() => '')
-    record('2F: "Log feed here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
+    record('2F: "Record here" opens the sheet with this place', prefilled === placeId, `Where=${prefilled.slice(0, 8)}…`)
     await page.getByRole('button', { name: 'Cancel' }).click()
 
     // ── 2B: repeat last — two taps from a cold open, undo, one row ──
     const beforeRepeat = await feedRows()
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 })
-    const same = page.getByRole('button', { name: 'Same today' })
+    await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
+    const same = page.getByRole('button', { name: /^Record \d+ bales? now$/ })
     await same.waitFor({ timeout: 20_000 }).catch(() => {})
     const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2B: Repeat last feeding card shows the last feeding', await same.count() > 0 && /2 bales/.test(cardText) && cardText.includes(placeName), cardText.slice(0, 100))
@@ -375,11 +380,11 @@ async function main() {
     record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Synced to ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
     // Undo within the window: nothing leaves the phone.
     const beforeUndo = await feedRows()
-    await page.getByRole('button', { name: 'Same today' }).click()
+    await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).click()
     await page.getByRole('button', { name: /^Undo/ }).click()
     await page.waitForTimeout(13_000)
-    record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: 'Same today' }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
-    await page.getByRole('button', { name: 'Different today' }).click()
+    record('2B: Undo inside 10 s → no row', (await feedRows()) === beforeUndo && await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).count() > 0, `feeds ${beforeUndo} → ${await feedRows()}`)
+    await page.getByRole('button', { name: 'Adjust first' }).click()
     const changed = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('2B: Change opens the sheet pre-filled', changed === '2', `bales "${changed}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -388,18 +393,18 @@ async function main() {
     const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
     const pageB = await signIn(ctxB, EMAIL_B)
     if (process.env.DEBUG_2E) pageB.on('request', r => { if (/\/api\/seen/.test(r.url()) && r.method() === 'POST') console.log(`   [2E debug] ${new Date().toISOString()} B POST /api/seen from ${r.frame().url().replace(BASE, '')}`) })
-    if (process.env.DEBUG_2E) pageB.on('response', r => { if (/\/dashboard\?fips=/.test(r.url()) && r.request().isNavigationRequest()) console.log(`   [2E debug] ${new Date().toISOString()} B navigation response ${r.status()} ${r.url().replace(BASE, '')}`) })
+    if (process.env.DEBUG_2E) pageB.on('response', r => { if (/\/(today|dashboard)\?fips=/.test(r.url()) && r.request().isNavigationRequest()) console.log(`   [2E debug] ${new Date().toISOString()} B navigation response ${r.status()} ${r.url().replace(BASE, '')}`) })
     await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
-    await pageB.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    await pageB.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const urlB = pageB.url().replace(BASE, '')
-    const logItB = await pageB.getByRole('button', { name: /^Log it/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+    const logItB = await pageB.getByRole('button', { name: /^Record work/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
     const beforeB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
     // Block 4A — the hand sees the ranch's lots: the Fed-to control is there, with the lot.
-    await pageB.getByRole('button', { name: /^Log it/ }).click()
-    await pageB.getByRole('button', { name: /Hay fed/ }).click()
-    const fedTo = pageB.getByLabel('Fed to')
-    const fedToShown = await fedTo.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+    await pageB.getByRole('button', { name: /^Record work/ }).click()
+    await pageB.getByRole('button', { name: /^Feed hay/ }).click()
+    const fedTo = pageB.locator('[data-audit="fed-to"]')   // Block 6A: the loaded control (the field's space is reserved while lots load)
+    const fedToShown = await fedTo.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     const lotOptions = fedToShown ? await fedTo.locator('option').allInnerTexts() : []
     record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
     await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
@@ -425,21 +430,24 @@ async function main() {
       skip('2E: since-you-were-here for member B', `migration 044 not applied (${colErr.message.slice(0, 60)})`)
       await ctxB.close()
     } else {
-      const ownBlock = await page.getByText('Recorded since you last checked').count() + await page.getByText('Recorded since yesterday').count()
-      record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
+      const ownRows = await page.locator('[data-audit="since-row"]').count()
+      record('2E: A does not see A\'s own entries as news', ownRows === 0, `since rows on A's Today: ${ownRows}`)
       if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} before goto, B last_seen_at =`, JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data))
-      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
       if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
-      const blockB = (await pageB.getByText('Recorded since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const blockB = (await pageB.getByText('Recorded since you checked').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('2E: B sees "Recorded since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
+      // Block 6A: the block shows 3–5 rows, newest recorded first, and 'View all N updates' carries the rest.
+      const sinceRows = await pageB.locator('[data-audit="since-row"]').count()
+      const viewAll = (await pageB.locator('[data-audit="since-view-all"]').innerText().catch(() => '')).trim()
+      record('2E: B sees "Recorded since you checked" with A\'s feedings by name', /Smoke A fed \d+ bales?/.test(blockB) && sinceRows >= 1 && sinceRows <= 5 && (sinceRows < 5 || /View all \d+ updates/.test(viewAll)), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
       const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
-      const eventId = rowHref?.match(/^\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null
+      const eventId = rowHref?.match(/^\/ranch\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null   // Block 6A: the record lives under /ranch
       record('5A: a handoff row opens its exact event, not a place summary', !!eventId, String(rowHref))
       if (eventId) {
-        await pageB.goto(`/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
+        await pageB.goto(`/ranch/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
         await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
         const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('sync'), place = await d('place')
@@ -447,7 +455,7 @@ async function main() {
         await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       }
       // The place's entry count is a door into the place's record (gate 2).
-      await pageB.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      await pageB.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
       const entriesLink = pageB.locator('[data-audit="place-entries-link"]')
       const entriesText = (await entriesLink.innerText().catch(() => '')).replace(/\s+/g, ' ')
       const claimed = parseInt((entriesText.match(/(\d+) entr/) ?? ['', '0'])[1], 10)
@@ -455,15 +463,16 @@ async function main() {
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
       const listed = await pageB.locator('[data-audit="activity-row"]').count()
       record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
-      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
       await pageB.waitForTimeout(3_000)
-      const after = await pageB.getByText('Recorded since you last checked').count() + await pageB.getByText('Recorded since yesterday').count()
-      record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
+      const afterRows = await pageB.locator('[data-audit="since-row"]').count()
+      const quiet = await pageB.getByText('No new crew entries since your last review').count()
+      record('2E: after the visit, nothing new → no rows, the quiet line (never "All work complete")', afterRows === 0 && quiet === 1 && (await pageB.getByText('All work complete').count()) === 0, `rows ${afterRows} · quiet line ${quiet}`)
       // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
-      await pageB.goto('/activity', { waitUntil: 'domcontentloaded' })
+      await pageB.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
       const still = await pageB.getByRole('link', { name: /Smoke A · Fed 2 bales/ }).count()
       record('5A: after the visit the entries are still findable in the record', still >= 1, `${still} matching row(s) on /activity`)
@@ -473,11 +482,145 @@ async function main() {
     // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
     // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
     //  "since you last checked" news and break 2E's fixed sequence.)
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
     await page.waitForTimeout(800)
     const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+
+    // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
+    {
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-sections"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const numbers = await page.locator('[data-audit="section-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const recentRows = await page.locator('[data-audit="ranch-recent"] li').count()
+      const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
+      // The fixture has one live lot with a head count and one place; it has no devices and its hay
+      // count IS a baseline, so on hand exists. No device number may render.
+      record('6A: the hub shows recent rows and only the numbers something stands behind (no devices → no device number)', recentRows === Math.min(5, eventsOnRanch ?? 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · numbers [${numbers.join(' | ')}]`)
+      // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowsBefore = await page.locator('[data-audit="lot-row"]').count()
+      const marketHref = await page.locator('[data-audit="lot-market-link"]').first().getAttribute('href').catch(() => null)
+      await page.locator('[data-audit="lot-more"]').first().click()
+      const menuText = (await page.locator('[data-audit="lot-menu"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="lot-archive"]').click()
+      for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) > 0; i++) await page.waitForTimeout(250)   // the list reloads from the server
+      const rowsAfter = await page.locator('[data-audit="lot-row"]').count()
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME}`) }).count()
+      record('6A: Archive sits behind the row menu, states its consequence, removes the lot from current views, and every past feeding still names it', rowsBefore === 1 && rowsAfter === 0 && /History stays; the lot leaves current views/.test(menuText) && stillNamed >= 1 && /^\/markets\?lot=/.test(marketHref ?? ''), `rows ${rowsBefore}→${rowsAfter} · menu "${menuText.slice(0, 60)}" · feedings still naming the lot: ${stillNamed} · market link ${marketHref}`)
+    }
+
+    // ── Block 6A (7): places rows carry last work only when a line exists; devices empty state + setup page ──
+    {
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-rows"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const placeRows = await page.locator('[data-audit="place-row"]').count()
+      const withWork = await page.locator('[data-audit="place-last-work"]').count()
+      const withRain = await page.locator('[data-audit="place-last-rain"]').count()
+      const { count: rainLines } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).eq('type', 'rain')
+      record('6A: places list — every place a row; last recorded work where a line exists; last rain only where a reading exists', placeRows >= 1 && withWork >= 1 && (rainLines ?? 0) > 0 ? withRain >= 1 : withRain === 0, `rows ${placeRows} · with work ${withWork} · with rain ${withRain} · rain lines on ranch ${rainLines}`)
+      await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
+      const emptyText = (await page.locator('[data-audit="devices-empty"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const setup = await page.request.get('/ranch/devices/setup')
+      const online = await page.locator('main').innerText().then(t => /\bOnline\b|\bOffline\b/.test(t)).catch(() => false)
+      record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /No devices connected\. You can record work now\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
+    }
+
+    // ── Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding ──
+    {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /^Record work/ }).click()
+      const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
+      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /count · not a stock movement/i.test(t)).catch(() => false)   // the eyebrow is uppercased by CSS
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
+      const order = ['Hay fed', 'Fed to', 'Where'].map(l => labels.findIndex(x => x.startsWith(l)))
+      const noLot = await page.locator('[data-audit="fed-to"] option').first().innerText().catch(() => '')
+      await page.getByLabel('Hay fed').fill('3')
+      const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      record('6A: the sheet offers verbs with Count apart; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+    }
+
+    // ── Block 6A (9): the copy queue, as rendered ──
+    {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const tabs = await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const repeatButtons = await page.locator('button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^Record \d+ bales? now$/.test(t) || t === 'Adjust first'))
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const countyDrought = await page.getByRole('heading', { name: 'County drought' }).count()
+      const latestReading = await page.getByText('Latest Reading', { exact: true }).count()
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })
+      await page.getByText('Name shown on your work entries').waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
+      const nameHint = await page.getByText('Name shown on your work entries').count()
+      const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
+      record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
+    }
+
+    // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
+    {
+      const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }
+      const { data: anyEvent } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const { data: anyPlace } = await admin.from('places').select('id').eq('ranch_id', ranchId).limit(1).maybeSingle()
+      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch/places'], ['/devices', '/ranch/devices'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
+        ...(anyPlace ? [[`/places/${anyPlace.id}`, `/ranch/places/${anyPlace.id}`] as [string, string]] : []),
+        ...(anyEvent ? [[`/activity/${anyEvent.id}`, `/ranch/activity/${anyEvent.id}`] as [string, string]] : [])]
+      const results = await Promise.all(statics.map(async ([from, expected]) => ({ from, expected, ...(await hop(from)) })))
+      // A redirect resolves when it is permanent (301/308) and its Location, host stripped, is exactly the new path.
+      const failing = results.filter(r => !((r.status === 301 || r.status === 308) && r.location === r.expected))
+      record('6A: every old URL answers a permanent redirect to its new home (incl. /places/[id] and /activity/[id])', failing.length === 0 && results.length >= 9, failing.length ? failing.map(r => `${r.from} → ${r.status} ${r.location || '(no location)'}`).join(' | ') : `${results.length} redirects: ` + results.map(r => `${r.from}→${r.location}`).join(' '))
+      const [root, home, bare, county, today] = await Promise.all([hop('/'), hop('/home'), hop('/dashboard'), hop(`/dashboard?fips=${HOME_FIPS}`), hop('/today')])
+      record('6A: signed in, / and /home and bare /dashboard land on /today in one hop; a county page and /today are never redirected', [root, home, bare].every(r => r.status >= 300 && r.status < 400 && /\/today$/.test(r.location)) && county.status === 200 && today.status === 200, `/ ${root.status}→${root.location} · /home ${home.status}→${home.location} · /dashboard ${bare.status}→${bare.location} · county ${county.status} · /today ${today.status}`)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const title = await page.title()
+      await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const countyTitle = await page.title()
+      record('6A: no county title on a private page; the county page keeps it', /^Today/.test(title) && !/Drought/.test(title) && /Drought & LFP Eligibility/.test(countyTitle), `/today: "${title}" · /dashboard: "${countyTitle}"`)
+    }
+
+    // ── Block 6A (4): the same ranch in the header on every private page; no county title on any of them ──
+    {
+      const walk = [`/today?fips=${HOME_FIPS}`, '/ranch', '/ranch/cattle', '/ranch/activity', '/ranch/places', '/markets', '/weather', '/account']
+      const seen: { path: string; ranch: string; title: string }[] = []
+      for (const path of walk) {
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="header-ranch"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        seen.push({ path, ranch: (await page.locator('[data-audit="header-ranch"]').innerText().catch(() => '')).trim(), title: await page.title() })
+      }
+      const names = new Set(seen.map(x => x.ranch))
+      const countyTitled = seen.filter(x => /Drought/.test(x.title))
+      record('6A: the same ranch name in the header on Today, Ranch, Cattle, Activity, Places, Markets, Weather, Account — and no county title on any', names.size === 1 && !names.has('') && countyTitled.length === 0, `ranch "${[...names].join('|')}" · titles: ${seen.map(x => `${x.path.replace(/\?.*/, '')}="${x.title.replace(/ — Dryline$/, '')}"`).join(' ')}`)
+    }
+
+    // ── Block 6A (3): the Record FAB on a phone — above the bar, hidden while a sheet is open ──
+    {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const fab = page.locator('[data-audit="record-fab"]')
+      await fab.waitFor({ timeout: 15_000 }).catch(() => {})
+      const fabBox = await fab.boundingBox().catch(() => null)
+      const barBox = await page.locator('[data-audit="bottom-bar"]').boundingBox().catch(() => null)
+      const tabs = await page.locator('[data-audit="bottom-bar"] a').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6A: four labeled bottom tabs and a Record FAB that sits clear above the bar', tabs.join(' ') === 'Today Ranch Markets Weather' && !!fabBox && !!barBox && fabBox.y + fabBox.height <= barBox.y, `tabs [${tabs.join(', ')}] · fab bottom ${fabBox ? Math.round(fabBox.y + fabBox.height) : 'none'} · bar top ${barBox ? Math.round(barBox.y) : 'none'}`)
+      await fab.click()
+      await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
+      const openDialogs = await page.getByRole('dialog').count()
+      const fabWhileOpen = await fab.count()
+      const flag = await page.evaluate(() => document.documentElement.dataset.recordSheet ?? '')
+      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.waitForTimeout(300)
+      const fabAfter = await fab.isVisible().catch(() => false)
+      record('6A: the FAB opens the record sheet and is hidden while the sheet is up, back when it closes', openDialogs === 1 && fabWhileOpen === 0 && flag === 'open' && fabAfter, `dialogs ${openDialogs} · fab while open ${fabWhileOpen} · html flag "${flag}" · fab after close ${fabAfter}`)
+      if (prior) await page.setViewportSize(prior)
+    }
 
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
     // Original, current value, editor, reason, and the resulting balance all
@@ -488,7 +631,7 @@ async function main() {
       const probe = await admin.from('events').select('superseded_by').limit(1)
       if (probe.error) skip('5B: correct 6 → 4 on the phone', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
       else {
-        await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 6)
         const seq6 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
@@ -499,7 +642,7 @@ async function main() {
         const { data: six } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '6').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
         record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Synced to ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
         if (six) {
-          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-audit="correct-entry"]').click()
           await page.getByLabel('Bales', { exact: true }).fill('4')
           await page.locator('[data-audit="correction-reason"]').fill('was 4, typed 6')
@@ -511,7 +654,7 @@ async function main() {
           const onHand4 = parseInt((receipt.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
           record('5B: the correction lands on its own entry — current value, editor, what it corrects, reason', /Fed 4 bales/.test(line) && /Smoke A/.test(who) && /owner/.test(who) && /Fed 6 bales/.test(corrects) && /was 4, typed 6/.test(reason), `${line} · ${who} · corrects ${corrects} · ${reason}`)
           record('5B: the resulting balance is on the receipt and moved by exactly the 2 bales corrected', Number.isFinite(onHand4) && onHand4 === onHand6 + 2, `on hand ${onHand6} → ${onHand4}`)
-          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           const replaced = (await page.locator('[data-audit="event-replaced"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
           const struck = await page.locator('h1[data-audit="event-line"].line-through').count()
           record('5B: the original stays readable, struck through, and names the current value, who changed it, and why', /Current: Fed 4 bales/.test(replaced) && /Changed by Smoke A/.test(replaced) && /was 4, typed 6/.test(replaced) && struck === 1, replaced.slice(0, 160))
@@ -527,13 +670,14 @@ async function main() {
     // or without a clean sign-out in between.
     {
       const PRIVATE_KEYS = ['dryline_outbox_v1', 'manual_log_draft_v1', 'manual_log_last_lot', 'manual_log_last_place', 'dryline_hay_draft_v1', 'farmer_type', 'dryline_session_uid']
-      await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[role="status"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
       const beforeText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const keysBefore = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
       record('5D: before sign-out the page holds private content and the phone holds private keys', /SMOKE-DAILY-LOOP/.test(beforeText) && /bales/.test(beforeText) && keysBefore.includes('dryline_outbox_v1') && keysBefore.includes('dryline_session_uid'), `keys: ${keysBefore.join(', ')}`)
       page.once('dialog', d => void d.accept())   // "entries not synced" guard, should not fire — everything synced
-      await page.getByRole('button', { name: 'Sign out' }).click()
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })   // Block 6A: Sign out lives on /account
+      await page.locator('[data-audit="sign-out"]').click()
       await page.waitForURL(u => u.pathname === '/' || u.pathname === '/signin', { timeout: 30_000 }).catch(() => {})
       await page.waitForLoadState('domcontentloaded')
       const afterText = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -547,8 +691,8 @@ async function main() {
       }, ['dryline_outbox_v1', 'dryline_session_uid', userId])
       const linkB = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL_B })
       const thB = linkB.data?.properties?.hashed_token
-      await page.goto(`/auth/callback?token_hash=${thB}&type=magiclink&next=/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 }).catch(() => {})
+      await page.goto(`/auth/callback?token_hash=${thB}&type=magiclink&next=/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForURL(u => u.pathname.startsWith('/today') && !u.searchParams.has('token_hash'), { timeout: 60_000 }).catch(() => {})
       await page.waitForTimeout(2_500)
       const bText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const bState = await page.evaluate(([outboxKey, ownerKey]: string[]) => ({ outbox: localStorage.getItem(outboxKey), owner: localStorage.getItem(ownerKey) }), ['dryline_outbox_v1', 'dryline_session_uid'])

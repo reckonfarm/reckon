@@ -95,7 +95,8 @@ export default function FeedbackWidget() {
   return (
     // z-40 keeps it under the z-50 bottom nav. Mobile bottom offset clears the
     // 56px tab bar + safe-area; on md+ there is no bottom bar, so sit at the edge.
-    <div className="fixed right-3 z-40 bottom-[calc(56px+env(safe-area-inset-bottom)+0.75rem)] md:right-4 md:bottom-4 font-dm-sans">
+    // Block 6A: the Record FAB owns the bottom-right corner on a phone; feedback sits bottom-left there.
+    <div className="fixed left-3 z-40 bottom-[calc(56px+env(safe-area-inset-bottom)+0.75rem)] md:left-auto md:right-4 md:bottom-4 font-dm-sans">
       {!open ? (
         <button
           onClick={() => setOpen(true)}

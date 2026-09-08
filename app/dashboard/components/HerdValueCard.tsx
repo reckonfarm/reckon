@@ -86,7 +86,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
             LRP coverage available to explore for {floors.length} of {estimate.lots_total} lot{estimate.lots_total === 1 ? '' : 's'} · reference coverage price from ${minFloor.toFixed(2)}/cwt · needs a purchased endorsement
           </p>
         )}
-        <Link href="/herd" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Herd page →</Link>
+        <Link href="/ranch/cattle" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Herd page →</Link>
       </Card>
   )
 }

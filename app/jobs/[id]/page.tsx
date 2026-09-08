@@ -20,6 +20,7 @@ import { MACHINE_SUGGESTIONS, fetchFieldsCut } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs, fetchDetectionsForJob } from '@/lib/detections/queries'
 import { BALE_MACHINE, BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import type { TrackPoint } from '@/lib/jobs/derive'
+import { privateTitle } from '@/lib/private-title'
 
 // ─── /jobs/[id] — one work session: the numbers, the map ───────────────────────
 // The map draws only what the ledger actually holds: solid line = consecutive
@@ -28,6 +29,7 @@ import type { TrackPoint } from '@/lib/jobs/derive'
 // the page because a rebuilt artifact should say when and by what it was built.
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => privateTitle('Job')
 
 const RESIDUE_LINE_MIN_SHARE = 0.05
 
@@ -221,7 +223,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       <SiteHeader />
       <AutoRefresh />
       <main className="mx-auto max-w-3xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
-        <Link href="/jobs" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
+        <Link href="/ranch/activity?source=machine" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           ← All jobs
         </Link>
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
-import { getRanchLots, createLot } from '@/lib/herd-lots'
+import { getRanchLots, createLot, lotPurposeSupported } from '@/lib/herd-lots'
 
 // ─── /api/herd/lots (Block 4B) — the ranch's lots, one row each ───────────────
 //   GET  → { lots: Lot[] }        live lots, oldest first (any member)
@@ -11,7 +11,8 @@ import { getRanchLots, createLot } from '@/lib/herd-lots'
 export async function GET(req: NextRequest) {
   const s = await sessionUser(req)
   if (!s) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  return NextResponse.json({ lots: await getRanchLots(s.supabase, s.user.id) })
+  // Block 6A: purpose_supported says whether herd_lots.purpose exists yet (055); the form hides the control until it does.
+  return NextResponse.json({ lots: await getRanchLots(s.supabase, s.user.id), purpose_supported: await lotPurposeSupported(s.supabase) })
 }
 
 export async function POST(req: NextRequest) {

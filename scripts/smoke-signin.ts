@@ -79,7 +79,7 @@ async function main() {
     await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/dashboard`)
     // Lands on the dashboard (the middleware resolves the county, or the bare
     // county picker for an account with none) once the session cookie is set.
-    await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 })
+    await page.waitForURL(u => (u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard')) && !u.searchParams.has('token_hash'), { timeout: 60_000 })
     const cookies = await ctx.cookies()
     writeFileSync(OUT, cookies.map(c => `${c.name}=${c.value}`).join('; '))
     console.log(`smoke-signin: ${isScratch ? `scratch/test account ${EMAIL}` : `OWNER account ${EMAIL} (announced)`} → ${cookies.length} cookie(s) → ${OUT}`)

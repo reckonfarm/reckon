@@ -120,7 +120,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   return (
     <LedgerPanel tab="logged" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      {heading && <Heading level={5}>Recently logged</Heading>}
+      {heading && <Heading level={5}>Activity</Heading>}
       <ul className={`${heading ? 'mt-2 ' : ''}divide-y divide-forest-green/10`}>
         {rows.map(r => {
           const pid = str(r.payload.place_id) ?? str(r.payload.to_place_id)
@@ -129,8 +129,8 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
             <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
               <span className="font-dm-sans text-[17px] text-forest-green">
                 {/* Block 5A — the line opens ITS event by stable id; the place stays one tap away. */}
-                <Link href={`/activity/${r.id}`} className="inline-flex min-h-[48px] items-center text-ink hover:underline" data-audit="logged-row">{line(r, placeName, lotName)}</Link>
-                {linked && <Link href={`/places/${pid}`} className="ml-2 font-semibold text-forest-green underline underline-offset-2">place →</Link>}
+                <Link href={`/ranch/activity/${r.id}`} className="inline-flex min-h-[48px] items-center text-ink hover:underline" data-audit="logged-row">{line(r, placeName, lotName)}</Link>
+                {linked && <Link href={`/ranch/places/${pid}`} className="ml-2 font-semibold text-forest-green underline underline-offset-2">place →</Link>}
               </span>
               <span className="shrink-0 font-dm-sans text-[16px] tabular-nums text-ink">
                 {fmtDay(r.ts)} · {fmtTime(r.ts)}
@@ -139,7 +139,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
           )
         })}
       </ul>
-      <Link href="/activity" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="whole-record">The whole record →</Link>
+      <Link href="/ranch/activity" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="whole-record">The whole record →</Link>
     </Card>
     </LedgerPanel>
   )

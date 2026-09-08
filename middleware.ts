@@ -66,50 +66,25 @@ export async function middleware(request: NextRequest) {
   // Refresh session — do not add logic between createServerClient and getUser().
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Signed-in user opening the app at bare / (the PWA start_url / cold-launch after
-  // a swipe-kill) → send them to /home, the ranch home (2026-08-09 repositioning:
-  // the county tool stays at /dashboard; the signed-in home leads with the
-  // operation's own data and resolves its county silently). Done HERE, not in
-  // app/page.tsx, because the middleware holds the refreshed session and can redirect
-  // the document request reliably — a Server Component's getUser() can't refresh the
-  // rotating auth cookie and would miss exactly this cold-start case. Guards, none to
-  // loosen: user present (anonymous visitors fall through to the homepage funnel),
-  // pathname === '/' (only the start_url), and no fips param (a bare app-open
-  // redirects; an explicit /?fips=X share link is preserved). Carries the refreshed
-  // auth cookies onto the redirect, exactly as the /dashboard branch below does.
+  // Block 6A — the signed-in home is /today. A signed-in person opening the app
+  // at bare / (the PWA start_url), /home (old bookmark), or bare /dashboard lands
+  // there in ONE hop with the refreshed session (a config redirect cannot see a
+  // session; a Server Component's getUser() can miss exactly this cold-start
+  // case). Loop guards, none to loosen: a fips param means a county page was
+  // opened on purpose and is NEVER redirected (public information context, for
+  // everyone); /today itself is never touched; anonymous visitors fall through
+  // to the public homepage funnel.
   if (
     user &&
-    (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/home') &&
+    (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/home' || request.nextUrl.pathname === '/dashboard') &&
     !request.nextUrl.searchParams.has('fips')
   ) {
-    // ONE landing spot (shell pass, commit 2): the county dashboard with Today open,
-    // on the operation's home county — resolved here in the same hop so a cold
-    // open is a single redirect, not / → /dashboard → /dashboard?fips=. No home
-    // county → bare /dashboard, whose EmptyState already handles it. /home rides
-    // the same branch (commit 3): Today absorbed it, and a home-screen bookmark
-    // of /home must land in one hop with the refreshed session.
     const dest = request.nextUrl.clone()
-    dest.pathname = '/dashboard'
-    const fips = await resolveDefaultFips(user.id)
-    if (fips) dest.searchParams.set('fips', fips)
+    dest.pathname = '/today'
+    dest.search = ''
     const redirectResponse = NextResponse.redirect(dest)
     supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
     return redirectResponse
-  }
-
-  // Bare /dashboard for a logged-in user → open their Home (or most-recent saved)
-  // county. Done here, not in the page, because the middleware holds the refreshed
-  // session and can redirect the document request reliably. Must carry over the
-  // refreshed auth cookies onto the redirect response.
-  if (user && request.nextUrl.pathname === '/dashboard' && !request.nextUrl.searchParams.has('fips')) {
-    const fips = await resolveDefaultFips(user.id)
-    if (fips) {
-      const dest = request.nextUrl.clone()
-      dest.searchParams.set('fips', fips)
-      const redirectResponse = NextResponse.redirect(dest)
-      supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
-      return redirectResponse
-    }
   }
 
   return supabaseResponse

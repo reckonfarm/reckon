@@ -34,6 +34,18 @@ export const LOT_CLASS_LABELS: Record<LotClass, string> = {
 // Trimmed, capped, never required — a lot without one is labeled by its class.
 export const LOT_NAME_MAX = 40
 
+// Block 6A (migration 055): what the lot is FOR. class says what they are.
+export const LOT_PURPOSES = ['sale_calves', 'replacements', 'breeding', 'culls', 'other'] as const
+export type LotPurpose = (typeof LOT_PURPOSES)[number]
+export const LOT_PURPOSE_LABELS: Record<LotPurpose, string> = {
+  sale_calves:  'Sale calves',
+  replacements: 'Replacements',
+  breeding:     'Breeding stock',
+  culls:        'Culls',
+  other:        'Other',
+}
+export function isLotPurpose(v: unknown): v is LotPurpose { return typeof v === 'string' && (LOT_PURPOSES as readonly string[]).includes(v) }
+
 // THE lot label, everywhere a lot is named to a person: the name when the
 // producer gave one, else the class label. One helper so the herd page, the
 // estimate, the outlook, the log sheet and the ledger lines can never
@@ -115,6 +127,8 @@ export interface Lot {
   frame: LotFrame
   weaned: boolean
   sale_windows: SaleWindow[]
+  // OPTIONAL — why this bunch is on the ranch (055). Absent = purpose unknown (never guessed).
+  purpose?: LotPurpose
   // OPTIONAL — a name the producer calls this bunch by (≤ LOT_NAME_MAX, trimmed).
   // Absent on lots saved before it existed; absent when left blank. Display
   // goes through lotLabel(), which falls back to the class label.
@@ -267,6 +281,8 @@ export function normalizeLot(
   // OPTIONAL name: passed through trimmed and capped; blank or non-string means
   // no name (the key is left off, so a nameless lot's stored shape is unchanged).
   const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, LOT_NAME_MAX) : ''
+  if (raw.purpose != null && raw.purpose !== '' && !isLotPurpose(raw.purpose)) return { ok: false, error: `${label}: purpose must be one of ${LOT_PURPOSES.join(', ')}` }
+  const purpose = isLotPurpose(raw.purpose) ? raw.purpose : undefined
 
   return {
     ok: true,
@@ -279,6 +295,7 @@ export function normalizeLot(
       frame,
       weaned,
       sale_windows: sw.windows,
+      ...(purpose ? { purpose } : {}),
       ...(name ? { name } : {}),
       // Lot edit timestamps are client-supplied (preserved if valid, else now()) — fine for
       // a producer editing their own private lots. NOTE: future AI-moat logging of decisions/
