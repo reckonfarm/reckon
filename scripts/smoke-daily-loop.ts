@@ -483,6 +483,32 @@ async function main() {
     const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
+    // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
+    {
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-sections"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const numbers = await page.locator('[data-audit="section-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const recentRows = await page.locator('[data-audit="ranch-recent"] li').count()
+      const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
+      // The fixture has one live lot with a head count and one place; it has no devices and its hay
+      // count IS a baseline, so on hand exists. No device number may render.
+      record('6A: the hub shows recent rows and only the numbers something stands behind (no devices → no device number)', recentRows === Math.min(5, eventsOnRanch ?? 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · numbers [${numbers.join(' | ')}]`)
+      // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowsBefore = await page.locator('[data-audit="lot-row"]').count()
+      const marketHref = await page.locator('[data-audit="lot-market-link"]').first().getAttribute('href').catch(() => null)
+      await page.locator('[data-audit="lot-more"]').first().click()
+      const menuText = (await page.locator('[data-audit="lot-menu"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="lot-archive"]').click()
+      await page.waitForTimeout(1_500)
+      const rowsAfter = await page.locator('[data-audit="lot-row"]').count()
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME}`) }).count()
+      record('6A: Archive sits behind the row menu, states its consequence, removes the lot from current views, and every past feeding still names it', rowsBefore === 1 && rowsAfter === 0 && /History stays; the lot leaves current views/.test(menuText) && stillNamed >= 1 && /^\/markets\?lot=/.test(marketHref ?? ''), `rows ${rowsBefore}→${rowsAfter} · menu "${menuText.slice(0, 60)}" · feedings still naming the lot: ${stillNamed} · market link ${marketHref}`)
+    }
+
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
     {
       const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }

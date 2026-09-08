@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   LOT_CLASSES,
+  LOT_PURPOSES,
+  LOT_PURPOSE_LABELS,
+  type LotPurpose,
   LOT_CLASS_LABELS,
   LOT_FRAMES,
   LOT_NAME_MAX,
@@ -18,6 +21,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Button } from '@/app/components/ui/Button'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
+import Link from 'next/link'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
@@ -43,6 +47,7 @@ interface LotPayload {
   frame: LotFrame
   weaned: boolean
   sale_windows: { month: string }[]
+  purpose?: LotPurpose
   created_at?: string
 }
 
@@ -52,10 +57,12 @@ function formatMonth(ym: string): string {
   return `${d.toLocaleDateString('en-US', { month: 'short' })} ’${d.toLocaleDateString('en-US', { year: '2-digit' })}`
 }
 
-export default function HerdForm() {
+export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
-  const [lots, setLots] = useState<Lot[]>([])
-  const [loading, setLoading] = useState(true)
+  const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
+  const [loading, setLoading] = useState(!initialLots)
+  const [dPurpose, setDPurpose] = useState<LotPurpose | ''>('')
+  const [menuFor, setMenuFor] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
 
   const [editing, setEditing] = useState<Editing>(null)
@@ -75,6 +82,7 @@ export default function HerdForm() {
   const [showDetail, setShowDetail] = useState(false)
 
   useEffect(() => {
+    if (initialLots) return   // Block 6A: the page hands the rows in; writes reload from /api/herd/lots
     fetch('/api/operation-profile')
       .then(async r => {
         if (!r.ok) throw new Error('Could not load your herd. Refresh to try again.')
@@ -86,11 +94,11 @@ export default function HerdForm() {
       })
       .catch((e: Error) => setLoadError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [initialLots])
 
   function resetDraft() {
     setDName(''); setDClass(''); setDHead(''); setDWeight(''); setDUnit('lb')
-    setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false)
+    setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false); setDPurpose('')
   }
 
   function openAdd() { resetDraft(); setErrorMsg(''); setEditing('new') }
@@ -104,6 +112,7 @@ export default function HerdForm() {
     setDFrame(lot.frame)
     setDWeaned(lot.weaned)
     setDWindows(lot.sale_windows?.map(w => w.month) ?? [])
+    setDPurpose(lot.purpose ?? '')
     setDMonth('')
     setShowDetail((lot.sale_windows?.length ?? 0) > 0)
     setErrorMsg(''); setEditing(lot.id)
@@ -125,6 +134,7 @@ export default function HerdForm() {
       frame: dFrame,
       weaned: dWeaned,
       sale_windows: dWindows.map(month => ({ month })),
+      ...(purposeSupported && dPurpose ? { purpose: dPurpose } : {}),
     }
     if (editing && editing !== 'new') {
       lot.id = editing
@@ -231,6 +241,14 @@ export default function HerdForm() {
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {purposeSupported && (
+            <Field label="Purpose" hint="What this bunch is for. A market comparison states its basis from this.">
+              <Select value={dPurpose} onChange={e => setDPurpose(e.target.value as LotPurpose | '')} data-audit="lot-purpose">
+                <option value="">Not set</option>
+                {LOT_PURPOSES.map(v => <option key={v} value={v}>{LOT_PURPOSE_LABELS[v]}</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="Head count">
             <Input
               type="number" inputMode="numeric" min={1} step={1} placeholder="e.g. 120"
@@ -334,41 +352,51 @@ export default function HerdForm() {
   }
 
   function renderRow(lot: Lot) {
+    const work = lastWork[lot.id]
+    const menuOpen = menuFor === lot.id
     return (
-      <Card key={lot.id} shadow="sm" className="p-4">
+      <Card key={lot.id} shadow="sm" className="p-4" data-audit="lot-row">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-dm-sans text-base font-semibold text-ink">{lotLabel(lot)}</p>
-            <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
-              {/* A named lot keeps its class in view on the detail line. */}
-              {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
-              <span className="tabular-price">{lot.head_count}</span> head ·{' '}
-              <span className="tabular-price">{lot.avg_weight}</span> {lot.weight_unit} avg
+            <p className="font-dm-sans text-[17px] font-semibold text-ink">
+              <span className="tabular-nums" data-audit="lot-head">{lot.head_count.toLocaleString('en-US')}</span> head · {lotLabel(lot)}
             </p>
-            <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
-              {lot.frame}
+            <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
+              {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
+              {lot.purpose ? <span data-audit="lot-purpose-label">{LOT_PURPOSE_LABELS[lot.purpose]} · </span> : null}
+              <span className="tabular-nums">{lot.avg_weight}</span> {lot.weight_unit} avg
               {isFeeder(lot.class) ? ` · ${lot.weaned ? 'weaned' : 'unweaned'}` : ''}
-              {lot.sale_windows?.length ? ` · sells ${lot.sale_windows.map(w => formatMonth(w.month)).join(', ')}` : ''}
+            </p>
+            {work && (
+              <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-last-work">
+                Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="underline underline-offset-2">{work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
+              </p>
+            )}
+            <p className="mt-1">
+              <Link href={`/markets?lot=${lot.id}`} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link">View market comparison →</Link>
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-4">
-            <button type="button" onClick={() => openEdit(lot)} className="font-dm-sans text-[16px] font-medium text-accent hover:text-brand">
+          <div className="relative flex shrink-0 items-center gap-2">
+            <button type="button" onClick={() => openEdit(lot)} className="inline-flex min-h-[44px] items-center px-2 font-dm-sans text-[16px] font-medium text-accent hover:text-brand">
               Edit
             </button>
-            <button
-              type="button"
-              onClick={() => removeLot(lot.id)}
-              disabled={status === 'saving'}
-              className="font-dm-sans text-[16px] text-secondary-ink hover:text-warning disabled:opacity-50"
-            >
-              Remove
+            <button type="button" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`More for ${lotLabel(lot)}`} onClick={() => setMenuFor(menuOpen ? null : lot.id)} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg px-2 font-dm-sans text-[20px] leading-none text-secondary-ink hover:text-ink" data-audit="lot-more">
+              ···
             </button>
+            {menuOpen && (
+              <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-control-border bg-surface p-3 shadow-lg" data-audit="lot-menu">
+                <p className="font-dm-sans text-[15px] text-secondary-ink">Archive this lot? History stays; the lot leaves current views.</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void removeLot(lot.id) }} disabled={status === 'saving'} className="inline-flex min-h-[44px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream disabled:opacity-50" data-audit="lot-archive">Archive</button>
+                  <button type="button" role="menuitem" onClick={() => setMenuFor(null)} className="inline-flex min-h-[44px] items-center px-3 font-dm-sans text-[16px] font-semibold text-ink">Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Card>
     )
   }
-
   // ── Render ──────────────────────────────────────────────────────────────────────
   if (loading) {
     return (
