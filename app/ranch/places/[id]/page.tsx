@@ -5,7 +5,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { getPlaceHistory } from '@/lib/places/history'
-import { listActivity, describeEvent } from '@/lib/activity'
+import { listActivity, describeEvent, effectiveRows, chainWithin } from '@/lib/activity'
+import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import { fmtDay, fmtTime, dayKey, todayKey } from '@/lib/jobs/format'
 import { privateTitle } from '@/lib/private-title'
 import PlaceActions from '../PlaceActions'
@@ -39,7 +40,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
   ])
   if (!history.place) notFound()
   const { place, memory, counts } = history
-  const rows = activity?.rows.slice(0, 10) ?? []
+  const rows = activity ? effectiveRows(activity.rows).slice(0, 10) : []
   const devices = (devicesRes.data ?? []) as { id: string; name: string; type: string; last_seen: string | null }[]
 
   return (
@@ -84,14 +85,8 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             <h2 id="place-activity" className={`${EYEBROW} !text-ink`}>Activity here</h2>
             <Card className="mt-2 p-0">
               <ol className="divide-y divide-rule" data-audit="place-activity">
-                {rows.map(r => (
-                  <li key={r.id}>
-                    <Link href={`/ranch/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]">
-                      <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink"><span className="font-semibold">{activity!.names.person(r.user_id)}</span> · {describeEvent(r, activity!.names)}</span>
-                      <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{dayKey(r.ts) === todayKey() ? fmtTime(r.ts) : fmtDay(r.ts)}</span>
-                    </Link>
-                  </li>
-                ))}
+                {/* Operational (6B): what stands here, a correction marked, what it replaced one tap away. */}
+                {rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={activity!.names.person(r.user_id)} line={describeEvent(r, activity!.names)} when={dayKey(r.ts) === todayKey() ? fmtTime(r.ts) : fmtDay(r.ts)} marker={markerFor(r)} chain={chainWithin(activity!.rows, r, activity!.names)} />)}
               </ol>
             </Card>
             {(activity?.nextCursor || (activity?.rows.length ?? 0) > rows.length) && (

@@ -836,6 +836,52 @@ async function main() {
       }
     }
 
+    // ── Block 6 (6B): superseded entries marked the same way on every timeline ──
+    // The audit read a place timeline with the original and the correction as
+    // two ordinary rows: two feedings. Operational lists (a place, the Ranch
+    // hub, Today's Activity tab) show the EFFECTIVE entry marked "corrected"
+    // with what it replaced one tap away; the Activity record (audit history)
+    // shows every revision, the replaced original struck and marked.
+    {
+      const { data: four } = await admin.from('events').select('id, supersedes_event_id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '4').not('supersedes_event_id', 'is', null).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      if (!four) skip('6B: timelines', 'the gate-4 correction (6 → 4) is not on the record')
+      else {
+        // One list, read the same way everywhere: rows as [text, marker, chain text].
+        const readList = async (p: Page, sel: string) => p.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({
+          id: li.getAttribute('data-id') ?? '',
+          text: (li.querySelector('a')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          marker: li.getAttribute('data-marker') ?? 'none',
+          chain: (li.querySelector('[data-audit="row-chain"]')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        })))
+        // By identity, not by text (another 6-bale feeding may legitimately stand): the replaced
+        // original's id must not be a row; the correction's id must be, marked, with the chain.
+        const operational = (rows: { id: string; text: string; marker: string; chain: string }[]) => {
+          const original = rows.filter(r => r.id === four.supersedes_event_id)
+          const fourRow = rows.find(r => r.id === four.id)
+          const replaced = rows.filter(r => r.marker === 'replaced' || r.marker === 'voided')
+          const ok = original.length === 0 && replaced.length === 0 && !!fourRow && /Fed 4 bales/.test(fourRow.text) && fourRow.marker === 'corrected' && /Fed 6 bales/.test(fourRow.chain) && /was 4, typed 6/.test(fourRow.chain)
+          return { ok, detail: `rows ${rows.length} · the replaced original as a row: ${original.length} · replaced/voided rows: ${replaced.length} · the correction → ${fourRow ? `"${fourRow.text.slice(0, 40)}" ${fourRow.marker}, chain "${fourRow.chain.slice(0, 70)}"` : 'MISSING'}` }
+        }
+        await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+        const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
+        record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
+        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+        const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
+        record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
+        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+        const todayRows = await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', text: (a.textContent ?? '').replace(/\s+/g, ' ').trim(), marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))
+        const todayFour = todayRows.find(r => r.id === four.id), todayOrig = todayRows.filter(r => r.id === four.supersedes_event_id)
+        record('6B: Today\'s Activity tab — the effective feeding marked corrected, the replaced original absent', !!todayFour && /Fed 4 bales/.test(todayFour.text) && todayFour.marker === 'corrected' && todayOrig.length === 0, `rows ${todayRows.length} · the correction → ${todayFour ? `"${todayFour.text.slice(0, 40)}" ${todayFour.marker}` : 'MISSING'} · the original as a row: ${todayOrig.length}`)
+        await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+        const history = await readList(page, '[data-audit="activity-list"]')
+        const hSix = history.find(r => r.id === four.supersedes_event_id), hFour = history.find(r => r.id === four.id)
+        const struck = await page.locator('[data-audit="activity-list"] li[data-marker="replaced"] s').count()
+        record('6B: the Activity record keeps every revision — the original struck and marked replaced, the correction marked corrected', !!hSix && hSix.marker === 'replaced' && /replaced/.test(hSix.text) && !!hFour && hFour.marker === 'corrected' && /corrected/.test(hFour.text) && struck >= 1, `Fed 6 → ${hSix?.marker ?? 'MISSING'} · Fed 4 → ${hFour?.marker ?? 'MISSING'} · struck ${struck}`)
+      }
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

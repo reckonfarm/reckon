@@ -7,7 +7,8 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { getRanch } from '@/lib/ranch-membership'
 import { privateTitle } from '@/lib/private-title'
 import { ranchNumbers } from '@/lib/ranch-summary'
-import { listActivity, describeEvent } from '@/lib/activity'
+import { listActivity, describeEvent, effectiveRows, chainWithin } from '@/lib/activity'
+import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import { fmtDay, fmtTime, plural } from '@/lib/jobs/format'
 
 // ─── /ranch — the ranch hub (Block 6A) ────────────────────────────────────────
@@ -29,7 +30,7 @@ export default async function RanchPage() {
     ranchNumbers(supabase, user.id),
     listActivity(supabase, user.id, {}, null).catch(() => null),
   ])
-  const rows = recent?.rows.slice(0, 5) ?? []
+  const rows = recent ? effectiveRows(recent.rows).slice(0, 5) : []
   const sections: { href: string; label: string; blurb: string; number: string | null }[] = [
     { href: '/ranch/activity', label: 'Activity', blurb: 'Everything recorded, by the day the work happened.', number: null },
     { href: '/ranch/cattle',   label: 'Cattle',   blurb: 'Your lots — head, purpose, last recorded work.', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },
@@ -51,14 +52,8 @@ export default async function RanchPage() {
           ) : (
             <Card className="mt-2 p-0">
               <ol className="divide-y divide-rule" data-audit="ranch-recent">
-                {rows.map(r => (
-                  <li key={r.id}>
-                    <Link href={`/ranch/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]">
-                      <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink"><span className="font-semibold">{recent!.names.person(r.user_id)}</span> · {describeEvent(r, recent!.names)}</span>
-                      <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{fmtDay(r.ts)} {fmtTime(r.ts)}</span>
-                    </Link>
-                  </li>
-                ))}
+                {/* Operational (6B): what stands, a correction marked, what it replaced one tap away. */}
+                {rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={recent!.names.person(r.user_id)} line={describeEvent(r, recent!.names)} when={`${fmtDay(r.ts)} ${fmtTime(r.ts)}`} marker={markerFor(r)} chain={chainWithin(recent!.rows, r, recent!.names)} />)}
               </ol>
             </Card>
           )}

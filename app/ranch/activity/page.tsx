@@ -8,6 +8,7 @@ import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFil
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import JobsView from '@/app/dashboard/components/JobsView'
 import { privateTitle } from '@/lib/private-title'
+import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
@@ -94,18 +95,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 <h2 className="font-dm-sans text-[16px] font-semibold uppercase tracking-wide text-secondary-ink">{fmtDay(`${g.day}T12:00:00-06:00`, 'long')}</h2>
                 <Card className="mt-2 p-0">
                   <ol className="divide-y divide-rule" data-audit="activity-list">
-                    {g.rows.map(r => (
-                      <li key={r.id}>
-                        <Link href={`/ranch/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="activity-row">
-                          <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink">
-                            <span className="font-semibold">{page.names.person(r.user_id)}</span> · {r.superseded_by ? <s className="decoration-2" data-audit="row-superseded">{describeEvent(r, page.names)}</s> : describeEvent(r, page.names)}
-                            {r.superseded_by && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink">corrected</span>}
-                            {r.supersedes_event_id && !r.voided_at && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink" data-audit="row-correction">correction</span>}
-                          </span>
-                          <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{fmtTime(r.ts)}</span>
-                        </Link>
-                      </li>
-                    ))}
+                    {/* Audit history (6B): every revision, each marked — replaced originals struck through. */}
+                    {g.rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={page.names.person(r.user_id)} line={describeEvent(r, page.names)} when={fmtTime(r.ts)} marker={markerFor(r)} />)}
                   </ol>
                 </Card>
               </section>

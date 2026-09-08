@@ -5,7 +5,7 @@ import { resolveRanchId } from './ranch-membership'
 import { getRanchLotsIncludingRetired } from './herd-lots'
 import { lotLabel, type Lot } from './herd'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './manual-log'
-import { fmtDay, plural, RANCH_TZ } from './jobs/format'
+import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
 
 // ─── The activity record (Block 5A) ───────────────────────────────────────────
 // Everything a person recorded on the ranch, findable by stable id forever.
@@ -64,6 +64,27 @@ function zonedIso(day: string, hour: number): string {
     if (localDay === wantDay && localHour === hour % 24) return t.toISOString()
   }
   return new Date(guess + 6 * 3_600_000).toISOString()
+}
+
+// ── Operational lists (Block 6B): what stands, and what a correction replaced ──
+// The effective rows of a loaded page, and the chain behind one of them walked
+// within the same page (the original usually sits a minute away). An empty
+// chain means the replaced entry is older than the page: the row says so and
+// the entry itself carries the whole chain.
+export function effectiveRows(rows: ActivityRow[]): ActivityRow[] {
+  return rows.filter(r => !r.superseded_by && !r.voided_at)
+}
+export function chainWithin(rows: ActivityRow[], head: ActivityRow, names: Names): { id: string; line: string; who: string; when: string; reason: string | null }[] {
+  const byId = new Map(rows.map(r => [r.id, r]))
+  const out: { id: string; line: string; who: string; when: string; reason: string | null }[] = []
+  let cur: ActivityRow = head
+  for (let i = 0; i < CHAIN_MAX && cur.supersedes_event_id; i++) {
+    const prev = byId.get(cur.supersedes_event_id)
+    if (!prev) break
+    out.push({ id: prev.id, line: describeEvent(prev, names), who: names.person(prev.user_id), when: `${fmtDay(prev.ts)} ${fmtTime(prev.ts)}`, reason: cur.correction_reason ?? null })
+    cur = prev
+  }
+  return out
 }
 
 // ── One line for one event, the same words everywhere ─────────────────────────

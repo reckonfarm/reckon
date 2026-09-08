@@ -9,6 +9,7 @@ import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import LastSeenPing from './LastSeenPing'
 import { notSuperseded } from '@/lib/ledger-effective'
+import ActivityRowItem from '@/app/components/ActivityRowItem'
 
 // ─── Since you last checked (Block 2E) ────────────────────────────────────────
 // What the OTHER people (and the alert service) put in the ranch ledger since
@@ -134,16 +135,9 @@ export default async function SinceYouWereHere() {
           const author = r.type === 'alert' ? 'Dryline' : (authors.get(r.user_id) ?? 'Someone on the ranch')
           // Block 5A — the row opens ITS exact event by stable id, never a place summary.
           const href = `/ranch/activity/${r.id}`
-          return (
-            <li key={r.id}>
-              <Link href={href} className="flex min-h-[56px] items-center justify-between gap-3 py-2" data-audit="since-row">
-                <span className="font-dm-sans text-[17px] leading-snug text-forest-green">
-                  <span className="font-semibold">{author}</span> {r.voided_at ? 'voided: ' : r.supersedes_event_id ? 'corrected: ' : ''}{what(r, placeName, lotName)}
-                </span>
-                <span className="shrink-0 font-dm-sans text-[16px] tabular-nums text-ink">{when(r.ts)}</span>
-              </Link>
-            </li>
-          )
+          void href
+          // 6B: the same row component as every timeline — a correction or a void is marked, not prefixed.
+          return <ActivityRowItem key={r.id} id={r.id} who={author} line={what(r, placeName, lotName)} when={when(r.ts)} marker={r.voided_at ? 'voided' : r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="since-row" rowClass="py-2" sep=" " />
         })}
       </ul>
       {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work

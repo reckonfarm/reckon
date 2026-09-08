@@ -8,6 +8,7 @@ import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/li
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import { effective } from '@/lib/ledger-effective'
+import ActivityRowItem from '@/app/components/ActivityRowItem'
 
 // "Recently logged" — the last three lines the operator wrote by hand, newest
 // first, plain language, place name when one was given. Reads events
@@ -24,6 +25,7 @@ type Row = {
   type: string
   ts: string
   payload: Record<string, unknown>
+  supersedes_event_id: string | null   // 6B: a row that replaced an earlier one is marked "corrected"
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -83,7 +85,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   // rest of /home is scoped to. Cap unchanged.
   const { data } = await effective(supabase   // Block 5B: what currently stands
     .from('events')
-    .select('id, type, ts, payload')
+    .select('id, type, ts, payload, supersedes_event_id')
     .in('type', [...MANUAL_EVENT_TYPES])
     .eq('payload->>source', 'manual'))
     .gte('ts', ranchYearStart())
@@ -125,17 +127,10 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
         {rows.map(r => {
           const pid = str(r.payload.place_id) ?? str(r.payload.to_place_id)
           const linked = pid && names.has(pid)
+          {/* Block 5A — the line opens ITS event by stable id; the place stays one tap away. 6B: one row component everywhere. */}
           return (
-            <li key={r.id} className="flex items-baseline justify-between gap-3 py-2">
-              <span className="font-dm-sans text-[17px] text-forest-green">
-                {/* Block 5A — the line opens ITS event by stable id; the place stays one tap away. */}
-                <Link href={`/ranch/activity/${r.id}`} className="inline-flex min-h-[48px] items-center text-ink hover:underline" data-audit="logged-row">{line(r, placeName, lotName)}</Link>
-                {linked && <Link href={`/ranch/places/${pid}`} className="ml-2 font-semibold text-forest-green underline underline-offset-2">place →</Link>}
-              </span>
-              <span className="shrink-0 font-dm-sans text-[16px] tabular-nums text-ink">
-                {fmtDay(r.ts)} · {fmtTime(r.ts)}
-              </span>
-            </li>
+            <ActivityRowItem key={r.id} id={r.id} line={line(r, placeName, lotName)} when={`${fmtDay(r.ts)} · ${fmtTime(r.ts)}`} marker={r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="logged-row" rowClass="py-2"
+              aside={linked ? <Link href={`/ranch/places/${pid}`} className="inline-flex min-h-[44px] items-center font-dm-sans text-[15px] font-semibold text-forest-green underline underline-offset-2">place →</Link> : undefined} />
           )
         })}
       </ul>
