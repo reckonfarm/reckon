@@ -581,6 +581,11 @@ async function main() {
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ribbonLabel = await page.locator('[data-audit="drought-ribbon"]').getAttribute('aria-label').catch(() => null)
       record('6B: Weather runs forecast → (recorded rain, gauge, only when a reading exists) → county estimate vs station normal (PRISM/NOAA footer) → county drought (ribbon in words) → radar; one h1; title Weather; never a zero for no reading', ascending && /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `order ${order.join(' < ')} · title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
+      // 6F: no link on the Weather view is dead — every same-site href answers something other than 404 (the audit's /weather/radar).
+      const hrefs = [...new Set(await page.locator('main a[href^="/"]').evaluateAll(els => els.map(a => a.getAttribute('href') ?? '')))].filter(h => h && !h.startsWith('/api/'))
+      const dead: string[] = []
+      for (const h of hrefs) { const r = await page.request.get(h, { maxRedirects: 5 }).catch(() => null); if (!r || r.status() === 404 || r.status() >= 500) dead.push(`${h} → ${r ? r.status() : 'no response'}`) }
+      record('6F: every link on the Weather view answers — none is a Page not found', hrefs.length > 0 && dead.length === 0, dead.length ? dead.join(' · ') : `${hrefs.length} links answered`)
     }
 
     // ── Block 6B (9): at 200% text size on a phone, Record is still reachable ──
