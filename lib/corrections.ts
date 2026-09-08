@@ -140,9 +140,13 @@ export async function correctEvent(supabase: SupabaseClient, userId: string, id:
   if ('error' in head) return head.error
   const original = head.row
   try {
+    // The body is a PATCH (6A): a key present is set — null clears it, on
+    // purpose, from the form's explicit Clear — and a key absent keeps the
+    // original's value, note and stock source included. No client may clear a
+    // field by leaving it out, and undefined is treated as absent.
     const merged: Record<string, unknown> = { ...original.payload }
     for (const [k, v] of Object.entries(body)) {
-      if (k === 'id' || k === 'reason' || k === 'ts') continue
+      if (k === 'id' || k === 'reason' || k === 'ts' || v === undefined) continue
       merged[k] = v
     }
     const payload = buildManualPayload(original.type as ManualEventType, merged) as unknown as Record<string, unknown>

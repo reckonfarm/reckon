@@ -137,6 +137,7 @@ export interface Lot {
   // Timestamped composition (data moat).
   created_at: string   // ISO-8601
   updated_at: string   // ISO-8601
+  retired_at?: string | null   // herd_lots.retired_at — only reads that include retired lots carry it (6A: a retired lot is still named)
 
   // EXTENSIBLE: future optional facets (breeding, target_weight, aums, …) add here as
   // optional keys — and in normalizeLot below — with NO DB migration (the column is jsonb).

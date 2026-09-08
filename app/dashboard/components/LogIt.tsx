@@ -343,7 +343,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         const list = Array.isArray(j?.profile?.herd?.lots) ? j!.profile!.herd!.lots! : []
         setLots(list)
         const last = readLastLot()
-        setLot(prev => prev && list.some(l => l.id === prev) ? prev : (list.some(l => l.id === last) ? last : ''))
+        // A draft's lot that the list no longer names is left UNASSIGNED, never
+        // swapped for the last-used lot (6A: a slow option load rewrites nothing
+        // the person chose). The last-used default applies only to an empty draft.
+        setLot(prev => prev ? (list.some(l => l.id === prev) ? prev : '') : (list.some(l => l.id === last) ? last : ''))
       })
       .catch(() => { if (!cancelled) { setLots([]); setLotsError(true) } })   // a real error state, not a silent empty picker
     return () => { cancelled = true }

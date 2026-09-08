@@ -702,6 +702,140 @@ async function main() {
       }
     }
 
+    // ── Block 6 (6A): single-field corrections preserve every other field ──────
+    // The Sept 8 audit: a quantity-only correction wrote nulls over the lot and
+    // place. Every check here changes ONE thing through the form and reads the
+    // effective entry back through the chain, field by field — fast and slow
+    // option loads, owner and member entries, a retired lot, a lot the ranch no
+    // longer lists at all, and the explicit Clear as the only path to null.
+    {
+      const probe = await admin.from('events').select('superseded_by').limit(1)
+      if (probe.error) skip('6A: single-field corrections', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
+      else {
+        const { data: east, error: eErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} East pasture`, kind: 'pasture' }).select('id').single()
+        if (eErr) throw new Error(`6A place: ${eErr.message}`)
+        const eastId = east.id as string
+        const lot2 = randomUUID()
+        const { error: l2Err } = await admin.from('herd_lots').insert({ id: lot2, ranch_id: ranchId, class: 'heifers', name: `${PREFIX} Heifers`, head_count: 20, avg_weight: 500, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        if (l2Err) throw new Error(`6A lot: ${l2Err.message}`)
+        type Row = { id: string; ts: string; user_id: string; payload: Record<string, unknown>; superseded_by: string | null }
+        // An original the audit's shape: lot, place, note, stock source, a work time with seconds.
+        const original = async (uid: string, lot: string | null): Promise<Row> => {
+          const ts = new Date(Date.now() - 3_600_000 - Math.floor(Math.random() * 60_000)).toISOString()
+          const { data, error } = await admin.from('events').insert({ user_id: uid, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts, schema_version: 1,
+            payload: { source: 'manual', schema_version: 1, bales: 3, herd_lot_id: lot, place_id: eastId, note: 'smoke 6A: the note', stock_place_id: placeId } }).select('id, ts, user_id, payload, superseded_by').single()
+          if (error) throw new Error(`6A fixture: ${error.message}`)
+          return data as Row
+        }
+        const head = async (id: string): Promise<Row> => {
+          let cur = id
+          for (let i = 0; i < 10; i++) { const { data } = await admin.from('events').select('id, ts, user_id, payload, superseded_by').eq('id', cur).single(); const r = data as Row; if (!r.superseded_by) return r; cur = r.superseded_by }
+          throw new Error('6A: chain too long')
+        }
+        // Every payload key but the ones named reads back byte-identical; the work time too, unless it was the change.
+        const preserved = (before: Row, after: Row, except: string[]) => {
+          const keys = Array.from(new Set([...Object.keys(before.payload), ...Object.keys(after.payload)])).filter(k => !except.includes(k))
+          const bad = keys.filter(k => JSON.stringify(before.payload[k]) !== JSON.stringify(after.payload[k]))
+          if (!except.includes('ts') && before.ts !== after.ts) bad.push('ts')
+          return bad
+        }
+        const describe = (bad: string[], now: Row) => bad.length ? `lost or changed: ${bad.join(', ')} · now ${JSON.stringify(now.payload)}` : `every other field kept · ${JSON.stringify(now.payload)}`
+        const correct = async (p: Page, id: string, act: (p: Page) => Promise<void>, reason: string) => {
+          await p.goto(`/ranch/activity/${id}`, { waitUntil: 'domcontentloaded' })
+          await p.locator('[data-audit="correct-entry"]').click()
+          await p.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
+          await act(p)
+          await p.locator('[data-audit="correction-reason"]').fill(reason)
+          await p.locator('[data-audit="correction-save"]').click()
+          await p.waitForURL(/\/activity\/[0-9a-f-]{36}\?saved=1/, { timeout: 30_000 }).catch(() => {})
+        }
+
+        // 1 · quantity-only on a fast load, the owner's entry
+        {
+          const o = await original(userId, lotId)
+          await correct(page, o.id, async p => { await p.getByLabel('Bales', { exact: true }).fill('2') }, '6A quantity only')
+          const h = await head(o.id); const bad = preserved(o, h, ['bales'])
+          record('6A: a quantity-only correction keeps lot, place, note, stock source and the exact work time', h.id !== o.id && h.payload.bales === 2 && bad.length === 0, describe(bad, h))
+        }
+        // 2 · quantity-only on a SLOW option load: the form holds; the stored ids are the draft before any name arrives
+        {
+          const o = await original(userId, lotId)
+          await page.route('**/api/activity/options', async r => { await new Promise(res => setTimeout(res, 3_000)); await r.continue() })
+          await page.goto(`/ranch/activity/${o.id}`, { waitUntil: 'domcontentloaded' })
+          await page.locator('[data-audit="correct-entry"]').click()
+          await page.locator('[data-audit="correction-options"][data-state="loading"]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
+          const heldSave = await page.locator('[data-audit="correction-save"]').isDisabled()
+          const heldLot = await page.locator('[data-audit="correction-herd_lot_id"]').inputValue().catch(() => '')
+          const heldPlace = await page.locator('[data-audit="correction-place_id"]').inputValue().catch(() => '')
+          record('6A: while the names load the form is held and the stored lot and place ids are already the draft', heldSave && heldLot === lotId && heldPlace === eastId, `save disabled=${heldSave} · lot=${heldLot.slice(0, 8)} · place=${heldPlace.slice(0, 8)}`)
+          await page.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
+          const lotAfter = await page.locator('[data-audit="correction-herd_lot_id"]').inputValue()
+          await page.getByLabel('Bales', { exact: true }).fill('2')
+          await page.locator('[data-audit="correction-reason"]').fill('6A slow load')
+          await page.locator('[data-audit="correction-save"]').click()
+          await page.waitForURL(/\?saved=1/, { timeout: 30_000 }).catch(() => {})
+          await page.unroute('**/api/activity/options')
+          const h = await head(o.id); const bad = preserved(o, h, ['bales'])
+          record('6A: a slow option load rewrites nothing — the quantity-only correction still keeps every other field', lotAfter === lotId && h.payload.bales === 2 && bad.length === 0, `lot after load=${lotAfter.slice(0, 8)} · ${describe(bad, h)}`)
+        }
+        // 3–8 · one chain: lot-only, place-only, date-only, reason-only, a retired lot, the explicit Clear
+        {
+          const o = await original(userId, lotId)
+          await correct(page, o.id, async p => { await p.locator('[data-audit="correction-herd_lot_id"]').selectOption(lot2) }, '6A lot only')
+          const h1 = await head(o.id); const bad1 = preserved(o, h1, ['herd_lot_id'])
+          record('6A: a lot-only correction changes the lot and nothing else', h1.payload.herd_lot_id === lot2 && bad1.length === 0, describe(bad1, h1))
+          await correct(page, h1.id, async p => { await p.locator('[data-audit="correction-place_id"]').selectOption(placeId) }, '6A place only')
+          const h2 = await head(o.id); const bad2 = preserved(h1, h2, ['place_id'])
+          record('6A: a place-only correction changes the place and nothing else', h2.payload.place_id === placeId && bad2.length === 0, describe(bad2, h2))
+          const dayBefore = (iso: string) => { const d = new Date(iso); d.setDate(d.getDate() - 1); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+          await correct(page, h2.id, async p => { await p.getByLabel('Work date').fill(dayBefore(h2.ts)) }, '6A date only')
+          const h3 = await head(o.id); const bad3 = preserved(h2, h3, ['ts'])
+          const a = new Date(h2.ts), b = new Date(h3.ts)
+          const movedOneDay = a.getHours() === b.getHours() && a.getMinutes() === b.getMinutes() && Math.round((a.getTime() - b.getTime()) / 3_600_000) === 24
+          record('6A: a date-only correction moves the work time one day and keeps every value', movedOneDay && bad3.length === 0, `${h2.ts} → ${h3.ts} · ${describe(bad3, h3)}`)
+          // reason-only: nothing to correct — refused before any request, the entry untouched
+          await page.goto(`/ranch/activity/${h3.id}`, { waitUntil: 'domcontentloaded' })
+          await page.locator('[data-audit="correct-entry"]').click()
+          await page.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
+          await page.locator('[data-audit="correction-reason"]').fill('6A reason only')
+          await page.locator('[data-audit="correction-save"]').click()
+          const refusal = await page.locator('[data-audit="correction-error"]').innerText({ timeout: 5_000 }).catch(() => '')
+          const h4 = await head(o.id)
+          record('6A: a reason-only save is refused as nothing changed and the entry is untouched', /Nothing changed/.test(refusal) && h4.id === h3.id && JSON.stringify(h4.payload) === JSON.stringify(h3.payload) && h4.ts === h3.ts, `"${refusal.slice(0, 60)}" · head ${h4.id === h3.id ? 'unchanged' : 'MOVED'}`)
+          // the lot is retired: the form names it as retired and a quantity-only correction keeps it
+          const { error: rErr } = await admin.from('herd_lots').update({ retired_at: new Date().toISOString() }).eq('id', lot2)
+          if (rErr) throw new Error(`6A retire: ${rErr.message}`)
+          let retiredLabel = ''
+          await correct(page, h4.id, async p => { retiredLabel = await p.locator('[data-audit="correction-herd_lot_id"] option:checked').innerText().catch(() => ''); await p.getByLabel('Bales', { exact: true }).fill('1') }, '6A retired lot')
+          const h5 = await head(o.id); const bad5 = preserved(h4, h5, ['bales'])
+          record('6A: a retired lot is named as retired on the form and a quantity-only correction keeps it', /retired/.test(retiredLabel) && h5.payload.herd_lot_id === lot2 && h5.payload.bales === 1 && bad5.length === 0, `option "${retiredLabel}" · ${describe(bad5, h5)}`)
+          // the explicit Clear is the only path to null: the lot goes, the place and the rest stay
+          await correct(page, h5.id, async p => { await p.locator('[data-audit="correction-clear-herd_lot_id"]').click() }, '6A clear lot')
+          const h6 = await head(o.id); const bad6 = preserved(h5, h6, ['herd_lot_id'])
+          record('6A: Clear lot is explicit — the lot goes to none and the place, note and stock source stay', h6.payload.herd_lot_id === null && bad6.length === 0, describe(bad6, h6))
+        }
+        // 9 · a lot the ranch no longer lists at all: shown unresolved, kept
+        {
+          const ghost = randomUUID()
+          const o = await original(userId, ghost)
+          let unresolved = '', shown = ''
+          await correct(page, o.id, async p => { unresolved = await p.locator('[data-audit="correction-unresolved-herd_lot_id"]').innerText().catch(() => ''); shown = await p.locator('[data-audit="correction-herd_lot_id"]').inputValue(); await p.getByLabel('Bales', { exact: true }).fill('2') }, '6A unresolved lot')
+          const h = await head(o.id); const bad = preserved(o, h, ['bales'])
+          record('6A: a lot the ranch no longer lists is shown as unresolved and kept through a quantity-only correction', /isn.t on the ranch/.test(unresolved) && shown === ghost && h.payload.herd_lot_id === ghost && bad.length === 0, `"${unresolved.slice(0, 50)}" · ${describe(bad, h)}`)
+        }
+        // 10 · a member's own entry, corrected by the member
+        {
+          const ctxM = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+          const pageM = await signIn(ctxM, EMAIL_B)
+          const o = await original(userIdB, lotId)
+          await correct(pageM, o.id, async p => { await p.getByLabel('Bales', { exact: true }).fill('2') }, '6A member quantity only')
+          const h = await head(o.id); const bad = preserved(o, h, ['bales'])
+          record("6A: a member's quantity-only correction of their own entry keeps every other field", h.user_id === userIdB && h.payload.bales === 2 && bad.length === 0, describe(bad, h))
+          await ctxM.close()
+        }
+      }
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
