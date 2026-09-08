@@ -64,6 +64,14 @@ function writeDraft(d: Draft | null) {
   for (const l of draftListeners) l()
 }
 function subscribeDraft(l: () => void) { draftListeners.add(l); return () => { draftListeners.delete(l) } }
+// Block 6D: whether a launcher (Today's, with its own status strip under Record)
+// is on the page — the global strip in RecordSheetHost stands down while it is.
+let launchers = 0
+const launcherListeners = new Set<() => void>()
+function subscribeLaunchers(l: () => void) { launcherListeners.add(l); return () => { launcherListeners.delete(l) } }
+export function useLauncherMounted(): boolean {
+  return useSyncExternalStore(subscribeLaunchers, () => launchers > 0, () => false)
+}
 function useHasDraft(): boolean {
   return useSyncExternalStore(subscribeDraft, () => !!readDraft()?.type, () => false)
 }
@@ -333,6 +341,12 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   // places load; no setState in the effect body). The last lot fed only applies
   // if it still exists. A failed load leaves the picker at "No lot" — a log
   // never blocks on choosing one.
+  useEffect(() => {
+    if (!launcher) return
+    launchers++; for (const l of launcherListeners) l()
+    return () => { launchers--; for (const l of launcherListeners) l() }
+  }, [launcher])
+
   useEffect(() => {
     if (!open || type !== 'hay_fed' || lots !== null) return
     let cancelled = false
