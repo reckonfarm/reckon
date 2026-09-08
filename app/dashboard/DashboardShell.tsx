@@ -44,6 +44,7 @@ import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import RecentlyLogged from './components/RecentlyLogged'
 import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
+import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { getHomeCountyFips } from '@/lib/concierge-service'
@@ -400,7 +401,7 @@ export async function DashboardShell({
       {/* Phase A2 — ONE column. Every element of the page shares this spine: the
           county control, the heading, the tabs, and every section. Nothing on the
           page is wider; an element that needs more width is the wrong element. */}
-      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+      <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
 
         {/* ── County selector (flow, commit 4) ──────────────────────────────────
@@ -455,6 +456,7 @@ export async function DashboardShell({
 
         {/* ── Ranch view (county selected) ───────────────────────── */}
         {selectedCounty && (
+          <>
           <div className="pb-16 space-y-4">
             <DashboardViewProvider initial={view}>
 
@@ -579,14 +581,22 @@ export async function DashboardShell({
                     {isDeadlineLoud(deadlineResult) && (
                       <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
                     )}
-                    <DeadlineQuietRow
-                      countyName={selectedCounty.name}
-                      quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
-                    />
+                    {/* "Check device" — only when a device has a known cadence and missed it (Block 6A). */}
+                    {priv && route === 'today' && (
+                      <Suspense fallback={null}>
+                        <DeviceAttention />
+                      </Suspense>
+                    )}
+                    {!(priv && route === 'today') && (
+                      <DeadlineQuietRow
+                        countyName={selectedCounty.name}
+                        quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+                      />
+                    )}
 
                     {priv && route === 'today' && (
                       <>
-                        {/* 3. Recorded since you last checked (Block 2E / 5F). Absent when nothing is new. */}
+                        {/* 3. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new. */}
                         <Suspense fallback={null}>
                           <SinceYouWereHere />
                         </Suspense>
@@ -609,13 +619,17 @@ export async function DashboardShell({
                     {/* 6. Condition strips — drought chip + today's forecast (B2′), then the 7-day
                         carousel (Today only since layout commit 3). Signed out this is the top of
                         the county page after the loud cards. */}
-                    <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-                    <div>
-                      <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-                      <Suspense fallback={<ForecastPanelSkeleton />}>
-                        <ForecastPanelAsync dataPromise={forecastPromise} />
-                      </Suspense>
-                    </div>
+                    {!(priv && route === 'today') && (
+                      <>
+                        <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
+                        <div>
+                          <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
+                          <Suspense fallback={<ForecastPanelSkeleton />}>
+                            <ForecastPanelAsync dataPromise={forecastPromise} />
+                          </Suspense>
+                        </div>
+                      </>
+                    )}
 
                     {/* 7. No news feed on the signed-in Today. The headlines hook stays on the
                         public county page for the signed-out visitor. */}
@@ -668,6 +682,25 @@ export async function DashboardShell({
             </DashboardViewProvider>
 
           </div>
+          {/* Today's strips (Block 6A): conditions (weather only), then programs — LFP as one
+              quiet line with its details one tap away. One column on a phone, below the
+              record; a right column on desktop (the shell is 1,160 px wide there). */}
+          {priv && route === 'today' && (
+            <aside className="space-y-4 pb-16 lg:pb-0" data-audit="today-strips" aria-label="Conditions and programs">
+              <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
+              <div>
+                <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
+                <Suspense fallback={<ForecastPanelSkeleton />}>
+                  <ForecastPanelAsync dataPromise={forecastPromise} />
+                </Suspense>
+              </div>
+              <DeadlineQuietRow
+                countyName={selectedCounty.name}
+                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
+              />
+            </aside>
+          )}
+          </>
         )}
       </main>
     </div>

@@ -270,8 +270,9 @@ async function main() {
     // Block 5E — Today, reordered: quick record above the ledgers, the ledger strip open on Hay,
     // conditions and the forecast below, and no news feed on the signed-in Today.
     {
-      const y = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? b.y : NaN }
-      const yRepeat = await y('text=Repeat last feeding'), yLog = await y('button:has-text("Log it")'), yTabs = await y('[role="tablist"][aria-label="Ledgers"]'), yForecast = await y('text=7-day forecast')
+      // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
+      const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
+      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Log it")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('text=7-day forecast')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const headlines = await page.getByText('Headlines', { exact: true }).count()
       record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · 7-day forecast, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
@@ -427,15 +428,15 @@ async function main() {
       skip('2E: since-you-were-here for member B', `migration 044 not applied (${colErr.message.slice(0, 60)})`)
       await ctxB.close()
     } else {
-      const ownBlock = await page.getByText('Recorded since you last checked').count() + await page.getByText('Recorded since yesterday').count()
-      record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
+      const ownRows = await page.locator('[data-audit="since-row"]').count()
+      record('2E: A does not see A\'s own entries as news', ownRows === 0, `since rows on A's Today: ${ownRows}`)
       if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} before goto, B last_seen_at =`, JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data))
       await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
       if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
-      const blockB = (await pageB.getByText('Recorded since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const blockB = (await pageB.getByText('Recorded since you checked').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('2E: B sees "Recorded since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
+      record('2E: B sees "Recorded since you checked" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
       const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
       const eventId = rowHref?.match(/^\/ranch\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null   // Block 6A: the record lives under /ranch
@@ -458,12 +459,13 @@ async function main() {
       const listed = await pageB.locator('[data-audit="activity-row"]').count()
       record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
       await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
+      await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
       await pageB.waitForTimeout(3_000)
-      const after = await pageB.getByText('Recorded since you last checked').count() + await pageB.getByText('Recorded since yesterday').count()
-      record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
+      const afterRows = await pageB.locator('[data-audit="since-row"]').count()
+      const quiet = await pageB.getByText('No new crew entries since your last review').count()
+      record('2E: after the visit, nothing new → no rows, the quiet line (never "All work complete")', afterRows === 0 && quiet === 1 && (await pageB.getByText('All work complete').count()) === 0, `rows ${afterRows} · quiet line ${quiet}`)
       // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
       await pageB.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})

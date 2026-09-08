@@ -20,7 +20,8 @@ import { notSuperseded } from '@/lib/ledger-effective'
 // are not news to them. Nothing new → the block does not render at all.
 // Seen is not done: LastSeenPing marks the visit; nothing here completes.
 
-const CAP = 12
+// Block 6A: 3–5 rows on Today, the rest behind "View all N updates" (the record, filtered to the same window).
+const SHOW = 5
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
@@ -76,16 +77,34 @@ export default async function SinceYouWereHere() {
   // Block 5B: a correction or a void recorded since the visit IS news (its
   // ingested_at is now, whatever day the work was); the original it replaced
   // is not — its replacement speaks for it.
-  const { data } = await notSuperseded(supabase
-    .from('events')
-    .select('id, user_id, type, ts, ingested_at, payload, supersedes_event_id, voided_at')
-    .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
-    .gt('ingested_at', since)
-    .neq('user_id', user.id)
-    .order('ingested_at', { ascending: false })
-    .limit(CAP)
+  const [{ data }, { count }] = await Promise.all([
+    notSuperseded(supabase
+      .from('events')
+      .select('id, user_id, type, ts, ingested_at, payload, supersedes_event_id, voided_at')
+      .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
+      .gt('ingested_at', since)
+      .neq('user_id', user.id)
+      .order('ingested_at', { ascending: false })
+      .limit(SHOW),
+    notSuperseded(supabase
+      .from('events')
+      .select('id', { count: 'exact', head: true })
+      .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
+      .gt('ingested_at', since)
+      .neq('user_id', user.id),
+  ])
   const rows = (data ?? []) as Row[]
-  if (rows.length === 0) return <LastSeenPing />
+  const total = count ?? rows.length
+  // Block 6A copy: nothing new is said in words, never "All work complete".
+  if (rows.length === 0) {
+    return (
+      <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-empty">
+        <LastSeenPing />
+        <p className={EYEBROW}>Recorded since you checked</p>
+        <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">No new crew entries since your last review.</p>
+      </Card>
+    )
+  }
 
   // Names: places through RLS; authors' display names through the service
   // role (profiles is not ranch-scoped) — only for user ids that appear here.
@@ -109,7 +128,7 @@ export default async function SinceYouWereHere() {
   return (
     <Card shadow="soft" className="p-4 sm:p-5">
       <LastSeenPing />
-      <p className={EYEBROW}>{lastSeen ? 'Recorded since you last checked' : 'Recorded since yesterday'}</p>
+      <p className={EYEBROW}>Recorded since you checked</p>
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(r => {
           const author = r.type === 'alert' ? 'Dryline' : (authors.get(r.user_id) ?? 'Someone on the ranch')
@@ -130,7 +149,10 @@ export default async function SinceYouWereHere() {
       {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work
           was done — so an entry logged today for Tuesday's feeding rightly appears here,
           dated Tuesday. */}
-      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="since-note">Newest recorded first · each line shows when the work was done.</p>
+      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="since-note">Newest recorded first · each line shows when the work was done{lastSeen ? '' : ' · since yesterday'}.</p>
+      {total > rows.length && (
+        <Link href={`/ranch/activity?since=${encodeURIComponent(since)}`} className="mt-1 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="since-view-all">View all {total} updates →</Link>
+      )}
     </Card>
   )
 }

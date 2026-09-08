@@ -28,7 +28,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect(`/signin?next=${encodeURIComponent('/ranch/activity' + qs({ actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }))}`)
-  const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }
+  const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to), since: pick(sp.since) }
   // Block 6A: /jobs → /ranch/activity?source=machine — the machines' sessions (jobs) under the record.
   if (pick(sp.source) === 'machine') return <MachineActivity user={user} />
   const [page, options] = await Promise.all([listActivity(supabase, user.id, filters, pick(sp.cursor)), filterOptions(supabase, user.id)])
@@ -37,6 +37,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const heading = filters.place && options.places.find(p => p.id === filters.place)
     ? `Activity at ${options.places.find(p => p.id === filters.place)!.name}`
     : filters.actor && options.people.find(p => p.id === filters.actor) ? `${options.people.find(p => p.id === filters.actor)!.name}'s activity`
+    : filters.since ? 'Recorded since you checked'
     : 'Activity'
 
   // Rows grouped by ranch day so "Tuesday" reads as a heading, not a hunt.

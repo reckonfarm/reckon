@@ -355,6 +355,7 @@ async function main() {
         const ab = await dp.locator('header [data-audit="account-button"]').first().boundingBox().catch(() => null)
         record('A4: the header Account button is a 48 px target', !!ab && ab.height >= 48, `${ab?.height ?? 0}px`)
         await dp.goto('/account', { waitUntil: 'domcontentloaded' })
+        await dp.locator('[data-audit="pref-counties"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
         const mc = await dp.locator('[data-audit="pref-counties"]').first().boundingBox().catch(() => null)
         record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px (under Account → Preferences)`)
         await dc.close()
