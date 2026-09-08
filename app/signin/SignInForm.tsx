@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { trackEvent } from '@/lib/analytics'
 
@@ -19,6 +18,16 @@ const LINK_CLS =
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'
 
 const RESEND_SECONDS = 30
+// A sign-in that hangs must say so (Block 6 audit: a submit that does nothing
+// reads as "the app won't let me in"). Every auth call races this clock.
+const AUTH_TIMEOUT_MS = 20_000
+const TIMEOUT_MSG = 'No answer from the sign-in service after 20 seconds — check your signal and try again.'
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(TIMEOUT_MSG)), AUTH_TIMEOUT_MS)
+    p.then(v => { clearTimeout(t); resolve(v) }, e => { clearTimeout(t); reject(e) })
+  })
+}
 
 // Map the handful of common raw Supabase auth errors to plain language with a next
 // step. UNKNOWN errors pass through untouched — we never hide real information behind
@@ -46,7 +55,6 @@ export default function SignInForm({
   // 'signup' opens straight in create-account mode (the FrontDoor CTA path).
   initialMode: 'signin' | 'signup'
 }) {
-  const router = useRouter()
 
   // Top-level method. Password is the primary path; OTP is the fallback.
   const [view, setView] = useState<'password' | 'otp'>('password')
@@ -55,6 +63,10 @@ export default function SignInForm({
   const [email, setEmail]     = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
+  // Set the moment a session exists: the form says so and hands the browser a
+  // FULL navigation (the installed home-screen app drops client navigation,
+  // and the server must re-read the cookie anyway). Never a silent success.
+  const [done, setDone]       = useState(false)
 
   // Password mode
   const [password, setPassword]       = useState('')
@@ -83,27 +95,38 @@ export default function SignInForm({
     if (error) setError(null)
   }
 
+  async function landed(event: 'signin_completed' | 'signup_completed') {
+    setDone(true)
+    trackEvent(event)
+    await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
+    window.location.replace(next)
+  }
+  // Runs one auth call with the clock and the button's state handled in one
+  // place: loading can never stick, and a thrown error is a message, not silence.
+  async function attempt<T extends { error: { message: string } | null }>(call: () => Promise<T>, ctx: 'signin' | 'signup' | 'otp'): Promise<T | null> {
+    setLoading(true)
+    resetMessages()
+    try {
+      const r = await withTimeout(call())
+      if (r.error) { setError(friendlyError(r.error.message, ctx)); return null }
+      return r
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : 'Could not reach the sign-in service — try again.')
+      return null
+    } finally { setLoading(false) }
+  }
+
   // ---- Password ----------------------------------------------------------
 
   async function signInPassword(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    resetMessages()
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) { setError(friendlyError(error.message, 'signin')); return }
-    trackEvent('signin_completed')
-    await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-    router.replace(next)
+    const r = await attempt(() => createClient().auth.signInWithPassword({ email, password }), 'signin')
+    if (r) await landed('signin_completed')
   }
 
   async function signUpPassword(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    resetMessages()
-    const supabase = createClient()
-    const { data, error } = await supabase.auth.signUp({
+    const r = await attempt(() => createClient().auth.signUp({
       email,
       password,
       options: {
@@ -111,16 +134,10 @@ export default function SignInForm({
         // callback page, which verifies the token_hash and lands on `next`.
         emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
-    })
-    setLoading(false)
-    if (error) { setError(friendlyError(error.message, 'signup')); return }
+    }), 'signup')
+    if (!r) return
     // Confirm email OFF → a session is returned immediately.
-    if (data.session) {
-      trackEvent('signup_completed')
-      await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-      router.replace(next)
-      return
-    }
+    if (r.data.session) { await landed('signup_completed'); return }
     // Confirm email ON → no session yet; user must click the email link.
     setSignupSent(true)
   }
@@ -143,15 +160,11 @@ export default function SignInForm({
 
   // Shared by the send-code form submit AND the resend link on the code screen.
   async function requestCode(): Promise<boolean> {
-    setLoading(true)
-    setError(null)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOtp({
+    const r = await attempt(() => createClient().auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
-    })
-    setLoading(false)
-    if (error) { setError(friendlyError(error.message, 'otp')); return false }
+    }), 'otp')
+    if (!r) return false
     setResendIn(RESEND_SECONDS)
     return true
   }
@@ -168,19 +181,8 @@ export default function SignInForm({
 
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-    const supabase = createClient()
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token: code,
-      type: 'email',
-    })
-    setLoading(false)
-    if (error) { setError(friendlyError(error.message, 'otp')); return }
-    trackEvent('signin_completed')
-    await fetch('/api/auth/sync', { method: 'POST' }).catch(() => {})
-    router.replace(next)
+    const r = await attempt(() => createClient().auth.verifyOtp({ email, token: code, type: 'email' }), 'otp')
+    if (r) await landed('signin_completed')
   }
 
   // ---- OTP views (unchanged behaviour) -----------------------------------
@@ -215,8 +217,8 @@ export default function SignInForm({
             />
           </div>
           {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
-          <button type="submit" disabled={loading || code.length < 6} className={BTN_CLS}>
-            {loading ? 'Verifying…' : 'Sign in'}
+          <button type="submit" disabled={loading || done || code.length < 6} className={BTN_CLS}>
+            {done ? 'Signed in — opening your ranch…' : loading ? 'Verifying…' : 'Sign in'}
           </button>
         </form>
         <div className="mt-4 flex items-center justify-between">
@@ -262,7 +264,7 @@ export default function SignInForm({
             className={INPUT_CLS}
           />
           {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
-          <button type="submit" disabled={loading} className={BTN_CLS}>
+          <button type="submit" disabled={loading || done} className={BTN_CLS}>
             {loading ? 'Sending…' : 'Send code'}
           </button>
         </form>
@@ -374,8 +376,8 @@ export default function SignInForm({
           className={INPUT_CLS}
         />
         {error && <p className="font-dm-sans text-[16px] text-rust">{error}</p>}
-        <button type="submit" disabled={loading} className={BTN_CLS}>
-          {loading
+        <button type="submit" disabled={loading || done} className={BTN_CLS} data-audit="signin-submit">
+          {done ? 'Signed in — opening your ranch…' : loading
             ? (isSignup ? 'Creating…' : 'Signing in…')
             : (isSignup ? 'Create account' : 'Sign in')}
         </button>
