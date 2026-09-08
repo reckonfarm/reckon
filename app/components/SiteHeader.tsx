@@ -27,6 +27,25 @@ interface Props {
 export default function SiteHeader({ center }: Props) {
   const [user, setUser] = useState<User | null>(null)
   const [unread, setUnread] = useState(0)
+  // Block 6A — the selected ranch, on every page for a signed-in person. One
+  // small read per session, cached per user in sessionStorage (cleared by
+  // sign-out and by an account switch with everything else private).
+  const [fetchedRanch, setFetchedRanch] = useState<{ uid: string; name: string | null } | null>(null)
+  const cacheKey = user ? `dryline_ranch_name:${user.id}` : null
+  const cachedRanch = (() => { try { return cacheKey ? sessionStorage.getItem(cacheKey) : null } catch { return null } })()
+  const ranchName = user ? (cachedRanch ?? (fetchedRanch?.uid === user.id ? fetchedRanch.name : null)) : null
+  useEffect(() => {
+    if (!user || cachedRanch) return
+    let cancelled = false
+    const uid = user.id, key = `dryline_ranch_name:${uid}`
+    fetch('/api/ranch').then(r => (r.ok ? r.json() : null)).then((j: { ranch?: { name?: string } | null } | null) => {
+      if (cancelled) return
+      const name = j?.ranch?.name?.trim() || null
+      setFetchedRanch({ uid, name })
+      try { if (name) sessionStorage.setItem(key, name) } catch { /* private mode */ }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [user, cachedRanch])
 
   useEffect(() => {
     const supabase = createClient()
@@ -86,6 +105,13 @@ export default function SiteHeader({ center }: Props) {
         {center && (
           <p className="hidden text-[16px] text-secondary-ink font-dm-sans sm:block">
             {center}
+          </p>
+        )}
+        {/* Block 6A — the ranch, the same on every private page. County selection
+            changes public information context only; it never changes this. */}
+        {user && ranchName && (
+          <p className="min-w-0 flex-1 truncate px-3 text-center font-dm-sans text-[15px] font-semibold text-forest-green sm:text-[16px]" data-audit="header-ranch">
+            {ranchName}
           </p>
         )}
 

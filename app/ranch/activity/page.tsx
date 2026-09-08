@@ -7,12 +7,14 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFilters } from '@/lib/activity'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import JobsView from '@/app/dashboard/components/JobsView'
+import { privateTitle } from '@/lib/private-title'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
 // person, place, lot, and a ranch-day range. Every row opens its exact event.
 // Independent of the read cursor: what has been "seen" is never hidden here.
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => privateTitle('Activity')
 
 const pick = (v: string | string[] | undefined) => (typeof v === 'string' && v ? v : null)
 const qs = (f: ActivityFilters, extra: Record<string, string | null | undefined> = {}) => {

@@ -1,10 +1,9 @@
-import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { flagEnabled } from '@/lib/flags'
 import { CONTACT_EMAIL, OPERATOR_NAME } from '@/lib/legal'
-import { getRanch } from '@/lib/ranch-membership'
+import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -17,12 +16,7 @@ import SignOutButton from './SignOutButton'
 // Behind the header's Account button: identity · ranch settings · crew and
 // access · preferences · help · sign out. One page, in that order.
 export const dynamic = 'force-dynamic'
-export async function generateMetadata(): Promise<Metadata> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const ranch = user ? await getRanch(supabase, user.id).catch(() => null) : null
-  return { title: ranch?.name ? `Account · ${ranch.name}` : 'Account' }
-}
+export const generateMetadata = () => privateTitle('Account')
 
 const link = 'inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2'
 

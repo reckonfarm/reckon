@@ -88,7 +88,7 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
   await page.goto(`/auth/callback?token_hash=${link.data!.properties!.hashed_token}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
   await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
   await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
-  await page.locator('header').getByText(EMAIL).waitFor({ state: 'attached', timeout: 30_000 })
+  await page.locator('header [data-audit="account-button"]').waitFor({ state: 'attached', timeout: 30_000 })   // Block 6A: the email lives on /account
   return page
 }
 

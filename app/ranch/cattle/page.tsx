@@ -13,7 +13,9 @@ import { type TrendData } from '@/lib/trend'
 import { type OutlookData } from '@/lib/outlook'
 import { getHerdAnchor } from '@/lib/herd-anchor'
 import type { Lot } from '@/lib/herd'
+import { privateTitle } from '@/lib/private-title'
 
+export const generateMetadata = () => privateTitle('Cattle')
 // Private, operation-scoped herd page. Auth-gated like /profile. Shows the HerdEstimate
 // (herd valued at this week's nearest auction cash) ABOVE the capture form. The form is
 // untouched — additive. The HerdEstimate is server-computed; after a lot edit the form calls

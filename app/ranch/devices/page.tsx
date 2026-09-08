@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Heading } from '@/app/components/ui/Heading'
 import { Card } from '@/app/components/ui/Card'
+import { privateTitle } from '@/lib/private-title'
 
 // ─── /devices — the registry, v0 (S2, the receiving dock) ──────────────────────
 // Bare list: every device the ranch owns — name, type, battery, last-seen,
@@ -13,6 +14,7 @@ import { Card } from '@/app/components/ui/Card'
 // September); v0 registration is a hand INSERT in the SQL editor.
 
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => privateTitle('Devices')
 
 interface DeviceRow {
   id: string

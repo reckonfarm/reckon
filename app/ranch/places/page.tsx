@@ -4,9 +4,11 @@ import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { privateTitle } from '@/lib/private-title'
 
 // The ranch's named places (RLS-scoped), each a link to its memory.
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => privateTitle('Places')
 
 export default async function PlacesPage() {
   const supabase = await createClient()

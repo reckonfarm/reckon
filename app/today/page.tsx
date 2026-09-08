@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import { DashboardShell, privateTitle } from '@/app/dashboard/DashboardShell'
+import { DashboardShell } from '@/app/dashboard/DashboardShell'
+import { privateTitle } from '@/lib/private-title'
 
 // ─── /today — the signed-in home (Block 6A) ───────────────────────────────────
 // The private stack (live job · needs attention · recorded since you checked ·

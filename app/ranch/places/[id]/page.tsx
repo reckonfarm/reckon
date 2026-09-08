@@ -7,6 +7,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import PlaceActions from '../PlaceActions'
+import { privateTitle } from '@/lib/private-title'
+import { createClient as createTitleClient } from '@/lib/supabase-server'
 
 // ─── A place page (Block 2F) ──────────────────────────────────────────────────
 // Opens with the place's practical memory — the most recent line of each kind
@@ -15,6 +17,13 @@ import PlaceActions from '../PlaceActions'
 // RLS-scoped throughout: a place another ranch owns is a 404, not a hint.
 
 export const dynamic = 'force-dynamic'
+// "{Place} · {Ranch}" — the place names its page; a place has no county of its own in the model, so none is shown.
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = await createTitleClient()
+  const { data } = await supabase.from('places').select('name').eq('id', id).maybeSingle()
+  return privateTitle((data as { name?: string } | null)?.name?.trim() || 'Place')
+}
 
 export default async function PlacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

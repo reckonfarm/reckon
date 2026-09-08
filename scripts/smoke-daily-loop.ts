@@ -143,9 +143,10 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
     console.log('   cookies:', (await ctx.cookies()).map(c => `${c.name.slice(0, 28)}@${c.domain}${c.secure ? ' secure' : ''} ${c.sameSite}`).join(' | '))
   }
   await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
-  // The header paints "Sign in" first and swaps to the email once the browser
-  // client has read the session — wait for the swap, not the first paint.
-  await page.locator('header').getByText(email).waitFor({ timeout: 20_000 }).catch(async () => {
+  // The header paints "Sign in" first and swaps to the Account button once the
+  // browser client has read the session (Block 6A: the email lives on /account
+  // now) — wait for the swap, not the first paint.
+  await page.locator('header [data-audit="account-button"]').waitFor({ timeout: 20_000 }).catch(async () => {
     const header = await page.locator('header').innerText().catch(() => '')
     throw new Error(`sign-in did not stick (header: ${header.replace(/\s+/g, ' ').slice(0, 120)})`)
   })
@@ -499,6 +500,20 @@ async function main() {
       await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       const countyTitle = await page.title()
       record('6A: no county title on a private page; the county page keeps it', /^Today/.test(title) && !/Drought/.test(title) && /Drought & LFP Eligibility/.test(countyTitle), `/today: "${title}" · /dashboard: "${countyTitle}"`)
+    }
+
+    // ── Block 6A (4): the same ranch in the header on every private page; no county title on any of them ──
+    {
+      const walk = [`/today?fips=${HOME_FIPS}`, '/ranch', '/ranch/cattle', '/ranch/activity', '/ranch/places', '/markets', '/weather', '/account']
+      const seen: { path: string; ranch: string; title: string }[] = []
+      for (const path of walk) {
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="header-ranch"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        seen.push({ path, ranch: (await page.locator('[data-audit="header-ranch"]').innerText().catch(() => '')).trim(), title: await page.title() })
+      }
+      const names = new Set(seen.map(x => x.ranch))
+      const countyTitled = seen.filter(x => /Drought/.test(x.title))
+      record('6A: the same ranch name in the header on Today, Ranch, Cattle, Activity, Places, Markets, Weather, Account — and no county title on any', names.size === 1 && !names.has('') && countyTitled.length === 0, `ranch "${[...names].join('|')}" · titles: ${seen.map(x => `${x.path.replace(/\?.*/, '')}="${x.title.replace(/ — Dryline$/, '')}"`).join(' ')}`)
     }
 
     // ── Block 6A (3): the Record FAB on a phone — above the bar, hidden while a sheet is open ──

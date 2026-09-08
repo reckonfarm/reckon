@@ -10,6 +10,7 @@ import CorrectionActions from './CorrectionActions'
 import { consequenceFor } from '@/lib/log-consequence'
 import { isManualEventType } from '@/lib/manual-log'
 import SaveReceipt from '@/app/components/SaveReceipt'
+import { privateTitle } from '@/lib/private-title'
 
 // ─── /activity/[id] — the exact event (Block 5A) + its correction chain (5B) ──
 // Opened by its stable id from a handoff row, a Recently logged row, a place, or
@@ -19,6 +20,7 @@ import SaveReceipt from '@/app/components/SaveReceipt'
 // value is stated first and the original stays readable underneath; when it is
 // a correction, it names what it corrects, who changed it, when, and why.
 export const dynamic = 'force-dynamic'
+export const generateMetadata = () => privateTitle('Activity')
 
 const when = (iso: string) => `${fmtDay(iso, 'long')} · ${fmtTime(iso)}`
 const editableValues = (r: ActivityRow) => Object.fromEntries(Object.entries(r.payload).filter(([k]) => k !== 'source' && k !== 'schema_version'))

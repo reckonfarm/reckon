@@ -176,14 +176,6 @@ export async function countyMetadata({
   }
 }
 
-// "Today · Kiehl Ranch", "Cattle · Kiehl Ranch": the ranch names every private page.
-export async function privateTitle(section: string): Promise<Metadata> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const ranch = user ? await getRanch(supabase, user.id).catch(() => null) : null
-  return { title: ranch?.name ? `${section} · ${ranch.name}` : section }
-}
-
 export type ShellRoute = 'county' | 'today' | 'markets' | 'weather'
 
 // ─── The shell (Block 6A) ─────────────────────────────────────────────────────
