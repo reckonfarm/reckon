@@ -127,7 +127,7 @@ export default function LfpAlertCard({
     <>
       <div className="mb-3">
         <p className={EYEBROW}>Drought / LFP</p>
-        <Heading level={5} className="mt-1">LFP status</Heading>
+        <Heading level={3} visual={5} className="mt-1">LFP status</Heading>
       </div>
 
       {unavailable || !eligibility ? (

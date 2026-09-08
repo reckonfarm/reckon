@@ -307,7 +307,7 @@ export function NewsCardCompact({ item }: { item: NewsItem }) {
       className="group flex items-baseline justify-between gap-3 py-3"
     >
       <div className="min-w-0">
-        <Heading level={5} className="group-hover:text-ink">
+        <Heading level={3} visual={5} className="group-hover:text-ink">
           {item.title}
         </Heading>
         <div className="mt-1 flex items-center gap-1.5">

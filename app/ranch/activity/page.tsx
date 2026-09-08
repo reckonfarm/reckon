@@ -31,7 +31,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to), since: pick(sp.since) }
   // Block 6A: /jobs → /ranch/activity?source=machine — the machines' sessions (jobs) under the record.
   if (pick(sp.source) === 'machine') return <MachineActivity user={user} />
-  const [page, options] = await Promise.all([listActivity(supabase, user.id, filters, pick(sp.cursor)), filterOptions(supabase, user.id)])
+  // Five states, five copies (Block 6B): no records · no filter matches · request failed · no permission (not on a ranch) · (no coverage belongs to markets).
+  const [pageRes, options] = await Promise.all([
+    listActivity(supabase, user.id, filters, pick(sp.cursor)).then(p => ({ ok: true as const, page: p })).catch(() => ({ ok: false as const, page: null })),
+    filterOptions(supabase, user.id).catch(() => ({ people: [], places: [], lots: [] })),
+  ])
+  const failed = !pageRes.ok
+  const page = pageRes.page
 
   const filtering = Object.values(filters).some(Boolean)
   const heading = filters.place && options.places.find(p => p.id === filters.place)
@@ -52,8 +58,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         <h1 className="mt-1 type-page-heading text-ink">{heading}</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Everything recorded on the ranch, newest first, by the day the work happened. Tap a line for the exact entry.</p>
 
-        {!page ? (
-          <Card className="mt-4 p-5"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
+        {failed ? (
+          <Card className="mt-4 p-5" data-audit="activity-failed"><p className="font-dm-sans text-[17px] text-ink">The record couldn&rsquo;t be read just now. Nothing is lost; try again in a moment.</p></Card>
+        ) : !page ? (
+          <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
         ) : (
           <>
             <form method="get" action="/ranch/activity" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3" data-audit="activity-filters">

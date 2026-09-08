@@ -164,7 +164,7 @@ export default function LatestReadingCard({
   return (
     <Card shadow="soft" className="p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <Heading level={5}>County drought</Heading>
+        <Heading level={3} visual={5}>County drought</Heading>
         <span className="rounded-full bg-forest-green/10 px-3 py-1 text-[14px] font-medium text-forest-green font-dm-sans">
           Week of {formatWeek(latest.week_date)}
         </span>

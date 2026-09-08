@@ -28,13 +28,14 @@ const SIZES: Record<Level, string> = {
 
 export function Heading({
   level = 2,
+  visual,
   className = '',
   children,
   ...rest
-}: { level?: Level; className?: string; children: ReactNode } & HTMLAttributes<HTMLHeadingElement>) {
+}: { level?: Level; visual?: Level; className?: string; children: ReactNode } & HTMLAttributes<HTMLHeadingElement>) {
   const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5'
   return (
-    <Tag className={`text-ink ${SIZES[level]} ${className}`} {...rest}>
+    <Tag className={`text-ink ${SIZES[visual ?? level]} ${className}`} {...rest}>
       {children}
     </Tag>
   )

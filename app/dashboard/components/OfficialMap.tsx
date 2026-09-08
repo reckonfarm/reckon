@@ -68,7 +68,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
       className={`overflow-hidden transition-shadow hover: ${className}`}
     >
       <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-        <Heading level={5}>{displayTitle}</Heading>
+        <Heading level={3} visual={5}>{displayTitle}</Heading>
       </div>
       <div className="p-4 sm:p-6">
         <div

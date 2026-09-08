@@ -86,7 +86,7 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
       <div className="mb-3">
         <p className={EYEBROW}>Cattle markets</p>
-        <Heading level={5} className="mt-1">Auction prices · $/cwt</Heading>
+        <Heading level={3} visual={5} className="mt-1">Auction prices · $/cwt</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (

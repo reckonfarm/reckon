@@ -120,7 +120,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   return (
     <LedgerPanel tab="logged" empty={false}>
     <Card shadow="none" className="px-5 py-4">
-      {heading && <Heading level={5}>Activity</Heading>}
+      {heading && <Heading level={3} visual={5}>Activity</Heading>}
       <ul className={`${heading ? 'mt-2 ' : ''}divide-y divide-forest-green/10`}>
         {rows.map(r => {
           const pid = str(r.payload.place_id) ?? str(r.payload.to_place_id)
