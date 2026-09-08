@@ -6,6 +6,7 @@ import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFilters } from '@/lib/activity'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
+import JobsView from '@/app/dashboard/components/JobsView'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
@@ -24,8 +25,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=${encodeURIComponent('/activity' + qs({ actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }))}`)
+  if (!user) redirect(`/signin?next=${encodeURIComponent('/ranch/activity' + qs({ actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }))}`)
   const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }
+  // Block 6A: /jobs → /ranch/activity?source=machine — the machines' sessions (jobs) under the record.
+  if (pick(sp.source) === 'machine') return <MachineActivity user={user} />
   const [page, options] = await Promise.all([listActivity(supabase, user.id, filters, pick(sp.cursor)), filterOptions(supabase, user.id)])
 
   const filtering = Object.values(filters).some(Boolean)
@@ -50,7 +53,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
           <Card className="mt-4 p-5"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
         ) : (
           <>
-            <form method="get" action="/activity" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3" data-audit="activity-filters">
+            <form method="get" action="/ranch/activity" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3" data-audit="activity-filters">
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">Person
                 <select name="actor" defaultValue={filters.actor ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
                   <option value="">Everyone</option>{options.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -69,7 +72,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 <input type="date" name="to" defaultValue={filters.to ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" /></label>
               <div className="flex items-end gap-2">
                 <button type="submit" className="min-h-[48px] flex-1 rounded-lg bg-brand px-4 font-dm-sans text-[17px] font-semibold text-on-brand">Show</button>
-                {filtering && <Link href="/activity" className="inline-flex min-h-[48px] items-center px-2 font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Clear</Link>}
+                {filtering && <Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center px-2 font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Clear</Link>}
               </div>
             </form>
 
@@ -82,7 +85,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                   <ol className="divide-y divide-rule" data-audit="activity-list">
                     {g.rows.map(r => (
                       <li key={r.id}>
-                        <Link href={`/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="activity-row">
+                        <Link href={`/ranch/activity/${r.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="activity-row">
                           <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink">
                             <span className="font-semibold">{page.names.person(r.user_id)}</span> · {r.superseded_by ? <s className="decoration-2" data-audit="row-superseded">{describeEvent(r, page.names)}</s> : describeEvent(r, page.names)}
                             {r.superseded_by && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink">corrected</span>}
@@ -105,6 +108,22 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">{PAGE_SIZE} per page · newest first by work time.</p>
           </>
         )}
+      </main>
+    </>
+  )
+}
+
+// The machines' side of the record: jobs derived from connected machines, the
+// same list the Jobs view carries, under the record's own heading.
+function MachineActivity({ user }: { user: { id: string } }) {
+  return (
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <p className={EYEBROW}>The record · machines</p>
+        <h1 className="mt-1 type-page-heading text-ink">Jobs recorded by connected machines</h1>
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Sessions a Scout observed, newest first. Work recorded by hand is under <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>
+        <div className="mt-4" data-audit="machine-activity"><JobsView user={user} /></div>
       </main>
     </>
   )

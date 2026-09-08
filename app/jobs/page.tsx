@@ -54,7 +54,7 @@ export default async function JobsPage({
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/jobs')
+  if (!user) redirect('/signin?next=/ranch/activity?source=machine')
 
   const { data, error } = await supabase
     .from('jobs')
@@ -271,7 +271,7 @@ export default async function JobsPage({
           {!error && hiddenCount > 0 && (
             <div className="pt-1 text-center">
               <Link
-                href={showAll ? '/jobs' : '/jobs?all=1'}
+                href={showAll ? '/ranch/activity?source=machine' : '/ranch/activity?source=machine?all=1'}
                 className="inline-block rounded-lg px-4 py-2 font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green"
               >
                 {showAll

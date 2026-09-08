@@ -22,7 +22,7 @@ import type { Lot } from '@/lib/herd'
 export default async function HerdPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/herd')
+  if (!user) redirect('/signin?next=/ranch/cattle')
 
   // HerdEstimate inputs — degrade honestly; never block the capture form below.
   const profileResult = await getOperationProfile()

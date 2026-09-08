@@ -109,7 +109,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
             ? 'No machine sessions yet. This list fills from a Scout on a machine; work logged by hand is in the record.'
             : 'Nothing recent to show — the full list lives under All sessions.'}
         </p>
-        <Link href={jobs.length === 0 ? '/activity' : '/jobs'} className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
+        <Link href={jobs.length === 0 ? '/ranch/activity' : '/ranch/activity?source=machine'} className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
           {jobs.length === 0 ? 'The record →' : 'All sessions →'}
         </Link>
       </Card>
@@ -177,7 +177,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
         </section>
       ))}
       <p className="text-center">
-        <Link href="/jobs" className="inline-block rounded-lg px-4 py-2 font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
+        <Link href="/ranch/activity?source=machine" className="inline-block rounded-lg px-4 py-2 font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           All sessions →
         </Link>
       </p>

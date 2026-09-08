@@ -86,8 +86,8 @@ async function signIn(ctx: BrowserContext): Promise<Page> {
   const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
   const page = await ctx.newPage()
   await page.goto(`/auth/callback?token_hash=${link.data!.properties!.hashed_token}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
-  await page.waitForURL(u => u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+  await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
   await page.locator('header').getByText(EMAIL).waitFor({ state: 'attached', timeout: 30_000 })
   return page
 }
@@ -351,13 +351,13 @@ async function main() {
     {
         const dc = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
         const dp = await signIn(dc)
-        const mc = await dp.locator('header a[href="/watchlist"]').first().boundingBox().catch(() => null)
+        const mc = await dp.locator('header a[href="/weather/locations"]').first().boundingBox().catch(() => null)
         record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px`)
         await dc.close()
     }
 
     // Herd page lot card
-    await page.goto('/herd', { waitUntil: 'domcontentloaded' })
+    await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})
     const herd = await text(page)
     record('A4: herd page lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))

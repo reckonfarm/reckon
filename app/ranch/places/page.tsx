@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export default async function PlacesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/places')
+  if (!user) redirect('/signin?next=/ranch/places')
   const { data } = await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
   const places = (data ?? []) as { id: string; name: string; kind: string }[]
 
@@ -26,7 +26,7 @@ export default async function PlacesPage() {
         ) : (
           <Card shadow="soft" className="mt-4 divide-y divide-forest-green/10 px-5">
             {places.map(p => (
-              <Link key={p.id} href={`/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 py-3">
+              <Link key={p.id} href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 py-3">
                 <span className="font-dm-sans text-[17px] font-semibold text-forest-green">{p.name}</span>
                 <span className="font-dm-sans text-[16px] text-ink">{p.kind}</span>
               </Link>

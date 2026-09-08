@@ -97,7 +97,7 @@ export default function SiteHeader({ center }: Props) {
               to avoid duplicate nav. Logo + Sign out below stay visible on mobile. */}
           <div className="hidden items-center gap-4 md:flex">
             <Link
-              href="/watchlist"
+              href="/weather/locations"
               className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
             >
               My Counties
@@ -124,7 +124,7 @@ export default function SiteHeader({ center }: Props) {
             )}
             {user && (
               <Link
-                href="/herd"
+                href="/ranch/cattle"
                 className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 My herd
@@ -133,7 +133,7 @@ export default function SiteHeader({ center }: Props) {
             {/* Jobs — the work-session ledger, the Scout's payoff surface. */}
             {user && (
               <Link
-                href="/jobs"
+                href="/ranch/activity?source=machine"
                 className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Jobs
@@ -143,7 +143,7 @@ export default function SiteHeader({ center }: Props) {
                 Messages sat before its flag-off. */}
             {user && (
               <Link
-                href="/devices"
+                href="/ranch/devices"
                 className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Devices
@@ -163,7 +163,7 @@ export default function SiteHeader({ center }: Props) {
             )}
             {user && flagEnabled('marketplace') && (
               <Link
-                href="/radar"
+                href="/weather/radar"
                 className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
               >
                 Hay Radar
@@ -171,7 +171,7 @@ export default function SiteHeader({ center }: Props) {
             )}
             {user && (
               <Link
-                href="/profile"
+                href="/account"
                 className="max-w-[160px] truncate text-[14px] text-ink font-dm-sans hover:text-brand transition-colors"
               >
                 {user.email}

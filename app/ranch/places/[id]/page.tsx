@@ -21,7 +21,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=/places/${id}`)
+  if (!user) redirect(`/signin?next=/ranch/places/${id}`)
 
   const history = await getPlaceHistory(supabase, id)
   if (!history.place) notFound()
@@ -32,7 +32,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <p className="mb-4 font-dm-sans text-[16px]">
-          <Link href="/places" className="font-semibold text-forest-green underline underline-offset-2">All places</Link>
+          <Link href="/ranch/places" className="font-semibold text-forest-green underline underline-offset-2">All places</Link>
         </p>
 
         <Card shadow="soft" className="p-5 sm:p-6">
@@ -54,7 +54,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           )}
           {counts.entries > 0 && counts.sinceIso && (
             <p className="mt-3 font-dm-sans text-[16px] text-ink">
-              <Link href={`/activity?place=${place.id}`} className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="place-entries-link">
+              <Link href={`/ranch/activity?place=${place.id}`} className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="place-entries-link">
                 {counts.entries} {counts.entries === 1 ? 'entry' : 'entries'} here since {fmtDay(counts.sinceIso)} →
               </Link>
             </p>

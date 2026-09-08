@@ -74,9 +74,9 @@ export default function BottomTabBar() {
   }
 
   const herd: Tab = {
-    href: '/herd',
+    href: '/ranch/cattle',
     label: 'Herd',
-    match: p => p.startsWith('/herd'),
+    match: p => p.startsWith('/ranch/cattle'),
     icon: (active) => (
       // Cow / steer head — hand-drawn to match the inline-SVG stroke style (no icon lib).
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -91,9 +91,9 @@ export default function BottomTabBar() {
   }
   const jobs: Tab = {
     // Jobs — the work-session ledger, the Scout's payoff surface. Route glyph.
-    href: '/jobs',
+    href: '/ranch/activity?source=machine',
     label: 'Jobs',
-    match: p => p.startsWith('/jobs'),
+    match: p => p.startsWith('/ranch/activity?source=machine'),
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
         <circle cx="6" cy="19" r="2.5"/>
@@ -104,9 +104,9 @@ export default function BottomTabBar() {
   }
   const devices: Tab = {
     // Devices — antenna/signal glyph, same hand-drawn stroke style.
-    href: '/devices',
+    href: '/ranch/devices',
     label: 'Devices',
-    match: p => p.startsWith('/devices'),
+    match: p => p.startsWith('/ranch/devices'),
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 13v8"/>
@@ -129,9 +129,9 @@ export default function BottomTabBar() {
     ),
   }
   const profile: Tab = {
-    href: '/profile',
+    href: '/account',
     label: 'Profile',
-    match: p => p.startsWith('/profile'),
+    match: p => p.startsWith('/account'),
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5} strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="8" r="4"/>

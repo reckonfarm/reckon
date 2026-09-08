@@ -10,7 +10,7 @@ import RanchPeopleCard from './RanchPeopleCard'
 export default async function ProfilePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/profile')
+  if (!user) redirect('/signin?next=/account')
 
   return (
     <>
@@ -31,7 +31,7 @@ export default async function ProfilePage() {
             home county, watched counties, alert preferences — is reached from
             here now, one tap, a real 44px target. */}
         <Link
-          href="/watchlist"
+          href="/weather/locations"
           className="mt-5 flex min-h-[52px] items-center justify-between rounded-xl border border-forest-green/15 bg-white px-5 font-dm-sans text-base font-medium text-forest-green transition-colors hover:bg-forest-green/5"
         >
           <span>Your counties</span>

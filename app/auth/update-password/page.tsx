@@ -42,7 +42,7 @@ export default function UpdatePasswordPage() {
     const { error } = await supabase.auth.updateUser({ password })
     setLoading(false)
     if (error) { setError(error.message); return }
-    router.replace('/watchlist')
+    router.replace('/weather/locations')
   }
 
   return (

@@ -136,13 +136,13 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
   // give it a moment, then go there directly and check the header for the
   // signed-in email — the cookie is what matters, not the hand-off.
   await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
-  await page.waitForURL(u => u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
   if (process.env.DEBUG_SIGNIN) {
     await page.waitForTimeout(6000)
     console.log('   after callback:', page.url().replace(BASE, ''), (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     console.log('   cookies:', (await ctx.cookies()).map(c => `${c.name.slice(0, 28)}@${c.domain}${c.secure ? ' secure' : ''} ${c.sameSite}`).join(' | '))
   }
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+  await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
   // The header paints "Sign in" first and swaps to the email once the browser
   // client has read the session — wait for the swap, not the first paint.
   await page.locator('header').getByText(email).waitFor({ timeout: 20_000 }).catch(async () => {
@@ -229,11 +229,11 @@ async function main() {
   })
   try {
     let page = await signIn(ctx)
-    record('signed in', page.url().includes('/dashboard'), page.url().replace(BASE, ''))
+    record('signed in', page.url().includes('/today'), page.url().replace(BASE, ''))
 
     // ── invariant ──
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
     const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
     record('/home renders the home county Today stack', homeUrl.includes(`fips=${HOME_FIPS}`) && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
@@ -258,7 +258,7 @@ async function main() {
     record('county search responds', r.status() === 200 && Array.isArray(j) && j.length > 0, `${r.status()} ${Date.now() - t} ms`)
 
     // ── 2A: online save, four states in order, one row under the client id ──
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await logFeed(page, 4)
     const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
@@ -279,7 +279,7 @@ async function main() {
       const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
       const ob = await outbox(page)
       const latestId = ob.length ? ob[ob.length - 1].id : null
-      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
+      record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/ranch/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
     }
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
@@ -316,7 +316,7 @@ async function main() {
     await ctx.setOffline(false)
     page = await ctx.newPage()
     page.on('dialog', d => void d.accept())
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     const seqFq = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 5 bales')
     record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Synced to ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
 
@@ -342,10 +342,10 @@ async function main() {
     const placeName = `${PREFIX} West stack`
     await logFeed(page, 2, { place: placeName })
     await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
-    await page.goto('/places', { waitUntil: 'domcontentloaded' })
-    const placeLink = page.locator(`main a[href="/places/${placeId}"]`)
+    await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+    const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
-    await page.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
     record('2F: place page opens with its memory', h1p === placeName && /Last recorded feeding: today .*2 bales/.test(bodyP), `h1 "${h1p}" · ${(bodyP.match(/Last recorded feeding:[^·]*·[^L]{0,40}/) ?? [''])[0]}`)
@@ -363,7 +363,7 @@ async function main() {
     // ── 2B: repeat last — two taps from a cold open, undo, one row ──
     const beforeRepeat = await feedRows()
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
-    await page.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const same = page.getByRole('button', { name: 'Same today' })
     await same.waitFor({ timeout: 20_000 }).catch(() => {})
     const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -388,9 +388,9 @@ async function main() {
     const ctxB = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
     const pageB = await signIn(ctxB, EMAIL_B)
     if (process.env.DEBUG_2E) pageB.on('request', r => { if (/\/api\/seen/.test(r.url()) && r.method() === 'POST') console.log(`   [2E debug] ${new Date().toISOString()} B POST /api/seen from ${r.frame().url().replace(BASE, '')}`) })
-    if (process.env.DEBUG_2E) pageB.on('response', r => { if (/\/dashboard\?fips=/.test(r.url()) && r.request().isNavigationRequest()) console.log(`   [2E debug] ${new Date().toISOString()} B navigation response ${r.status()} ${r.url().replace(BASE, '')}`) })
+    if (process.env.DEBUG_2E) pageB.on('response', r => { if (/\/(today|dashboard)\?fips=/.test(r.url()) && r.request().isNavigationRequest()) console.log(`   [2E debug] ${new Date().toISOString()} B navigation response ${r.status()} ${r.url().replace(BASE, '')}`) })
     await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
-    await pageB.waitForURL(/\/dashboard/, { timeout: 30_000 })
+    await pageB.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const urlB = pageB.url().replace(BASE, '')
     const logItB = await pageB.getByRole('button', { name: /^Log it/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
@@ -428,7 +428,7 @@ async function main() {
       const ownBlock = await page.getByText('Recorded since you last checked').count() + await page.getByText('Recorded since yesterday').count()
       record('2E: A does not see A\'s own entries as news', ownBlock === 0, `blocks on A's Today: ${ownBlock}`)
       if (process.env.DEBUG_2E) console.log(`   [2E debug] ${new Date().toISOString()} before goto, B last_seen_at =`, JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data))
-      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
       const blockB = (await pageB.getByText('Recorded since yesterday').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -439,7 +439,7 @@ async function main() {
       const eventId = rowHref?.match(/^\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null
       record('5A: a handoff row opens its exact event, not a place summary', !!eventId, String(rowHref))
       if (eventId) {
-        await pageB.goto(`/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
+        await pageB.goto(`/ranch/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
         await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
         const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('sync'), place = await d('place')
@@ -447,7 +447,7 @@ async function main() {
         await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       }
       // The place's entry count is a door into the place's record (gate 2).
-      await pageB.goto(`/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      await pageB.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
       const entriesLink = pageB.locator('[data-audit="place-entries-link"]')
       const entriesText = (await entriesLink.innerText().catch(() => '')).replace(/\s+/g, ' ')
       const claimed = parseInt((entriesText.match(/(\d+) entr/) ?? ['', '0'])[1], 10)
@@ -455,7 +455,7 @@ async function main() {
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
       const listed = await pageB.locator('[data-audit="activity-row"]').count()
       record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
-      await pageB.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await pageB.getByText('Recorded since yesterday').waitFor({ timeout: 20_000 }).catch(() => {})
       await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
       await pageB.reload({ waitUntil: 'domcontentloaded' })
@@ -463,7 +463,7 @@ async function main() {
       const after = await pageB.getByText('Recorded since you last checked').count() + await pageB.getByText('Recorded since yesterday').count()
       record('2E: after the visit, nothing new → no block', after === 0, `blocks: ${after}`)
       // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
-      await pageB.goto('/activity', { waitUntil: 'domcontentloaded' })
+      await pageB.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
       const still = await pageB.getByRole('link', { name: /Smoke A · Fed 2 bales/ }).count()
       record('5A: after the visit the entries are still findable in the record', still >= 1, `${still} matching row(s) on /activity`)
@@ -473,11 +473,32 @@ async function main() {
     // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
     // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
     //  "since you last checked" news and break 2E's fixed sequence.)
-    await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await page.getByRole('tab', { name: 'Recently logged', exact: true }).click().catch(() => {})
     await page.waitForTimeout(800)
     const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+
+    // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
+    {
+      const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }
+      const { data: anyEvent } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const { data: anyPlace } = await admin.from('places').select('id').eq('ranch_id', ranchId).limit(1).maybeSingle()
+      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch/places'], ['/devices', '/ranch/devices'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
+        ...(anyPlace ? [[`/places/${anyPlace.id}`, `/ranch/places/${anyPlace.id}`] as [string, string]] : []),
+        ...(anyEvent ? [[`/activity/${anyEvent.id}`, `/ranch/activity/${anyEvent.id}`] as [string, string]] : [])]
+      const results = await Promise.all(statics.map(async ([from, expected]) => ({ from, expected, ...(await hop(from)) })))
+      // A redirect resolves when it is permanent (301/308) and its Location, host stripped, is exactly the new path.
+      const failing = results.filter(r => !((r.status === 301 || r.status === 308) && r.location === r.expected))
+      record('6A: every old URL answers a permanent redirect to its new home (incl. /places/[id] and /activity/[id])', failing.length === 0 && results.length >= 9, failing.length ? failing.map(r => `${r.from} → ${r.status} ${r.location || '(no location)'}`).join(' | ') : `${results.length} redirects: ` + results.map(r => `${r.from}→${r.location}`).join(' '))
+      const [root, home, bare, county, today] = await Promise.all([hop('/'), hop('/home'), hop('/dashboard'), hop(`/dashboard?fips=${HOME_FIPS}`), hop('/today')])
+      record('6A: signed in, / and /home and bare /dashboard land on /today in one hop; a county page and /today are never redirected', [root, home, bare].every(r => r.status >= 300 && r.status < 400 && /\/today$/.test(r.location)) && county.status === 200 && today.status === 200, `/ ${root.status}→${root.location} · /home ${home.status}→${home.location} · /dashboard ${bare.status}→${bare.location} · county ${county.status} · /today ${today.status}`)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const title = await page.title()
+      await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const countyTitle = await page.title()
+      record('6A: no county title on a private page; the county page keeps it', /^Today/.test(title) && !/Drought/.test(title) && /Drought & LFP Eligibility/.test(countyTitle), `/today: "${title}" · /dashboard: "${countyTitle}"`)
+    }
 
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
     // Original, current value, editor, reason, and the resulting balance all
@@ -488,7 +509,7 @@ async function main() {
       const probe = await admin.from('events').select('superseded_by').limit(1)
       if (probe.error) skip('5B: correct 6 → 4 on the phone', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
       else {
-        await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 6)
         const seq6 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
@@ -499,7 +520,7 @@ async function main() {
         const { data: six } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '6').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
         record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Synced to ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
         if (six) {
-          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-audit="correct-entry"]').click()
           await page.getByLabel('Bales', { exact: true }).fill('4')
           await page.locator('[data-audit="correction-reason"]').fill('was 4, typed 6')
@@ -511,7 +532,7 @@ async function main() {
           const onHand4 = parseInt((receipt.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
           record('5B: the correction lands on its own entry — current value, editor, what it corrects, reason', /Fed 4 bales/.test(line) && /Smoke A/.test(who) && /owner/.test(who) && /Fed 6 bales/.test(corrects) && /was 4, typed 6/.test(reason), `${line} · ${who} · corrects ${corrects} · ${reason}`)
           record('5B: the resulting balance is on the receipt and moved by exactly the 2 bales corrected', Number.isFinite(onHand4) && onHand4 === onHand6 + 2, `on hand ${onHand6} → ${onHand4}`)
-          await page.goto(`/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
+          await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           const replaced = (await page.locator('[data-audit="event-replaced"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
           const struck = await page.locator('h1[data-audit="event-line"].line-through').count()
           record('5B: the original stays readable, struck through, and names the current value, who changed it, and why', /Current: Fed 4 bales/.test(replaced) && /Changed by Smoke A/.test(replaced) && /was 4, typed 6/.test(replaced) && struck === 1, replaced.slice(0, 160))
@@ -527,7 +548,7 @@ async function main() {
     // or without a clean sign-out in between.
     {
       const PRIVATE_KEYS = ['dryline_outbox_v1', 'manual_log_draft_v1', 'manual_log_last_lot', 'manual_log_last_place', 'dryline_hay_draft_v1', 'farmer_type', 'dryline_session_uid']
-      await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[role="status"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
       const beforeText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const keysBefore = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
@@ -547,8 +568,8 @@ async function main() {
       }, ['dryline_outbox_v1', 'dryline_session_uid', userId])
       const linkB = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL_B })
       const thB = linkB.data?.properties?.hashed_token
-      await page.goto(`/auth/callback?token_hash=${thB}&type=magiclink&next=/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForURL(u => u.pathname.startsWith('/dashboard') && !u.searchParams.has('token_hash'), { timeout: 60_000 }).catch(() => {})
+      await page.goto(`/auth/callback?token_hash=${thB}&type=magiclink&next=/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForURL(u => u.pathname.startsWith('/today') && !u.searchParams.has('token_hash'), { timeout: 60_000 }).catch(() => {})
       await page.waitForTimeout(2_500)
       const bText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const bState = await page.evaluate(([outboxKey, ownerKey]: string[]) => ({ outbox: localStorage.getItem(outboxKey), owner: localStorage.getItem(ownerKey) }), ['dryline_outbox_v1', 'dryline_session_uid'])

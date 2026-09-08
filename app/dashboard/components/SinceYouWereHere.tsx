@@ -114,7 +114,7 @@ export default async function SinceYouWereHere() {
         {rows.map(r => {
           const author = r.type === 'alert' ? 'Dryline' : (authors.get(r.user_id) ?? 'Someone on the ranch')
           // Block 5A — the row opens ITS exact event by stable id, never a place summary.
-          const href = `/activity/${r.id}`
+          const href = `/ranch/activity/${r.id}`
           return (
             <li key={r.id}>
               <Link href={href} className="flex min-h-[56px] items-center justify-between gap-3 py-2" data-audit="since-row">

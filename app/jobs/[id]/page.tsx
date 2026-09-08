@@ -221,7 +221,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       <SiteHeader />
       <AutoRefresh />
       <main className="mx-auto max-w-3xl px-4 py-10 pb-24 sm:px-6 md:pb-10">
-        <Link href="/jobs" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
+        <Link href="/ranch/activity?source=machine" className="font-dm-sans text-[16px] text-secondary-ink hover:text-forest-green">
           ← All jobs
         </Link>
 

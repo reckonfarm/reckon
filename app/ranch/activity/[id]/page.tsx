@@ -28,7 +28,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const { saved } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=${encodeURIComponent(`/activity/${id}`)}`)
+  if (!user) redirect(`/signin?next=${encodeURIComponent(`/ranch/activity/${id}`)}`)
   const ev = await getEvent(supabase, user.id, id)
   if (!ev) notFound()
   const { row, names, actorRole, line, quantity, placeId, lotId, corrects, correctedBy, head, canCorrect } = ev
@@ -51,11 +51,11 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ['What', line],
     ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
     ...(lotName ? [['Lot', lotName] as [string, React.ReactNode]] : []),
-    ...(placeName && placeId ? [['Place', <Link key="p" href={`/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
+    ...(placeName && placeId ? [['Place', <Link key="p" href={`/ranch/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
     ['Work time', when(row.ts)],
     ['Recorded', when(row.ingested_at)],
     ['Sync', row.device_id ? 'Received from a device' : 'Synced to ranch'],
-    ...(original ? [[isVoid ? 'Voids' : 'Corrects', <Link key="o" href={`/activity/${original.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-corrects-link"><s>{describeEvent(original, names)}</s></Link>] as [string, React.ReactNode]] : []),
+    ...(original ? [[isVoid ? 'Voids' : 'Corrects', <Link key="o" href={`/ranch/activity/${original.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-corrects-link"><s>{describeEvent(original, names)}</s></Link>] as [string, React.ReactNode]] : []),
     ...(row.supersedes_event_id ? [['Reason', row.correction_reason?.trim() || <span className="text-secondary-ink">No reason given</span>] as [string, React.ReactNode]] : []),
   ]
 
@@ -85,7 +85,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           <Card className="mt-4 border-rust/40 p-4" data-audit="event-replaced">
             <p className={EYEBROW}>{head.voided_at ? 'This entry was voided' : 'This entry was corrected'}</p>
             <p className="mt-1 font-dm-sans text-[17px] leading-snug text-ink">
-              {head.voided_at ? 'It no longer counts. ' : <>Current: <Link href={`/activity/${head.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-current-link">{describeEvent(head, names)}</Link>. </>}
+              {head.voided_at ? 'It no longer counts. ' : <>Current: <Link href={`/ranch/activity/${head.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-current-link">{describeEvent(head, names)}</Link>. </>}
               Changed by {names.person(head.user_id)} on {fmtDay(head.ingested_at)} at {fmtTime(head.ingested_at)}{head.correction_reason?.trim() ? ` — ${head.correction_reason.trim()}` : ''}.
             </p>
           </Card>
@@ -118,7 +118,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                 const me = r.id === row.id
                 return (
                   <li key={r.id} className="py-2 font-dm-sans text-[16px] leading-snug text-ink">
-                    {me ? <span className={current ? 'font-semibold' : 'line-through'}>{describeEvent(r, names)}</span> : <Link href={`/activity/${r.id}`} className={`text-brand underline underline-offset-2 ${current ? 'font-semibold' : 'line-through'}`}>{describeEvent(r, names)}</Link>}
+                    {me ? <span className={current ? 'font-semibold' : 'line-through'}>{describeEvent(r, names)}</span> : <Link href={`/ranch/activity/${r.id}`} className={`text-brand underline underline-offset-2 ${current ? 'font-semibold' : 'line-through'}`}>{describeEvent(r, names)}</Link>}
                     <span className="block text-[14px] text-secondary-ink">{names.person(r.user_id)} · recorded {fmtDay(r.ingested_at)} {fmtTime(r.ingested_at)}{r.correction_reason?.trim() ? ` · ${r.correction_reason.trim()}` : ''}{current ? ' · current' : ''}{me ? ' · this entry' : ''}</span>
                   </li>
                 )
