@@ -129,3 +129,13 @@
   font-feature-settings: "tnum" 1, "lnum" 1;
   letter-spacing: -0.01em;
 }
+
+/* ── Visible keyboard focus on every control (Block 6B, visual delta) ────────────
+   One ring, forest green, offset so it never hides a border. :focus-visible keeps
+   mouse taps quiet and keyboard focus loud. Extends the Phase A tokens; nothing
+   above is rewritten. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid #1B4332;
+  outline-offset: 2px;
+  border-radius: 6px;
+}

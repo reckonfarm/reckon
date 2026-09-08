@@ -88,6 +88,7 @@ export default function ConditionsStrip({
   // /dashboard, whose middleware 307 is the flow-4a router-cache trap.
   return (
     <a
+      data-audit="conditions-strip"
       href={`/dashboard?fips=${fips}&view=drought`}
       onClick={dashboardView ? e => { e.preventDefault(); dashboardView.setView('drought') } : undefined}
       className="flex min-h-[48px] flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-forest-green/10 bg-white px-4 py-2.5 transition-colors hover:bg-forest-green/5"

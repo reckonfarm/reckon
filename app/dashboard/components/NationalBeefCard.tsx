@@ -67,7 +67,7 @@ export default function NationalBeefCard({ result }: { result: NationalBeefResul
     <Card shadow="soft" className="p-4 sm:p-6">
       <div className="mb-3">
         <p className={EYEBROW}>Cattle markets</p>
-        <Heading level={5} className="mt-1">National beef</Heading>
+        <Heading level={3} visual={5} className="mt-1">National beef</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (

@@ -55,7 +55,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>
 
         <section className="mt-6" aria-labelledby="place-recent">
-          <h2 id="place-recent" className={EYEBROW}>Recent here</h2>
+          <h2 id="place-recent" className={`${EYEBROW} !text-ink`}>Recent here</h2>
           <Card className="mt-2 p-4 sm:p-5">
             {memory.length === 0 ? (
               <p className="font-dm-sans text-[17px] text-ink">Nothing recorded here yet. The first entry starts its memory.</p>
@@ -81,7 +81,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
 
         {rows.length > 0 && (
           <section className="mt-6" aria-labelledby="place-activity">
-            <h2 id="place-activity" className={EYEBROW}>Activity here</h2>
+            <h2 id="place-activity" className={`${EYEBROW} !text-ink`}>Activity here</h2>
             <Card className="mt-2 p-0">
               <ol className="divide-y divide-rule" data-audit="place-activity">
                 {rows.map(r => (
@@ -102,7 +102,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
 
         {devices.length > 0 && (
           <section className="mt-6" aria-labelledby="place-devices">
-            <h2 id="place-devices" className={EYEBROW}>Connected devices</h2>
+            <h2 id="place-devices" className={`${EYEBROW} !text-ink`}>Connected devices</h2>
             <Card className="mt-2 p-0">
               <ul className="divide-y divide-rule">
                 {devices.map(d => (

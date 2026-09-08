@@ -132,7 +132,7 @@ export default function DeadlineCountdownCard({
           an FSA disaster-program deadline, not insurance — alongside the RMA dates. */}
       <div className="mb-3">
         <p className={EYEBROW}>USDA programs</p>
-        <Heading level={5} className="mt-1">Program deadlines</Heading>
+        <Heading level={3} visual={5} className="mt-1">Program deadlines</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (

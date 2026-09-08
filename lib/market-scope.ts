@@ -40,11 +40,12 @@ export const reportUrl = (slug: string) => `https://mymarketnews.ams.usda.gov/vi
 
 export function scopeLabel(s: Scope): string {
   switch (s.kind) {
-    case 'nearby':   return `Nearby auction reference — ${s.town}`
-    case 'pinned':   return `Where you sell — ${s.town}`
+    // Block 6B: Local report / Regional reference / National reference — the scope, then its fallback.
+    case 'nearby':   return `Local report — ${s.town}`
+    case 'pinned':   return `Preferred sale barn — ${s.town}`
     case 'reference': return `Regional reference — ${s.town} · ~${s.miles.toLocaleString('en-US')} mi`
     case 'regional': return `Regional comparison — ${s.region}`
-    case 'national': return 'National benchmark'
+    case 'national': return 'National reference'
   }
 }
 

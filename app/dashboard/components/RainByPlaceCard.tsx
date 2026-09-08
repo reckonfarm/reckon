@@ -44,6 +44,9 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
 
   const rows = ledger.places.filter(p => p.ytd.entries > 0)
   if (rows.length === 0) return null
+  // Places with no reading this year are named as such — a stated absence, never a zero (Block 6B).
+  const { data: allPlaces } = await supabase.from('places').select('id, name').order('name')
+  const unread = ((allPlaces ?? []) as { id: string; name: string }[]).filter(pl => !rows.some(r => r.place_id === pl.id))
 
   // The county figure is whatever the page already resolved — no new fetch.
   // Any non-series state (unavailable / no station / none) simply leaves the
@@ -53,24 +56,30 @@ export default async function RainByPlaceCard({ precipPromise, user }: {
 
   return (
     <Card shadow="none" className="px-5 py-4">
-      <p className={EYEBROW}>
-        Rain you measured · {ledger.ytd.year}
-      </p>
-      <ul className="mt-3 divide-y divide-forest-green/10">
+      <h2 className={`${EYEBROW} !text-ink`} id="wx-rain-h">
+        Recorded rain at my places · {ledger.ytd.year}
+      </h2>
+      <ul className="mt-3 divide-y divide-forest-green/10" aria-labelledby="wx-rain-h" data-audit="recorded-rain">
         {rows.map(p => (
-          <li key={p.place_id ?? 'none'} className="flex items-baseline justify-between gap-3 py-2">
+          <li key={p.place_id ?? 'none'} className="flex items-baseline justify-between gap-3 py-2" data-audit="recorded-rain-row">
             <span className="font-dm-sans text-[16px] text-forest-green">
-              {p.name ?? (p.place_id ? 'Unnamed place' : 'No place given')}
+              Recorded rain at {p.name ?? (p.place_id ? 'an unnamed place' : 'no place given')}
             </span>
             <span className="shrink-0 text-right">
               <span className="font-fraunces text-lg font-semibold tabular-nums text-forest-green">{inches(p.ytd.inches)}</span>
-              <span className="ml-2 font-dm-sans text-[14px] text-secondary-ink">{readings(p.ytd.entries)}</span>
+              <span className="ml-2 font-dm-sans text-[14px] text-secondary-ink">{readings(p.ytd.entries)}{p.ytd.inches === 0 ? ' · zero measured' : ''}</span>
             </span>
+          </li>
+        ))}
+        {unread.map(pl => (
+          <li key={pl.id} className="flex items-baseline justify-between gap-3 py-2" data-audit="recorded-rain-none">
+            <span className="font-dm-sans text-[16px] text-forest-green">Recorded rain at {pl.name}</span>
+            <span className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">No reading recorded this year</span>
           </li>
         ))}
       </ul>
       <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
-        Gauge readings you logged, added up by place · since {fmtDay(ledger.entries[0].ts)}.
+        Source: gauge readings you logged by hand, added up by place · since {fmtDay(ledger.entries[0].ts)}. A place with no line has no gauge reading — that is not zero rain.
       </p>
 
       {estimate && (

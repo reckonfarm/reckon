@@ -33,6 +33,7 @@ import ProgramStatus from './components/ProgramStatusLoader'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { Heading } from '@/app/components/ui/Heading'
 import ScrollToTop from './components/ScrollToTop'
+import CountyBanner from '@/app/components/CountyBanner'
 import NewsHookCard from '@/app/components/NewsHookCard'
 import JobsView, { JobsViewSkeleton } from './components/JobsView'
 import { LiveJobCard, TodayJobs } from './components/RanchNow'
@@ -403,6 +404,8 @@ export async function DashboardShell({
           page is wider; an element that needs more width is the wrong element. */}
       <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
+        {/* Block 6B — one short first-visit banner on the public county page; the county data stays first. */}
+        {!priv && !user && selectedCounty && <CountyBanner />}
 
         {/* ── County selector (flow, commit 4) ──────────────────────────────────
                The public county page's whole job is picking a county, so signed
@@ -476,7 +479,8 @@ export async function DashboardShell({
                 // differed). A different county in view is named after it; no
                 // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
-                  <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
+                  {/* /markets owns its h1 ("Markets · {area}", Block 6B); the ranch stays in the header. */}
+                  {route === 'markets' || route === 'weather' ? <p className="font-fraunces text-lg font-semibold leading-snug text-ink">{ranchName}</p> : <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>}
                   <p className="font-dm-sans text-[14px] text-secondary-ink" data-testid="operation-line">
                     {homeCounty
                       ? `Operation · ${homeCounty.name}, ${homeCounty.state}`
@@ -653,6 +657,8 @@ export async function DashboardShell({
                           user={user}
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
+                          forecastPromise={forecastPromise}
+                          titled={route === 'weather'}
                         />
                       </Suspense>
                     ) }
@@ -667,7 +673,7 @@ export async function DashboardShell({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
                       </Suspense>
                     ) }
                   : {}),
@@ -687,13 +693,8 @@ export async function DashboardShell({
               record; a right column on desktop (the shell is 1,160 px wide there). */}
           {priv && route === 'today' && (
             <aside className="space-y-4 pb-16 lg:pb-0" data-audit="today-strips" aria-label="Conditions and programs">
+              {/* Today keeps the two-line preview only (Block 6B); the 7-day carousel lives on Weather. */}
               <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-              <div>
-                <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-                <Suspense fallback={<ForecastPanelSkeleton />}>
-                  <ForecastPanelAsync dataPromise={forecastPromise} />
-                </Suspense>
-              </div>
               <DeadlineQuietRow
                 countyName={selectedCounty.name}
                 quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}

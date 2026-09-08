@@ -253,6 +253,9 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   // and ONE event id per sheet, minted the moment a type is picked — so even
   // two racing submits carry the same id and the server keeps one row.
   const submitting = useRef(false)
+  // Block 6B: the control that opened the sheet gets focus back when it closes; Tab stays inside while it is open.
+  const openerRef = useRef<HTMLElement | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
   const eventId = useRef<string | null>(null)
 
   // Fields — strings until submit, like ActualsCard.
@@ -380,12 +383,24 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
 
   useEffect(() => {
     if (!open) return
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const first = dialogRef.current?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    first?.focus()
+    const opener = openerRef.current
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' && dialogRef.current) {
+        const nodes = [...dialogRef.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(n => !n.hasAttribute('disabled'))
+        if (nodes.length === 0) return
+        const firstNode = nodes[0], lastNode = nodes[nodes.length - 1]
+        if (e.shiftKey && document.activeElement === firstNode) { e.preventDefault(); lastNode.focus() }
+        else if (!e.shiftKey && document.activeElement === lastNode) { e.preventDefault(); firstNode.focus() }
+        return
+      }
       if (e.key !== 'Escape') return
       if (!dirty || window.confirm('Discard what you typed?')) close()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); requestAnimationFrame(() => opener?.focus()) }
   }, [open, dirty, close])
 
   const addPlace = (p: Place) => setPlaces(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)))
@@ -552,6 +567,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
           onClick={dismiss}
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label="Record work"
@@ -562,7 +578,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <Heading level={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
+              <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
               <button
                 type="button"
                 onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}

@@ -45,7 +45,7 @@ export default async function RanchPage() {
         <h1 className="mt-1 type-page-heading text-ink">{ranch?.name ?? 'Your ranch'}</h1>
 
         <section className="mt-4" aria-labelledby="ranch-recent">
-          <h2 id="ranch-recent" className={EYEBROW}>Recent activity</h2>
+          <h2 id="ranch-recent" className={`${EYEBROW} !text-ink`}>Recent activity</h2>
           {rows.length === 0 ? (
             <Card className="mt-2 p-5"><p className="font-dm-sans text-[17px] text-ink">Nothing recorded on the ranch yet.</p></Card>
           ) : (
@@ -65,7 +65,7 @@ export default async function RanchPage() {
         </section>
 
         <section className="mt-6" aria-labelledby="ranch-sections">
-          <h2 id="ranch-sections" className={EYEBROW}>Sections</h2>
+          <h2 id="ranch-sections" className={`${EYEBROW} !text-ink`}>Sections</h2>
           <Card className="mt-2 p-0">
             <ul className="divide-y divide-rule" data-audit="ranch-sections">
               {sections.map(s => (

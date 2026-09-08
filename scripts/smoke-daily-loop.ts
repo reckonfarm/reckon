@@ -273,10 +273,10 @@ async function main() {
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('text=7-day forecast')
+      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('[data-audit="conditions-strip"]')   // Block 6B: Today keeps the two-line conditions preview; the 7-day carousel lives on Weather
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const headlines = await page.getByText('Headlines', { exact: true }).count()
-      record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · 7-day forecast, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
+      record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · conditions strip, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
     }
     // Block 5C — one receipt: the strip's link opens the exact entry it just made.
     {
@@ -562,6 +562,44 @@ async function main() {
       const nameHint = await page.getByText('Name shown on your work entries').count()
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
       record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
+    }
+
+    // ── Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · radar ──
+    {
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="weather-forecast"]').waitFor({ timeout: 30_000 }).catch(() => {})
+      const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
+      // The fixture logs no rain, so the recorded-rain section rightly does not render (no reading → no card, never a zero); the order is checked over what is on the page.
+      const hasRain = (await page.locator('[data-audit="recorded-rain"]').count()) > 0
+      const order = [await pos('[data-audit="weather-forecast"]'), ...(hasRain ? [await pos('[data-audit="recorded-rain"]')] : []), await pos('[data-audit="weather-estimate"]'), await pos('[data-audit="drought-ribbon"]'), await pos('[data-audit="weather-radar"]')]
+      const ascending = order.every((v, i) => i === 0 || (Number.isFinite(v) && v > order[i - 1]))
+      const zeroRain = /0\.00" .*rain|rain.*0\.00"/i.test(await page.locator('main').innerText().catch(() => ''))
+      const title = await page.title()
+      const h1 = await page.locator('h1').count()
+      const rainRows = await page.locator('[data-audit="recorded-rain-row"]').count()
+      const noneRows = await page.locator('[data-audit="recorded-rain-none"]').count()
+      const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const ribbonLabel = await page.locator('[data-audit="drought-ribbon"]').getAttribute('aria-label').catch(() => null)
+      record('6B: Weather runs forecast → (recorded rain, gauge, only when a reading exists) → county estimate vs station normal (PRISM/NOAA footer) → county drought (ribbon in words) → radar; one h1; title Weather; never a zero for no reading', ascending && /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `order ${order.join(' < ')} · title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
+    }
+
+    // ── Block 6B (9): at 200% text size on a phone, Record is still reachable ──
+    {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+      await page.waitForTimeout(500)
+      const fab = page.locator('[data-audit="record-fab"]')
+      const box = await fab.boundingBox().catch(() => null)
+      const vp = page.viewportSize()!
+      const inside = !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height
+      const overflowX = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+      await fab.click({ trial: true }).then(() => true).catch(() => false)
+      const clickable = await fab.click({ trial: true }).then(() => true).catch(() => false)
+      record('6B: at 200% text size Record stays inside the viewport, clickable, and the page does not scroll sideways', inside && clickable && !overflowX, `fab ${box ? `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}` : 'none'} in ${vp.width}×${vp.height} · sideways ${overflowX}`)
+      await page.evaluate(() => { document.documentElement.style.fontSize = '' })
+      if (prior) await page.setViewportSize(prior)
     }
 
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──

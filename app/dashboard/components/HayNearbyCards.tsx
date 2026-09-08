@@ -109,7 +109,7 @@ export default function HayNearbyCards({
             <div className="px-4 py-4 sm:px-5">
               {/* Title + quality badges */}
               <div className="flex flex-wrap items-center gap-2">
-                <Heading level={5}>
+                <Heading level={3} visual={5}>
                   {l.hayType ?? 'Hay'}
                   {l.cuttingNumber != null && (
                     <span className="font-dm-sans text-[16px] font-normal text-secondary-ink ml-1">

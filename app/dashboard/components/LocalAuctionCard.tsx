@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
+import type { VolumeRow } from '@/lib/trend'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { isThin, scopeLabel, thinEvidence } from '@/lib/market-scope'
@@ -59,7 +60,7 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   const thin = isThin(c.head)
   const ev = thin ? thinEvidence(c.priceLow, c.priceHigh, c.avgPrice, c.head) : null
   const name = kind === 'cows'
-    ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows (grade not captured)')
+    ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows · Grade unavailable')
     : (c.gradeKnown && c.grade !== 'All' ? `Slaughter bulls · yield ${c.grade}` : 'Slaughter bulls')
   return (
     <li className="py-2">
@@ -80,12 +81,12 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   )
 }
 
-export default function LocalAuctionCard({ result }: { result: LocalAuctionResult }) {
+export default function LocalAuctionCard({ result, volume = null }: { result: LocalAuctionResult; volume?: VolumeRow[] | null }) {
   return (
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
       <div className="mb-3">
         <p className={EYEBROW}>Cattle markets</p>
-        <Heading level={5} className="mt-1">Auction prices · $/cwt</Heading>
+        <Heading level={3} visual={5} className="mt-1">Auction prices · $/cwt</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (
@@ -115,32 +116,72 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
               : { kind: 'nearby', town: shortTown(result.town) },
             )}
           </p>
+          <p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="scope-fallback">
+            {result.beyondHaul && !result.pinned ? 'Scope: Regional reference · falls back to National reference' : 'Scope: Local report · falls back to Regional reference, then National reference'}
+          </p>
           <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
             <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
+          {/* Receipts (Block 6B, commit 3): the scope before the number — which classes the
+              total spans — and the per-class split with its week-ago / year-ago when the
+              report carries it. No unexplained total. */}
+          {result.receipts != null && (
+            <div className="mt-2 rounded-lg bg-forest-green/[0.04] px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="receipts-scope">
+              <p>
+                <span className="font-semibold">Receipts:</span> {result.receipts.toLocaleString('en-US')} head across {[
+                  (result.bands.length || result.classes.some(c => c.bands.length)) ? 'feeder' : null,
+                  (result.cullCows.length || result.slaughterBulls.length) ? 'slaughter (cull)' : null,
+                ].filter(Boolean).join(' and ') || 'the classes reported'} classes, {fmtDate(result.saleDate)}
+                {result.receiptsWeekAgo != null && <span className="text-secondary-ink"> · {result.receiptsWeekAgo.toLocaleString('en-US')} a week earlier</span>}
+              </p>
+              {volume && volume.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-secondary-ink">
+                  {volume.map(v => (
+                    <li key={v.commodity}>
+                      {v.commodity}: <span className="tabular-price text-ink">{v.receipts != null ? v.receipts.toLocaleString('en-US') : '—'}</span> head
+                      {v.weekAgo != null && v.receipts != null && <> · {v.receipts - v.weekAgo >= 0 ? '▲ up' : '▼ down'} {Math.abs(v.receipts - v.weekAgo).toLocaleString('en-US')} vs last week</>}
+                      {v.yearAgo != null && <> · {v.yearAgo.toLocaleString('en-US')} a year ago</>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
-          <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-            {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
-            {result.classes.map(c => c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />))}
-          </ul>
+          {result.bands.length > 0 && (
+            <div className="mt-4" data-audit="board-feeder-steers">
+              <p className={EYEBROW}>Feeder steers · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+                {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
+              </ul>
+            </div>
+          )}
+          {result.classes.filter(c => c.bands.length > 0).map(c => (
+            <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
+              <p className={EYEBROW}>{c.label === 'Heifers' ? 'Feeder heifers' : c.label} · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+                {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label === 'Heifers' ? 'Heifers' : c.label} b={b} />)}
+              </ul>
+            </div>
+          ))}
 
-          {(result.cullCows.length > 0 || result.slaughterBulls.length > 0) && (
-            <div className="mt-4">
-              <p className={EYEBROW}>Culls · slaughter prices, not breeding value · $/cwt</p>
+          {result.cullCows.length > 0 && (
+            <div className="mt-4" data-audit="board-cull-cows">
+              <p className={EYEBROW}>Cull cows · slaughter prices, not breeding value · $/cwt</p>
               <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
                 {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" />)}
+              </ul>
+            </div>
+          )}
+          {result.slaughterBulls.length > 0 && (
+            <div className="mt-4" data-audit="board-slaughter-bulls">
+              <p className={EYEBROW}>Slaughter bulls · slaughter prices, not breeding value · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
                 {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" />)}
               </ul>
             </div>
           )}
-
-          {result.receipts != null && (
-            <p className="mt-3 font-dm-sans text-[16px] tabular-nums text-ink">
-              {fmtInt(result.receipts)} receipts
-              {result.receiptsWeekAgo != null && ` · wk ago ${fmtInt(result.receiptsWeekAgo)}`}
-              {result.receiptsYearAgo != null && ` · yr ago ${fmtInt(result.receiptsYearAgo)}`}
-            </p>
-          )}
+          {/* Receipts live in the header block above (commit 3) — no second, unexplained total. */}
         </>
       )}
     </Card>

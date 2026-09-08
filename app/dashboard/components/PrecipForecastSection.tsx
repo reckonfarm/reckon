@@ -452,7 +452,7 @@ export default function PrecipForecastSection({
     <Card className="overflow-hidden">
       {!hideHeader && (
         <div className="border-b border-forest-green/10 px-4 py-3 sm:px-6">
-          <Heading level={5}>
+          <Heading level={3} visual={5}>
             Rainfall Outlook
           </Heading>
         </div>

@@ -22,7 +22,8 @@ import type { Lot } from '@/lib/herd'
 import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
-import HerdValueCard from './HerdValueCard'
+import { PriceHistoryPanel, PriceProtectionPanel } from './HerdEstimatePanel'
+import MarketComparisons, { type ReportDate } from './MarketComparisons'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
@@ -184,7 +185,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, titled = false,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -192,6 +193,8 @@ export async function WeatherViewBody({
   user: { id: string } | null
   lfpPromise: Promise<LfpFetchOutcome>
   precipPromise: Promise<PrecipNormalResult>
+  forecastPromise?: Promise<LocalForecast | null> | null   // Block 6B — the forecast leads the Weather destination
+  titled?: boolean                                         // Block 6B — the private /weather route owns its h1
 }) {
   const db = createServiceClient()
   let history: DroughtReading[]                     = []
@@ -368,17 +371,13 @@ export async function WeatherViewBody({
 
   return (
     <>
+      {titled && <h1 className="type-page-heading text-ink" data-audit="weather-title">Weather · {selectedCounty.name}, {selectedCounty.state}</h1>}
       {/* Which county you're looking at (flow, commit 4) — signed in, the county
-          selector lives HERE, above the county-scoped weather, framed as changing
-          the county in view, not as the page's main control (the operation is the
-          subject up top). Signed out it isn't here: the public page keeps its
-          selector under the header. Switching keeps you on Weather. */}
+          selector lives HERE, framed as changing the county in view. Public
+          information context only; it never changes the ranch. */}
       {user && (
         <div>
           <p className={`${EYEBROW} mb-2`}>Looking at</p>
-          {/* Set Home and Watch sit beside the selector (layout, commit 2): the
-              county actions live where the county changes. They wrap under the
-              selector on a phone; the selector keeps its own max width. */}
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-[220px] flex-1">
               <CountySelector selectedCounty={selectedCounty} view="drought" />
@@ -388,32 +387,33 @@ export async function WeatherViewBody({
           </div>
         </div>
       )}
-
-      {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
-          summary). Weather view only (above the map). Hero renders from the reliable
-          DB `latest`; the ribbon + summary come from the live 3-year USDM history and
-          degrade independently to "history unavailable" if it failed. */}
-      {latest && (
-        <LatestReadingCard latest={latest} history={threeYearHistory} />
+      {/* 1. The forecast, first (Block 6B). Today keeps a two-line preview only. */}
+      {forecastPromise && (
+        <section aria-labelledby="wx-forecast-h" data-audit="weather-forecast">
+          <h2 id="wx-forecast-h" className={`${EYEBROW} mb-3 !text-ink`}>7-day forecast · NWS</h2>
+          <Suspense fallback={<ForecastPanelSkeleton />}>
+            <ForecastPanelAsync dataPromise={forecastPromise} />
+          </Suspense>
+        </section>
       )}
-
-      {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
-          boundary so the slow ACIS call never blocks the Weather view paint. */}
-      <div>
-        <p className={`${EYEBROW} mb-3`}>Rainfall vs normal</p>
-        <Suspense fallback={<RainfallPanelSkeleton />}>
-          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
-        </Suspense>
-      </div>
-
-      {/* Rain by place — the operator's own gauge readings, signed-in only
-          (the dashboard is public; signed out renders nothing). Absent under
-          3 readings. Consumes the SAME precipPromise for the county line —
-          no new fetch — and keeps the two kinds of fact visibly apart. */}
+      {/* 2. Recorded rain at my places — gauge readings only, source named. */}
       <Suspense fallback={null}>
         <RainByPlaceCard precipPromise={precipPromise} user={user} />
       </Suspense>
-
+      {/* 3. County rainfall estimate vs station normal — the scope in the title; two sources, never one instrument. */}
+      <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
+        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall estimate vs station normal · {selectedCounty.name} County</h2>
+        <Suspense fallback={<RainfallPanelSkeleton />}>
+          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
+        </Suspense>
+        <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">
+          The estimate is a PRISM modeled grid for the county, or the nearest NOAA COOP station when one qualifies; the normal is that station&rsquo;s 30-year normal. A modeled estimate and a station record are two different instruments — neither is a gauge on your place.
+        </p>
+      </section>
+      {/* 4. County drought — the renamed card, with its timeline period labeled. */}
+      {latest && (
+        <LatestReadingCard latest={latest} history={threeYearHistory} />
+      )}
       {/* The 7-day forecast carousel left this view (layout, commit 3): it
           renders on Today only — one carousel, one place. */}
 
@@ -428,6 +428,14 @@ export async function WeatherViewBody({
           originally built for. The USDM week stays visible in the preview so
           freshness is never hidden behind the fold (data-derived, never today's
           date). Own-ground places/device pins draw when expanded, unchanged. */}
+      {/* 5. Radar and the regional map, and where the watched counties live. */}
+      <section aria-labelledby="wx-radar-h" data-audit="weather-radar" className="space-y-3">
+        <h2 id="wx-radar-h" className={`${EYEBROW} !text-ink`}>Radar and regional map</h2>
+        <p className="font-dm-sans text-[16px]">
+          <Link href="/weather/radar" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Open radar →</Link>
+          <span className="text-secondary-ink"> · </span>
+          <Link href="/weather/locations" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">My Counties →</Link>
+        </p>
       <DashboardAccordion
         title="Regional map"
         preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
@@ -449,6 +457,7 @@ export async function WeatherViewBody({
           ownGround={ownGround}
         />
       </DashboardAccordion>
+      </section>
 
 
       {!history.length && (
@@ -725,9 +734,11 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null,
+  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
 }: {
   ranchId?: string | null   // Block 4A — the ranch whose herd value history the anchor reads
+  selectedLotId?: string | null   // Block 6B — ?lot= from Ranch → Cattle; the comparison and the chart follow it
+  titled?: boolean                // Block 6B — the private /markets route owns the page's h1 ("Markets · {area}")
   selectedCounty: CountyRow
   sellBarn?: string | null   // Block 2.5 A2 — the "where I sell" pin (operation_profiles.sell_barn_slug)
   // The herd anchor is THIS body's (views2, commit 2): the profile's lots, the
@@ -795,28 +806,57 @@ export async function MarketsViewBody({
   nationalBeef = nationalRes
   if (chips) [corn, moisture, crop, cycle] = chips
   const hasHerd = anchor != null
+  const reportDates: ReportDate[] = [
+    ...(localAuction.status === 'ok' ? [{ label: 'Local', date: localAuction.saleDate }] : []),
+    ...(nationalBeef.status === 'ok' ? (() => { const w = nationalBeef.fedSteer?.weekEnding ?? nationalBeef.feeder500?.weekEnding ?? nationalBeef.feeder700?.weekEnding; return w ? [{ label: 'National', date: w }] : [] })() : []),
+    ...(lrpResult.status === 'ok' ? [{ label: 'LRP', date: lrpResult.lrp.effective_date }] : []),
+  ]
 
   return (
     <>
-      {/* Market Read leads the view its chips belong to — the missing
-          header for the cards below. Gate: the herd anchor exists
-          (signed in, lots, home county). */}
-      {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-      {/* Herd value — the one herd surface on the dashboard, here between the
-          read and the cash it's priced at (views2, commit 2; was on Today). */}
-      {anchor && <HerdValueCard anchor={anchor} />}
+      {/* Block 6B — the personal work first, the macro read last. Title with the latest
+          report dates → what changed for my cattle → the comparisons (one qualified row
+          per lot; a gross total only when honest) and the selected lot → the chart for the
+          same lot → the local board → references → price protection → market context. */}
+      {anchor && (
+        <MarketComparisons
+          estimate={anchor.estimate}
+          lots={lots}
+          trend={anchor.trend}
+          selectedLotId={selectedLotId}
+          area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
+          reports={reportDates}
+          titled={titled}
+        />
+      )}
+      {!anchor && titled && <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {selectedCounty.name}</h1>}
       {homeFips && (
         <Suspense fallback={null}>
           <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
         </Suspense>
       )}
-      {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
-      <LocalAuctionCard result={localAuction} />
       <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} />
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
       </Suspense>
+      {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
+      {anchor && <PriceHistoryPanel trend={anchor.trend} />}
+      {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
+      <LocalAuctionCard result={localAuction} volume={anchor?.trend?.volume ?? null} />
       <NationalBeefCard result={nationalBeef} />
-      <LrpMarketsCard result={lrpResult} />
+      {/* Sale video: no feed is connected, and nothing pretends otherwise (6B resolution 3). */}
+      <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
+      {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
+      <section className="space-y-3" aria-labelledby="price-protection-h" data-audit="price-protection">
+        <h2 id="price-protection-h" className={`${EYEBROW} !text-ink`}>Price protection · LRP references</h2>
+        {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
+        <LrpMarketsCard result={lrpResult} />
+      </section>
+      {/* Market context — the four macro indicators, each with its source date and interval. Last, never first. */}
+      {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+      {/* Corn and the cattle cycle live here, not in the chart's control group (Block 6B). */}
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
+      </Suspense>
     </>
   )
 }

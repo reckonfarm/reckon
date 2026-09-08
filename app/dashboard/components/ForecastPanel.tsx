@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import WeatherGlyph, { WindGlyph } from './WeatherGlyph'
 import type { LocalForecast, NWSPeriod } from '@/lib/nws'
@@ -118,6 +118,8 @@ function fmtInForecastZone(iso: string, offsetFrom: string): string | null {
 
 export default function ForecastPanel({ data }: { data: LocalForecast | null }) {
   const [open, setOpen] = useState<number | null>(null)
+  const stripRef = useRef<HTMLDivElement | null>(null)
+  const scrollBy = (dir: 1 | -1) => { const el = stripRef.current; if (el) el.scrollBy({ left: dir * 3 * 64, behavior: 'smooth' }) }
 
   // Honest-degraded: null (fetch failed/timed out) or no usable periods → unavailable.
   if (!data) return <UnavailableCard />
@@ -135,7 +137,7 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
     <Card className="p-4 sm:p-5">
       {/* Horizontal swipe carousel — one row tall, scrolls sideways on touch. */}
       {/* A4: seven CELLS in one surface, divided by rules — not seven little cards. */}
-      <div className="flex divide-x divide-rule overflow-x-auto pb-1 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
+      <div ref={stripRef} className="flex divide-x divide-rule overflow-x-auto pb-1 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]" data-audit="forecast-strip">
         {days.map((d, i) => {
           const isOpen = open === i
           const hasRain = d.precip != null && d.precip > 0
@@ -159,12 +161,12 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                   title={`Wind to ${d.windMph} mph`}
                 >
                   <WindGlyph size={12} />
-                  {d.windMph}
+                  {d.windMph}<span className="text-[11px] font-medium">mph</span>
                 </span>
               )}
               <div className="text-[14px] font-dm-sans font-semibold leading-tight text-ink">{d.label}</div>
               <div className="text-[14px] font-dm-sans leading-tight text-secondary-ink">{d.date}</div>
-              <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /></div>
+              <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /><span className="sr-only">{d.iconKind}</span></div>
               {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
                   with the value (same RAIN_BLUE, opacity ramps 55%→100% across 0–100%,
                   heavier weight from 50%) so a 70% reads louder than a 15%. Styling only —
@@ -189,6 +191,12 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
         })}
       </div>
 
+      {/* A phone sees about four days at once; these move the strip a few days either way
+          (Block 6B). Every day is a button, so the keyboard reaches each one directly. */}
+      <div className="mt-1 flex justify-between sm:hidden">
+        <button type="button" onClick={() => scrollBy(-1)} className="min-h-[48px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-earlier">‹ Earlier days</button>
+        <button type="button" onClick={() => scrollBy(1)} className="min-h-[48px] px-2 font-dm-sans text-[15px] font-semibold text-forest-green" data-audit="forecast-later">Later days ›</button>
+      </div>
       {/* Detail-on-demand: tapping a day reveals NWS's prose for that day (kept hidden
           by default so the strip stays compact). */}
       {open != null && days[open] && (

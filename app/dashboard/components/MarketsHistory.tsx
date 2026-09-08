@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { getAuctionSeries, getNationalSeries, getCornSeries, getCycleSeries, getMarketEvents } from '@/lib/markets/series'
 import { scopeLabel } from '@/lib/market-scope'
 import { lotToMarsKey, lotLabel, type Lot } from '@/lib/herd'
@@ -8,20 +9,21 @@ import MarketsChartsLoader from './MarketsChartsLoader'
 // tables actually hold and hands observations — never fills — to the client
 // chart. The person's first feeder lot (steers/heifers) powers the lot-value
 // measure; nothing else about the herd reaches the chart.
-export default async function MarketsHistory({ resolved, lots }: { resolved: ResolveResult; lots: Lot[] }) {
+// One read per request, shared by the cattle chart and the Market-context chart (Block 6B).
+const loadSeries = cache(async (slugKey: string) => {
+  const slugs = slugKey ? slugKey.split(',') : []
+  return Promise.all([getAuctionSeries(slugs), getNationalSeries('feeder_steer_500'), getNationalSeries('feeder_steer_700'), getCornSeries(), getCycleSeries(), getMarketEvents()])
+})
+
+export default async function MarketsHistory({ resolved, lots, selectedLotId = null, mode = 'cattle' }: { resolved: ResolveResult; lots: Lot[]; selectedLotId?: string | null; mode?: 'cattle' | 'context' }) {
   const slugs = [...new Set([...resolved.ranked, ...resolved.stale].map(b => b.slug_id))]
   const localBarn = resolved.local[0] ?? resolved.nearest_comp ?? null
   // Block 2.6A — a barn beyond the discovery radius is a regional reference, never "Nearby".
   const isReference = resolved.local.length === 0 && !!resolved.nearest_comp
-  const [auction, n500, n700, corn, cycle, events] = await Promise.all([
-    getAuctionSeries(slugs),
-    getNationalSeries('feeder_steer_500'),
-    getNationalSeries('feeder_steer_700'),
-    getCornSeries(),
-    getCycleSeries(),
-    getMarketEvents(),
-  ])
-  const feederLot = lots.find(l => l.class === 'steers' || l.class === 'heifers' || l.class === 'yearlings') ?? null
+  const [auction, n500, n700, corn, cycle, events] = await loadSeries(slugs.sort().join(','))
+  const isFeeder = (l: Lot) => l.class === 'steers' || l.class === 'heifers' || l.class === 'yearlings'
+  // Block 6B: the selected lot (?lot=) drives the chart's lot measure when it is a feeder lot; else the first feeder lot.
+  const feederLot = (selectedLotId ? lots.find(l => l.id === selectedLotId && isFeeder(l)) : null) ?? lots.find(isFeeder) ?? null
   const lot = feederLot ? { head: feederLot.head_count, weightLb: lotToMarsKey(feederLot).avgWeightLb, label: `${lotLabel(feederLot)} · ${feederLot.head_count} head` } : null
   const dates = auction.flatMap(s => s.points.map(p => p.date)).sort()
   const town = localBarn?.town.replace(/,\s*[A-Z]{2}$/, '') ?? ''
@@ -40,6 +42,7 @@ export default async function MarketsHistory({ resolved, lots }: { resolved: Res
       events={events}
       lot={lot}
       spineStart={dates[0] ?? null}
+      mode={mode}
     />
   )
 }

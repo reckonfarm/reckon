@@ -1,14 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
-import { Segmented } from '@/app/components/ui/Segmented'
-import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
-import type { TrendData, VolumeRow } from '@/lib/trend'
+import type { LotValuation } from '@/lib/herd-estimate'
+import type { TrendData } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import ReportEvidence from '@/app/components/ReportEvidence'
-import { dollarsPerCwtMove, matchLabel, scopeLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { matchLabel, scopeLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -51,31 +49,10 @@ function fmtMonth(ym: string): string {
 }
 
 // "Billings cash · as of Jun 11 · 1 of 1 lot priced" — or, when nothing priced, the honest note.
-function heroSubline(e: HerdEstimate): string {
-  if (e.lots_priced === 0) return e.note
-  const towns = [...new Set(e.perLot.filter(l => l.source).map(l => l.source!.town.replace(/,\s*[A-Z]{2}$/, '')))].join(' / ')
-  const lots = `${e.lots_priced} of ${e.lots_total} lot${e.lots_total === 1 ? '' : 's'} priced`
-  const thin = e.lots_thin > 0 ? ` · ${e.lots_thin} on thin evidence (range, not a figure)` : ''
-  return `${scopeLabel({ kind: 'nearby', town: towns })} · as of ${fmtShort(e.as_of)} · ${lots}${thin}`
-}
 
-function heroHeadline(e: HerdEstimate): string {
-  if (e.lots_priced > 0) {
-    // Thin references never add a precise figure to the total (Block 2.5 A3).
-    if (e.total_priced > 0 && e.thin_range) return `${formatUSD(e.total_priced)} + ${fmtThinRange(e.thin_range.low, e.thin_range.high)}`
-    if (e.thin_range) return fmtThinRange(e.thin_range.low, e.thin_range.high)
-    return formatUSD(e.total_priced)
-  }
-  return e.tier === 'local' ? 'No matching prices this week' : 'No nearby auction this week'
-}
 // Every $1/cwt across the firm-priced per-cwt lots — exact arithmetic, or nothing.
-function heroSensitivity(e: HerdEstimate): string | null {
-  const lots = e.perLot.filter(l => l.value != null && l.source?.price_basis === 'cwt')
-  const total = lots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
-  return total > 0 ? `Every $1/cwt move is $${total.toLocaleString('en-US')} across ${lots.length === 1 ? 'this lot' : `these ${lots.length} lots`}.` : null
-}
 
-function LotCard({ l }: { l: LotValuation }) {
+export function LotCard({ l }: { l: LotValuation }) {
   const priced = l.value != null && l.source != null
   const src = l.source
   const label = src ? matchLabel({ exactBracket: src.exact_bracket, headCount: src.head_count }) : null
@@ -144,63 +121,31 @@ function DeltaCwt({ cwt }: { cwt: number }) {
   return <span className={`font-semibold tabular-price ${up ? 'text-up' : 'text-down'}`}>{up ? '▲' : '▼'} ${Math.abs(cwt)}</span>
 }
 
-function VolumeCard({ v }: { v: VolumeRow }) {
-  const wk = v.receipts != null && v.weekAgo != null ? v.receipts - v.weekAgo : null
-  return (
-    <Card shadow="sm" className="p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="font-dm-sans text-[16px] font-medium text-ink">{v.commodity}</p>
-        <p className="font-dm-sans text-[16px]">
-          <span className="tabular-price font-semibold text-ink">{v.receipts ?? '—'}</span>
-          <span className="text-secondary-ink"> head</span>
-          {wk != null && (
-            <span className={`ml-2 tabular-price font-medium ${wk >= 0 ? 'text-up' : 'text-down'}`}>
-              {wk >= 0 ? '▲' : '▼'} {Math.abs(wk)}
-            </span>
-          )}
-        </p>
-      </div>
-      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
-        {v.weekAgo != null ? <>vs <span className="tabular-price">{v.weekAgo}</span> last week</> : 'no week-ago figure'}
-        {v.yearAgo != null && <> · <span className="tabular-price">{v.yearAgo}</span> a year ago</>}
-      </p>
-    </Card>
-  )
-}
 
-function TrendPanel({ trend }: { trend: TrendData | null }) {
-  if (!trend) return <Stub line="Trend is temporarily unavailable — check back shortly." />
+export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
+  if (!trend) return <Stub line="Price history is temporarily unavailable — check back shortly." />
   return (
-    <div className="space-y-5">
-      {/* VOLUME — live, the day-one signal */}
-      <div>
-        <p className={EYEBROW}>Volume{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</p>
-        {trend.volume.length > 0 ? (
-          <div className="mt-2 space-y-2">
-            {trend.volume.map(v => <VolumeCard key={v.commodity} v={v} />)}
-          </div>
-        ) : (
-          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">No nearby auction this week — volume shows once a local barn reports.</p>
-        )}
-      </div>
-
-      {/* SPREAD — live */}
+    <section className="space-y-4" data-audit="price-history" aria-labelledby="price-history-h">
+      <h2 id="price-history-h" className={`${EYEBROW} !text-ink`}>Price history{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</h2>
+      {/* THIS WEEK'S RANGE — one price is one price, never "$X–$X" */}
       {trend.spread.length > 0 && (
         <div>
-          <p className={EYEBROW}>This week&rsquo;s range</p>
-          <div className="mt-2 space-y-1">
+          <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">This week&rsquo;s range</p>
+          <div className="mt-1 space-y-1">
             {trend.spread.map((s, i) => (
-              <p key={i} className="font-dm-sans text-[16px] text-ink">
-                {s.label}: <span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'}
+              <p key={i} className="font-dm-sans text-[16px] text-ink" data-audit="spread-row">
+                {s.label}:{' '}
+                {Math.round(s.min * 100) === Math.round(s.max * 100)
+                  ? <><span className="tabular-price text-ink">${s.min.toFixed(2)}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported price</>
+                  : <><span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported range</>}
               </p>
             ))}
           </div>
         </div>
       )}
-
-      {/* HERD VALUE Δ — accruing */}
+      {/* HERD COMPARISON Δ — one ranch total per day is all the history holds */}
       <div>
-        <p className={EYEBROW}>Your herd value</p>
+        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Your comparison over time</p>
         {trend.herd.status === 'ready' ? (
           <p className="mt-1 font-dm-sans text-[16px]">
             <DeltaUSD abs={trend.herd.abs} />{' '}
@@ -210,16 +155,15 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
             </span>
           </p>
         ) : trend.herd.status === 'accruing' ? (
-          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Tracking daily — your week-over-week change appears here in a couple days.</p>
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="history-begins">{trend.historyFrom ? `History begins ${fmtShort(trend.historyFrom)}. New points appear when the reference changes.` : 'No snapshot on record yet. New points appear when the reference changes.'}</p>
         ) : (
           <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Temporarily unavailable.</p>
         )}
       </div>
-
-      {/* PER-CLASS PRICE Δ — accruing */}
+      {/* PER-CLASS PRICE Δ */}
       {trend.priceDeltas.length > 0 && (
         <div>
-          <p className={EYEBROW}>Price movement</p>
+          <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Price movement</p>
           <div className="mt-1 space-y-1">
             {trend.priceDeltas.map((p, i) => (
               <p key={i} className="font-dm-sans text-[16px]">
@@ -229,7 +173,7 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
                     <DeltaCwt cwt={p.cwt} />/cwt <span className="text-secondary-ink">vs last sale ({fmtShort(p.sinceDate ?? null)})</span>
                   </>
                 ) : p.status === 'accruing' ? (
-                  <span className="text-secondary-ink">builds over the next sale or two</span>
+                  <span className="text-secondary-ink">one sale so far — a movement needs two</span>
                 ) : (
                   <span className="text-secondary-ink">temporarily unavailable</span>
                 )}
@@ -238,10 +182,9 @@ function TrendPanel({ trend }: { trend: TrendData | null }) {
           </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
-
 // ─── Outlook ───────────────────────────────────────────────────────────────────────────────
 // Per-lot forward floor (USDA LRP). Restrained like Trend — DM Sans, tabular-price, no hero. The
 // floor is a per-cwt REFERENCE off the national CME index; the caveat (panel footer) carries the
@@ -259,7 +202,7 @@ function OutlookCard({ l }: { l: OutlookLot }) {
           {l.state === 'priced' && f ? (
             <>
               <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
-                {l.lrpType} · <span className="text-secondary-ink">ref. floor</span>
+                {l.lrpType} · <span className="text-secondary-ink">reference floor · a product exists for this class; eligibility is RMA&rsquo;s determination</span>
               </p>
               <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
                 {f.endorsement_length_weeks}-wk · ends {fmtEndDate(f.endorsement_end_date)}
@@ -293,7 +236,7 @@ function OutlookCard({ l }: { l: OutlookLot }) {
   )
 }
 
-function OutlookPanel({ outlook }: { outlook: OutlookData | null }) {
+export function PriceProtectionPanel({ outlook }: { outlook: OutlookData | null }) {
   if (!outlook || outlook.status === 'unavailable') {
     return <Stub line="Forward floors temporarily unavailable — check back shortly." />
   }
@@ -303,6 +246,7 @@ function OutlookPanel({ outlook }: { outlook: OutlookData | null }) {
         <p className="font-dm-sans text-[14px] text-secondary-ink">Forward floors as of {fmtShort(outlook.as_of)}</p>
       )}
       {outlook.lots.map(l => <OutlookCard key={l.lotId} l={l} />)}
+      <p className="px-1 pt-1 font-dm-sans text-[15px] text-ink" data-audit="lrp-products-line">LRP feeder products exist for feeder classes; eligibility is RMA&rsquo;s determination.</p>
       <p className="px-1 pt-2 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">
         Reference floor from USDA&nbsp;LRP (CME national index) — not a quote, not your local cash; basis varies.
         LRP is insurance bought through an RMA agent in set windows at daily-changing premiums; your agent&nbsp;/&nbsp;RMA sets the actual price.
@@ -311,47 +255,5 @@ function OutlookPanel({ outlook }: { outlook: OutlookData | null }) {
   )
 }
 
-export default function HerdEstimatePanel({ estimate, trend, outlook }: { estimate: HerdEstimate; trend: TrendData | null; outlook: OutlookData | null }) {
-  const [view, setView] = useState<'now' | 'trend' | 'outlook'>('now')
-  const priced = estimate.lots_priced > 0
-
-  return (
-    <section className="space-y-5">
-      {/* HERO — the one bold number (Fraunces). Honest headline + sub-line when nothing priced. */}
-      <div>
-        {/* Two words so the uppercase eyebrow reads "HERD ESTIMATE", not "HERDESTIMATE". */}
-        <p className={EYEBROW}>Herd estimate</p>
-        <p
-          className={
-            priced
-              ? 'mt-1 font-fraunces text-5xl font-semibold leading-none tracking-tight text-ink tabular-nums sm:text-6xl'
-              : 'mt-1 font-fraunces text-2xl font-semibold tracking-tight text-ink sm:text-3xl'
-          }
-        >
-          {heroHeadline(estimate)}
-        </p>
-        <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">{heroSubline(estimate)}</p>
-        {heroSensitivity(estimate) && <p className="mt-2 font-dm-sans text-[16px] font-medium text-forest-green">{heroSensitivity(estimate)}</p>}
-      </div>
-
-      <Segmented<'now' | 'trend' | 'outlook'>
-        ariaLabel="HerdEstimate view"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'now', label: 'Now' },
-          { value: 'trend', label: 'Trend' },
-          { value: 'outlook', label: 'Outlook' },
-        ]}
-      />
-
-      {view === 'now' && (
-        <div className="space-y-2">
-          {estimate.perLot.map(l => <LotCard key={l.lotId} l={l} />)}
-        </div>
-      )}
-      {view === 'trend' && <TrendPanel trend={trend} />}
-      {view === 'outlook' && <OutlookPanel outlook={outlook} />}
-    </section>
-  )
-}
+// The hero (a summed figure) and the Now · Trend · Outlook toggle are gone (Block 6B, commit 3):
+// Now is the comparisons block, Trend is Price history, Outlook is Price protection.
