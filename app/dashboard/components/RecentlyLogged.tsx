@@ -7,7 +7,7 @@ import { fmtDay, fmtTime, plural, ranchYearStart } from '@/lib/jobs/format'
 import { isManualEventType, MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
-import { effective } from '@/lib/ledger-effective'
+import { notSuperseded } from '@/lib/ledger-effective'
 import ActivityRowItem from '@/app/components/ActivityRowItem'
 
 // "Recently logged" — the last three lines the operator wrote by hand, newest
@@ -26,6 +26,7 @@ type Row = {
   ts: string
   payload: Record<string, unknown>
   supersedes_event_id: string | null   // 6B: a row that replaced an earlier one is marked "corrected"
+  voided_at: string | null             // 6B: a void stays on the list, greyed and marked — never hidden
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -83,9 +84,9 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
   // Bounded: the manual types by name (an indexable predicate ahead of the
   // jsonb source check) and this ranch year as the floor — the season the
   // rest of /home is scoped to. Cap unchanged.
-  const { data } = await effective(supabase   // Block 5B: what currently stands
+  const { data } = await notSuperseded(supabase   // Block 5B/6B: what stands — the effective entry, and a void, marked
     .from('events')
-    .select('id, type, ts, payload, supersedes_event_id')
+    .select('id, type, ts, payload, supersedes_event_id, voided_at')
     .in('type', [...MANUAL_EVENT_TYPES])
     .eq('payload->>source', 'manual'))
     .gte('ts', ranchYearStart())
@@ -129,7 +130,7 @@ export default async function RecentlyLogged({ heading = true }: { heading?: boo
           const linked = pid && names.has(pid)
           {/* Block 5A — the line opens ITS event by stable id; the place stays one tap away. 6B: one row component everywhere. */}
           return (
-            <ActivityRowItem key={r.id} id={r.id} line={line(r, placeName, lotName)} when={`${fmtDay(r.ts)} · ${fmtTime(r.ts)}`} marker={r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="logged-row" rowClass="py-2"
+            <ActivityRowItem key={r.id} id={r.id} line={line(r, placeName, lotName)} when={`${fmtDay(r.ts)} · ${fmtTime(r.ts)}`} marker={r.voided_at ? 'voided' : r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="logged-row" rowClass="py-2"
               aside={linked ? <Link href={`/ranch/places/${pid}`} className="inline-flex min-h-[44px] items-center font-dm-sans text-[15px] font-semibold text-forest-green underline underline-offset-2">place →</Link> : undefined} />
           )
         })}

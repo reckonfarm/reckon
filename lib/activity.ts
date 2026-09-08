@@ -67,12 +67,15 @@ function zonedIso(day: string, hour: number): string {
 }
 
 // ── Operational lists (Block 6B): what stands, and what a correction replaced ──
-// The effective rows of a loaded page, and the chain behind one of them walked
+// The standing rows of a loaded page, and the chain behind one of them walked
 // within the same page (the original usually sits a minute away). An empty
 // chain means the replaced entry is older than the page: the row says so and
 // the entry itself carries the whole chain.
-export function effectiveRows(rows: ActivityRow[]): ActivityRow[] {
-  return rows.filter(r => !r.superseded_by && !r.voided_at)
+// What STANDS on an operational list: every chain head — the effective entry,
+// and a void (it counts for nothing, marked; it is never hidden, because an
+// entry that stops being findable is the failure 5A exists to kill).
+export function standingRows(rows: ActivityRow[]): ActivityRow[] {
+  return rows.filter(r => !r.superseded_by)
 }
 export function chainWithin(rows: ActivityRow[], head: ActivityRow, names: Names): { id: string; line: string; who: string; when: string; reason: string | null }[] {
   const byId = new Map(rows.map(r => [r.id, r]))

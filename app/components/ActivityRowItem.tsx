@@ -8,9 +8,13 @@ import type { ReactNode } from 'react'
 // wherever it appears. The Sept 8 audit read a place timeline with the
 // original "Fed 2 bales" and the correction "Fed 1 bale" as two ordinary rows
 // at the same minute: two feedings.
-//   operational lists → the EFFECTIVE event only, marked "corrected" when it
-//                       replaced something, with what it replaced one tap
-//                       away (a native <details>, no script)
+//   operational lists → what STANDS: the effective event, marked "corrected"
+//                       when it replaced something, with what it replaced one
+//                       tap away (a native <details>, no script); and a VOID,
+//                       greyed and marked "voided" — it counts toward no
+//                       balance, and it stays findable (PK, Sept 8: a hand who
+//                       logged it must never find his entry gone with no
+//                       explanation; "caught up" never means an entry vanished)
 //   audit history     → every revision: a replaced original struck through
 //                       and marked "replaced"; the row that replaced it
 //                       "corrected"; a void "voided"
@@ -46,10 +50,11 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
   sep?: string              // between who and the line: ' · ' for a labelled row, ' ' for a sentence ("Smoke A fed 2 bales")
 }) {
   const struck = marker === 'replaced'
+  const greyed = marker === 'voided'
   return (
     <li data-marker={marker ?? 'none'} data-id={id}>
       <Link href={`/ranch/activity/${id}`} className={`flex min-h-[56px] items-center justify-between gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
-        <span className="min-w-0 font-dm-sans text-[17px] leading-snug text-ink">
+        <span className={`min-w-0 font-dm-sans text-[17px] leading-snug ${greyed ? 'text-secondary-ink' : 'text-ink'}`}>
           {who ? <><span className="font-semibold">{who}</span>{sep}</> : null}
           {struck ? <s className="decoration-2">{line}</s> : line}
           {marker && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink" title={MARKER_TITLE[marker]} data-audit={MARKER_AUDIT[marker]}>{marker}</span>}
@@ -57,9 +62,9 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
         <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{when}</span>
       </Link>
       {aside}
-      {marker === 'corrected' && chain && (
+      {(marker === 'corrected' || marker === 'voided') && chain && (
         <details className={`pb-3 ${rowClass.includes('px-4') ? 'px-4' : ''}`} data-audit="row-chain">
-          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">What it replaced</summary>
+          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">{marker === 'voided' ? 'What it voided' : 'What it replaced'}</summary>
           {chain.length === 0 ? (
             <p className="font-dm-sans text-[15px] text-secondary-ink">The entry it replaced is older than this list — open the entry for the whole chain.</p>
           ) : (
