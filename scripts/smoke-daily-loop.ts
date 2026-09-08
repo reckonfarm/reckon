@@ -436,7 +436,10 @@ async function main() {
       if (process.env.DEBUG_2E) console.log('   [2E debug] after goto, B last_seen_at =', JSON.stringify((await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).maybeSingle()).data), '· since block present:', await pageB.getByText(/Since (yesterday|you last checked)/i).count())
       const blockB = (await pageB.getByText('Recorded since you checked').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const mainB = (await pageB.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('2E: B sees "Recorded since you checked" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
+      // Block 6A: the block shows 3–5 rows, newest recorded first, and 'View all N updates' carries the rest.
+      const sinceRows = await pageB.locator('[data-audit="since-row"]').count()
+      const viewAll = (await pageB.locator('[data-audit="since-view-all"]').innerText().catch(() => '')).trim()
+      record('2E: B sees "Recorded since you checked" with A\'s feedings by name', /Smoke A fed \d+ bales?/.test(blockB) && sinceRows >= 1 && sinceRows <= 5 && (sinceRows < 5 || /View all \d+ updates/.test(viewAll)), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
       const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
       const eventId = rowHref?.match(/^\/ranch\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null   // Block 6A: the record lives under /ranch
@@ -507,6 +510,22 @@ async function main() {
       await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
       const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME}`) }).count()
       record('6A: Archive sits behind the row menu, states its consequence, removes the lot from current views, and every past feeding still names it', rowsBefore === 1 && rowsAfter === 0 && /History stays; the lot leaves current views/.test(menuText) && stillNamed >= 1 && /^\/markets\?lot=/.test(marketHref ?? ''), `rows ${rowsBefore}→${rowsAfter} · menu "${menuText.slice(0, 60)}" · feedings still naming the lot: ${stillNamed} · market link ${marketHref}`)
+    }
+
+    // ── Block 6A (7): places rows carry last work only when a line exists; devices empty state + setup page ──
+    {
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-rows"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const placeRows = await page.locator('[data-audit="place-row"]').count()
+      const withWork = await page.locator('[data-audit="place-last-work"]').count()
+      const withRain = await page.locator('[data-audit="place-last-rain"]').count()
+      const { count: rainLines } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).eq('type', 'rain')
+      record('6A: places list — every place a row; last recorded work where a line exists; last rain only where a reading exists', placeRows >= 1 && withWork >= 1 && (rainLines ?? 0) > 0 ? withRain >= 1 : withRain === 0, `rows ${placeRows} · with work ${withWork} · with rain ${withRain} · rain lines on ranch ${rainLines}`)
+      await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
+      const emptyText = (await page.locator('[data-audit="devices-empty"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const setup = await page.request.get('/ranch/devices/setup')
+      const online = await page.locator('main').innerText().then(t => /\bOnline\b|\bOffline\b/.test(t)).catch(() => false)
+      record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /No devices connected\. You can record work now\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
     }
 
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──

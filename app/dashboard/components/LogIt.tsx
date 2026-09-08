@@ -276,6 +276,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent<Draft>).detail
       if (d && d.type) { writeDraft(d); applyDraft(d, true) }
+      else if (d && (d.place || d.fromPlace || d.toPlace)) { applyDraft(d, true) }   // Record here: the picker, with the place already chosen
       else { const saved = readDraft(); if (saved && saved.type) applyDraft(saved, true); else setOpen(true) }   // the picker, or the unfinished draft
     }
     window.addEventListener(LOGIT_OPEN_EVENT, onOpen)

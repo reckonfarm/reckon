@@ -1,18 +1,21 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
-import SiteHeader from '@/app/components/SiteHeader'
-import { Heading } from '@/app/components/ui/Heading'
-import { Card } from '@/app/components/ui/Card'
 import { privateTitle } from '@/lib/private-title'
+import SiteHeader from '@/app/components/SiteHeader'
+import { Card } from '@/app/components/ui/Card'
+import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
+import RecordHere from '../places/RecordHere'
 
-// ─── /devices — the registry, v0 (S2, the receiving dock) ──────────────────────
-// Bare list: every device the ranch owns — name, type, battery, last-seen,
-// assigned place. Auth-gated like /herd. Reads via the USER-SCOPED SSR client
-// on purpose: this page is the first consumer of the devices/places RLS
-// policies (031), so it exercises them instead of bypassing them — a producer
-// sees ONLY their own hardware. No pairing UI here (that's the courier,
-// September); v0 registration is a hand INSERT in the SQL editor.
-
+// ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
+// Empty: says you can record work now, and what will appear here. Populated:
+// "{Place or machine} · {role}" leads; the product name is a label; last
+// observation and last sync are separate lines; battery when known; the
+// hardware id, firmware, signal, and raw voltage sit under Details. Status
+// words are "Last collected …" / "Waiting for collection" / "Check device" —
+// never "Online" for a sleeping logger, never "Offline" as a blanket verdict.
+// "Check device" needs a known cadence (lib/devices-attention); none is known.
 export const dynamic = 'force-dynamic'
 export const generateMetadata = () => privateTitle('Devices')
 
@@ -27,99 +30,89 @@ interface DeviceRow {
   places: { name: string } | null
 }
 
-// 'tank_node' → 'Tank node' — display only, the raw type stays the identity.
-function typeLabel(t: string): string {
-  const s = t.replace(/_/g, ' ')
-  return s.charAt(0).toUpperCase() + s.slice(1)
+// Role and product are display labels derived from the raw type — no column.
+function roleOf(type: string): { role: string; product: string } {
+  const t = type.toLowerCase()
+  if (/scout|machine|baler|tractor|swather|rake/.test(t)) return { role: 'machine activity', product: 'Scout' }
+  if (/spotter|rain|gauge/.test(t)) return { role: 'rain gauge', product: 'Spotter' }
+  if (/sentinel|tank|water|fixed/.test(t)) return { role: t.includes('tank') ? 'tank level' : 'fixed-location logger', product: 'Sentinel' }
+  return { role: t.replace(/_/g, ' '), product: 'Device' }
 }
 
-// Server-side relative time for last_seen. Coarse buckets are enough for a
-// registry glance; the honest word for null is "Never", not a fake dash.
-function lastSeenLabel(iso: string | null): string {
-  if (!iso) return 'Never'
-  const ms = Date.now() - new Date(iso).getTime()
-  if (!Number.isFinite(ms) || ms < 0) return 'Just now'
-  const min = Math.floor(ms / 60_000)
-  if (min < 1) return 'Just now'
-  if (min < 60) return `${min} min ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr} hr ago`
-  const d = Math.floor(hr / 24)
-  return d === 1 ? 'Yesterday' : `${d} days ago`
+// Collection status from last_seen alone (the honest thing the model holds).
+function statusOf(lastSeen: string | null): { word: string; detail: string } {
+  if (!lastSeen) return { word: 'Waiting for collection', detail: 'No readings have reached the ranch yet.' }
+  const day = dayKey(lastSeen), today = dayKey(Date.now()), yesterday = dayKey(Date.now() - 86_400_000)
+  if (day === today) return { word: 'Last collected today', detail: fmtTime(lastSeen) }
+  if (day === yesterday) return { word: 'Last collected yesterday', detail: fmtTime(lastSeen) }
+  return { word: 'Waiting for collection', detail: `Last collected ${fmtDay(lastSeen)}` }
 }
 
 export default async function DevicesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/devices')
-
-  // RLS scopes this to the signed-in user; `places(name)` embeds through the
-  // place_id FK (also owner-scoped by places' own policies).
   const { data, error } = await supabase
     .from('devices')
     .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)')
     .order('name', { ascending: true })
-
   const devices = (data ?? []) as unknown as DeviceRow[]
-
   return (
-    <div className="min-h-screen bg-cream">
+    <>
       <SiteHeader />
-      <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-        <Heading level={1} className="!text-2xl sm:!text-3xl">Devices</Heading>
-        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-          Every sensor on the place, and when it last checked in.
-        </p>
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <p className={EYEBROW}>Ranch · Devices</p>
+        <h1 className="mt-1 type-page-heading text-ink">Devices</h1>
 
-        <div className="mt-6 space-y-3">
-          {error && (
-            <Card shadow="none" className="px-5 py-6 text-center">
-              <p className="font-dm-sans text-[16px] text-secondary-ink">
-                Devices are temporarily unavailable.
-              </p>
-            </Card>
-          )}
+        {error && (
+          <Card className="mt-4 p-5"><p className="font-dm-sans text-[17px] text-ink">Devices could not be read just now. Try again in a moment.</p></Card>
+        )}
 
-          {!error && devices.length === 0 && (
-            <Card shadow="none" className="px-5 py-8 text-center">
-              <p className="font-dm-sans text-[16px] text-secondary-ink">
-                No devices yet. Dryline hardware reports here.
-              </p>
-            </Card>
-          )}
+        {!error && devices.length === 0 && (
+          <Card className="mt-4 p-5" data-audit="devices-empty">
+            <p className="font-dm-sans text-[17px] leading-relaxed text-ink">No devices connected. You can record work now. Connected devices will appear here with their latest observations and check-in status.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <RecordHere />
+              <Link href="/ranch/devices/setup" className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="setup-device">Set up a device</Link>
+            </div>
+          </Card>
+        )}
 
-          {devices.map(d => (
-            <Card key={d.id} shadow="none" className="px-5 py-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-fraunces text-base font-semibold text-forest-green sm:text-lg">
-                    {d.name}
-                  </p>
-                  <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
-                    {typeLabel(d.type)}
-                    <span className="text-secondary-ink"> · </span>
-                    {d.places?.name ?? 'Unassigned'}
-                    {d.fw_version && (
-                      <>
-                        <span className="text-secondary-ink"> · </span>
-                        fw {d.fw_version}
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className="font-dm-sans text-[16px] font-semibold tabular-nums text-forest-green">
-                    {d.battery_pct != null ? `${d.battery_pct}%` : '—'}
-                  </p>
-                  <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink">
-                    {lastSeenLabel(d.last_seen)}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+        {devices.length > 0 && (
+          <ul className="mt-4 space-y-3" data-audit="device-cards">
+            {devices.map(d => {
+              const { role, product } = roleOf(d.type)
+              const status = statusOf(d.last_seen)
+              const lead = d.places?.name ?? d.name
+              return (
+                <li key={d.id} id={d.id}>
+                  <Card className="p-4 sm:p-5" data-audit="device-card">
+                    <p className="font-dm-sans text-[17px] font-semibold text-ink">{lead} <span className="font-normal text-secondary-ink">· {role}</span></p>
+                    <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">{product}{d.name !== lead ? ` · ${d.name}` : ''}</p>
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-dm-sans text-[16px]">
+                      <dt className="text-secondary-ink">Last observation</dt><dd className="text-ink">{d.last_seen ? `${fmtDay(d.last_seen)} · ${fmtTime(d.last_seen)}` : 'None yet'}</dd>
+                      <dt className="text-secondary-ink">Last sync</dt><dd className="text-ink" data-audit="device-status">{status.word}{status.detail ? ` · ${status.detail}` : ''}</dd>
+                      {d.battery_pct != null && (<><dt className="text-secondary-ink">Battery</dt><dd className="text-ink tabular-nums">{d.battery_pct}%</dd></>)}
+                    </dl>
+                    <details className="mt-3">
+                      <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Details</summary>
+                      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-dm-sans text-[15px] text-secondary-ink">
+                        <dt>Hardware ID</dt><dd className="text-ink">{d.hardware_id}</dd>
+                        <dt>Firmware</dt><dd className="text-ink">{d.fw_version ?? 'Not reported'}</dd>
+                        <dt>Signal</dt><dd className="text-ink">Not reported</dd>
+                        <dt>Raw voltage</dt><dd className="text-ink">Not reported</dd>
+                      </dl>
+                    </details>
+                  </Card>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {devices.length > 0 && (
+          <p className="mt-4"><Link href="/ranch/devices/setup" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Set up another device</Link></p>
+        )}
       </main>
-    </div>
+    </>
   )
 }
