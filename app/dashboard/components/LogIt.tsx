@@ -9,6 +9,7 @@ import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { enqueue, newEventId } from '@/lib/outbox'
+import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
@@ -216,7 +217,10 @@ function describe(
   }
 }
 
-export default function LogIt() {
+// Block 6A: one sheet is mounted for the whole app (RecordSheetHost); any
+// surface may render a launcher alone. `sheet` instances listen for openLogIt();
+// `launcher` instances only ask.
+export default function LogIt({ launcher = true, sheet = true }: { launcher?: boolean; sheet?: boolean } = {}) {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ManualEventType | null>(null)
   const [places, setPlaces] = useState<Place[]>([])
@@ -268,13 +272,18 @@ export default function LogIt() {
 
   // Another surface asked for the sheet, pre-filled.
   useEffect(() => {
+    if (!sheet) return
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent<Draft>).detail
       if (d && d.type) { writeDraft(d); applyDraft(d, true) }
+      else { const saved = readDraft(); if (saved && saved.type) applyDraft(saved, true); else setOpen(true) }   // the picker, or the unfinished draft
     }
     window.addEventListener(LOGIT_OPEN_EVENT, onOpen)
     return () => window.removeEventListener(LOGIT_OPEN_EVENT, onOpen)
-  }, [applyDraft])
+  }, [applyDraft, sheet])
+
+  // The FAB and anything else that must get out of the way read this (Block 6A).
+  useEffect(() => { if (sheet) setRecordSheetOpen(open); return () => { if (sheet) setRecordSheetOpen(false) } }, [open, sheet])
 
   // Mirror every change into the draft while a type is chosen.
   useEffect(() => {
@@ -289,6 +298,7 @@ export default function LogIt() {
   }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf])
 
   const openSheet = () => {
+    if (!sheet) { openLogIt({ type: null }); return }   // a launcher alone asks the mounted sheet
     const d = readDraft()
     if (d && d.type) applyDraft(d, true); else setOpen(true)
   }
@@ -480,6 +490,7 @@ export default function LogIt() {
 
   return (
     <>
+      {launcher && (
       <div className="space-y-3">
         <button
           type="button"
@@ -490,8 +501,9 @@ export default function LogIt() {
         </button>
         <SaveStatus />
       </div>
+      )}
 
-      {open && (
+      {sheet && open && (
         <div
           className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
           onClick={dismiss}

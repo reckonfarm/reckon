@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
 import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
+import RecordSheetHost from '@/app/components/RecordSheetHost'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { flagEnabled } from '@/lib/flags'
@@ -78,6 +79,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-cream text-forest-green">
         <InAppBrowserBanner />
         {children}
+        <RecordSheetHost />
         <SiteFooter />
         <BottomTabBar />
         <FeedbackWidget />

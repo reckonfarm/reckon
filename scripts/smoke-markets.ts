@@ -351,8 +351,12 @@ async function main() {
     {
         const dc = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
         const dp = await signIn(dc)
-        const mc = await dp.locator('header a[href="/weather/locations"]').first().boundingBox().catch(() => null)
-        record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px`)
+        // Block 6A: My Counties lives under Account → Preferences; the header carries the compact Account button.
+        const ab = await dp.locator('header [data-audit="account-button"]').first().boundingBox().catch(() => null)
+        record('A4: the header Account button is a 48 px target', !!ab && ab.height >= 48, `${ab?.height ?? 0}px`)
+        await dp.goto('/account', { waitUntil: 'domcontentloaded' })
+        const mc = await dp.locator('[data-audit="pref-counties"]').first().boundingBox().catch(() => null)
+        record('A4: My Counties in the desktop header is a 48 px target', !!mc && mc.height >= 48, `${mc?.height ?? 0}px (under Account → Preferences)`)
         await dc.close()
     }
 

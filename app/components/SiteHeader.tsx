@@ -3,15 +3,22 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
-import { flagDisabled, flagEnabled } from '@/lib/flags'
+import { flagDisabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
-import { hasUnsynced } from '@/lib/outbox'
-import { bindPrivateStateTo, signOutEverywhere } from '@/lib/private-state'
+import { bindPrivateStateTo } from '@/lib/private-state'
+import { openLogIt } from '@/app/dashboard/components/LogIt'
 
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
 // overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
 // "Markets" on the homepage, nothing on most pages.)
 const TAGLINE = 'Your ranch, on the record.'
+
+const NAV: { href: string; label: string }[] = [
+  { href: '/today',   label: 'Today' },
+  { href: '/ranch',   label: 'Ranch' },
+  { href: '/markets', label: 'Markets' },
+  { href: '/weather', label: 'Weather' },
+]
 
 interface Props {
   center?: React.ReactNode
@@ -50,15 +57,6 @@ export default function SiteHeader({ center }: Props) {
       .catch(() => {})
   }, [user])
 
-  async function signOut() {
-    // Block 2A: anything still on the phone would be orphaned by a sign-out.
-    if (hasUnsynced() && !window.confirm('Some entries have not synced to the ranch yet. Sign out anyway and lose them?')) return
-    // Block 5D: end the session, clear every private key, and load a fresh
-    // signed-out document — nothing of this person stays on the screen or in
-    // storage for the next one holding the phone.
-    await signOutEverywhere('/')
-  }
-
   return (
     <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
@@ -95,99 +93,40 @@ export default function SiteHeader({ center }: Props) {
           {/* Menu links — DESKTOP ONLY. On mobile the BottomTabBar (md:hidden)
               carries navigation, so these hide at exactly the same `md` breakpoint
               to avoid duplicate nav. Logo + Sign out below stay visible on mobile. */}
-          <div className="hidden items-center gap-4 md:flex">
-            <Link
-              href="/weather/locations"
-              className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-            >
-              My Counties
-            </Link>
-            {flagEnabled('marketplace') && (
-              <Link
-                href="/hay"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
+          {/* Block 6A — primary navigation: Today · Ranch · Markets · Weather (desktop;
+              the bottom bar carries the same four on mobile), then Record — an
+              action, not a destination — then the compact Account button. Devices
+              live inside Ranch, Messages under Account → Crew, Radar inside Weather. */}
+          {user && (
+            <nav className="hidden items-center gap-1 md:flex" aria-label="Primary" data-audit="primary-nav">
+              {NAV.map(n => (
+                <Link key={n.href} href={n.href} className="inline-flex min-h-[48px] items-center rounded-lg px-3 font-dm-sans text-[16px] font-medium text-ink hover:bg-forest-green/5 hover:text-brand transition-colors">
+                  {n.label}
+                </Link>
+              ))}
+              <button
+                type="button"
+                onClick={() => openLogIt({ type: null })}
+                className="ml-2 inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream hover:bg-forest-green/90 transition-colors"
+                data-audit="record-button"
               >
-                Hay
-              </Link>
-            )}
-            {/* Home-base anchor — mirrors the bottom nav's "My Operation". Routes to
-                the ranch home (via '/', which middleware-redirects signed-in users to
-                /home). SIGNED-IN ONLY (Block 2): for a signed-out visitor '/' is
-                the page they're already on — the link was a self-referencing loop. */}
-            {user && (
-              <Link
-                href="/"
-                className="font-dm-sans text-[16px] font-medium text-forest-green hover:text-ink transition-colors"
-              >
-                My Operation
-              </Link>
-            )}
-            {user && (
-              <Link
-                href="/ranch/cattle"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-              >
-                My herd
-              </Link>
-            )}
-            {/* Jobs — the work-session ledger, the Scout's payoff surface. */}
-            {user && (
-              <Link
-                href="/ranch/activity?source=machine"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-              >
-                Jobs
-              </Link>
-            )}
-            {/* Devices — the registry (S2), in the signed-in cluster where
-                Messages sat before its flag-off. */}
-            {user && (
-              <Link
-                href="/ranch/devices"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-              >
-                Devices
-              </Link>
-            )}
-            {user && flagEnabled('messaging') && (
-              <Link
-                href="/messages"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-              >
-                Messages{unread > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white align-middle">
-                    {unread > 9 ? '9+' : unread}
-                  </span>
-                )}
-              </Link>
-            )}
-            {user && flagEnabled('marketplace') && (
-              <Link
-                href="/weather/radar"
-                className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
-              >
-                Hay Radar
-              </Link>
-            )}
-            {user && (
-              <Link
-                href="/account"
-                className="max-w-[160px] truncate text-[14px] text-ink font-dm-sans hover:text-brand transition-colors"
-              >
-                {user.email}
-              </Link>
-            )}
-          </div>
-
-          {/* Auth control — ALWAYS visible (incl. mobile). Sign out is the one nav
-              action the bottom tab bar doesn't carry. */}
+                Record
+              </button>
+            </nav>
+          )}
           {user ? (
-            <button
-              onClick={signOut}
-              className="font-dm-sans text-[16px] text-ink hover:text-brand transition-colors"
+            <Link
+              href="/account"
+              className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-forest-green/20 px-4 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-forest-green/5 transition-colors"
+              data-audit="account-button"
             >
-              Sign out
-            </button>
+              Account
+              {unread > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rust px-1 text-[14px] font-semibold text-white" aria-label={`${unread} unread messages`}>
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </Link>
           ) : (
             <Link
               href="/signin"

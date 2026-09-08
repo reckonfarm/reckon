@@ -236,7 +236,8 @@ async function main() {
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
     const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
-    record('/home renders the home county Today stack', homeUrl.includes(`fips=${HOME_FIPS}`) && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
+    // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
+    record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
     // 4.5:1, navigation / answers at 7:1 — main and header both.
     for (const root of ['main', 'header'] as const) {
@@ -436,7 +437,7 @@ async function main() {
       record('2E: B sees "Recorded since yesterday" with A\'s feedings by name', /Smoke A fed 2 bales/.test(blockB) && /Smoke A fed 4 bales/.test(blockB), blockB ? blockB.slice(0, 140) : `NO BLOCK · url ${pageB.url().replace(BASE, '')} · main: ${mainB.slice(0, 220)}`)
       // Block 5A — a handoff row opens ITS exact event, by stable id (gate 1).
       const rowHref = await pageB.getByRole('link', { name: /Smoke A fed 2 bales/ }).first().getAttribute('href').catch(() => null)
-      const eventId = rowHref?.match(/^\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null
+      const eventId = rowHref?.match(/^\/ranch\/activity\/([0-9a-f-]{36})$/)?.[1] ?? null   // Block 6A: the record lives under /ranch
       record('5A: a handoff row opens its exact event, not a place summary', !!eventId, String(rowHref))
       if (eventId) {
         await pageB.goto(`/ranch/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
@@ -500,6 +501,29 @@ async function main() {
       record('6A: no county title on a private page; the county page keeps it', /^Today/.test(title) && !/Drought/.test(title) && /Drought & LFP Eligibility/.test(countyTitle), `/today: "${title}" · /dashboard: "${countyTitle}"`)
     }
 
+    // ── Block 6A (3): the Record FAB on a phone — above the bar, hidden while a sheet is open ──
+    {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const fab = page.locator('[data-audit="record-fab"]')
+      await fab.waitFor({ timeout: 15_000 }).catch(() => {})
+      const fabBox = await fab.boundingBox().catch(() => null)
+      const barBox = await page.locator('[data-audit="bottom-bar"]').boundingBox().catch(() => null)
+      const tabs = await page.locator('[data-audit="bottom-bar"] a').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6A: four labeled bottom tabs and a Record FAB that sits clear above the bar', tabs.join(' ') === 'Today Ranch Markets Weather' && !!fabBox && !!barBox && fabBox.y + fabBox.height <= barBox.y, `tabs [${tabs.join(', ')}] · fab bottom ${fabBox ? Math.round(fabBox.y + fabBox.height) : 'none'} · bar top ${barBox ? Math.round(barBox.y) : 'none'}`)
+      await fab.click()
+      await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
+      const openDialogs = await page.getByRole('dialog').count()
+      const fabWhileOpen = await fab.count()
+      const flag = await page.evaluate(() => document.documentElement.dataset.recordSheet ?? '')
+      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.waitForTimeout(300)
+      const fabAfter = await fab.isVisible().catch(() => false)
+      record('6A: the FAB opens the record sheet and is hidden while the sheet is up, back when it closes', openDialogs === 1 && fabWhileOpen === 0 && flag === 'open' && fabAfter, `dialogs ${openDialogs} · fab while open ${fabWhileOpen} · html flag "${flag}" · fab after close ${fabAfter}`)
+      if (prior) await page.setViewportSize(prior)
+    }
+
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
     // Original, current value, editor, reason, and the resulting balance all
     // visible. Balance read from the receipt the save lands on and from the
@@ -554,7 +578,8 @@ async function main() {
       const keysBefore = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
       record('5D: before sign-out the page holds private content and the phone holds private keys', /SMOKE-DAILY-LOOP/.test(beforeText) && /bales/.test(beforeText) && keysBefore.includes('dryline_outbox_v1') && keysBefore.includes('dryline_session_uid'), `keys: ${keysBefore.join(', ')}`)
       page.once('dialog', d => void d.accept())   // "entries not synced" guard, should not fire — everything synced
-      await page.getByRole('button', { name: 'Sign out' }).click()
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })   // Block 6A: Sign out lives on /account
+      await page.locator('[data-audit="sign-out"]').click()
       await page.waitForURL(u => u.pathname === '/' || u.pathname === '/signin', { timeout: 30_000 }).catch(() => {})
       await page.waitForLoadState('domcontentloaded')
       const afterText = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ')

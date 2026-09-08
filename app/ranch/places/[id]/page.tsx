@@ -6,7 +6,6 @@ import { fmtDay } from '@/lib/jobs/format'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import LogIt from '@/app/dashboard/components/LogIt'
 import PlaceActions from '../PlaceActions'
 
 // ─── A place page (Block 2F) ──────────────────────────────────────────────────
@@ -65,7 +64,6 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             below can open it pre-filled with this place. */}
         <div className="mt-4 space-y-4">
           <PlaceActions placeId={place.id} placeName={place.name} memory={memory} />
-          <LogIt />
         </div>
       </main>
     </>

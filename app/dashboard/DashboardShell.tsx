@@ -436,7 +436,7 @@ export async function DashboardShell({
             <Suspense fallback={null}>
               <RepeatLastFeeding />
             </Suspense>
-            <LogIt />
+            <LogIt sheet={false} />
             <div id="ledgers" />
             <LedgerTabs
               season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
@@ -602,7 +602,7 @@ export async function DashboardShell({
                         <Suspense fallback={null}>
                           <RepeatLastFeeding />
                         </Suspense>
-                        <LogIt />
+                        <LogIt sheet={false} />
                         {/* 5. Hay on hand and runway — the ledger strip opens on Hay; This season and
                             Recently logged stay one tap away (views2, commit 4). */}
                         <div id="ledgers" />
