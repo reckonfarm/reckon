@@ -153,8 +153,11 @@ export async function correctEvent(supabase: SupabaseClient, userId: string, id:
     const ts = body.ts == null || body.ts === '' ? original.ts : parseEventTs(body.ts)
     const reason = reasonOf(body.reason)
     const clientId = idOf(body.id)
-    const same = ts === original.ts && JSON.stringify(payload) === JSON.stringify(original.payload)
-    if (same) return { ok: false, status: 400, error: 'Nothing changed — change a value or the time, or void the entry instead' }
+    // The reason is part of the record: fixing why an entry was changed is a
+    // correction in its own right. "Nothing changed" means no field differs,
+    // the reason included (a plain entry has no reason, so any reason differs).
+    const same = ts === original.ts && JSON.stringify(payload) === JSON.stringify(original.payload) && (reason ?? '') === (original.correction_reason ?? '')
+    if (same) return { ok: false, status: 400, error: 'Nothing changed — change a value, the time, or the reason; or void the entry instead' }
     return insertSuperseding(supabase, userId, original, { id: clientId, ts, payload, reason, voided: false })
   } catch (err) {
     if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }

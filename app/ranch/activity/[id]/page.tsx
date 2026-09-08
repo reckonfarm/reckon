@@ -131,7 +131,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
         <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Entry {row.id}</p>
 
-        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row) }} />}
+        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null }} />}
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Link href={`/activity${placeId ? `?place=${placeId}` : ''}`} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">{placeName ? `All activity at ${placeName}` : 'All activity'}</Link>

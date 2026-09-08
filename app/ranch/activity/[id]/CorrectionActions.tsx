@@ -17,6 +17,7 @@ import { LIMITS } from '@/lib/manual-log'
 //   · A reference the ranch's lists no longer name is UNRESOLVED, shown as
 //     such, and kept. It is not permission to clear the field.
 //   · The only path to "no lot" / "no place" is the explicit Clear action.
+//   · The reason is part of the record: a new reason alone is a correction.
 // Saving posts ONE superseding row (client-minted id, so a retry never lands
 // twice) and lands on the new entry, which shows both values, who changed it,
 // when, and the reason. The original stays where it was, marked. A void asks
@@ -29,6 +30,7 @@ export interface Editable {
   type: string
   ts: string                 // ISO work time
   values: Record<string, unknown>
+  reason?: string | null     // the reason this entry (itself a correction) carries — a new reason alone is a correction
 }
 
 const REF_KEYS = ['herd_lot_id', 'place_id', 'from_place_id', 'to_place_id'] as const
@@ -109,7 +111,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     const body: Record<string, unknown> = { id: clientId, reason: draft.reason }
     if (kind === 'correct') {
       const p = patch()
-      if (Object.keys(p).length === 0) { setError('Nothing changed — change a value or the time, or cancel.'); return }
+      if (Object.keys(p).length === 0 && draft.reason.trim() === (event.reason ?? '').trim()) { setError('Nothing changed — change a value, the time, or the reason; or cancel.'); return }
       Object.assign(body, p)
     }
     setBusy(true)
