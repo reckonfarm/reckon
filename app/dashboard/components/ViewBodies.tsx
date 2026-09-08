@@ -185,7 +185,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, titled = false,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -193,6 +193,8 @@ export async function WeatherViewBody({
   user: { id: string } | null
   lfpPromise: Promise<LfpFetchOutcome>
   precipPromise: Promise<PrecipNormalResult>
+  forecastPromise?: Promise<LocalForecast | null> | null   // Block 6B — the forecast leads the Weather destination
+  titled?: boolean                                         // Block 6B — the private /weather route owns its h1
 }) {
   const db = createServiceClient()
   let history: DroughtReading[]                     = []
@@ -369,17 +371,13 @@ export async function WeatherViewBody({
 
   return (
     <>
+      {titled && <h1 className="type-page-heading text-ink" data-audit="weather-title">Weather · {selectedCounty.name}, {selectedCounty.state}</h1>}
       {/* Which county you're looking at (flow, commit 4) — signed in, the county
-          selector lives HERE, above the county-scoped weather, framed as changing
-          the county in view, not as the page's main control (the operation is the
-          subject up top). Signed out it isn't here: the public page keeps its
-          selector under the header. Switching keeps you on Weather. */}
+          selector lives HERE, framed as changing the county in view. Public
+          information context only; it never changes the ranch. */}
       {user && (
         <div>
           <p className={`${EYEBROW} mb-2`}>Looking at</p>
-          {/* Set Home and Watch sit beside the selector (layout, commit 2): the
-              county actions live where the county changes. They wrap under the
-              selector on a phone; the selector keeps its own max width. */}
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-[220px] flex-1">
               <CountySelector selectedCounty={selectedCounty} view="drought" />
@@ -389,32 +387,33 @@ export async function WeatherViewBody({
           </div>
         </div>
       )}
-
-      {/* Latest Reading — unified timeline-ribbon card (hero + 3-yr weekly ribbon +
-          summary). Weather view only (above the map). Hero renders from the reliable
-          DB `latest`; the ribbon + summary come from the live 3-year USDM history and
-          degrade independently to "history unavailable" if it failed. */}
-      {latest && (
-        <LatestReadingCard latest={latest} history={threeYearHistory} />
+      {/* 1. The forecast, first (Block 6B). Today keeps a two-line preview only. */}
+      {forecastPromise && (
+        <section aria-labelledby="wx-forecast-h" data-audit="weather-forecast">
+          <h2 id="wx-forecast-h" className={`${EYEBROW} mb-3 !text-ink`}>7-day forecast · NWS</h2>
+          <Suspense fallback={<ForecastPanelSkeleton />}>
+            <ForecastPanelAsync dataPromise={forecastPromise} />
+          </Suspense>
+        </section>
       )}
-
-      {/* Rainfall vs normal — Weather view only. Streamed behind a Suspense
-          boundary so the slow ACIS call never blocks the Weather view paint. */}
-      <div>
-        <p className={`${EYEBROW} mb-3`}>Rainfall vs normal</p>
-        <Suspense fallback={<RainfallPanelSkeleton />}>
-          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
-        </Suspense>
-      </div>
-
-      {/* Rain by place — the operator's own gauge readings, signed-in only
-          (the dashboard is public; signed out renders nothing). Absent under
-          3 readings. Consumes the SAME precipPromise for the county line —
-          no new fetch — and keeps the two kinds of fact visibly apart. */}
+      {/* 2. Recorded rain at my places — gauge readings only, source named. */}
       <Suspense fallback={null}>
         <RainByPlaceCard precipPromise={precipPromise} user={user} />
       </Suspense>
-
+      {/* 3. County rainfall estimate vs station normal — the scope in the title; two sources, never one instrument. */}
+      <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
+        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall estimate vs station normal · {selectedCounty.name} County</h2>
+        <Suspense fallback={<RainfallPanelSkeleton />}>
+          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
+        </Suspense>
+        <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">
+          The estimate is a PRISM modeled grid for the county, or the nearest NOAA COOP station when one qualifies; the normal is that station&rsquo;s 30-year normal. A modeled estimate and a station record are two different instruments — neither is a gauge on your place.
+        </p>
+      </section>
+      {/* 4. County drought — the renamed card, with its timeline period labeled. */}
+      {latest && (
+        <LatestReadingCard latest={latest} history={threeYearHistory} />
+      )}
       {/* The 7-day forecast carousel left this view (layout, commit 3): it
           renders on Today only — one carousel, one place. */}
 
@@ -429,6 +428,14 @@ export async function WeatherViewBody({
           originally built for. The USDM week stays visible in the preview so
           freshness is never hidden behind the fold (data-derived, never today's
           date). Own-ground places/device pins draw when expanded, unchanged. */}
+      {/* 5. Radar and the regional map, and where the watched counties live. */}
+      <section aria-labelledby="wx-radar-h" data-audit="weather-radar" className="space-y-3">
+        <h2 id="wx-radar-h" className={`${EYEBROW} !text-ink`}>Radar and regional map</h2>
+        <p className="font-dm-sans text-[16px]">
+          <Link href="/weather/radar" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Open radar →</Link>
+          <span className="text-secondary-ink"> · </span>
+          <Link href="/weather/locations" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">My Counties →</Link>
+        </p>
       <DashboardAccordion
         title="Regional map"
         preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
@@ -450,6 +457,7 @@ export async function WeatherViewBody({
           ownGround={ownGround}
         />
       </DashboardAccordion>
+      </section>
 
 
       {!history.length && (

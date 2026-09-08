@@ -133,7 +133,8 @@ function RibbonAndSummary({ history }: { history: DroughtHistoryWeek[] }) {
     <div>
       {/* Weekly band ribbon — left = 3 yr ago → right = now. Thin equal-width cells, one
           per week, colored by category; a subtle tick at the right-third (1 year ago). */}
-      <div className="relative">
+      <p className="mb-1 font-dm-sans text-[14px] font-medium text-secondary-ink" data-audit="ribbon-period">Weekly U.S. Drought Monitor category · last 3 years</p>
+      <div className="relative" role="img" aria-label={`Weekly drought category over the last three years. ${summary}`} data-audit="drought-ribbon">
         <div className="flex h-6 w-full overflow-hidden rounded-md">
           {weeks.map((w, i) => {
             const c = categoryOf(w.d0, w.d1, w.d2, w.d3, w.d4)

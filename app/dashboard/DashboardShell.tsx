@@ -477,7 +477,7 @@ export async function DashboardShell({
                 // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
                   {/* /markets owns its h1 ("Markets · {area}", Block 6B); the ranch stays in the header. */}
-                  {route === 'markets' ? <p className="font-fraunces text-lg font-semibold leading-snug text-ink">{ranchName}</p> : <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>}
+                  {route === 'markets' || route === 'weather' ? <p className="font-fraunces text-lg font-semibold leading-snug text-ink">{ranchName}</p> : <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>}
                   <p className="font-dm-sans text-[14px] text-secondary-ink" data-testid="operation-line">
                     {homeCounty
                       ? `Operation · ${homeCounty.name}, ${homeCounty.state}`
@@ -654,6 +654,8 @@ export async function DashboardShell({
                           user={user}
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
+                          forecastPromise={forecastPromise}
+                          titled={route === 'weather'}
                         />
                       </Suspense>
                     ) }
@@ -688,13 +690,8 @@ export async function DashboardShell({
               record; a right column on desktop (the shell is 1,160 px wide there). */}
           {priv && route === 'today' && (
             <aside className="space-y-4 pb-16 lg:pb-0" data-audit="today-strips" aria-label="Conditions and programs">
+              {/* Today keeps the two-line preview only (Block 6B); the 7-day carousel lives on Weather. */}
               <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-              <div>
-                <p className={`${EYEBROW} mb-3`}>7-day forecast</p>
-                <Suspense fallback={<ForecastPanelSkeleton />}>
-                  <ForecastPanelAsync dataPromise={forecastPromise} />
-                </Suspense>
-              </div>
               <DeadlineQuietRow
                 countyName={selectedCounty.name}
                 quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
