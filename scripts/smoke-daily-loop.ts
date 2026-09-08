@@ -180,7 +180,7 @@ async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; p
   await page.getByRole('button', { name: /^Feed hay/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
-  if (opts.lot) await page.getByLabel('Fed to').selectOption({ label: opts.lot })
+  if (opts.lot) { await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {}); await page.locator('[data-audit="fed-to"]').selectOption({ label: opts.lot }) }
   const save = page.getByRole('button', { name: 'Record feeding', exact: true })
   await save.waitFor({ timeout: 15_000 }).catch(() => {})   // Block 6A: Save waits for the lots to load
   if (opts.doubleTap) {
@@ -403,8 +403,8 @@ async function main() {
     // Block 4A — the hand sees the ranch's lots: the Fed-to control is there, with the lot.
     await pageB.getByRole('button', { name: /^Record work/ }).click()
     await pageB.getByRole('button', { name: /^Feed hay/ }).click()
-    const fedTo = pageB.getByLabel('Fed to')
-    const fedToShown = await fedTo.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+    const fedTo = pageB.locator('[data-audit="fed-to"]')   // Block 6A: the loaded control (the field's space is reserved while lots load)
+    const fedToShown = await fedTo.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     const lotOptions = fedToShown ? await fedTo.locator('option').allInnerTexts() : []
     record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
     await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
@@ -506,7 +506,7 @@ async function main() {
       await page.locator('[data-audit="lot-more"]').first().click()
       const menuText = (await page.locator('[data-audit="lot-menu"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       await page.locator('[data-audit="lot-archive"]').click()
-      await page.waitForTimeout(1_500)
+      for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) > 0; i++) await page.waitForTimeout(250)   // the list reloads from the server
       const rowsAfter = await page.locator('[data-audit="lot-row"]').count()
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
@@ -535,7 +535,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.getByRole('button', { name: /^Record work/ }).click()
       const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
-      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /Count · not a stock movement/.test(t)).catch(() => false)
+      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /count · not a stock movement/i.test(t)).catch(() => false)   // the eyebrow is uppercased by CSS
       await page.locator('[data-audit="tile-hay_fed"]').click()
       await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
@@ -558,6 +558,7 @@ async function main() {
       const countyDrought = await page.getByRole('heading', { name: 'County drought' }).count()
       const latestReading = await page.getByText('Latest Reading', { exact: true }).count()
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
+      await page.getByText('Name shown on your work entries').waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
       const nameHint = await page.getByText('Name shown on your work entries').count()
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
       record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)

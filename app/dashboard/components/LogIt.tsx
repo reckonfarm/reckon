@@ -478,8 +478,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     {/* Which bunch (Block 6A): the field's space is reserved while lots load, Save waits
         for them, a failed load is said out loud, and "no lot" reads as what it is. A lot
         is never created from here. */}
-    <Field label="Fed to" hint={lotsError ? undefined : lots && lots.length === 0 ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : undefined}>
-      <div>
+    <Field label="Fed to" hint={lots && lots.length === 0 && !lotsError ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : undefined} error={lotsError ? 'Couldn’t load your lots — record without one, or try again below.' : undefined}>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
       ) : (
@@ -488,13 +487,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
         </Select>
       )}
-      {lotsError && (
-        <p className="mt-1 font-dm-sans text-[15px] font-medium text-warning" role="alert" data-audit="lots-error">
-          Couldn&rsquo;t load your lots. <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="font-semibold underline underline-offset-2">Try again</button> — or record without one.
-        </p>
-      )}
-      </div>
     </Field>
+    {lotsError && (
+      <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="-mt-2 self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="lots-retry">Try loading lots again</button>
+    )}
     {placeField()}
     {n1.trim() !== '' && Number.isFinite(Number(n1)) && (
       <p className="font-dm-sans text-[16px] leading-snug text-ink" data-audit="feed-preview">
