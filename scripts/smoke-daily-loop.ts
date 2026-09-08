@@ -580,6 +580,25 @@ async function main() {
       record('6B: Weather runs forecast → recorded rain (gauge, source named) → county estimate vs station normal (PRISM/NOAA footer) → county drought (ribbon in words) → radar; one h1; title Weather', ascending && /^Weather/.test(title) && h1 === 1 && rainRows >= 1 && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `order ${order.join(' < ')} · title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
     }
 
+    // ── Block 6B (9): at 200% text size on a phone, Record is still reachable ──
+    {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+      await page.waitForTimeout(500)
+      const fab = page.locator('[data-audit="record-fab"]')
+      const box = await fab.boundingBox().catch(() => null)
+      const vp = page.viewportSize()!
+      const inside = !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height
+      const overflowX = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+      await fab.click({ trial: true }).then(() => true).catch(() => false)
+      const clickable = await fab.click({ trial: true }).then(() => true).catch(() => false)
+      record('6B: at 200% text size Record stays inside the viewport, clickable, and the page does not scroll sideways', inside && clickable && !overflowX, `fab ${box ? `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}` : 'none'} in ${vp.width}×${vp.height} · sideways ${overflowX}`)
+      await page.evaluate(() => { document.documentElement.style.fontSize = '' })
+      if (prior) await page.setViewportSize(prior)
+    }
+
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
     {
       const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }

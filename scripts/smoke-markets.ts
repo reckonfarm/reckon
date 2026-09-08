@@ -80,6 +80,9 @@ async function seed() {
   if (pErr) throw new Error(`profile: ${pErr.message}`)
   const { error: lErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', created_by: userId, updated_by: userId })
   if (lErr) throw new Error(`herd lot: ${lErr.message}`)
+  // Block 6B: a replacement-heifer lot with its purpose set (055) — the basis line must name a feeder reference, not a breeding value.
+  const { error: hErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'heifers', name: 'Replacement heifers', head_count: 40, avg_weight: 600, weight_unit: 'lb', purpose: 'replacements', created_by: userId, updated_by: userId })
+  if (hErr) throw new Error(`heifer lot: ${hErr.message}`)
 }
 
 async function signIn(ctx: BrowserContext): Promise<Page> {
@@ -325,7 +328,7 @@ async function main() {
       var pts = document.querySelectorAll('[data-audit="point"]').length;
       return { overflowX: overflowX, small: small.slice(0,8), smallCount: small.length, tiny: tiny.slice(0,8), tinyCount: tiny.length, chartW: chartW, cardW: cardW, cardInner: cardInner, pts: pts };
     })`
-    for (const width of [320, 375, 390, 430]) {
+    for (const width of [320, 360, 375, 390, 430]) {   // Block 6B: 360 added as its own check
       const mctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       const mp = await signIn(mctx)
       await mp.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
@@ -384,6 +387,22 @@ async function main() {
     record('A4: the Markets lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
     record('A2: the Markets lot card scope is the barn', /(Local report|Preferred sale barn) — /.test(herd) && !/County auction/.test(herd))
     record('2.6I: the Markets lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
+    // ── Block 6B — headline and basis rules, as rendered ──
+    {
+      const rows = await page.locator('[data-audit="comparison-row"]').count()
+      const basis = await page.locator('[data-audit="basis-line"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const heiferRow = (await page.locator('[data-audit="comparison-row"]').filter({ hasText: 'Replacement heifers' }).innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const heiferPriced = !/Not priced|not priced/i.test(heiferRow) && /\$/.test(heiferRow)
+      record('6B: the replacement-heifer lot states its basis — a feeder heifer reference, not a breeding value', rows >= 2 && (heiferPriced ? basis.some(b => /Feeder heifer reference — not a breeding value/.test(b)) : /Not priced/i.test(heiferRow)), `rows ${rows} · basis [${basis.join(' | ')}] · heifer row "${heiferRow.slice(0, 90)}"`)
+      const gross = await page.locator('[data-audit="gross-total"]').count()
+      const noGross = (await page.locator('[data-audit="no-gross"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const refSales = await page.locator('[data-audit="reference-sale"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6B: no gross total unless every lot clears 20 head and shares purpose and basis — and every row names its reference sale', gross === 0 && /^No gross total: /.test(noGross) && refSales.length >= 1 && refSales.every(r => /^Reference sale: /.test(r)), `gross ${gross} · "${noGross}" · [${refSales.join(' | ')}]`)
+      const eyebrow = (await page.locator('[data-audit="herd-value-card"] p').first().innerText().catch(() => '')).trim()
+      record('6B: the headline reads Market comparisons for N lots, never Herd value', /^Market comparisons for \d+ lots?$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
+      const receipts = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head across .+ classes, /.test(receipts), `"${receipts.slice(0, 100)}"`)
+    }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)
     record('6B: /ranch/cattle is lot identity only — no price, no sensitivity line, the market link instead', !/Every \$1\/cwt/.test(cattle) && !/\$[\d,]{3,}/.test(cattle) && (await page.locator('[data-audit="lot-market-link"]').count()) >= 1, cattle.slice(0, 120))
