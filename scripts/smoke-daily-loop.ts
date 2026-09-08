@@ -793,15 +793,20 @@ async function main() {
           const a = new Date(h2.ts), b = new Date(h3.ts)
           const movedOneDay = a.getHours() === b.getHours() && a.getMinutes() === b.getMinutes() && Math.round((a.getTime() - b.getTime()) / 3_600_000) === 24
           record('6A: a date-only correction moves the work time one day and keeps every value', movedOneDay && bad3.length === 0, `${h2.ts} → ${h3.ts} · ${describe(bad3, h3)}`)
-          // reason-only: nothing to correct — refused before any request, the entry untouched
-          await page.goto(`/ranch/activity/${h3.id}`, { waitUntil: 'domcontentloaded' })
+          // reason-only: the reason is part of the record — a new reason alone lands as a correction, every value and the time kept
+          await correct(page, h3.id, async () => {}, '6A reason only')
+          const h4 = await head(o.id); const bad4 = preserved(h3, h4, [])
+          const { data: r4 } = await admin.from('events').select('correction_reason').eq('id', h4.id).single()
+          record('6A: a reason-only correction lands as a correction — the reason recorded, every value and the time kept', h4.id !== h3.id && r4?.correction_reason === '6A reason only' && bad4.length === 0, `reason "${r4?.correction_reason}" · ${describe(bad4, h4)}`)
+          // the same reason again, nothing else different: refused as nothing changed, reason included; the entry untouched
+          await page.goto(`/ranch/activity/${h4.id}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-audit="correct-entry"]').click()
           await page.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
           await page.locator('[data-audit="correction-reason"]').fill('6A reason only')
           await page.locator('[data-audit="correction-save"]').click()
           const refusal = await page.locator('[data-audit="correction-error"]').innerText({ timeout: 5_000 }).catch(() => '')
-          const h4 = await head(o.id)
-          record('6A: a reason-only save is refused as nothing changed and the entry is untouched', /Nothing changed/.test(refusal) && h4.id === h3.id && JSON.stringify(h4.payload) === JSON.stringify(h3.payload) && h4.ts === h3.ts, `"${refusal.slice(0, 60)}" · head ${h4.id === h3.id ? 'unchanged' : 'MOVED'}`)
+          const h4b = await head(o.id)
+          record('6A: nothing changed means no field differs, reason included — the same reason again is refused and the entry untouched', /Nothing changed/.test(refusal) && h4b.id === h4.id, `"${refusal.slice(0, 70)}" · head ${h4b.id === h4.id ? 'unchanged' : 'MOVED'}`)
           // the lot is retired: the form names it as retired and a quantity-only correction keeps it
           const { error: rErr } = await admin.from('herd_lots').update({ retired_at: new Date().toISOString() }).eq('id', lot2)
           if (rErr) throw new Error(`6A retire: ${rErr.message}`)
