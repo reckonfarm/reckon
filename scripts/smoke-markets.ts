@@ -116,7 +116,7 @@ async function main() {
     await page.waitForTimeout(1500)
     const body = await text(page)
 
-    record('A2: auction figures carry a barn scope label', /(Nearby auction reference|Where you sell) — (Billings|Miles City)/.test(body), (body.match(/(Nearby auction reference|Where you sell) — [A-Za-z ]+/) ?? [''])[0])
+    record('A2: auction figures carry a barn scope label', /(Local report|Preferred sale barn) — (Billings|Miles City)/.test(body), (body.match(/(Local report|Preferred sale barn) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
     record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
     record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
@@ -126,7 +126,7 @@ async function main() {
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
-    record('A5: culls listed as slaughter prices, not breeding value', /Culls · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
+    record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
     record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const stepBtn = page.getByRole('button', { name: /carried-forward steps/ })
@@ -286,7 +286,7 @@ async function main() {
       await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
       await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
       const pinned = await text(page)
-      record('A2: Where I sell pin → "Where you sell — Miles City"', pin.ok() && /Where you sell — Miles City/.test(pinned), `PATCH ${pin.status()} · ${(pinned.match(/Where you sell — [A-Za-z ]+/) ?? [''])[0]}`)
+      record('A2: Preferred sale barn pin → "Preferred sale barn — Miles City"', pin.ok() && /Preferred sale barn — Miles City/.test(pinned), `PATCH ${pin.status()} · ${(pinned.match(/Preferred sale barn — [A-Za-z ]+/) ?? [''])[0]}`)
     }
 
     // ── Phone widths (Block 2.5 mobile audit): no horizontal scroll, 48 px targets,
@@ -366,7 +366,7 @@ async function main() {
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})
     const herd = await text(page)
     record('A4: the Markets lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
-    record('A2: the Markets lot card scope is the barn', /(Nearby auction reference|Where you sell) — /.test(herd) && !/County auction/.test(herd))
+    record('A2: the Markets lot card scope is the barn', /(Local report|Preferred sale barn) — /.test(herd) && !/County auction/.test(herd))
     record('2.6I: the Markets lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)
@@ -385,7 +385,7 @@ async function main() {
         await pp.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
         await pp.getByText(/carried-forward steps|No nearby barn|Regional reference/).first().waitFor({ timeout: 45_000 }).catch(() => {})
         const b = await text(pp)
-        const nearby = /Nearby auction reference|Nearby —/.test(b)
+        const nearby = /Local report —|Nearby auction reference|Nearby —/.test(b)
         const noLocal = /No reporting auction within \d+ approx\. straight-line miles/.test(b)
         const ref = /Regional reference — [A-Za-z .'-]+, [A-Z]{2} · ~[\d,]+ mi/.test(b)
         record(`2.6A ${name}: no "Nearby" label`, !nearby)

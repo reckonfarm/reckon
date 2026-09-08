@@ -60,7 +60,7 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   const thin = isThin(c.head)
   const ev = thin ? thinEvidence(c.priceLow, c.priceHigh, c.avgPrice, c.head) : null
   const name = kind === 'cows'
-    ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows (grade not captured)')
+    ? (c.gradeKnown ? `${c.grade} cows` : 'Cull cows · Grade unavailable')
     : (c.gradeKnown && c.grade !== 'All' ? `Slaughter bulls · yield ${c.grade}` : 'Slaughter bulls')
   return (
     <li className="py-2">
@@ -116,6 +116,9 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
               : { kind: 'nearby', town: shortTown(result.town) },
             )}
           </p>
+          <p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="scope-fallback">
+            {result.beyondHaul && !result.pinned ? 'Scope: Regional reference · falls back to National reference' : 'Scope: Local report · falls back to Regional reference, then National reference'}
+          </p>
           <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
             <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
@@ -145,28 +148,40 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
             </div>
           )}
 
-          <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-            {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
-            {result.classes.map(c => c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />))}
-          </ul>
+          {result.bands.length > 0 && (
+            <div className="mt-4" data-audit="board-feeder-steers">
+              <p className={EYEBROW}>Feeder steers · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+                {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
+              </ul>
+            </div>
+          )}
+          {result.classes.filter(c => c.bands.length > 0).map(c => (
+            <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
+              <p className={EYEBROW}>{c.label === 'Heifers' ? 'Feeder heifers' : c.label} · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+                {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label === 'Heifers' ? 'Heifers' : c.label} b={b} />)}
+              </ul>
+            </div>
+          ))}
 
-          {(result.cullCows.length > 0 || result.slaughterBulls.length > 0) && (
-            <div className="mt-4">
-              <p className={EYEBROW}>Culls · slaughter prices, not breeding value · $/cwt</p>
+          {result.cullCows.length > 0 && (
+            <div className="mt-4" data-audit="board-cull-cows">
+              <p className={EYEBROW}>Cull cows · slaughter prices, not breeding value · $/cwt</p>
               <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
                 {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" />)}
+              </ul>
+            </div>
+          )}
+          {result.slaughterBulls.length > 0 && (
+            <div className="mt-4" data-audit="board-slaughter-bulls">
+              <p className={EYEBROW}>Slaughter bulls · slaughter prices, not breeding value · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
                 {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" />)}
               </ul>
             </div>
           )}
-
-          {result.receipts != null && (
-            <p className="mt-3 font-dm-sans text-[16px] tabular-nums text-ink">
-              {fmtInt(result.receipts)} receipts
-              {result.receiptsWeekAgo != null && ` · wk ago ${fmtInt(result.receiptsWeekAgo)}`}
-              {result.receiptsYearAgo != null && ` · yr ago ${fmtInt(result.receiptsYearAgo)}`}
-            </p>
-          )}
+          {/* Receipts live in the header block above (commit 3) — no second, unexplained total. */}
         </>
       )}
     </Card>
