@@ -70,6 +70,24 @@ function useHasDraft(): boolean {
 
 type Place = { id: string; name: string; kind: string }
 
+// Block 6A: the tiles are verbs. Count is its own group — it never reads as adding stock.
+const TILE_VERB: Record<ManualEventType, string> = {
+  rain: 'Record rain',
+  hay_fed: 'Feed hay',
+  bales_stacked: 'Add bales to a stack',
+  cattle_moved: 'Move cattle',
+  cattle_worked: 'Record cattle work',
+  hay_inventory: 'Count hay',
+}
+const SAVE_LABEL: Record<ManualEventType, string> = {
+  rain: 'Record rain',
+  hay_fed: 'Record feeding',
+  bales_stacked: 'Add bales',
+  cattle_moved: 'Record move',
+  cattle_worked: 'Record work',
+  hay_inventory: 'Record count',
+}
+const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 const TILE_HINT: Record<ManualEventType, string> = {
   rain: 'inches in the gauge',
   hay_fed: 'bales put out',
@@ -246,6 +264,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [when, setWhen] = useState('')      // '' = now
   const [editWhen, setEditWhen] = useState(false)
   const [asOf, setAsOf] = useState('')      // hay_inventory: 'YYYY-MM-DD', '' = today
+  const [note, setNote] = useState('')      // hay_fed, behind More
+  const [stock, setStock] = useState<PlaceSlot>(EMPTY_SLOT)   // hay_fed: the stack it came from, behind More
+  const [more, setMore] = useState(false)
+  const [lotsError, setLotsError] = useState(false)
 
   const hasDraft = useHasDraft()
 
@@ -253,7 +275,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     eventId.current = null
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
-    setLots(null); setLot('')
+    setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT); setMore(false)
     writeDraft(null)
   }, [])
 
@@ -320,7 +342,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         const last = readLastLot()
         setLot(prev => prev && list.some(l => l.id === prev) ? prev : (list.some(l => l.id === last) ? last : ''))
       })
-      .catch(() => { if (!cancelled) setLots([]) })
+      .catch(() => { if (!cancelled) { setLots([]); setLotsError(true) } })   // a real error state, not a silent empty picker
     return () => { cancelled = true }
   }, [open, type, lots])
 
@@ -405,7 +427,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       if (when) body.ts = new Date(when).toISOString()
       switch (type) {
         case 'rain':          body.inches = num; body.place_id = placeId; break
-        case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; break
+        case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; if (note.trim()) body.note = note.trim(); { const sid = await resolveSlot(stock, setStock); if (sid) body.stock_place_id = sid } break
         case 'bales_stacked': body.count = num; body.place_id = placeId; break
         case 'cattle_moved':
           body.head = num; body.from_place_id = fromId; body.to_place_id = toId
@@ -453,18 +475,41 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   if (type === 'hay_fed') fields = (<>
     <NumberField label="Hay fed" unit="bales" value={n1} onChange={setN1} max={10000} />
-    {/* Which bunch — optional; labeled the way the herd page labels them
-        (lotLabel: the name if given, else the class). Hidden until the herd
-        has lots: an empty herd gets no empty picker. */}
-    {lots && lots.length > 0 && (
-      <Field label="Fed to">
-        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)}>
-          <option value="">No lot</option>
+    {/* Which bunch (Block 6A): the field's space is reserved while lots load, Save waits
+        for them, a failed load is said out loud, and "no lot" reads as what it is. A lot
+        is never created from here. */}
+    <Field label="Fed to" hint={lotsError ? undefined : lots && lots.length === 0 ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : undefined}>
+      {lots === null ? (
+        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
+      ) : (
+        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)} data-audit="fed-to">
+          <option value="">Not assigned to a lot</option>
           {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
         </Select>
-      </Field>
-    )}
+      )}
+      {lotsError && (
+        <p className="mt-1 font-dm-sans text-[15px] font-medium text-warning" role="alert" data-audit="lots-error">
+          Couldn&rsquo;t load your lots. <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="font-semibold underline underline-offset-2">Try again</button> — or record without one.
+        </p>
+      )}
+    </Field>
     {placeField()}
+    {n1.trim() !== '' && Number.isFinite(Number(n1)) && (
+      <p className="font-dm-sans text-[16px] leading-snug text-ink" data-audit="feed-preview">
+        {Number(n1)} {Number(n1) === 1 ? 'bale' : 'bales'}{lots?.find(l => l.id === lot) ? ` to ${lotLabel(lots.find(l => l.id === lot)!)}` : ''}{place.newName !== null ? (place.newName.trim() ? ` at ${place.newName.trim()}` : '') : (places.find(p => p.id === place.id)?.name ? ` at ${places.find(p => p.id === place.id)!.name}` : '')}, {editWhen && when ? new Date(when).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : `today ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+      </p>
+    )}
+    <div>
+      <button type="button" onClick={() => setMore(m => !m)} aria-expanded={more} className="min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="feed-more">{more ? 'Less' : 'More'}</button>
+      {more && (
+        <div className="mt-2 flex flex-col gap-4">
+          <PlaceSelect label="Stock source (the stack it came from)" slot={stock} places={places} onChange={setStock} disabled={busy} />
+          <Field label="Note">
+            <Input value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="anything worth remembering" />
+          </Field>
+        </div>
+      )}
+    </div>
   </>)
   if (type === 'bales_stacked') fields = (<>
     <NumberField label="Stacked" unit="bales" value={n1} onChange={setN1} max={10000} />
@@ -477,7 +522,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   if (type === 'hay_inventory') fields = (<>
     <NumberField label="On hand" unit="bales" value={n1} onChange={setN1} max={100000} placeholder="0" />
-    <Field label="As of" hint="The day you counted.">
+    <p className="font-dm-sans text-[16px] text-ink" data-audit="count-scope">Count for: <span className="font-semibold">{place.newName !== null ? (place.newName.trim() || 'Entire ranch') : (places.find(p => p.id === place.id)?.name ?? 'Entire ranch')}</span></p>
+    <Field label="Counted on" hint="The day you counted — the effective date. When you record it is kept separately.">
       <Input type="date" value={asOf || todayKey()} max={todayKey()} onChange={e => setAsOf(e.target.value)} />
     </Field>
   </>)
@@ -498,7 +544,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           onClick={openSheet}
           className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white transition-colors hover:bg-forest-green/90"
         >
-          {hasDraft && !open ? 'Log it · finish your unsaved entry' : 'Log it'}
+          {hasDraft && !open ? 'Record work · finish your unsaved entry' : 'Record work'}
         </button>
         <SaveStatus />
       </div>
@@ -510,7 +556,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           onClick={dismiss}
           role="dialog"
           aria-modal="true"
-          aria-label="Log it"
+          aria-label="Record work"
         >
           <Card
             shadow="soft"
@@ -518,7 +564,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <Heading level={5}>{type ? MANUAL_EVENT_LABELS[type] : 'Log it'}</Heading>
+              <Heading level={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
               <button
                 type="button"
                 onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
@@ -529,18 +575,21 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             </div>
 
             {!type ? (
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                {MANUAL_EVENT_TYPES.map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setType(t)}
-                    className="min-h-[84px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5"
-                  >
-                    <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{MANUAL_EVENT_LABELS[t]}</span>
-                    <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT[t]}</span>
-                  </button>
-                ))}
+              <div className="mt-4" data-audit="record-picker">
+                <div className="grid grid-cols-2 gap-3">
+                  {MOVEMENT_TYPES.map(t => (
+                    <button key={t} type="button" onClick={() => setType(t)} className="min-h-[84px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit={`tile-${t}`}>
+                      <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB[t]}</span>
+                      <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT[t]}</span>
+                    </button>
+                  ))}
+                </div>
+                {/* Count stands apart: it states what is there; it never adds or takes stock. */}
+                <p className="mt-4 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Count · not a stock movement</p>
+                <button type="button" onClick={() => setType('hay_inventory')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-hay_inventory">
+                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
+                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>
+                </button>
               </div>
             ) : (
               <form
@@ -577,8 +626,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 )}
 
                 <div className="flex items-center gap-3">
-                  <Button type="submit" disabled={busy} className="flex-1 min-h-[56px] text-[17px]">
-                    {busy ? 'Saving…' : 'Save'}
+                  <Button type="submit" disabled={busy || (type === 'hay_fed' && lots === null)} className="flex-1 min-h-[56px] text-[17px]" data-audit="record-save">
+                    {busy ? 'Saving…' : type === 'hay_fed' && lots === null ? 'Loading lots…' : SAVE_LABEL[type]}
                   </Button>
                   <button
                     type="button"

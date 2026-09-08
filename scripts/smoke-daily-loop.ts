@@ -176,12 +176,13 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
 const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
-  await page.getByRole('button', { name: /^Log it/ }).click()
-  await page.getByRole('button', { name: /Hay fed/ }).click()
+  await page.getByRole('button', { name: /^Record work/ }).click()
+  await page.getByRole('button', { name: /^Feed hay/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
   if (opts.lot) await page.getByLabel('Fed to').selectOption({ label: opts.lot })
-  const save = page.getByRole('button', { name: 'Save', exact: true })
+  const save = page.getByRole('button', { name: 'Record feeding', exact: true })
+  await save.waitFor({ timeout: 15_000 }).catch(() => {})   // Block 6A: Save waits for the lots to load
   if (opts.doubleTap) {
     // Two clicks in the same tick, straight at the DOM — faster than a thumb.
     await save.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click() })
@@ -236,7 +237,7 @@ async function main() {
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
-    const hasLogIt = await page.getByRole('button', { name: /^Log it/ }).count() > 0
+    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).count() > 0
     // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
     record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
@@ -272,7 +273,7 @@ async function main() {
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Log it")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('text=7-day forecast')
+      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('text=7-day forecast')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const headlines = await page.getByText('Headlines', { exact: true }).count()
       record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · 7-day forecast, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
@@ -331,12 +332,12 @@ async function main() {
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 
     // ── half-typed sheet survives a reload ──
-    await page.getByRole('button', { name: /^Log it/ }).click()
-    await page.getByRole('button', { name: /Hay fed/ }).click()
+    await page.getByRole('button', { name: /^Record work/ }).click()
+    await page.getByRole('button', { name: /^Feed hay/ }).click()
     await page.getByLabel('Hay fed').fill('7')
     await page.reload({ waitUntil: 'domcontentloaded' })
-    const btn = await page.getByRole('button', { name: /^Log it/ }).innerText().catch(() => '')
-    await page.getByRole('button', { name: /^Log it/ }).click()
+    const btn = await page.getByRole('button', { name: /^Record work/ }).innerText().catch(() => '')
+    await page.getByRole('button', { name: /^Record work/ }).click()
     const restored = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('half-typed sheet survives a reload', /finish/.test(btn) && restored === '7', `button "${btn}" · bales "${restored}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -395,12 +396,12 @@ async function main() {
     await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
     await pageB.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const urlB = pageB.url().replace(BASE, '')
-    const logItB = await pageB.getByRole('button', { name: /^Log it/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+    const logItB = await pageB.getByRole('button', { name: /^Record work/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
     const beforeB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
     // Block 4A — the hand sees the ranch's lots: the Fed-to control is there, with the lot.
-    await pageB.getByRole('button', { name: /^Log it/ }).click()
-    await pageB.getByRole('button', { name: /Hay fed/ }).click()
+    await pageB.getByRole('button', { name: /^Record work/ }).click()
+    await pageB.getByRole('button', { name: /^Feed hay/ }).click()
     const fedTo = pageB.getByLabel('Fed to')
     const fedToShown = await fedTo.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
     const lotOptions = fedToShown ? await fedTo.locator('option').allInnerTexts() : []
@@ -526,6 +527,24 @@ async function main() {
       const setup = await page.request.get('/ranch/devices/setup')
       const online = await page.locator('main').innerText().then(t => /\bOnline\b|\bOffline\b/.test(t)).catch(() => false)
       record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /No devices connected\. You can record work now\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
+    }
+
+    // ── Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding ──
+    {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.getByRole('button', { name: /^Record work/ }).click()
+      const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
+      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /Count · not a stock movement/.test(t)).catch(() => false)
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
+      const order = ['Hay fed', 'Fed to', 'Where'].map(l => labels.findIndex(x => x.startsWith(l)))
+      const noLot = await page.locator('[data-audit="fed-to"] option').first().innerText().catch(() => '')
+      await page.getByLabel('Hay fed').fill('3')
+      const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      record('6A: the sheet offers verbs with Count apart; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     }
 
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
