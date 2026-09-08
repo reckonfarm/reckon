@@ -22,8 +22,8 @@ import type { Lot } from '@/lib/herd'
 import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
-import HerdValueCard from './HerdValueCard'
 import HerdEstimatePanel from './HerdEstimatePanel'
+import MarketComparisons, { type ReportDate } from './MarketComparisons'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
@@ -726,9 +726,11 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null,
+  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
 }: {
   ranchId?: string | null   // Block 4A — the ranch whose herd value history the anchor reads
+  selectedLotId?: string | null   // Block 6B — ?lot= from Ranch → Cattle; the comparison and the chart follow it
+  titled?: boolean                // Block 6B — the private /markets route owns the page's h1 ("Markets · {area}")
   selectedCounty: CountyRow
   sellBarn?: string | null   // Block 2.5 A2 — the "where I sell" pin (operation_profiles.sell_barn_slug)
   // The herd anchor is THIS body's (views2, commit 2): the profile's lots, the
@@ -796,31 +798,48 @@ export async function MarketsViewBody({
   nationalBeef = nationalRes
   if (chips) [corn, moisture, crop, cycle] = chips
   const hasHerd = anchor != null
+  const reportDates: ReportDate[] = [
+    ...(localAuction.status === 'ok' ? [{ label: 'Local', date: localAuction.saleDate }] : []),
+    ...(nationalBeef.status === 'ok' ? (() => { const w = nationalBeef.fedSteer?.weekEnding ?? nationalBeef.feeder500?.weekEnding ?? nationalBeef.feeder700?.weekEnding; return w ? [{ label: 'National', date: w }] : [] })() : []),
+    ...(lrpResult.status === 'ok' ? [{ label: 'LRP', date: lrpResult.lrp.effective_date }] : []),
+  ]
 
   return (
     <>
-      {/* Market Read leads the view its chips belong to — the missing
-          header for the cards below. Gate: the herd anchor exists
-          (signed in, lots, home county). */}
-      {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-      {/* Herd value — the one herd surface on the dashboard, here between the
-          read and the cash it's priced at (views2, commit 2; was on Today). */}
-      {anchor && <HerdValueCard anchor={anchor} />}
-      {/* Block 6B (1): the herd estimate panel (Now · Trend · Outlook) lives on Markets now;
-          /ranch/cattle is lot identity only. Commits 2–3 fold and rename its panels. */}
-      {anchor && <HerdEstimatePanel estimate={anchor.estimate} trend={anchor.trend} outlook={anchor.outlook} />}
+      {/* Block 6B — the personal work first, the macro read last. Title with the latest
+          report dates → what changed for my cattle → the comparisons (one qualified row
+          per lot; a gross total only when honest) and the selected lot → the chart for the
+          same lot → the local board → references → price protection → market context. */}
+      {anchor && (
+        <MarketComparisons
+          estimate={anchor.estimate}
+          lots={lots}
+          trend={anchor.trend}
+          selectedLotId={selectedLotId}
+          area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
+          reports={reportDates}
+          titled={titled}
+        />
+      )}
+      {!anchor && titled && <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {selectedCounty.name}</h1>}
       {homeFips && (
         <Suspense fallback={null}>
           <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
         </Suspense>
       )}
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
+      </Suspense>
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
       <LocalAuctionCard result={localAuction} />
-      <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} />
-      </Suspense>
       <NationalBeefCard result={nationalBeef} />
+      {/* Sale video: no feed is connected, and nothing pretends otherwise (6B resolution 3). */}
+      <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
       <LrpMarketsCard result={lrpResult} />
+      {/* The herd panel (Trend · Outlook) until commit 3 folds and renames it. */}
+      {anchor && <HerdEstimatePanel estimate={anchor.estimate} trend={anchor.trend} outlook={anchor.outlook} />}
+      {/* Market context — the four macro indicators, each with its source date and interval. Last, never first. */}
+      {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
     </>
   )
 }

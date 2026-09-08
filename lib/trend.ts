@@ -22,6 +22,7 @@ export type HerdDelta =
   | { status: 'unavailable' }
 export interface PriceDeltaRow { label: string; status: 'ready' | 'accruing' | 'unavailable'; cwt?: number; sinceDate?: string }
 export interface TrendData {
+  historyFrom: string | null   // Block 6B: the earliest herd snapshot date on record — "History begins {date}"; null with no snapshot
   barnName: string | null
   reportDate: string | null
   volume: VolumeRow[]
@@ -124,5 +125,6 @@ export function buildTrend(input: {
     }
   }
 
-  return { barnName: primary?.barn_name ?? null, reportDate: primary?.report_date ?? null, volume, spread, herd, priceDeltas }
+  const historyFrom = herdHistory && herdHistory.length ? herdHistory.reduce((min, r) => (r.snapshot_date < min ? r.snapshot_date : min), herdHistory[0].snapshot_date) : null
+  return { historyFrom, barnName: primary?.barn_name ?? null, reportDate: primary?.report_date ?? null, volume, spread, herd, priceDeltas }
 }

@@ -8,7 +8,7 @@ import MarketsChartsLoader from './MarketsChartsLoader'
 // tables actually hold and hands observations — never fills — to the client
 // chart. The person's first feeder lot (steers/heifers) powers the lot-value
 // measure; nothing else about the herd reaches the chart.
-export default async function MarketsHistory({ resolved, lots }: { resolved: ResolveResult; lots: Lot[] }) {
+export default async function MarketsHistory({ resolved, lots, selectedLotId = null }: { resolved: ResolveResult; lots: Lot[]; selectedLotId?: string | null }) {
   const slugs = [...new Set([...resolved.ranked, ...resolved.stale].map(b => b.slug_id))]
   const localBarn = resolved.local[0] ?? resolved.nearest_comp ?? null
   // Block 2.6A — a barn beyond the discovery radius is a regional reference, never "Nearby".
@@ -21,7 +21,9 @@ export default async function MarketsHistory({ resolved, lots }: { resolved: Res
     getCycleSeries(),
     getMarketEvents(),
   ])
-  const feederLot = lots.find(l => l.class === 'steers' || l.class === 'heifers' || l.class === 'yearlings') ?? null
+  const isFeeder = (l: Lot) => l.class === 'steers' || l.class === 'heifers' || l.class === 'yearlings'
+  // Block 6B: the selected lot (?lot=) drives the chart's lot measure when it is a feeder lot; else the first feeder lot.
+  const feederLot = (selectedLotId ? lots.find(l => l.id === selectedLotId && isFeeder(l)) : null) ?? lots.find(isFeeder) ?? null
   const lot = feederLot ? { head: feederLot.head_count, weightLb: lotToMarsKey(feederLot).avgWeightLb, label: `${lotLabel(feederLot)} · ${feederLot.head_count} head` } : null
   const dates = auction.flatMap(s => s.points.map(p => p.date)).sort()
   const town = localBarn?.town.replace(/,\s*[A-Z]{2}$/, '') ?? ''

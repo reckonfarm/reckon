@@ -476,7 +476,8 @@ export async function DashboardShell({
                 // differed). A different county in view is named after it; no
                 // home county yet says so. Same h1 slot and size.
                 <div className="min-w-0">
-                  <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>
+                  {/* /markets owns its h1 ("Markets · {area}", Block 6B); the ranch stays in the header. */}
+                  {route === 'markets' ? <p className="font-fraunces text-lg font-semibold leading-snug text-ink">{ranchName}</p> : <Heading level={1} className="!text-lg !leading-snug">{ranchName}</Heading>}
                   <p className="font-dm-sans text-[14px] text-secondary-ink" data-testid="operation-line">
                     {homeCounty
                       ? `Operation · ${homeCounty.name}, ${homeCounty.state}`
@@ -667,7 +668,7 @@ export async function DashboardShell({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
                       </Suspense>
                     ) }
                   : {}),

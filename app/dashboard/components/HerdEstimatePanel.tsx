@@ -75,7 +75,7 @@ function heroSensitivity(e: HerdEstimate): string | null {
   return total > 0 ? `Every $1/cwt move is $${total.toLocaleString('en-US')} across ${lots.length === 1 ? 'this lot' : `these ${lots.length} lots`}.` : null
 }
 
-function LotCard({ l }: { l: LotValuation }) {
+export function LotCard({ l }: { l: LotValuation }) {
   const priced = l.value != null && l.source != null
   const src = l.source
   const label = src ? matchLabel({ exactBracket: src.exact_bracket, headCount: src.head_count }) : null
