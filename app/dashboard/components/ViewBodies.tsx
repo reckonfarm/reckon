@@ -22,7 +22,7 @@ import type { Lot } from '@/lib/herd'
 import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
-import HerdEstimatePanel from './HerdEstimatePanel'
+import { PriceHistoryPanel, PriceProtectionPanel } from './HerdEstimatePanel'
 import MarketComparisons, { type ReportDate } from './MarketComparisons'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
@@ -830,14 +830,19 @@ export async function MarketsViewBody({
       <Suspense fallback={null}>
         <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
       </Suspense>
+      {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
+      {anchor && <PriceHistoryPanel trend={anchor.trend} />}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
-      <LocalAuctionCard result={localAuction} />
+      <LocalAuctionCard result={localAuction} volume={anchor?.trend?.volume ?? null} />
       <NationalBeefCard result={nationalBeef} />
       {/* Sale video: no feed is connected, and nothing pretends otherwise (6B resolution 3). */}
       <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
-      <LrpMarketsCard result={lrpResult} />
-      {/* The herd panel (Trend · Outlook) until commit 3 folds and renames it. */}
-      {anchor && <HerdEstimatePanel estimate={anchor.estimate} trend={anchor.trend} outlook={anchor.outlook} />}
+      {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
+      <section className="space-y-3" aria-labelledby="price-protection-h" data-audit="price-protection">
+        <h2 id="price-protection-h" className={EYEBROW}>Price protection · LRP references</h2>
+        {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
+        <LrpMarketsCard result={lrpResult} />
+      </section>
       {/* Market context — the four macro indicators, each with its source date and interval. Last, never first. */}
       {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
     </>

@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
+import type { VolumeRow } from '@/lib/trend'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { isThin, scopeLabel, thinEvidence } from '@/lib/market-scope'
@@ -80,7 +81,7 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   )
 }
 
-export default function LocalAuctionCard({ result }: { result: LocalAuctionResult }) {
+export default function LocalAuctionCard({ result, volume = null }: { result: LocalAuctionResult; volume?: VolumeRow[] | null }) {
   return (
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
       <div className="mb-3">
@@ -118,6 +119,31 @@ export default function LocalAuctionCard({ result }: { result: LocalAuctionResul
           <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
             <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
           </p>
+          {/* Receipts (Block 6B, commit 3): the scope before the number — which classes the
+              total spans — and the per-class split with its week-ago / year-ago when the
+              report carries it. No unexplained total. */}
+          {result.receipts != null && (
+            <div className="mt-2 rounded-lg bg-forest-green/[0.04] px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="receipts-scope">
+              <p>
+                <span className="font-semibold">Receipts:</span> {result.receipts.toLocaleString('en-US')} head across {[
+                  (result.bands.length || result.classes.some(c => c.bands.length)) ? 'feeder' : null,
+                  (result.cullCows.length || result.slaughterBulls.length) ? 'slaughter (cull)' : null,
+                ].filter(Boolean).join(' and ') || 'the classes reported'} classes, {fmtDate(result.saleDate)}
+                {result.receiptsWeekAgo != null && <span className="text-secondary-ink"> · {result.receiptsWeekAgo.toLocaleString('en-US')} a week earlier</span>}
+              </p>
+              {volume && volume.length > 0 && (
+                <ul className="mt-1 space-y-0.5 text-secondary-ink">
+                  {volume.map(v => (
+                    <li key={v.commodity}>
+                      {v.commodity}: <span className="tabular-price text-ink">{v.receipts != null ? v.receipts.toLocaleString('en-US') : '—'}</span> head
+                      {v.weekAgo != null && v.receipts != null && <> · {v.receipts - v.weekAgo >= 0 ? '▲ up' : '▼ down'} {Math.abs(v.receipts - v.weekAgo).toLocaleString('en-US')} vs last week</>}
+                      {v.yearAgo != null && <> · {v.yearAgo.toLocaleString('en-US')} a year ago</>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           <ul className="mt-3 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
             {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}

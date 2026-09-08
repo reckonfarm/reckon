@@ -109,7 +109,7 @@ export function buildOutlook(input: { lots: Lot[]; matrix: LrpMatrixResult }): O
     // Not eligible — breeding/cull (lrp_class null) or out of feeder weight range (weight_code
     // null). Carries the honest reason; never a fake floor.
     if (!m.lrp_class || !m.weight_code) {
-      out.push({ lotId: lot.id, label, state: 'not_eligible', reason: m.reason ?? 'Not LRP-eligible' })
+      out.push({ lotId: lot.id, label, state: 'not_eligible', reason: m.reason ?? 'No LRP feeder product for this lot; eligibility is RMA’s determination' })
       continue
     }
 
