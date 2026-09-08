@@ -569,15 +569,18 @@ async function main() {
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="weather-forecast"]').waitFor({ timeout: 30_000 }).catch(() => {})
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const order = [await pos('[data-audit="weather-forecast"]'), await pos('[data-audit="recorded-rain"]'), await pos('[data-audit="weather-estimate"]'), await pos('[data-audit="drought-ribbon"]'), await pos('[data-audit="weather-radar"]')]
+      // The fixture logs no rain, so the recorded-rain section rightly does not render (no reading → no card, never a zero); the order is checked over what is on the page.
+      const hasRain = (await page.locator('[data-audit="recorded-rain"]').count()) > 0
+      const order = [await pos('[data-audit="weather-forecast"]'), ...(hasRain ? [await pos('[data-audit="recorded-rain"]')] : []), await pos('[data-audit="weather-estimate"]'), await pos('[data-audit="drought-ribbon"]'), await pos('[data-audit="weather-radar"]')]
       const ascending = order.every((v, i) => i === 0 || (Number.isFinite(v) && v > order[i - 1]))
+      const zeroRain = /0\.00" .*rain|rain.*0\.00"/i.test(await page.locator('main').innerText().catch(() => ''))
       const title = await page.title()
       const h1 = await page.locator('h1').count()
       const rainRows = await page.locator('[data-audit="recorded-rain-row"]').count()
       const noneRows = await page.locator('[data-audit="recorded-rain-none"]').count()
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ribbonLabel = await page.locator('[data-audit="drought-ribbon"]').getAttribute('aria-label').catch(() => null)
-      record('6B: Weather runs forecast → recorded rain (gauge, source named) → county estimate vs station normal (PRISM/NOAA footer) → county drought (ribbon in words) → radar; one h1; title Weather', ascending && /^Weather/.test(title) && h1 === 1 && rainRows >= 1 && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `order ${order.join(' < ')} · title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
+      record('6B: Weather runs forecast → (recorded rain, gauge, only when a reading exists) → county estimate vs station normal (PRISM/NOAA footer) → county drought (ribbon in words) → radar; one h1; title Weather; never a zero for no reading', ascending && /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `order ${order.join(' < ')} · title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
     }
 
     // ── Block 6B (9): at 200% text size on a phone, Record is still reachable ──

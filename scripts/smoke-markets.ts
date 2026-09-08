@@ -111,7 +111,7 @@ async function main() {
     const page = await signIn(ctx)
     await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
-    await page.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
+    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 6B: two chart instances (cattle, context)
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     // The chart card is server-rendered before it is hydrated; a click that lands in
     // between is dropped. Wait for the network to go quiet and a beat more.
@@ -132,11 +132,12 @@ async function main() {
     record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
     record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
-    const stepBtn = page.getByRole('button', { name: /carried-forward steps/ })
-    const stepCopy = page.locator('[data-audit="step-copy"]')
+    const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
+    const stepBtn = cattleCard.getByRole('button', { name: /carried-forward steps/ })
+    const stepCopy = cattleCard.locator('[data-audit="step-copy"]')
     record('2.6E: carried-forward steps default OFF', /^Show carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Nothing is drawn between them/.test(await stepCopy.innerText()), (await stepBtn.innerText()).trim())
     await stepBtn.click()
-    await page.getByRole('button', { name: /^Hide carried-forward steps/ }).waitFor({ timeout: 5_000 }).catch(() => {})
+    await cattleCard.getByRole('button', { name: /^Hide carried-forward steps/ }).waitFor({ timeout: 5_000 }).catch(() => {})
     record('2.6E: copy follows the state when steps are shown', /^Hide carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Dashed steps only carry the last sale forward/.test(await stepCopy.innerText()))
     await stepBtn.click()
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
@@ -186,7 +187,7 @@ async function main() {
       await page.getByRole('radio', { name: 'This year', exact: true }).click()
       await page.locator('[data-audit="selection-strip"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
       const pts = await page.evaluate(`(function(){
-        return Array.from(document.querySelectorAll('[data-audit="chart"] [data-audit="point"]')).map(function(g){
+        return Array.from((document.querySelector('[data-audit="history-card"]') || document).querySelectorAll('[data-audit="chart"] [data-audit="point"]')).map(function(g){
           var c = g.querySelectorAll('circle'); var dot = c[c.length - 1];
           return { role: g.getAttribute('role'), tab: g.getAttribute('tabindex'), label: g.getAttribute('aria-label') || '', r: parseFloat(dot.getAttribute('r')), sw: parseFloat(dot.getAttribute('stroke-width')), fill: dot.getAttribute('fill') };
         });
@@ -203,9 +204,9 @@ async function main() {
         await sheet.waitFor({ timeout: 5_000 }).catch(() => {})
         const opened = await sheet.isVisible().catch(() => false)
         const first = opened ? (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1] : undefined
-        const nb = await page.locator('[data-audit="point-next"]').boundingBox({ timeout: 3_000 }).catch(() => null), pb = await page.locator('[data-audit="point-prev"]').boundingBox({ timeout: 3_000 }).catch(() => null)
+        const nb = await page.locator('[data-audit="point-next"]').first().boundingBox({ timeout: 3_000 }).catch(() => null), pb = await page.locator('[data-audit="point-prev"]').first().boundingBox({ timeout: 3_000 }).catch(() => null)
         record('2.6H: tapping the strip picks the nearest sale and opens the sheet with 48 px Previous / Next', opened && !!nb && nb.height >= 48 && !!pb && pb.height >= 48, `${first ?? 'no sheet'} · next ${nb?.height ?? 0}px · prev ${pb?.height ?? 0}px`)
-        const nextBtn = page.locator('[data-audit="point-next"]')
+        const nextBtn = page.locator('[data-audit="point-next"]').first()
         if (opened && !(await nextBtn.isDisabled())) {
           await nextBtn.click()
           const second = (await sheet.innerText()).match(/sale ([A-Z][a-z]{2} \d{1,2}, \d{4})/)?.[1]
@@ -214,7 +215,7 @@ async function main() {
         await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       }
       // Keyboard: Enter on a focused point opens the sheet; ArrowRight moves the pick.
-      const firstPt = page.locator('[data-audit="chart"] [data-audit="point"]').first()
+      const firstPt = page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"] [data-audit="point"]').first()
       await firstPt.focus()
       await page.keyboard.press('Enter')
       const kSheet = page.locator('[data-audit="point-sheet"]')
@@ -230,13 +231,13 @@ async function main() {
       record('2.6H: Enter picks the focused point; ArrowRight walks sale by sale', !!k1 && !!k2 && !!k3 && (pts.length === 1 || (k2 !== k1 && (pts.length === 2 || k3 !== k2))), `${k1 ?? '∅'} → ${k2 ?? '∅'} → ${k3 ?? '∅'}`)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       // The list: one 48 px row per sale, in date order.
-      await page.locator('[data-audit="sales-list-toggle"]').click()
+      await page.locator('[data-audit="sales-list-toggle"]').first().click()
       const rows = page.locator('[data-audit="sales-list"] li button')
       const n = await rows.count()
       const heights = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="sales-list"] li button')).map(function(e){ return e.getBoundingClientRect().height })`) as number[]
       const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
       record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
-      await page.locator('[data-audit="sales-list-toggle"]').click()
+      await page.locator('[data-audit="sales-list-toggle"]').first().click()
     }
 
     // ── Block 2.6I — every price-bearing component links to its report ──
@@ -245,7 +246,7 @@ async function main() {
       const auctionLinks = await linkIn('[data-audit="auction-card"]'), herdLinks = await linkIn('[data-audit="herd-value-card"]')
       record('2.6I: the auction card links to its report', auctionLinks >= 1, `${auctionLinks} link(s)`)
       record('2.6I: the herd value card links to each barn it priced at', herdLinks >= 1, `${herdLinks} link(s)`)
-      await page.locator('[data-audit="chart"] [data-audit="point"]').first().focus(); await page.keyboard.press('Enter')
+      await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"] [data-audit="point"]').first().focus(); await page.keyboard.press('Enter')
       const sheetLinks = await linkIn('[data-audit="point-sheet"]')
       record('2.6I: a picked point links to its report', sheetLinks >= 1, `${sheetLinks} link(s)`)
       const sheetEvidence = (await page.locator('[data-audit="point-sheet"] [data-audit="report-evidence"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
@@ -289,7 +290,7 @@ async function main() {
       record('2.6F: event chips run in date order', chipDates.every((d, i) => i === 0 || d >= chipDates[i - 1]))
       // The chart's dashed marker lines are filtered by the same period as the chips:
       // chips shown = markers drawn is the fact that the default list is in-period.
-      const markers = await page.locator('[data-audit="chart"] .recharts-reference-line').count()
+      const markers = await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"] .recharts-reference-line').count()
       record('2.6F: default chips are the events on the chart; the rest sit behind a disclosure', chips.length === markers && (await page.locator('[data-audit="event-more"]').count()) === 1, `${chips.length} chips · ${markers} markers · ${(await page.locator('[data-audit="event-more"]').allInnerTexts()).join('') || 'no disclosure'}`)
       await page.locator('[data-audit="event-more"]').click().catch(() => {})
       const outside = (await page.locator('[data-audit="event-outside"] [data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
@@ -319,7 +320,7 @@ async function main() {
         Array.from(card.querySelectorAll('button, select, a[href]')).forEach(function(el){ var b = el.getBoundingClientRect(); if (b.height > 0 && b.height < 48) small.push((el.textContent||'').trim().slice(0,24) + ' ' + Math.round(b.height) + 'px') });
         Array.from(card.querySelectorAll('p, span, li, label, text, tspan, option')).forEach(function(el){ var t = (el.textContent||'').trim(); var f = parseFloat(getComputedStyle(el).fontSize); var caps = getComputedStyle(el).textTransform === 'uppercase'; if (t && f > 0 && f < 15 && !caps && el.tagName.toLowerCase() !== 'option') tiny.push(el.tagName.toLowerCase() + ' ' + f + 'px ' + t.slice(0,24)) });
       });
-      var svg = document.querySelector('[data-audit="chart"] svg.recharts-surface');
+      var svg = (document.querySelector('[data-audit="history-card"]') || document).querySelector('[data-audit="chart"] svg.recharts-surface');
       var chartW = svg ? Math.round(svg.getBoundingClientRect().width) : 0;
       var hc = document.querySelector('[data-audit="history-card"]');
       var cardW = hc ? Math.round(hc.getBoundingClientRect().width) : 0;
@@ -332,7 +333,7 @@ async function main() {
       const mctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       const mp = await signIn(mctx)
       await mp.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
-      await mp.getByText(/carried-forward steps/).waitFor({ timeout: 45_000 }).catch(() => {})
+      await mp.getByText(/carried-forward steps/).first().waitFor({ timeout: 45_000 }).catch(() => {})
       await mp.waitForTimeout(1200)
       const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; cardW: number; cardInner: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
@@ -360,7 +361,7 @@ async function main() {
       if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source`, src) }
       else skip(`${width}px: tapping an event chip shows its source`, 'no events (migration 048?)')
       if (width === 390 && process.env.SHOT_DIR) {
-        await mp.locator('[data-audit="history-card"]').screenshot({ path: `${process.env.SHOT_DIR}/markets-history-390.png` }).catch(() => {})
+        await mp.locator('[data-audit="history-card"]').first().screenshot({ path: `${process.env.SHOT_DIR}/markets-history-390.png` }).catch(() => {})
         await mp.screenshot({ path: `${process.env.SHOT_DIR}/markets-full-390.png`, fullPage: true }).catch(() => {})
       }
       await mctx.close()
