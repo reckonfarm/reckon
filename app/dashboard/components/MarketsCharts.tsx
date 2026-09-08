@@ -24,6 +24,11 @@ import ReportEvidence from '@/app/components/ReportEvidence'
 //   • Event markers are dated facts with a source; no effect is ever computed.
 
 type View = 'year' | 'season' | 'compare' | 'cycle' | 'corn'
+// Block 6B: three independent controls. Period × comparison pick the cattle view; corn and
+// the cattle cycle are Market context, rendered by a second instance in mode 'context'.
+type Range = 'year' | 'season' | '12mo'
+type Compare = 'local' | 'regional' | 'national'
+type ContextView = 'corn' | 'cycle'
 type Measure = 'cwt' | 'head' | 'lot'
 
 export interface MarketsChartsProps {
@@ -36,6 +41,7 @@ export interface MarketsChartsProps {
   events: MarketEvent[]
   lot: { head: number; weightLb: number; label: string } | null   // the person's matching lot, for the lot-value measure
   spineStart: string | null       // earliest auction observation, ISO
+  mode?: 'cattle' | 'context'     // Block 6B: 'context' draws only corn and the cattle cycle (Market context)
 }
 
 const FOREST = '#1B4332'
@@ -223,6 +229,10 @@ const Note = ({ children }: { children: React.ReactNode }) => <p className="mt-2
 // Block 2.6B — the vertical axis names its unit in words, from the SAME `unit`
 // the title and the tooltip read, so a stale measure can never leave the axis
 // in one unit and the title in another. The smoke asserts the two agree.
+const DotLegend = () => (
+  <p className="mt-1 font-dm-sans text-[16px] text-ink" data-audit="dot-legend">Each dot is a reported sale; open dots have fewer than {THIN_HEAD_THRESHOLD} head.</p>
+)
+
 const AxisUnit = ({ unit }: { unit: string }) => (
   <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="axis-unit">Vertical axis · {unit}</p>
 )
@@ -344,7 +354,11 @@ function SalesList({ ordered, unit, pickedKey, onPick }: { ordered: Dot[]; unit:
 }
 
 export default function MarketsCharts(p: MarketsChartsProps) {
-  const [view, setView] = useState<View>('year')
+  const [range, setRange] = useState<Range>('year')
+  const [compare, setCompare] = useState<Compare>('local')
+  const [ctx, setCtx] = useState<ContextView>('corn')
+  const mode = p.mode ?? 'cattle'
+  const view: View = mode === 'context' ? ctx : range === 'season' ? 'season' : compare === 'local' ? 'year' : 'compare'
   const [cls, setCls] = useState<'Steers' | 'Heifers'>('Steers')
   const [band, setBand] = useState<string>('500')
   const [measure, setMeasure] = useState<Measure>('cwt')
@@ -373,18 +387,20 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
   // ── The series each view draws (Block 2.6H: built once, so the chart, the
   //    selection strip, Previous/Next, and the list all walk the same points). ──
+  const [nowMs] = useState(() => Date.now())   // fixed at mount: the 12-month window must not move between renders
+  const inRange = (pts: AuctionPoint[]) => range === '12mo' ? pts.filter(pt => ms(pt.date) >= nowMs - 365 * 86_400_000) : pts.filter(pt => Number(pt.date.slice(0, 4)) === currentYear)
   const yearList = local ? [
-    ...(priorYears.length ? [{ name: `${priorYears[priorYears.length - 1]}`, color: GRAY, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === priorYears[priorYears.length - 1]) }) }] : []),
-    { name: `${currentYear}`, color: FOREST, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === currentYear) }) },
+    ...(range === 'year' && priorYears.length ? [{ name: `${priorYears[priorYears.length - 1]}`, color: GRAY, dots: toDots({ ...local, points: local.points.filter(pt => Number(pt.date.slice(0, 4)) === priorYears[priorYears.length - 1]) }) }] : []),
+    { name: range === '12mo' ? 'Last 12 months' : `${currentYear}`, color: FOREST, dots: toDots({ ...local, points: inRange(local.points) }) },
   ] : []
   const natMetric = cls === 'Steers' && (bandSel === '500' || bandSel === '700') ? `feeder_steer_${bandSel}` : null
   const nat = natMetric ? (p.national[natMetric] ?? []) : []
   const natDots: Dot[] = nat.map(n => ({ t: ms(n.date), v: measureValue(n.value, measure, bandSel, p.lot), head: n.head ?? 0, thin: false,
     p: { date: n.date, price: n.value, low: n.low, high: n.high, head: n.head ?? 0, thin: false, reportId: n.reportId, barn: 'USDA AMS national feeder summary', town: 'National', cls, band: bandSel, revision: null }, series: 'national', idx: 0 }))
   const compareList = [
-    ...(local ? [{ name: p.localLabel, color: FOREST, dots: toDots(local) }] : []),
-    ...others.map(o => ({ name: `Regional — ${o.town}`, color: UP, dots: toDots(o) })),
-    ...(natDots.length ? [{ name: scopeLabel({ kind: 'national' }), color: RUST, dots: natDots }] : []),
+    ...(local ? [{ name: p.localLabel, color: FOREST, dots: toDots({ ...local, points: inRange(local.points) }) }] : []),
+    ...(compare === 'regional' ? others.map(o => ({ name: `Regional — ${o.town}`, color: UP, dots: toDots({ ...o, points: inRange(o.points) }) })) : []),
+    ...(compare === 'national' && natDots.length ? [{ name: scopeLabel({ kind: 'national' }), color: RUST, dots: natDots.filter(d => range !== '12mo' || d.t >= nowMs - 365 * 86_400_000) }] : []),
   ]
   const cornFeederList = local ? [{ name: p.localLabel, color: FOREST, dots: toDots(local) }] : []
   const activeList = view === 'year' ? yearList : view === 'compare' ? compareList : view === 'corn' ? cornFeederList : []
@@ -423,10 +439,16 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
       <p className={EYEBROW}>Cattle markets · history</p>
       <div className="mt-3 space-y-3">
-        <ChipRow<View> label="Chart" value={view} onChange={v => { setView(v); setPickedKey(null) }} options={[
-          { value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: 'compare', label: 'Local · national' }, { value: 'cycle', label: 'Cattle cycle' }, { value: 'corn', label: 'Corn' },
-        ]} />
-        {view !== 'cycle' && (
+        {mode === 'context' ? (
+          <ChipRow<ContextView> label="Context" value={ctx} onChange={v => { setCtx(v); setPickedKey(null) }} options={[{ value: 'corn', label: 'Corn' }, { value: 'cycle', label: 'Cattle cycle' }]} />
+        ) : (
+          <>
+            {/* Three independent controls — changing one never resets another. */}
+            <ChipRow<Range> label="Period" value={range} onChange={v => { setRange(v); setPickedKey(null) }} options={[{ value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: '12mo', label: '12 mo' }]} />
+            <ChipRow<Compare> label="Comparison" value={compare} onChange={v => { setCompare(v); setPickedKey(null) }} options={[{ value: 'local', label: 'Local' }, { value: 'regional', label: 'Regional' }, { value: 'national', label: 'National' }]} />
+          </>
+        )}
+        {view !== 'cycle' && mode !== 'context' && (
           <>
             <div className="flex flex-wrap items-center gap-2">
               <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
@@ -472,10 +494,11 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'year' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
           {local ? (
             <>
               <ObservationChart seriesList={yearList} {...chartProps} />
+              <DotLegend />
               <Note>
                 {priorYears.length === 0
                   ? <>History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'} — no prior year to compare yet, and no five-year band. The band appears as years accrue and will say how many it holds.</>
@@ -499,13 +522,14 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'compare' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Local · regional · national · {cls} {bandLabel(bandSel)} · {unit}</p>
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {compare === 'regional' ? 'Local and regional barns' : 'Local and national'} · {unit}</p>
           <ObservationChart seriesList={compareList} {...chartProps} />
+          <DotLegend />
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[16px]" data-audit="legend">
             {compareList.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
           </ul>
           <Note>
-            Three sources, three lines, never averaged together. Regional here means the other Montana barns we carry — not a Northern Plains composite, which we do not have.
+            Sources are never averaged together. Regional here means the other Montana barns we carry — not a Northern Plains composite, which we do not have.
             {!natMetric && ' The national feeder summary reports 500–599 and 700–799 lb steers; no national line for this band.'}
           </Note>
         </div>
@@ -548,7 +572,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
             const x0 = Math.min(...all) - 86_400_000 * 2, x1 = Math.max(...all) + 86_400_000 * 2
             return (
               <>
-                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{p.localLabel} · {cls} {bandLabel(bandSel)} · {unit}</p>
+                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
                 {feeder.length > 0
                   ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
                   : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
@@ -586,14 +610,17 @@ export default function MarketsCharts(p: MarketsChartsProps) {
       {view !== 'cycle' && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
-            {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'}
+            {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'} <span className="font-normal">· last available reference</span>
           </button>
           <span className="font-dm-sans text-[16px] text-ink" data-audit="step-copy">
             {step
-              ? <>Points are reported sales. Dashed steps only carry the last sale forward — nothing between sales is a price anyone reported.</>
+              ? <>Points are reported sales. Dashed steps only carry the last sale forward — the last available reference, not a price anyone reported.</>
               : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
-            {' '}Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more.
           </span>
+          <details className="w-full" data-audit="chart-details">
+            <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Chart details</summary>
+            <p className="mt-1 font-dm-sans text-[16px] text-ink">Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more. The vertical axis is the unit in the title. Dates on the axis are sale dates. Nothing is interpolated.</p>
+          </details>
         </div>
       )}
       {view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}

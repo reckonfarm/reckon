@@ -144,7 +144,8 @@ async function main() {
     // ── Block 2.6B — title unit = axis unit in every view × measure ──
     // The chart title and the "Vertical axis · …" caption read the same `unit`;
     // this walks every combination and checks the two RENDERED strings agree.
-    for (const v of ['This year', 'Local · national', 'Corn'] as const) {
+    // Block 6B: period and comparison are separate controls; Corn lives in Market context (its own instance).
+    for (const v of ['This year', '12 mo', 'Corn'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
         if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
@@ -161,6 +162,21 @@ async function main() {
     }
     await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
     await page.getByRole('radio', { name: 'This year', exact: true }).click()
+    // ── Block 6B — three independent controls: changing one never resets the others ──
+    {
+      await page.getByRole('radio', { name: 'National', exact: true }).click()
+      await page.getByRole('radio', { name: '12 mo', exact: true }).click()
+      const natStill = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
+      const title12 = (await page.locator('[data-audit="chart-title"]').first().innerText()).trim()
+      await page.getByRole('radio', { name: 'Heifers', exact: true }).click()
+      const natAfterClass = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
+      const periodAfterClass = await page.getByRole('radio', { name: '12 mo', exact: true }).getAttribute('aria-checked')
+      const legend = await page.locator('[data-audit="dot-legend"]').first().innerText().catch(() => '')
+      record('6B: period · comparison · class are independent — National survives a period change, both survive a class change; the legend names open dots', natStill === 'true' && natAfterClass === 'true' && periodAfterClass === 'true' && /national/i.test(title12) && /Each dot is a reported sale; open dots have fewer than 20 head/.test(legend), `title "${title12}" · legend "${legend}"`)
+      await page.getByRole('radio', { name: 'Steers', exact: true }).click()
+      await page.getByRole('radio', { name: 'Local', exact: true }).click()
+      await page.getByRole('radio', { name: 'This year', exact: true }).click()
+    }
 
     // ── Block 2.6H — points, the selection strip, the sheet, keyboard, the list ──
     {
@@ -245,17 +261,17 @@ async function main() {
     else {
       const lrpText = await text(page, '[data-audit="lrp-hero"] >> xpath=ancestor::*[contains(@class,"rounded")][1]').catch(() => '')
       record('2.6C: the monotonic sentence is gone', !/Longer coverage = lower floor/.test(body) && !/Longer coverage = lower floor/.test(lrpText))
-      const terms = page.locator('[data-audit="lrp-term"]')
-      const labels = (await terms.allInnerTexts()).map(t => t.trim())
-      record('2.6C: every term chip reads "Mon D, YYYY · N wk" and no two read the same', labels.length > 0 && labels.every(l => /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d+ wk$/.test(l)) && new Set(labels).size === labels.length, labels.slice(0, 4).join(' | '))
+      const terms = page.locator('[data-audit="lrp-term"]')   // Block 6B: the options of the labeled date select
+      const labels = (await terms.evaluateAll(els => els.map(e => (e.textContent ?? '').trim())))
+      record('2.6C: every endorsement option reads "Mon D, YYYY · N wk" and no two read the same', labels.length > 0 && labels.every(l => /^[A-Z][a-z]{2} \d{1,2}, \d{4} · \d+ wk$/.test(l)) && new Set(labels).size === labels.length, labels.slice(0, 4).join(' | '))
       const idx = Math.min(labels.length - 1, 2)
       const chip = terms.nth(idx)
       const floor = await chip.getAttribute('data-floor'), weeks = await chip.getAttribute('data-weeks')
-      await chip.click()
+      await page.locator('[data-audit="lrp-term-select"]').selectOption({ index: idx + 1 })   // index 0 is the default endorsement
       const hero = (await page.locator('[data-audit="lrp-hero"]').innerText()).replace(/\s+/g, ' ').trim()
       const sub = await page.locator('[data-audit="lrp-subline"]').innerText()
       record('2.6C: picking a term moves the headline with it', hero.startsWith(`$${floor}`) && new RegExp(`${weeks}-wk endorsement`).test(sub), `${labels[idx]} → ${hero} · ${sub.trim()}`)
-      await chip.click()
+      await page.locator('[data-audit="lrp-term-select"]').selectOption({ index: 0 })
     }
 
     // Event markers + Since (need migration 048)

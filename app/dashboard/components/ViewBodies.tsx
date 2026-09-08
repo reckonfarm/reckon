@@ -845,6 +845,10 @@ export async function MarketsViewBody({
       </section>
       {/* Market context — the four macro indicators, each with its source date and interval. Last, never first. */}
       {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+      {/* Corn and the cattle cycle live here, not in the chart's control group (Block 6B). */}
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
+      </Suspense>
     </>
   )
 }

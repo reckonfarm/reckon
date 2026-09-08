@@ -47,31 +47,28 @@ function BasisRiskLine() {
 // moves the hero, the premium line, and the end date together; nothing below the hero
 // ever shows a different floor from the one above it.
 function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: number | null; onSel: (i: number | null) => void }) {
+  // Block 6B: one labeled select in place of a row of equal-weight buttons. The
+  // current choice is visible in the control; every option is the endorsement's
+  // end DATE and its length, built only from the real ladder.
   return (
     <div className="mt-4 border-t border-forest-green/10 pt-3">
-      <p className="font-dm-sans text-[16px] font-medium text-ink">
-        Selling later? Pick the endorsement that ends nearest your sale date — the floor and premium above follow the pick.
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <label htmlFor="lrp-term" className="block font-dm-sans text-[16px] font-medium text-ink">
+        Endorsement — pick the one that ends nearest your sale date; the floor, premium, and end date above follow it.
+      </label>
+      <select
+        id="lrp-term"
+        value={sel ?? ''}
+        onChange={e => onSel(e.target.value === '' ? null : Number(e.target.value))}
+        className="mt-2 min-h-[48px] w-full rounded-lg border border-forest-green/20 bg-white px-3 font-dm-sans text-[16px] tabular-nums text-forest-green"
+        data-audit="lrp-term-select"
+      >
+        <option value="">Showing the default endorsement</option>
         {ladder.map((r, i) => (
-          <button
-            key={`${r.endorsement_end_date}-${r.endorsement_length_weeks}`}
-            type="button"
-            onClick={() => onSel(sel === i ? null : i)}
-            aria-pressed={sel === i}
-            data-audit="lrp-term"
-            data-floor={r.coverage_price.toFixed(2)}
-            data-weeks={r.endorsement_length_weeks}
-            className={`min-h-[48px] rounded-md border px-4 font-dm-sans text-[16px] font-medium tabular-nums transition-colors ${
-              sel === i
-                ? 'border-forest-green bg-forest-green text-cream'
-                : 'border-forest-green/15 text-secondary-ink hover:bg-forest-green/5'
-            }`}
-          >
+          <option key={`${r.endorsement_end_date}-${r.endorsement_length_weeks}`} value={i} data-audit="lrp-term" data-floor={r.coverage_price.toFixed(2)} data-weeks={r.endorsement_length_weeks}>
             {fmtDate(r.endorsement_end_date)} · {r.endorsement_length_weeks} wk
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   )
 }
@@ -106,9 +103,9 @@ function OkBody({ lrp, ladder }: { lrp: LrpHeadline; ladder: LrpLadderRung[] }) 
 
       {/* Real detail for the rung on show: producer premium + endorsement end date. */}
       <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="lrp-detail">
-        {shown.premium > 0 && <>${shown.premium.toFixed(2)}/cwt premium after subsidy</>}
-        {shown.premium > 0 && shown.ends ? ' · ' : ''}
-        {shown.ends && <>coverage ends {fmtDate(shown.ends)}</>}
+        <>Coverage price ${shown.floor.toFixed(2)}/cwt · {commodity}{type ? ` (${type})` : ''}</>
+        {shown.premium > 0 && <> · ${shown.premium.toFixed(2)}/cwt premium after subsidy</>}
+        {shown.ends && <> · coverage ends {fmtDate(shown.ends)}</>}
         {picked
           ? <> · {picked.endorsement_length_weeks}-wk endorsement picked</>
           : lrp.endorsement_length_weeks ? <> · showing the {lrp.endorsement_length_weeks}-wk endorsement by default</> : null}
