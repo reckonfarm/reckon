@@ -267,7 +267,7 @@ async function main() {
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
     const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2C: the answer — recorded, remaining from the count, no invented runway',
-      /4 bales recorded/.test(strip1) && /196 bales on hand \(from your count of 200/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))
+      /4 bales recorded/.test(strip1) && /200 counted [^+]+ \+ 0 added \u2212 4 fed = 196 bales on hand/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))   // 6C: the complete equation
     // Block 5E — Today, reordered: quick record above the ledgers, the ledger strip open on Hay,
     // conditions and the forecast below, and no news feed on the signed-in Today.
     {
@@ -699,6 +699,33 @@ async function main() {
           const again = await page.locator('[data-audit="correct-entry"]').count()
           record('5B: a corrected entry offers no second correction (correct the current entry instead)', again === 0, `${again} correct button(s) on the original`)
         }
+      }
+    }
+
+    // ── Block 6 (6C): the receipt and the Hay balance state one complete equation ──
+    // The audit's receipt left the stacked bales out ("323 from your count of
+    // 420 … 102 fed since"), so 420 − 102 = 318 looked like a wrong answer.
+    // Stack 5, feed 1, and read the equation off the receipt and off the Hay
+    // panel: every term present, it adds up, the numbers agree, ranch scope stated.
+    {
+      const { error: sErr } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'bales_stacked', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, count: 5, place_id: placeId } })
+      if (sErr) skip('6C: the equation', `could not stack 5 bales: ${sErr.message}`)
+      else {
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(1_000)
+        await logFeed(page, 1)
+        await watchStates(page, 'Synced to ranch', 20_000, 'Fed 1 bale')
+        let strip = ''
+        for (let i = 0; i < 32 && !/bales? on hand/.test(strip); i++) { strip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip)) await page.waitForTimeout(250) }
+        const EQ = /(\d+) counted [^+]+ \+ (\d+) added \u2212 (\d+) fed = (-?\d+) bales? on hand/
+        const m = strip.match(EQ)
+        const nums = m ? m.slice(1, 5).map(Number) : null
+        const adds = !!nums && nums[0] + nums[1] - nums[2] === nums[3]
+        record('6C: the receipt states the complete equation — counted + added − fed = on hand — it adds up, the 5 stacked are in it, ranch scope stated', !!nums && adds && nums[1] === 5 && /across the ranch/.test(strip), m ? `"${m[0]}" · ${/across the ranch/.test(strip) ? 'scope stated' : 'NO scope'}` : `no equation in: ${strip.slice(0, 160)}`)
+        await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+        const eq = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        const m2 = eq.match(EQ)
+        record('6C: the Hay balance states the same equation with the same numbers — one explanation model', !!m2 && !!m && m2.slice(1, 5).join() === m.slice(1, 5).join() && /across the ranch/.test(eq), m2 ? `"${m2[0]}"` : `no equation in: ${eq.slice(0, 160)}`)
       }
     }
 

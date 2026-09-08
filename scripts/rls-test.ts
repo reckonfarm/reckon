@@ -488,8 +488,9 @@ async function correctionChecks() {
   const after = await seed('hay_fed', '2026-09-03T18:00:00Z', { bales: 6, herd_lot_id: null })
   const onHandOf = (j: Record<string, unknown>) => {
     const lines = ((j.consequence as { lines?: string[] } | undefined)?.lines ?? [])
-    const m = lines.map(l => l.match(/^(-?[\d,]+) bales? on hand \(from your count of ([\d,]+) on /)).find(Boolean)
-    return m ? { onHand: parseInt(m[1].replace(/,/g, ''), 10), counted: parseInt(m[2].replace(/,/g, ''), 10), lines } : { onHand: NaN, counted: NaN, lines }
+    // 6C: the receipt states the complete equation "N counted <day> + A added − F fed = X bales on hand, …"
+    const m = lines.map(l => l.match(/^([\d,]+) counted [^+]+ \+ [\d,]+ added \u2212 [\d,]+ fed = (-?[\d,]+) bales? on hand/)).find(Boolean)
+    return m ? { onHand: parseInt(m[2].replace(/,/g, ''), 10), counted: parseInt(m[1].replace(/,/g, ''), 10), lines } : { onHand: NaN, counted: NaN, lines }
   }
   const ev = (j: Record<string, unknown>) => (j.event ?? {}) as Record<string, unknown>
 
