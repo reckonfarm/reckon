@@ -100,6 +100,13 @@ export interface CountyRow extends County {
 
 // ─── Sub-components (server-safe) ─────────────────────────────────────────────
 
+// 6K: the Drought Monitor is VALID on a Tuesday and RELEASED that Thursday; the two
+// dates are named apart wherever one shows (the map said Sep 3 while the status
+// strip said the week of Sep 1 — both right, neither labeled).
+export function usdmReleaseDate(validIso: string): string {
+  const d = new Date(`${validIso.slice(0, 10)}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 2)
+  return d.toISOString().slice(0, 10)
+}
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'short',
@@ -402,7 +409,7 @@ export async function WeatherViewBody({
       </Suspense>
       {/* 3. County rainfall estimate vs station normal — the scope in the title; two sources, never one instrument. */}
       <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
-        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall estimate vs station normal · {selectedCounty.name} County</h2>
+        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall estimate vs station normal · {selectedCounty.name}</h2>
         <Suspense fallback={<RainfallPanelSkeleton />}>
           <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
         </Suspense>
@@ -438,7 +445,7 @@ export async function WeatherViewBody({
         </p>
       <DashboardAccordion
         title="Regional map"
-        preview={latest ? `U.S. Drought Monitor · week of ${formatDate(latest.week_date)}` : 'U.S. Drought Monitor'}
+        preview={latest ? `U.S. Drought Monitor · valid ${formatDate(latest.week_date)} · released ${formatDate(usdmReleaseDate(latest.week_date))}` : 'U.S. Drought Monitor'}
       >
         <RegionalMapLoader
           fips={selectedCounty.fips}

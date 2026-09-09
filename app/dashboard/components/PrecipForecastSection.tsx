@@ -118,6 +118,7 @@ function PrecipTooltip({
   active,
   payload,
   label,
+  measured,
 }: {
   active?: boolean
   payload?: Array<{ name: string; value: number; payload?: {
@@ -126,6 +127,7 @@ function PrecipTooltip({
     nearestRain?: { date: string; amount: number; tier: number; dir: 'same' | 'past' | 'future' } | null
   } }>
   label?: string
+  measured?: string   // 6K: 'County estimate' (PRISM grid) or 'Station gauge' — never a bare "Actual"
 }) {
   if (!active || !payload?.length || !label) return null
   const actual = payload.find(p => p.name === 'actualCumulative')
@@ -143,7 +145,7 @@ function PrecipTooltip({
   return (
     <div className="rounded-lg border border-forest-green/10 bg-white px-3 py-2 text-[14px] font-dm-sans">
       <p className="font-semibold text-forest-green mb-1">{date}</p>
-      {actual && <p className="text-forest-green">Actual: {actual.value.toFixed(2)}&quot;</p>}
+      {actual && <p className="text-forest-green">{measured ?? 'Actual'}: {actual.value.toFixed(2)}&quot;</p>}
       {normal && <p className="text-secondary-ink">Normal: {normal.value.toFixed(2)}&quot;</p>}
       {/* Rain context follows the scrub: an event day shows "Rain that day"; a dry day
           shows the NEAREST event ("Last rain" before it, "Next rain" if ahead of the first). */}
@@ -153,7 +155,7 @@ function PrecipTooltip({
         </p>
       ) : nearest ? (
         <p className="mt-1 font-medium" style={{ color: nearest.tier === 2 ? RAIN_GREAT : RAIN_GOOD }}>
-          {nearest.dir === 'future' ? 'Next rain' : 'Last rain'}: {fmtShort(nearest.date)} · {nearest.amount.toFixed(2)}&quot;
+          {nearest.dir === 'future' ? 'Next rain' : 'Last rain'} ({(measured ?? 'actual').toLowerCase()}): {fmtShort(nearest.date)} · {nearest.amount.toFixed(2)}&quot;
         </p>
       ) : null}
     </div>
@@ -207,6 +209,8 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
 
   const { dailyData, ytdActual, ytdNormal, deficit, deficitPct, source, label, distanceMiles, context, outOfCounty } = data
   const isDeficit = deficit < 0
+  // 6K: the line is a PRISM county estimate or a station's gauge — say which, never "Actual".
+  const measured = source === 'grid' ? 'County estimate' : 'Station gauge'
 
   // Per-day rainfall for the event markers — derived from the cumulative series (NO new
   // fetch). dayRain = today's cumulative − yesterday's, but ONLY when the two points are
@@ -289,7 +293,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           />
           <ReferenceLine y={0} stroke="rgba(27,67,50,0.12)" strokeWidth={1} />
           <Tooltip
-            content={<PrecipTooltip />}
+            content={<PrecipTooltip measured={measured} />}
             cursor={{ fill: 'rgba(27,67,50,0.06)' }}
             // Initialize the readout on the latest/rightmost point so the rancher opens on
             // "where we are now," then can drag back. Any touch/drag overrides it.
@@ -337,7 +341,7 @@ export function PrecipVsNormalPanel({ data, countyName }: { data: PrecipNormalRe
           <p className="text-2xl font-fraunces font-semibold text-forest-green">
             {ytdActual.toFixed(2)}&quot;
           </p>
-          <p className="text-[14px] text-secondary-ink font-dm-sans mt-0.5">YTD Actual</p>
+          <p className="text-[14px] text-secondary-ink font-dm-sans mt-0.5" data-audit="ytd-measured-label">YTD · {measured}</p>
         </div>
         <div>
           <p className="text-2xl font-fraunces font-semibold text-secondary-ink">

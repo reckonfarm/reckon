@@ -97,7 +97,7 @@ function LegendCard({ layer, status, asOf, count }: { layer: VectorLayer; status
         : status === 'empty'
           ? <span className="text-secondary-ink">{layer.emptyNote ?? 'None active'}</span>
           : asOf
-            ? `As of ${asOf}`
+            ? `${layer.asOfLabel ?? 'As of'} ${asOf}`
             : <span className="text-secondary-ink">{count} active</span>
   return (
     <div className="absolute bottom-3 right-3 z-[1000] rounded-lg border border-black/10 bg-white/95 px-3 py-2 font-dm-sans">

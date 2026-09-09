@@ -1,5 +1,6 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
+import { usdmReleaseDate } from './ViewBodies'
 
 // Weekly USDM history point (relocated from the old DroughtHistoryChart). d0..d4 are
 // CUMULATIVE coverage ("Dn or worse"); `none` is unused here but kept for shape parity
@@ -166,7 +167,7 @@ export default function LatestReadingCard({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Heading level={3} visual={5}>County drought</Heading>
         <span className="rounded-full bg-forest-green/10 px-3 py-1 text-[14px] font-medium text-forest-green font-dm-sans">
-          Week of {formatWeek(latest.week_date)}
+          Valid {formatWeek(latest.week_date)} · released {formatWeek(usdmReleaseDate(latest.week_date))}
         </span>
       </div>
 
