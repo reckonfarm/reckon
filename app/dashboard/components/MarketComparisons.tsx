@@ -46,7 +46,7 @@ export interface ReportDate { label: string; date: string }
 const usdAbout = (n: number) => (Math.abs(n) >= 10_000 ? `$${Math.round(n / 1000)}k` : usdRounded(n))
 const shortTown = (t: string) => t.replace(/,\s*[A-Z]{2}$/, '')
 
-export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, localSlug = null, reports, titled = true }: {
+export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, localSlug = null, reports, titled = true, heading = true }: {
   estimate: HerdEstimate
   lots: Lot[]
   trend: TrendData | null
@@ -55,6 +55,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
   localSlug?: string | null   // 6I: the barn the page is scoped to — a lot priced elsewhere says so
   reports: ReportDate[]
   titled?: boolean
+  heading?: boolean           // Block 7: the page title is ViewBodies' now; false = no title block here
 }) {
   const byId = new Map(lots.map(l => [l.id, l]))
   const priced = estimate.perLot.filter(l => l.value != null && l.source)
@@ -74,14 +75,14 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
 
   return (
     <>
-      <div>
+      {heading && <div>
         {titled ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</h1> : <p className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</p>}
         {reports.length > 0 && (
           <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="markets-report-dates">
             Latest reports: {reports.map((r, i) => <span key={r.label}>{i > 0 && ' · '}{r.label} {fmtShort(r.date)}</span>)}
           </p>
         )}
-      </div>
+      </div>}
 
       {/* What changed for my cattle — the comparable's movement, and the lot's own edits, apart. */}
       {estimate.perLot.length > 0 && (

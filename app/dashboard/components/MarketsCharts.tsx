@@ -7,7 +7,7 @@ import {
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { AuctionSeries, AuctionPoint, NationalPoint, CornPoint, CyclePoint, MarketEvent } from '@/lib/markets/series'
-import { THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
+import { reportUrl, THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
 import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
@@ -369,7 +369,8 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [measure, setMeasure] = useState<Measure>('cwt')
   const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
-  const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
+  const [changeOpen, setChangeOpen] = useState(false)     // Block 7: class · weight band · measure, behind "Change cattle"
+  const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and, from 3/8, steps, events, details) behind "Compare and settings"
   const [listOpen, setListOpen] = useState(false)  // Block 2.6H — "View sales as list"
   const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
@@ -443,28 +444,57 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     // chart takes the width; from sm it sits in the stack like every other card.
     <div className="-mx-4 sm:mx-0">
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
-      <p className={EYEBROW}>Cattle markets · history</p>
+      <p className={EYEBROW}>{mode === 'context' ? 'Broader context · chart' : 'Selected cattle'}</p>
+      {/* Block 7 (Part 1): the answer first — the latest reported price for the cattle in view, with its
+          date, barn, sample size and change — above every control. Controls live behind two disclosures:
+          "Change cattle" (class · weight band · measure) and "Compare and settings" (period · comparison). */}
+      {mode !== 'context' && (() => {
+        const sorted = [...localPts].sort((a, b) => a.date.localeCompare(b.date))
+        const latest = sorted[sorted.length - 1] ?? null, prev = sorted[sorted.length - 2] ?? null
+        const town = p.localLabel.split(' — ').slice(-1)[0] ?? p.localLabel
+        return (
+          <div className="mt-2" data-audit="selected-cattle">
+            {latest ? (
+              <>
+                <p className="type-main-number text-ink" data-audit="selected-price">{fmtWithUnit(measureValue(latest.price, measure, bandSel, p.lot), unit)}</p>
+                <p className="mt-1 font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
+                <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="selected-evidence">
+                  {town} · {fmtDay(latest.date)} · {latest.head.toLocaleString('en-US')} head{latest.thin ? ' — limited sample' : ''}
+                  {' · '}<a href={reportUrl(latest.reportId)} target="_blank" rel="noopener noreferrer" className="font-semibold text-forest-green underline underline-offset-2" data-audit="report-link">Report ↗</a>
+                </p>
+                <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="selected-change">
+                  {prev
+                    ? (() => { const d = Math.round((latest.price - prev.price) * 100) / 100; return d === 0 ? <>No change since {fmtDay(prev.date)}</> : <><span aria-hidden>{d > 0 ? '▲' : '▼'}</span> {d > 0 ? 'Up' : 'Down'} ${Math.abs(d).toFixed(2)}/cwt since {fmtDay(prev.date)}{latest.thin || prev.thin ? ' · one side a limited sample' : ''}</> })()
+                    : <>One reported sale so far.</>}
+                </p>
+              </>
+            ) : (
+              <p className="font-dm-sans text-[17px] text-ink" data-audit="selected-price">No reported sale for {cls.toLowerCase()} {bandLabel(bandSel)} at {town} yet.</p>
+            )}
+          </div>
+        )
+      })()}
       <div className="mt-3 space-y-3">
         {mode === 'context' ? (
           <ChipRow<ContextView> label="Context" value={ctx} onChange={v => { setCtx(v); setPickedKey(null) }} options={[{ value: 'corn', label: 'Corn' }, { value: 'cycle', label: 'Cattle cycle' }]} />
         ) : (
           <>
-            {/* Three independent controls — changing one never resets another. */}
-            <ChipRow<Range> label="Period" value={range} onChange={v => { setRange(v); setPickedKey(null) }} options={[{ value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: '12mo', label: '12 mo' }]} />
-            <ChipRow<Compare> label="Comparison" value={compare} onChange={v => { setCompare(v); setPickedKey(null) }} options={[{ value: 'local', label: 'Local' }, { value: 'regional', label: 'Regional' }, { value: 'national', label: 'National' }]} />
-          </>
-        )}
-        {view !== 'cycle' && mode !== 'context' && (
-          <>
             <div className="flex flex-wrap items-center gap-2">
-              <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
-              <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
+              <button type="button" aria-expanded={changeOpen} onClick={() => setChangeOpen(v => !v)} data-audit="change-cattle"
                 className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-                {more ? 'Less ▴' : `${bandLabel(bandSel)} · ${measure === 'cwt' ? '$/cwt' : measure === 'head' ? '$/head' : 'My lot'} · More ▾`}
+                {changeOpen ? 'Done ▴' : 'Change cattle ▾'}
+              </button>
+              <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)} data-audit="compare-settings"
+                className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
+                {settingsOpen ? 'Done ▴' : 'Compare and settings ▾'}
               </button>
             </div>
-            {more && (
-              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3">
+            {changeOpen && (
+              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="change-cattle-panel">
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Class</p>
+                  <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
+                </div>
                 {bandsAvailable.length > 0 && (
                   <div>
                     <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Weight band</p>
@@ -474,6 +504,19 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                 <div>
                   <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Measure</p>
                   <ChipRow<Measure> label="Measure" value={measure} onChange={setMeasure} options={measureOptions} />
+                </div>
+              </div>
+            )}
+            {settingsOpen && (
+              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="compare-settings-panel">
+                {/* Three independent controls — changing one never resets another. Seasonality only once a prior year exists. */}
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Period</p>
+                  <ChipRow<Range> label="Period" value={range} onChange={v => { setRange(v); setPickedKey(null) }} options={[{ value: 'year', label: 'This year' }, ...(priorYears.length > 0 ? [{ value: 'season' as Range, label: 'Season' }] : []), { value: '12mo', label: '12 mo' }]} />
+                </div>
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Comparison</p>
+                  <ChipRow<Compare> label="Comparison" value={compare} onChange={v => { setCompare(v); setPickedKey(null) }} options={[{ value: 'local', label: 'Local' }, { value: 'regional', label: 'Regional' }, { value: 'national', label: 'National' }]} />
                 </div>
               </div>
             )}

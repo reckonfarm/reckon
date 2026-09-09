@@ -826,6 +826,26 @@ export async function MarketsViewBody({
           report dates → what changed for my cattle → the comparisons (one qualified row
           per lot; a gross total only when honest) and the selected lot → the chart for the
           same lot → the local board → references → price protection → market context. */}
+      {/* Block 7 (Part 1): the answer first. Title → the selected cattle's latest price and its chart
+          (above every control) → what changed since the last visit → my cattle → the rest. */}
+      {(() => { const area = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name; return (
+        <div>
+          {titled ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</h1> : <p className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</p>}
+          {reportDates.length > 0 && (
+            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="markets-report-dates">
+              Latest reports: {reportDates.map((r, i) => <span key={r.label}>{i > 0 && ' · '}{r.label} {new Date(`${r.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>)}
+            </p>
+          )}
+        </div>
+      ) })()}
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
+      </Suspense>
+      {homeFips && (
+        <Suspense fallback={null}>
+          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
+        </Suspense>
+      )}
       {anchor && (
         <MarketComparisons
           estimate={anchor.estimate}
@@ -835,18 +855,9 @@ export async function MarketsViewBody({
           area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
           localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null}
           reports={reportDates}
-          titled={titled}
+          heading={false}
         />
       )}
-      {!anchor && titled && <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {selectedCounty.name}</h1>}
-      {homeFips && (
-        <Suspense fallback={null}>
-          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
-        </Suspense>
-      )}
-      <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
-      </Suspense>
       {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
       {anchor && <PriceHistoryPanel trend={anchor.trend} />}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}

@@ -85,6 +85,14 @@ async function seed() {
   if (hErr) throw new Error(`heifer lot: ${hErr.message}`)
 }
 
+// Block 7: the chart's controls live behind two disclosures — open both before touching a radio.
+async function openChartControls(page: Page) {
+  for (const a of ['change-cattle', 'compare-settings']) {
+    const b = page.locator(`[data-audit="${a}"]`).first()
+    if (await b.count() && (await b.getAttribute('aria-expanded')) !== 'true') await b.click()
+  }
+}
+
 async function signIn(ctx: BrowserContext): Promise<Page> {
   const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
   const page = await ctx.newPage()
@@ -130,7 +138,7 @@ async function main() {
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
-    record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
+    record('B3: history card with the carried-forward toggle', /Selected cattle/i.test(body) && /carried-forward steps/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
     const stepBtn = cattleCard.getByRole('button', { name: /carried-forward steps/ })
@@ -149,11 +157,12 @@ async function main() {
     // The chart title and the "Vertical axis · …" caption read the same `unit`;
     // this walks every combination and checks the two RENDERED strings agree.
     // Block 6B: period and comparison are separate controls; Corn lives in Market context (its own instance).
+    await openChartControls(page)
     for (const v of ['This year', '12 mo', 'Corn'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
         if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
-          await page.getByRole('button', { name: /More ▾/ }).click()
+          await openChartControls(page)
           await page.getByRole('radio', { name: m, exact: true }).waitFor({ timeout: 5_000 }).catch(() => {})
         }
         await page.getByRole('radio', { name: m, exact: true }).click()
