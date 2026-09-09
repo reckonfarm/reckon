@@ -621,6 +621,22 @@ async function main() {
       const expanded = (await page.locator('[data-audit="weather-drought-map"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const named = parked.filter(l => new RegExp(`\\b${l}\\b`, 'i').test(mainText) || new RegExp(`\\b${l}\\b`, 'i').test(expanded))
       record('7-1: the map is named a Drought map, and no visible copy on Weather names a layer the registry has parked', parked.length >= 1 && /Drought map/.test(mapSection) && named.length === 0, `parked in registry: ${parked.join(', ')} · named on the page: ${named.length ? named.join(', ') : 'none'}`)
+      // Block 7 (3): public Weather is the destination — a signed-out person who taps the Weather tab gets the
+      // seven-day forecast first; public Today keeps its brief outlook.
+      {
+        const pubCtx = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        const pub = await pubCtx.newPage()
+        await pub.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pub.locator('[data-audit="forecast-strip"]').waitFor({ timeout: 30_000 }).catch(() => {})
+        const todayStrip = await pub.locator('[data-audit="forecast-strip"]').count()
+        await pub.getByRole('tab', { name: 'Weather', exact: true }).click().catch(() => {})
+        await pub.locator('[data-audit="weather-forecast"]').waitFor({ timeout: 30_000 }).catch(() => {})
+        const fcSection = await pub.locator('[data-audit="weather-forecast"]').count()
+        const days = await pub.locator('[data-audit="weather-forecast"] button').count()
+        const order = await pub.evaluate(() => { const a = document.querySelector('[data-audit="weather-forecast"]'), b = document.querySelector('[data-audit="weather-estimate"]'); return a && b ? (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? 'forecast first' : 'estimate first') : 'missing' })
+        record('7-3: signed out, the Weather tab opens with the seven-day forecast (the destination) and Today keeps its brief outlook', todayStrip === 1 && fcSection === 1 && days >= 7 && order === 'forecast first', `Today strip ${todayStrip} · Weather forecast sections ${fcSection} · day chips ${days} · ${order}`)
+        await pubCtx.close()
+      }
       const est = (await page.locator('[data-audit="weather-estimate"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ytdLabel = (await page.locator('[data-audit="ytd-measured-label"]').innerText().catch(() => '')).trim()
       const prism = /PRISM/i.test(est)

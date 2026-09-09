@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase-server'
 import { computeLfpEligibility, type LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
-import type { LocalForecast } from '@/lib/nws'
+import { getLocalForecast, type LocalForecast } from '@/lib/nws'
 import { timeoutSignal } from '@/lib/external-fetch'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
@@ -946,7 +946,12 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
         .catch(() => ({ ok: false as const }))
       const precipPromise: Promise<PrecipNormalResult> =
         getPrecipNormal(county.fips, county.lat, county.lon).catch(() => 'data_unavailable' as const)
-      // No forecast fetch here since layout commit 3: the carousel is Today's.
+      // Block 7 (3): the public Weather tab is the destination too. A direct landing on
+      // ?view=drought already streamed the seven-day forecast; a tab switch came through here
+      // without it (layout commit 3 had left the forecast to Today), so a signed-out person saw
+      // the forecast on Today and never on Weather.
+      const forecastPromise: Promise<LocalForecast | null> =
+        county.lat != null && county.lon != null ? getLocalForecast(county.lat, county.lon).catch(() => null) : Promise.resolve(null)
       return (
         <Suspense fallback={<RainfallPanelSkeleton />}>
           <WeatherViewBody
@@ -956,6 +961,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
             user={user}
             lfpPromise={lfpPromise}
             precipPromise={precipPromise}
+            forecastPromise={forecastPromise}
           />
         </Suspense>
       )
