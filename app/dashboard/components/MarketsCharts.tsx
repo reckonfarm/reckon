@@ -7,7 +7,7 @@ import {
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { AuctionSeries, AuctionPoint, NationalPoint, CornPoint, CyclePoint, MarketEvent } from '@/lib/markets/series'
-import { THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
+import { reportUrl, THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
 import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
@@ -97,7 +97,7 @@ function PointTip({ active, payload, unit }: { active?: boolean; payload?: { pay
 // (an OPEN shape, so size is not the only cue), 9 px for 20–99 head, 12 px for
 // 100+. No invisible hit disc: the thumb target is the 48 px selection strip under
 // the chart, and every point is a keyboard-reachable button with a text label.
-const pointRadius = (head: number) => head < THIN_HEAD_THRESHOLD ? 3 : head < 100 ? 4.5 : 6
+const pointRadius = (head: number) => head < THIN_HEAD_THRESHOLD ? 4 : head < 100 ? 6 : 8   // Block 7: larger dots — open under the threshold, solid above
 const pointLabel = (d: Dot, unit: string) => `Sale ${fmtDayYear(d.p.date)} · ${fmtWithUnit(d.v, unit)} · ${d.p.head.toLocaleString('en-US')} head · ${d.p.barn}`
 function EvidenceDot(props: { cx?: number; cy?: number; payload?: Dot; fill?: string; unit?: string; pickedKey?: string | null; onPick?: (d: Dot) => void; onKeyPick?: (d: Dot) => void; onStep?: (d: Dot, dir: -1 | 1) => void }) {
   const { cx, cy, payload, fill, unit = '$/cwt', pickedKey, onPick, onKeyPick, onStep } = props
@@ -233,9 +233,6 @@ const DotLegend = () => (
   <p className="mt-1 font-dm-sans text-[16px] text-ink" data-audit="dot-legend">Each dot is a reported sale; open dots have fewer than {THIN_HEAD_THRESHOLD} head.</p>
 )
 
-const AxisUnit = ({ unit }: { unit: string }) => (
-  <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="axis-unit">Vertical axis · {unit}</p>
-)
 
 // A wrapping row of 48 px chips — never a horizontal scroll, never a shrunk
 // segmented control. One row per selector; the active chip is solid.
@@ -289,8 +286,10 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
   // beat later in case layout ran late.
   const all = seriesList.flatMap(s => s.dots)
   if (all.length === 0) return <Note>No observations to draw yet.</Note>
-  const ticks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
-  const x0 = domain ? domain[0] : ticks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : ticks[ticks.length - 1] + 86_400_000 * 2
+  const allTicks = [...new Set(all.map(d => d.t))].sort((a, b) => a - b)
+  // Block 7: three or four date labels, not one per sale — the dates are on the dots and in the list.
+  const ticks = allTicks.length <= 4 ? allTicks : [...new Set([0, 1 / 3, 2 / 3, 1].map(f => allTicks[Math.round(f * (allTicks.length - 1))]))]
+  const x0 = domain ? domain[0] : allTicks[0] - 86_400_000 * 2, x1 = domain ? domain[1] : allTicks[allTicks.length - 1] + 86_400_000 * 2
   const focusPoint = (idx: number) => {
     const go = () => (document.querySelector(`[data-audit="chart"] [data-audit="point"][data-idx="${idx}"]`) as HTMLElement | null)?.focus()
     window.setTimeout(go, 0)
@@ -323,7 +322,6 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
         </ComposedChart>
       </ResponsiveContainer>
       <SelectionStrip ordered={ordered} x0={x0} x1={x1} pickedKey={pickedKey} unit={unit} onPick={onPick} />
-      <AxisUnit unit={unit} />
     </div>
   )
 }
@@ -369,8 +367,10 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [measure, setMeasure] = useState<Measure>('cwt')
   const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
-  const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
-  const [listOpen, setListOpen] = useState(false)  // Block 2.6H — "View sales as list"
+  const [showEvents, setShowEvents] = useState(false)    // Block 7: dated event markers live in Compare and settings, off by default
+  const [salesView, setSalesView] = useState(false)      // Block 7: Chart | Sales — two views of one section
+  const [changeOpen, setChangeOpen] = useState(false)     // Block 7: class · weight band · measure, behind "Change cattle"
+  const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and, from 3/8, steps, events, details) behind "Compare and settings"
   const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
@@ -436,35 +436,64 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     ...(p.lot ? [{ value: 'lot' as Measure, label: 'My lot' }] : []),
   ]
 
-  const chartProps = { ordered, unit, events: p.events, step, onPick: pick, pickedKey: livePickedKey }
+  const chartProps = { ordered, unit, events: showEvents ? p.events : [], step, onPick: pick, pickedKey: livePickedKey }
 
   return (
     // On a phone the card bleeds to the screen edges and pads 12 px, so the
     // chart takes the width; from sm it sits in the stack like every other card.
     <div className="-mx-4 sm:mx-0">
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
-      <p className={EYEBROW}>Cattle markets · history</p>
+      <p className={EYEBROW}>{mode === 'context' ? 'Broader context · chart' : 'Selected cattle'}</p>
+      {/* Block 7 (Part 1): the answer first — the latest reported price for the cattle in view, with its
+          date, barn, sample size and change — above every control. Controls live behind two disclosures:
+          "Change cattle" (class · weight band · measure) and "Compare and settings" (period · comparison). */}
+      {mode !== 'context' && (() => {
+        const sorted = [...localPts].sort((a, b) => a.date.localeCompare(b.date))
+        const latest = sorted[sorted.length - 1] ?? null, prev = sorted[sorted.length - 2] ?? null
+        const town = p.localLabel.split(' — ').slice(-1)[0] ?? p.localLabel
+        return (
+          <div className="mt-2" data-audit="selected-cattle">
+            {latest ? (
+              <>
+                <p className="type-main-number text-ink" data-audit="selected-price">{fmtWithUnit(measureValue(latest.price, measure, bandSel, p.lot), unit)}</p>
+                <p className="mt-1 font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
+                <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="selected-evidence">
+                  {town} · {fmtDay(latest.date)} · {latest.head.toLocaleString('en-US')} head{latest.thin ? ' — limited sample' : ''}
+                  {' · '}<a href={reportUrl(latest.reportId)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2" data-audit="report-link">Report ↗</a>
+                </p>
+                <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="selected-change">
+                  {prev
+                    ? (() => { const d = Math.round((latest.price - prev.price) * 100) / 100; return d === 0 ? <>No change since {fmtDay(prev.date)}</> : <><span aria-hidden>{d > 0 ? '▲' : '▼'}</span> {d > 0 ? 'Up' : 'Down'} ${Math.abs(d).toFixed(2)}/cwt since {fmtDay(prev.date)}{latest.thin || prev.thin ? ' · one side a limited sample' : ''}</> })()
+                    : <>One reported sale so far.</>}
+                </p>
+              </>
+            ) : (
+              <p className="font-dm-sans text-[17px] text-ink" data-audit="selected-price">No reported sale for {cls.toLowerCase()} {bandLabel(bandSel)} at {town} yet.</p>
+            )}
+          </div>
+        )
+      })()}
       <div className="mt-3 space-y-3">
         {mode === 'context' ? (
           <ChipRow<ContextView> label="Context" value={ctx} onChange={v => { setCtx(v); setPickedKey(null) }} options={[{ value: 'corn', label: 'Corn' }, { value: 'cycle', label: 'Cattle cycle' }]} />
         ) : (
           <>
-            {/* Three independent controls — changing one never resets another. */}
-            <ChipRow<Range> label="Period" value={range} onChange={v => { setRange(v); setPickedKey(null) }} options={[{ value: 'year', label: 'This year' }, { value: 'season', label: 'Season' }, { value: '12mo', label: '12 mo' }]} />
-            <ChipRow<Compare> label="Comparison" value={compare} onChange={v => { setCompare(v); setPickedKey(null) }} options={[{ value: 'local', label: 'Local' }, { value: 'regional', label: 'Regional' }, { value: 'national', label: 'National' }]} />
-          </>
-        )}
-        {view !== 'cycle' && mode !== 'context' && (
-          <>
             <div className="flex flex-wrap items-center gap-2">
-              <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
-              <button type="button" aria-expanded={more} onClick={() => setMore(v => !v)}
+              <button type="button" aria-expanded={changeOpen} onClick={() => setChangeOpen(v => !v)} data-audit="change-cattle"
                 className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-                {more ? 'Less ▴' : `${bandLabel(bandSel)} · ${measure === 'cwt' ? '$/cwt' : measure === 'head' ? '$/head' : 'My lot'} · More ▾`}
+                {changeOpen ? 'Done ▴' : 'Change cattle ▾'}
+              </button>
+              <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)} data-audit="compare-settings"
+                className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
+                {settingsOpen ? 'Done ▴' : 'Compare and settings ▾'}
               </button>
             </div>
-            {more && (
-              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3">
+            {changeOpen && (
+              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="change-cattle-panel">
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Class</p>
+                  <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
+                </div>
                 {bandsAvailable.length > 0 && (
                   <div>
                     <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Weight band</p>
@@ -475,6 +504,38 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                   <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Measure</p>
                   <ChipRow<Measure> label="Measure" value={measure} onChange={setMeasure} options={measureOptions} />
                 </div>
+              </div>
+            )}
+            {settingsOpen && (
+              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="compare-settings-panel">
+                {/* Three independent controls — changing one never resets another. Seasonality only once a prior year exists. */}
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Period</p>
+                  <ChipRow<Range> label="Period" value={range} onChange={v => { setRange(v); setPickedKey(null) }} options={[{ value: 'year', label: 'This year' }, ...(priorYears.length > 0 ? [{ value: 'season' as Range, label: 'Season' }] : []), { value: '12mo', label: '12 mo' }]} />
+                </div>
+                <div>
+                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Comparison</p>
+                  <ChipRow<Compare> label="Comparison" value={compare} onChange={v => { setCompare(v); setPickedKey(null) }} options={[{ value: 'local', label: 'Local' }, { value: 'regional', label: 'Regional' }, { value: 'national', label: 'National' }]} />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" aria-pressed={showEvents} onClick={() => { setShowEvents(v => !v); if (showEvents) setPicked(null) }} data-audit="events-toggle"
+                    className="min-h-[48px] rounded-lg border border-rust/40 px-4 font-dm-sans text-[16px] font-semibold text-rust hover:bg-rust/5">
+                    {showEvents ? 'Hide dated events' : 'Show dated events'}
+                  </button>
+                  <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
+                    {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'} <span className="font-normal">· last available reference</span>
+                  </button>
+                </div>
+                <span className="block font-dm-sans text-[16px] text-ink" data-audit="step-copy">
+                  {step
+                    ? <>Points are reported sales. Dashed steps only carry the last sale forward — the last available reference, not a price anyone reported.</>
+                    : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
+                </span>
+                {showEvents && view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
+                <details className="w-full" data-audit="chart-details">
+                  <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Chart details</summary>
+                  <p className="mt-1 font-dm-sans text-[16px] text-ink">Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more. Dates are on each sale; three or four are labeled on the axis. Ranges stay ranges — nothing is averaged, smoothed, or drawn between sales.</p>
+                </details>
               </div>
             )}
           </>
@@ -498,12 +559,17 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         </div>
       )}
 
+      {mode !== 'context' && view !== 'season' && ordered.length > 0 && (
+        <div className="mt-3">
+          <ChipRow<'chart' | 'sales'> label="View" value={salesView ? 'sales' : 'chart'} onChange={v => setSalesView(v === 'sales')} options={[{ value: 'chart', label: 'Chart' }, { value: 'sales', label: `Sales (${ordered.length})` }]} />
+        </div>
+      )}
       {view === 'year' && (
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
           {local ? (
             <>
-              <ObservationChart seriesList={yearList} {...chartProps} />
+              {salesView ? <SalesList ordered={ordered} unit={unit} pickedKey={livePickedKey} onPick={pick} /> : <ObservationChart seriesList={yearList} {...chartProps} />}
               <DotLegend />
               <Note>
                 {priorYears.length === 0
@@ -529,7 +595,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
       {view === 'compare' && (
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {compare === 'regional' ? 'Local and regional barns' : 'Local and national'} · {unit}</p>
-          <ObservationChart seriesList={compareList} {...chartProps} />
+          {salesView ? <SalesList ordered={ordered} unit={unit} pickedKey={livePickedKey} onPick={pick} /> : <ObservationChart seriesList={compareList} {...chartProps} />}
           <DotLegend />
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[16px]" data-audit="legend">
             {compareList.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
@@ -607,7 +673,6 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-                <AxisUnit unit="$/bu" />
                 <Note>Corn is the feedlot&apos;s input cost. When corn rises, the buyer&apos;s cost of gain rises and feeder bids tend to come down. That is the mechanism; no number is attached to it here, because weekly sales over a short spine cannot support one.</Note>
               </>
             )
@@ -615,35 +680,6 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         </div>
       )}
 
-      {view !== 'cycle' && view !== 'season' && ordered.length > 0 && (
-        <div className="mt-3">
-          <button type="button" aria-expanded={listOpen} onClick={() => setListOpen(v => !v)} data-audit="sales-list-toggle"
-            className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-            {listOpen ? 'Hide the list ▴' : `View sales as list (${ordered.length}) ▾`}
-          </button>
-          {listOpen && <SalesList ordered={ordered} unit={unit} pickedKey={livePickedKey} onPick={pick} />}
-        </div>
-      )}
-
-      {view !== 'cycle' && (
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
-            {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'} <span className="font-normal">· last available reference</span>
-          </button>
-          <span className="font-dm-sans text-[16px] text-ink" data-audit="step-copy">
-            {step
-              ? <>Points are reported sales. Dashed steps only carry the last sale forward — the last available reference, not a price anyone reported.</>
-              : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
-          </span>
-          <details className="w-full" data-audit="chart-details">
-            <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Chart details</summary>
-            <p className="mt-1 font-dm-sans text-[16px] text-ink">Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more. The vertical axis is the unit in the title. Dates on the axis are sale dates. Nothing is interpolated.</p>
-          </details>
-        </div>
-      )}
-      {/* Dated events belong to the cattle chart; the Market-context instance does not repeat them. */}
-      {mode !== 'context' && view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
-      {mode !== 'context' && picked && view === 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
     </Card>
     </div>
   )

@@ -44,6 +44,7 @@ import LrpMarketsCard from './LrpMarketsCard'
 import LocalAuctionCard from './LocalAuctionCard'
 import NationalBeefCard from './NationalBeefCard'
 import MarketReadShell from './MarketReadShell'
+import Disclosure from '@/app/components/ui/Disclosure'
 import JobsView, { JobsViewSkeleton } from './JobsView'
 import type { DashboardViewKey, ViewParams } from './DashboardViews'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -827,6 +828,26 @@ export async function MarketsViewBody({
           report dates → what changed for my cattle → the comparisons (one qualified row
           per lot; a gross total only when honest) and the selected lot → the chart for the
           same lot → the local board → references → price protection → market context. */}
+      {/* Block 7 (Part 1): the answer first. Title → the selected cattle's latest price and its chart
+          (above every control) → what changed since the last visit → my cattle → the rest. */}
+      {(() => { const area = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name; return (
+        <div>
+          {titled ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</h1> : <p className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</p>}
+          {reportDates.length > 0 && (
+            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="markets-report-dates">
+              Latest reports: {reportDates.map((r, i) => <span key={r.label}>{i > 0 && ' · '}{r.label} {new Date(`${r.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>)}
+            </p>
+          )}
+        </div>
+      ) })()}
+      <Suspense fallback={null}>
+        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
+      </Suspense>
+      {homeFips && (
+        <Suspense fallback={null}>
+          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
+        </Suspense>
+      )}
       {anchor && (
         <MarketComparisons
           estimate={anchor.estimate}
@@ -836,37 +857,61 @@ export async function MarketsViewBody({
           area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
           localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null}
           reports={reportDates}
-          titled={titled}
+          heading={false}
         />
       )}
-      {!anchor && titled && <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {selectedCounty.name}</h1>}
-      {homeFips && (
-        <Suspense fallback={null}>
-          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
-        </Suspense>
-      )}
-      <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
-      </Suspense>
       {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
       {anchor && <PriceHistoryPanel trend={anchor.trend} />}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
       <LocalAuctionCard result={localAuction} volume={anchor?.trend?.volume ?? null} />
-      <NationalBeefCard result={nationalBeef} />
-      {/* Sale video: no feed is connected, and nothing pretends otherwise (6B resolution 3). */}
-      <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
       {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
+      {/* Block 7 (Part 1, 6/8): one "LRP references" row is the answer — the selected lot's reference
+          floor (else the LRP headline), a stale date never hidden — and the calculator, per-lot floors,
+          endorsements, premiums and basis sit behind one disclosure. */}
       <section className="space-y-3" aria-labelledby="price-protection-h" data-audit="price-protection">
-        <h2 id="price-protection-h" className={`${EYEBROW} !text-ink`}>Price protection · LRP references</h2>
-        {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
-        <LrpMarketsCard result={lrpResult} />
+        <h2 id="price-protection-h" className={`${EYEBROW} !text-ink`}>Price protection</h2>
+        {(() => {
+          const ok = anchor?.outlook && anchor.outlook.status === 'ok' ? anchor.outlook : null
+          const selLot = ok ? (ok.lots.find(l => l.lotId === selectedLotId && l.state === 'priced') ?? ok.lots.find(l => l.state === 'priced') ?? null) : null
+          const lrp = lrpResult.status === 'ok' ? lrpResult.lrp : null
+          const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          const line = selLot?.floor
+            ? `LRP references · ${selLot.label}: reference floor $${selLot.floor.coverage_price.toFixed(2)}/cwt · ${selLot.floor.endorsement_length_weeks}-wk`
+            : lrp ? `LRP references · floor $${lrp.coverage_price.toFixed(2)}/cwt · ${lrp.endorsement_length_weeks}-wk endorsement` : 'LRP references · temporarily unavailable'
+          const stale = lrp?.stale ? ` · latest available, as of ${fmt(lrp.effective_date)}` : ''
+          return <p className="font-dm-sans text-[17px] text-ink" data-audit="price-protection-row">{line}{stale}<span className="block text-[14px] text-secondary-ink">A CME national index floor, not your local cash price — basis varies.</span></p>
+        })()}
+        <Disclosure title="Calculator and endorsements" audit="price-protection-more" remember="price-protection" summary="Per-lot reference floors, the endorsement ladder, premiums, basis">
+          <div className="space-y-3">
+            {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
+            <LrpMarketsCard result={lrpResult} />
+          </div>
+        </Disclosure>
       </section>
-      {/* Market context — the four macro indicators, each with its source date and interval. Last, never first. */}
-      {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-      {/* Corn and the cattle cycle live here, not in the chart's control group (Block 6B). */}
-      <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
-      </Suspense>
+      {/* Block 7 (Part 1, 7/8): one "National markets and feed costs" row, with national beef, corn,
+          the cattle cycle and the market read behind one disclosure. Last, never first. */}
+      <section className="space-y-3" aria-labelledby="broader-context-h" data-audit="broader-context">
+        <h2 id="broader-context-h" className={`${EYEBROW} !text-ink`}>Broader context</h2>
+        {(() => {
+          const fed = nationalBeef.status === 'ok' ? nationalBeef.fedSteer : null
+          const cornOk = corn.status === 'ok' ? corn : null
+          const parts = [
+            fed ? `fed steers $${fed.value.toFixed(2)}/cwt${fed.stale ? ' (latest available)' : ''}` : null,
+            cornOk ? `corn $${(cornOk.settlePrice / 100).toFixed(2)}/bu` : null,
+          ].filter(Boolean)
+          return <p className="font-dm-sans text-[17px] text-ink" data-audit="broader-context-row">National markets and feed costs{parts.length ? ` · ${parts.join(' · ')}` : ''}</p>
+        })()}
+        <Disclosure title="National markets and feed costs" audit="broader-context-more" remember="broader-context" summary="National beef, corn, the cattle cycle, and the market read">
+          <div className="space-y-4">
+            <NationalBeefCard result={nationalBeef} />
+            {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
+            <Suspense fallback={null}>
+              <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
+            </Suspense>
+            <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
+          </div>
+        </Disclosure>
+      </section>
     </>
   )
 }

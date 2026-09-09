@@ -19,6 +19,7 @@
 // Writes only RLS-TEST-* rows under the two synthetic accounts (the smoke
 // scratch-account rule: nothing here touches a real ranch's ledger).
 
+import { guardWorktree } from './lib/suite-guard'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -35,6 +36,7 @@ function loadEnv() {
   }
 }
 loadEnv()
+guardWorktree('rls-test')
 
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY

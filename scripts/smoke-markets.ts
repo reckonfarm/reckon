@@ -27,6 +27,7 @@
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/smoke-markets.ts
 
+import { guardWorktree } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
@@ -44,6 +45,7 @@ function loadEnv() {
   }
 }
 loadEnv()
+guardWorktree('smoke-markets')
 const BASE = process.env.BASE ?? 'https://www.dryline.farm'
 const BYPASS = BASE.includes('vercel.app') ? process.env.VERCEL_BYPASS : undefined
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -85,6 +87,22 @@ async function seed() {
   if (hErr) throw new Error(`heifer lot: ${hErr.message}`)
 }
 
+// Block 7: the chart's controls live behind two disclosures — open both before touching a radio.
+async function openChartControls(page: Page) {
+  // Broader context (the corn / cycle chart) sits behind a disclosure — open it so its Context radios exist.
+  const bc = page.locator('[data-audit="broader-context-more"]').first()
+  if (await bc.count() && (await bc.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="broader-context-more-summary"]').first().click()
+  for (const a of ['change-cattle', 'compare-settings']) {
+    const b = page.locator(`[data-audit="${a}"]`).first()
+    if (await b.count() && (await b.getAttribute('aria-expanded')) !== 'true') await b.click()
+  }
+}
+// Block 7: price protection's calculator sits behind a disclosure.
+async function openPriceProtection(page: Page) {
+  const d = page.locator('[data-audit="price-protection-more"]').first()
+  if (await d.count() && (await d.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="price-protection-more-summary"]').first().click()
+}
+
 async function signIn(ctx: BrowserContext): Promise<Page> {
   const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
   const page = await ctx.newPage()
@@ -111,7 +129,9 @@ async function main() {
     const page = await signIn(ctx)
     await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
-    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 6B: two chart instances (cattle, context)
+    await page.locator('[data-audit="compare-settings"]').first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 7: the chart's controls sit behind disclosures
+    await openChartControls(page)
+    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     // The chart card is server-rendered before it is hydrated; a click that lands in
     // between is dropped. Wait for the network to go quiet and a beat more.
@@ -124,13 +144,13 @@ async function main() {
     record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
     record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
     // Phase A5 — units live with the number or in the heading; the essay is gone.
-    record('A5: the auction heading carries the unit', /Auction prices · \$\/cwt/.test(body))
+    record('A5: the auction heading carries the unit', /Other cattle markets · \$\/cwt/.test(body))
     record('A5: no repeated disclaimer block under the auction rows', !/Close match = same class/.test(body) && !/head-weighted within each 100-lb band/.test(body))
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
-    record('B3: history card with the carried-forward toggle', /Cattle markets · history/i.test(body) && /carried-forward steps/i.test(body))
+    record('B3: history card with the carried-forward toggle', /Selected cattle/i.test(body) && /carried-forward steps/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
     const stepBtn = cattleCard.getByRole('button', { name: /carried-forward steps/ })
@@ -149,19 +169,20 @@ async function main() {
     // The chart title and the "Vertical axis · …" caption read the same `unit`;
     // this walks every combination and checks the two RENDERED strings agree.
     // Block 6B: period and comparison are separate controls; Corn lives in Market context (its own instance).
+    await openChartControls(page)
     for (const v of ['This year', '12 mo', 'Corn'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
         if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
-          await page.getByRole('button', { name: /More ▾/ }).click()
+          await openChartControls(page)
           await page.getByRole('radio', { name: m, exact: true }).waitFor({ timeout: 5_000 }).catch(() => {})
         }
         await page.getByRole('radio', { name: m, exact: true }).click()
-        await page.locator('[data-audit="axis-unit"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
-        const titles = await page.locator('[data-audit="chart-title"]').allInnerTexts()
-        const axes = (await page.locator('[data-audit="axis-unit"]').allInnerTexts()).map(t => t.replace(/^Vertical axis · /, '').trim())
-        const agree = titles.length > 0 && titles.length === axes.length && titles.every((t, i) => t.trim().endsWith(axes[i]))
-        record(`2.6B ${v} × ${m}: title unit = axis unit`, agree, `${titles.map((t, i) => `"${t.split(' · ').slice(-1)[0]}" vs "${axes[i] ?? '∅'}"`).join('; ')}`)
+        await page.locator('[data-audit="chart-title"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+        const titles = (await page.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
+        // Block 7: the unit lives in the chart heading; the separate "Vertical axis" paragraph is gone.
+        const agree = titles.length > 0 && titles.every(t => /(\$\/cwt|\$\/head at \d+ lb|value of .+|\$\/bu)$/.test(t)) && !/Vertical axis/.test(await text(page))
+        record(`2.6B ${v} × ${m}: the unit is in every chart heading, and no axis paragraph`, agree, titles.map(t => `"${t.split(' · ').slice(-1)[0]}"`).join('; '))
       }
     }
     await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
@@ -193,7 +214,7 @@ async function main() {
         });
       })()`) as { role: string | null; tab: string | null; label: string; r: number; sw: number; fill: string }[]
       record('2.6H: every point group has role, tabindex, and a text label', pts.length > 0 && pts.every(x => x.role === 'button' && x.tab === '0' && /^Sale [A-Z][a-z]{2} \d{1,2}, \d{4} · \$/.test(x.label)), pts[0]?.label ?? 'no points')
-      record('2.6H: point size is 6 / 9 / 12 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [3, 4.5, 6].includes(x.r) && x.sw === 2 && (x.r !== 3 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
+      record('2.6H: point size is 8 / 12 / 16 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [4, 6, 8].includes(x.r) && x.sw === 2 && (x.r !== 4 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
       const strip = page.locator('[data-audit="selection-strip"]').first()
       await strip.scrollIntoViewIfNeeded().catch(() => {})
       const sb = await strip.boundingBox()
@@ -231,13 +252,13 @@ async function main() {
       record('2.6H: Enter picks the focused point; ArrowRight walks sale by sale', !!k1 && !!k2 && !!k3 && (pts.length === 1 || (k2 !== k1 && (pts.length === 2 || k3 !== k2))), `${k1 ?? '∅'} → ${k2 ?? '∅'} → ${k3 ?? '∅'}`)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       // The list: one 48 px row per sale, in date order.
-      await page.locator('[data-audit="sales-list-toggle"]').first().click()
+      await page.getByRole('radio', { name: /^Sales \(\d+\)$/ }).first().click()   // Block 7: Chart | Sales, two views of one section
       const rows = page.locator('[data-audit="sales-list"] li button')
       const n = await rows.count()
       const heights = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="sales-list"] li button')).map(function(e){ return e.getBoundingClientRect().height })`) as number[]
       const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
-      record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
-      await page.locator('[data-audit="sales-list-toggle"]').first().click()
+      record('2.6H: the Sales view — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
+      await page.getByRole('radio', { name: 'Chart', exact: true }).first().click()
     }
 
     // ── Block 2.6I — every price-bearing component links to its report ──
@@ -261,6 +282,7 @@ async function main() {
     }
 
     // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
+    await openPriceProtection(page)
     if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
     else {
       const lrpText = await text(page, '[data-audit="lrp-hero"] >> xpath=ancestor::*[contains(@class,"rounded")][1]').catch(() => '')
@@ -282,7 +304,10 @@ async function main() {
     const { error: evErr } = await admin.from('market_events').select('id').limit(1)
     if (evErr) skip('B6/B7: event markers and Since you last checked', `migration 048 not applied (${evErr.message.slice(0, 50)})`)
     else {
-      record('B6: event markers with a source link', /▾/.test(body), '')
+      await openChartControls(page)
+      const evToggle = page.locator('[data-audit="events-toggle"]').first()
+      if ((await evToggle.getAttribute('aria-pressed')) !== 'true') await evToggle.click()
+      record('B6 / Block 7: dated events are off by default and live in Compare and settings — one toggle shows the markers and their chips', (await evToggle.count()) === 1 && (await evToggle.getAttribute('aria-pressed')) === 'true', (await evToggle.innerText()).trim())
       // Block 2.6F — years on every closed chip, chronological, only in-period by default.
       const chips = (await page.locator('[data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
       const chipDates = chips.map(t => Date.parse(t))
@@ -357,8 +382,12 @@ async function main() {
         record(`${width}px: no tooltip lingers over the chart after the tap`, lingering === 0, `${lingering} tooltip(s)`)
       }
       else record(`${width}px: tapping a point opens its evidence`, false, 'no points')
-      const chip = mp.getByRole('button', { name: /^▾/ }).first()
-      if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source`, src) }
+      // Block 7: dated events are opt-in from Compare and settings — open it and switch them on before looking for a chip.
+      await mp.locator('[data-audit="compare-settings"]').first().click().catch(() => {})
+      const evT = mp.locator('[data-audit="events-toggle"]').first()
+      if (await evT.count() && (await evT.getAttribute('aria-pressed')) !== 'true') await evT.click().catch(() => {})
+      const chip = mp.locator('[data-audit="event-chip"]').first()
+      if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source (events switched on from Compare and settings)`, src) }
       else skip(`${width}px: tapping an event chip shows its source`, 'no events (migration 048?)')
       if (width === 390 && process.env.SHOT_DIR) {
         await mp.locator('[data-audit="history-card"]').first().screenshot({ path: `${process.env.SHOT_DIR}/markets-history-390.png` }).catch(() => {})
@@ -401,6 +430,7 @@ async function main() {
       record('6B: no gross total unless every lot clears 20 head and shares purpose and basis — and every row names its reference sale', gross === 0 && /^No gross total: /.test(noGross) && refSales.length >= 1 && refSales.every(r => /^Reference sale: /.test(r)), `gross ${gross} · "${noGross}" · [${refSales.join(' | ')}]`)
       const eyebrow = (await page.locator('[data-audit="herd-value-card"] p').first().innerText().catch(() => '')).trim()
       record('6B: the headline reads Market comparisons for N lots, never Herd value', /^Market comparisons for \d+ lots?$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
+      await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})   // Block 7: receipts sit behind Sale detail
       const receipts = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head (across .+ class(es)?|on the .+ report), /.test(receipts), `"${receipts.slice(0, 100)}"`)
 
@@ -428,6 +458,7 @@ async function main() {
       const deltaRows = await page.locator('[data-audit="delta-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const phLines = [...spreadRows, ...deltaRows]
       record('6I: Price history carries no barn in its heading — every range and movement names the barn it is measured at', /^price history$/i.test(phHeading) && phLines.length > 0 && phLines.every(t => / at [A-Z][^:]+:/.test(t)), `heading "${phHeading}" · ${phLines.length} lines · "${(phLines[0] ?? '').slice(0, 70)}"`)
+      if ((await page.locator('[data-audit="sale-detail"]').first().getAttribute('data-open').catch(() => 'false')) !== 'true') await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})
       const rc = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       const headline = rc.match(/^Receipts: ([\d,]+) head (across|on the) /)
       const parts = [...rc.matchAll(/: ([\d,]+) head/g)].map(m => parseInt(m[1].replace(/,/g, ''), 10)).slice(1)
@@ -436,7 +467,9 @@ async function main() {
 
       // ── Block 7 (2): one cattle chart on the page by default; the feeder panel beside corn only when opened ──
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="broader-context-more"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      await openChartControls(page)
+      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const cattleTitles = () => page.locator('[data-audit="chart-title"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^(Steers|Heifers) · /.test(t)))
       const before7 = await cattleTitles()
       const contextCard = page.locator('[data-audit="history-card"]').nth(1)
@@ -447,6 +480,27 @@ async function main() {
       const cornTitlesAfter = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
       record('7-2: one cattle chart on the page by default — the corn view draws corn alone; "Compare with feeder cattle" opens a second aligned panel with its own unit', before7.length === 1 && cornTitlesBefore.length === 1 && /\$\/bu$/.test(cornTitlesBefore[0].trim()) && after7.length === 2 && cornTitlesAfter.length === 2 && /\$\/cwt$|\$\/head$|per head$/.test(cornTitlesAfter[0]) && /\$\/bu$/.test(cornTitlesAfter[1]), `default cattle titles ${before7.length} · corn card titles ${cornTitlesBefore.join(' | ')} → after opening: ${cornTitlesAfter.join(' | ')}`)
       await page.locator('[data-audit="corn-compare"]').click().catch(() => {})
+
+      // ── Block 7 (Part 1): done-when, as rendered — on the DEFAULT page: the disclosures this run opened are
+      // remembered per browser (by design), so forget them first and measure what a first visit sees.
+      await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('dryline_disclosure_')) localStorage.removeItem(k) })
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="selected-price"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const yOf = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? Math.round(b.y + Number(await page.evaluate('window.scrollY'))) : -1 }
+      const priceText = (await page.locator('[data-audit="selected-price"]').first().innerText().catch(() => '')).trim()
+      const priceY = await yOf('[data-audit="selected-price"]'), chartY = await yOf('[data-audit="history-card"] [data-audit="chart"]')
+      // visible controls, in document order, with whether each precedes the price (no named inner functions: esbuild's keepNames breaks page.evaluate)
+      const controlRows = await page.locator('main [role="radiogroup"], main [role="radio"], main select').evaluateAll(els => els.map(e => ({ y: Math.round(e.getBoundingClientRect().top + window.scrollY), label: e.getAttribute('aria-label') ?? e.tagName.toLowerCase(), group: e.getAttribute('role') === 'radiogroup', visible: e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'), beforePrice: !!document.querySelector('main [data-audit="selected-price"]') && (e.compareDocumentPosition(document.querySelector('main [data-audit="selected-price"]')!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 })))
+      const firstControlBefore = controlRows.some(c => c.visible && c.beforePrice)
+      const groupsAboveChart = controlRows.filter(c => c.group && c.visible && chartY > 0 && c.y < chartY).map(c => c.label)
+      const cattleEyebrows = (await page.locator('main p').evaluateAll(els => els.filter(e => (e.textContent ?? '').trim() === 'Cattle markets' && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])')).length))
+      const boardState = async (sel: string) => { const n = await page.locator(sel).count(); if (n === 0) return 'absent'; return (await page.locator(sel).first().evaluate(e => e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'))) ? 'visible' : 'hidden' }
+      const firstThings = { priceText, priceY, chartY, firstControlBefore, groupsAboveChart, cattleEyebrows, cull: await boardState('[data-audit="board-cull-cows"]'), bulls: await boardState('[data-audit="board-slaughter-bulls"]'), vertical: /Vertical axis/.test(await text(page)) }
+      record('7-P1: the latest price is the first thing on Markets — above every control and above the chart', /^\$[\d,.]+/.test(firstThings.priceText) && firstThings.priceY > 0 && firstThings.chartY > firstThings.priceY && !firstThings.firstControlBefore, `"${firstThings.priceText}" at y=${firstThings.priceY} · chart y=${firstThings.chartY} · a control before it: ${firstThings.firstControlBefore}`)
+      record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
+      record('7-P1: cull cows and slaughter bulls are visible without expanding anything', firstThings.cull !== 'hidden' && firstThings.bulls !== 'hidden' && (firstThings.cull === 'visible' || firstThings.bulls === 'visible'), `cull cows ${firstThings.cull} · bulls ${firstThings.bulls}`)
+      record('7-P1: no "Cattle markets" heading repeats on the default page, and no "Vertical axis" paragraph', firstThings.cattleEyebrows === 0 && !firstThings.vertical, `visible "Cattle markets" eyebrows ${firstThings.cattleEyebrows} · Vertical axis ${firstThings.vertical}`)
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)

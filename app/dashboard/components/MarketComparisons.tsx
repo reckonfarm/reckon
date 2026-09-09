@@ -6,7 +6,7 @@ import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData } from '@/lib/trend'
 import type { Lot } from '@/lib/herd'
 import { LOT_CLASS_LABELS, lotLabel } from '@/lib/herd'
-import { dollarsPerCwtMove, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { dollarsPerCwtMove, sensitivityLine, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 import LotSelector from './LotSelector'
 import { LotCard } from './HerdEstimatePanel'
 
@@ -46,7 +46,7 @@ export interface ReportDate { label: string; date: string }
 const usdAbout = (n: number) => (Math.abs(n) >= 10_000 ? `$${Math.round(n / 1000)}k` : usdRounded(n))
 const shortTown = (t: string) => t.replace(/,\s*[A-Z]{2}$/, '')
 
-export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, localSlug = null, reports, titled = true }: {
+export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, localSlug = null, reports, titled = true, heading = true }: {
   estimate: HerdEstimate
   lots: Lot[]
   trend: TrendData | null
@@ -55,6 +55,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
   localSlug?: string | null   // 6I: the barn the page is scoped to — a lot priced elsewhere says so
   reports: ReportDate[]
   titled?: boolean
+  heading?: boolean           // Block 7: the page title is ViewBodies' now; false = no title block here
 }) {
   const byId = new Map(lots.map(l => [l.id, l]))
   const priced = estimate.perLot.filter(l => l.value != null && l.source)
@@ -74,14 +75,14 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
 
   return (
     <>
-      <div>
+      {heading && <div>
         {titled ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</h1> : <p className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</p>}
         {reports.length > 0 && (
           <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="markets-report-dates">
             Latest reports: {reports.map((r, i) => <span key={r.label}>{i > 0 && ' · '}{r.label} {fmtShort(r.date)}</span>)}
           </p>
         )}
-      </div>
+      </div>}
 
       {/* What changed for my cattle — the comparable's movement, and the lot's own edits, apart. */}
       {estimate.perLot.length > 0 && (
@@ -116,7 +117,10 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
 
       {/* The comparisons — one qualified row per lot; a gross total only when it is honest. */}
       <Card shadow="none" className="px-5 py-4" data-audit="herd-value-card">
-        <p className={EYEBROW}>Market comparisons for {estimate.lots_total} {estimate.lots_total === 1 ? 'lot' : 'lots'}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className={EYEBROW}>Market comparisons for {estimate.lots_total} {estimate.lots_total === 1 ? 'lot' : 'lots'}</p>
+          {sel && <LotSelector lots={estimate.perLot.map(l => ({ id: l.lotId, label: byId.get(l.lotId) ? lotLabel(byId.get(l.lotId)!) : l.label }))} selectedId={sel.lotId} />}
+        </div>
         {priced.length === 0 ? (
           <p className="mt-1.5 font-dm-sans text-[17px] text-ink">{estimate.note}</p>
         ) : (
@@ -125,10 +129,11 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
               const lot = byId.get(v.lotId)
               const src = v.source
               const basis = basisLine(lot, v)
+              const isSel = sel?.lotId === v.lotId
               return (
-                <li key={v.lotId} className="flex items-start justify-between gap-3 py-2" data-audit="comparison-row">
+                <li key={v.lotId} className="flex items-start justify-between gap-3 py-2" data-audit="comparison-row" data-selected={isSel ? 'true' : 'false'}>
                   <div className="min-w-0 font-dm-sans text-[16px] text-ink">
-                    <p className="font-semibold">{lot ? lotLabel(lot) : v.label}</p>
+                    <p className="font-semibold">{lot ? lotLabel(lot) : v.label}{isSel && <span className="ml-2 rounded-full bg-forest-green/10 px-2 py-0.5 text-[14px] font-semibold text-forest-green" data-audit="selected-lot-chip">selected</span>}</p>
                     {src ? (
                       <>
                         <p className="text-secondary-ink">
@@ -136,6 +141,13 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
                           {' · '}<ReportEvidence barn={src.barn_name} date={src.report_date} head={src.head_count} slug={src.slug_id} />
                           {localSlug && src.slug_id !== localSlug && <span data-audit="own-source"> · priced at {shortTown(src.town)}, not {area}</span>}
                         </p>
+                        {isSel && src.price_basis === 'cwt' && sensitivityLine(v.head_count, v.avg_weight_lb) && <p className="font-medium text-forest-green" data-audit="sensitivity-line">{sensitivityLine(v.head_count, v.avg_weight_lb)}</p>}
+                        {isSel && (
+                          <details className="text-secondary-ink" data-audit="lot-calculation">
+                            <summary className="inline-flex min-h-[44px] cursor-pointer items-center underline underline-offset-2">How this is figured</summary>
+                            <div className="mt-1"><LotCard l={v} /></div>
+                          </details>
+                        )}
                         {v.thin && v.value != null && (
                           <details className="text-secondary-ink" data-audit="thin-exact">
                             <summary className="inline-flex min-h-[44px] cursor-pointer items-center underline underline-offset-2">Exact arithmetic</summary>
@@ -179,19 +191,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
         <p className="mt-2"><Link href="/ranch/cattle" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Edit lots under Ranch → Cattle</Link></p>
       </Card>
 
-      {/* The selected lot's own comparison — the selector honors ?lot=. */}
-      {sel && (
-        <div data-audit="lot-comparison">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className={EYEBROW}>Comparison for one lot</p>
-            <LotSelector lots={estimate.perLot.map(l => ({ id: l.lotId, label: byId.get(l.lotId) ? lotLabel(byId.get(l.lotId)!) : l.label }))} selectedId={sel.lotId} />
-          </div>
-          <div className="mt-2">
-            <LotCard l={sel} />
-            {basisLine(byId.get(sel.lotId), sel) && <p className="mt-1 font-dm-sans text-[16px] font-medium text-amber-900" data-audit="basis-line-selected">{basisLine(byId.get(sel.lotId), sel)}</p>}
-          </div>
-        </div>
-      )}
+
     </>
   )
 }
