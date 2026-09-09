@@ -33,6 +33,7 @@ export interface VectorLayer extends BaseLayer {
   style:      (feature?: Feature) => PathOptions
   clickInfo?: (feature: Feature) => { title: string; body?: string }
   asOfFrom?:  (geo: FeatureCollection & { releaseDate?: number }) => number | null
+  asOfLabel?: string                                     // legend framing for the date ('Released' for the USDM: its date is the Thursday release, not the Tuesday it is valid)
   // When true, an empty result (features:[] with error:false) is a GOOD, honest state
   // — render `emptyNote` ("No active alerts"), NOT the failure note. Layers WITHOUT
   // this flag (e.g. USDM) keep treating empty as an error, unchanged.
@@ -142,6 +143,7 @@ export const usdm: VectorLayer = {
   ],
   style:    usdmStyle,
   asOfFrom: geo => geo.releaseDate ?? null,
+  asOfLabel: 'Released',
 }
 
 // ─── NWS active alerts — the hazard vector layer ───────────────────────────────
