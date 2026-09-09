@@ -87,10 +87,18 @@ async function seed() {
 
 // Block 7: the chart's controls live behind two disclosures — open both before touching a radio.
 async function openChartControls(page: Page) {
+  // Broader context (the corn / cycle chart) sits behind a disclosure — open it so its Context radios exist.
+  const bc = page.locator('[data-audit="broader-context-more"]').first()
+  if (await bc.count() && (await bc.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="broader-context-more-summary"]').first().click()
   for (const a of ['change-cattle', 'compare-settings']) {
     const b = page.locator(`[data-audit="${a}"]`).first()
     if (await b.count() && (await b.getAttribute('aria-expanded')) !== 'true') await b.click()
   }
+}
+// Block 7: price protection's calculator sits behind a disclosure.
+async function openPriceProtection(page: Page) {
+  const d = page.locator('[data-audit="price-protection-more"]').first()
+  if (await d.count() && (await d.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="price-protection-more-summary"]').first().click()
 }
 
 async function signIn(ctx: BrowserContext): Promise<Page> {
@@ -272,6 +280,7 @@ async function main() {
     }
 
     // ── Block 2.6C — the LRP hero follows the picked term; chips are unambiguous ──
+    await openPriceProtection(page)
     if (await page.locator('[data-audit="lrp-hero"]').count() === 0) skip('2.6C: LRP card', 'LRP card not in an ok state')
     else {
       const lrpText = await text(page, '[data-audit="lrp-hero"] >> xpath=ancestor::*[contains(@class,"rounded")][1]').catch(() => '')
@@ -452,7 +461,9 @@ async function main() {
 
       // ── Block 7 (2): one cattle chart on the page by default; the feeder panel beside corn only when opened ──
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="broader-context-more"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      await openChartControls(page)
+      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const cattleTitles = () => page.locator('[data-audit="chart-title"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^(Steers|Heifers) · /.test(t)))
       const before7 = await cattleTitles()
       const contextCard = page.locator('[data-audit="history-card"]').nth(1)
