@@ -99,8 +99,8 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       case 'rain': numKey('inches'); refKey('place_id'); break
       case 'bales_stacked': numKey('count'); refKey('place_id'); break
       case 'hay_inventory': numKey('bales'); if (draft.as_of && draft.as_of !== str(v.as_of)) p.as_of = draft.as_of; refKey('place_id'); break
-      case 'cattle_moved': numKey('head'); refKey('from_place_id'); refKey('to_place_id'); break
-      case 'cattle_worked': numKey('head'); if (draft.what.trim() && draft.what !== str(v.what)) p.what = draft.what; refKey('place_id'); break
+      case 'cattle_moved': numKey('head'); refKey('herd_lot_id'); refKey('from_place_id'); refKey('to_place_id'); break
+      case 'cattle_worked': numKey('head'); if (draft.what.trim() && draft.what !== str(v.what)) p.what = draft.what; refKey('herd_lot_id'); refKey('place_id'); break
     }
     if (draft.date && draft.time && (draft.date !== initial.date || draft.time !== initial.time)) p.ts = new Date(`${draft.date}T${draft.time}:00`).toISOString()
     return p
@@ -188,6 +188,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
           {event.type === 'hay_inventory' && numInput('bales', 'Bales on hand', LIMITS.onHand, { inputMode: 'numeric' })}
           {event.type === 'hay_inventory' && <label className={labelCls}>Counted as of<input name="as_of" type="date" value={draft.as_of} onChange={e => set('as_of', e.target.value)} className={inputCls} required /></label>}
           {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && numInput('head', 'Head', LIMITS.head, { inputMode: 'numeric' })}
+          {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && refSelect('herd_lot_id', 'Lot', 'lot')}
           {event.type === 'cattle_worked' && <label className={labelCls}>What was done<input name="what" type="text" maxLength={LIMITS.what.maxLen} value={draft.what} onChange={e => set('what', e.target.value)} className={inputCls} required /></label>}
           {event.type === 'cattle_moved' ? (<>{refSelect('from_place_id', 'From', 'place')}{refSelect('to_place_id', 'To', 'place')}</>) : refSelect('place_id', 'Place', 'place')}
           <label className={labelCls}>Work date<input name="date" type="date" value={draft.date} onChange={e => set('date', e.target.value)} className={inputCls} required /></label>

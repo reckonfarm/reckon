@@ -96,6 +96,8 @@ const SAVE_LABEL: Record<ManualEventType, string> = {
   hay_inventory: 'Record count',
 }
 const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
+// 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
+const LOT_TYPES: readonly ManualEventType[] = ['hay_fed', 'cattle_moved', 'cattle_worked']
 const TILE_HINT: Record<ManualEventType, string> = {
   rain: 'inches in the gauge',
   hay_fed: 'bales put out',
@@ -253,7 +255,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   // Herd lots for the hay_fed picker: null = not fetched yet (fetched once, the
   // first time Hay fed is picked — the other tiles never pay for it).
   const [lots, setLots] = useState<Lot[] | null>(null)
-  const [lot, setLot] = useState('')            // hay_fed: herd lot id, '' = no lot
+  const [lot, setLot] = useState('')            // hay_fed / cattle_moved / cattle_worked: herd lot id, '' = no lot
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Two guards a thumb can't beat: a synchronous in-flight ref (React's
@@ -348,7 +350,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   }, [launcher])
 
   useEffect(() => {
-    if (!open || type !== 'hay_fed' || lots !== null) return
+    if (!open || !type || !LOT_TYPES.includes(type) || lots !== null) return
     let cancelled = false
     fetch('/api/operation-profile')
       .then(r => (r.ok ? r.json() : null))
@@ -462,10 +464,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; if (note.trim()) body.note = note.trim(); { const sid = await resolveSlot(stock, setStock); if (sid) body.stock_place_id = sid } break
         case 'bales_stacked': body.count = num; body.place_id = placeId; break
         case 'cattle_moved':
-          body.head = num; body.from_place_id = fromId; body.to_place_id = toId
+          body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot || null
           body.place_id = toId   // where they are now
           break
-        case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; break
+        case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
         case 'hay_inventory': body.bales = num; body.as_of = asOf || todayKey(); body.place_id = placeId; break
       }
       if (!Number.isFinite(num) && type !== 'rain') { setError('Enter a number'); return }
@@ -484,7 +486,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         return
       }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
-      if (type === 'hay_fed') writeLastLot(lot)
+      if (LOT_TYPES.includes(type)) writeLastLot(lot)
       close()
     } catch (err) {
       const msg = err instanceof Error && err.message ? err.message : ''
@@ -545,8 +547,23 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     <NumberField label="Stacked" unit="bales" value={n1} onChange={setN1} max={10000} />
     {placeField('Stacked at')}
   </>)
+  // 6G: which bunch — optional, with "Unassigned" plain. What a move DOES is said
+  // on the field: it records the move; it never changes a lot's head count.
+  const lotField = (label: string, hint: string, audit: string) => (
+    <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your lots — record without one, or try again below.' : undefined}>
+      {lots === null ? (
+        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
+      ) : (
+        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)} data-audit={audit}>
+          <option value="">Unassigned</option>
+          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+        </Select>
+      )}
+    </Field>
+  )
   if (type === 'cattle_moved') fields = (<>
     <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} />
+    {lotField('Lot', 'Records the move against this bunch. A move never changes a lot’s head count — edit the lot under Ranch → Cattle for that.', 'lot-for-move')}
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
   </>)
@@ -562,6 +579,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     <Field label="What">
       <Input value={what} onChange={e => setWhat(e.target.value)} maxLength={80} placeholder="pregged, vaccinated, weaned…" />
     </Field>
+    {lotField('Lot', 'Records the work against this bunch — it shows as the lot’s last recorded work.', 'lot-for-work')}
     {placeField()}
   </>)
 
@@ -657,8 +675,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 )}
 
                 <div className="flex items-center gap-3">
-                  <Button type="submit" disabled={busy || (type === 'hay_fed' && lots === null)} className="flex-1 min-h-[56px] text-[17px]" data-audit="record-save">
-                    {busy ? 'Saving…' : type === 'hay_fed' && lots === null ? 'Loading lots…' : SAVE_LABEL[type]}
+                  <Button type="submit" disabled={busy || (LOT_TYPES.includes(type) && lots === null)} className="flex-1 min-h-[56px] text-[17px]" data-audit="record-save">
+                    {busy ? 'Saving…' : LOT_TYPES.includes(type) && lots === null ? 'Loading lots…' : SAVE_LABEL[type]}
                   </Button>
                   <button
                     type="button"
