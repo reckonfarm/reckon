@@ -597,6 +597,9 @@ async function main() {
       const tabs = await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const repeatButtons = await page.locator('button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^Record \d+ bales? now$/.test(t) || t === 'Adjust first'))
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      // The weather body streams behind Suspense — the forecast leads, the drought card lands later. Wait for it
+      // before counting (the count is the fact; the wait only gives the page time to say it).
+      await page.getByRole('heading', { name: 'County drought' }).waitFor({ timeout: 30_000 }).catch(() => {})
       const countyDrought = await page.getByRole('heading', { name: 'County drought' }).count()
       const latestReading = await page.getByText('Latest Reading', { exact: true }).count()
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
