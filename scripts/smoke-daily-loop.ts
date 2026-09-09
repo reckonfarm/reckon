@@ -610,6 +610,17 @@ async function main() {
       await page.locator('[data-audit="weather-estimate"]').waitFor({ timeout: 30_000 }).catch(() => {})
       const mainText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6K: no "County County" anywhere on Weather', mainText.length > 0 && !/County County/.test(mainText), /County County/.test(mainText) ? 'found "County County"' : `${mainText.length} chars, clean`)
+      // Block 7 (1): no visible copy names a layer the registry has parked. The parked labels are
+      // read from the registry source itself (label + "PARKED" inToggle:false in one definition),
+      // so un-parking a layer lifts the ban for that label and parking a new one adds it.
+      const registry = readFileSync(resolve(process.cwd(), 'app/dashboard/components/layers.ts'), 'utf8')
+      const parked = registry.split(/\nexport const /).filter(b => /inToggle:\s*false,\s*\/\/ PARKED/.test(b)).map(b => (b.match(/label:\s*'([^']+)'/) ?? ['', ''])[1]).filter(Boolean)
+      const mapSection = (await page.locator('[data-audit="weather-drought-map"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.getByRole('button', { name: /Drought map/ }).first().click().catch(() => {})
+      await page.waitForTimeout(2_500)
+      const expanded = (await page.locator('[data-audit="weather-drought-map"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const named = parked.filter(l => new RegExp(`\\b${l}\\b`, 'i').test(mainText) || new RegExp(`\\b${l}\\b`, 'i').test(expanded))
+      record('7-1: the map is named a Drought map, and no visible copy on Weather names a layer the registry has parked', parked.length >= 1 && /Drought map/.test(mapSection) && named.length === 0, `parked in registry: ${parked.join(', ')} · named on the page: ${named.length ? named.join(', ') : 'none'}`)
       const est = (await page.locator('[data-audit="weather-estimate"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ytdLabel = (await page.locator('[data-audit="ytd-measured-label"]').innerText().catch(() => '')).trim()
       const prism = /PRISM/i.test(est)
@@ -617,14 +628,14 @@ async function main() {
       record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText), `${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
     }
 
-    // ── Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · radar ──
+    // ── Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · drought map ──
     {
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="weather-forecast"]').waitFor({ timeout: 30_000 }).catch(() => {})
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
       // The fixture logs no rain, so the recorded-rain section rightly does not render (no reading → no card, never a zero); the order is checked over what is on the page.
       const hasRain = (await page.locator('[data-audit="recorded-rain"]').count()) > 0
-      const order = [await pos('[data-audit="weather-forecast"]'), ...(hasRain ? [await pos('[data-audit="recorded-rain"]')] : []), await pos('[data-audit="weather-estimate"]'), await pos('[data-audit="drought-ribbon"]'), await pos('[data-audit="weather-radar"]')]
+      const order = [await pos('[data-audit="weather-forecast"]'), ...(hasRain ? [await pos('[data-audit="recorded-rain"]')] : []), await pos('[data-audit="weather-estimate"]'), await pos('[data-audit="drought-ribbon"]'), await pos('[data-audit="weather-drought-map"]')]
       const ascending = order.every((v, i) => i === 0 || (Number.isFinite(v) && v > order[i - 1]))
       const zeroRain = /0\.00" .*rain|rain.*0\.00"/i.test(await page.locator('main').innerText().catch(() => ''))
       const title = await page.title()
