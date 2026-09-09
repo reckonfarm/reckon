@@ -71,6 +71,8 @@ async function teardown(label: string) {
   let n = 0
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    n += (await admin.from('job_annotations').delete().in('user_id', ids).select('job_id')).data?.length ?? 0   // 6J fixtures
+    n += (await admin.from('jobs').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
@@ -818,6 +820,44 @@ async function main() {
         const eq = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
         const m2 = eq.match(EQ)
         record('6C: the Hay balance states the same equation with the same numbers — one explanation model', !!m2 && !!m && m2.slice(1, 5).join() === m.slice(1, 5).join() && /across the ranch/.test(eq), m2 ? `"${m2[0]}"` : `no equation in: ${eq.slice(0, 160)}`)
+      }
+    }
+
+    // ── Block 6 (6J): Work under Ranch — cutting and baling have a surface ──────
+    // A Scout session is a job (stable id, derived, never an event). The Work
+    // section lists it with type, time, machine, origin, quantity and state,
+    // filters it by kind, and the Activity record carries it under the same id.
+    // A Scout's bale count is bales made — the hay ledger never reads it.
+    {
+      const EQ = /= (-?\d+) bales? on hand/
+      const onHandNow = async () => { await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' }); const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' '); return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10) }
+      const hayBefore = await onHandNow()
+      const jobId = randomUUID()
+      const started = new Date(Date.now() - 2 * 3_600_000).toISOString(), ended = new Date(Date.now() - 3_600_000).toISOString()
+      const { error: jErr } = await admin.from('jobs').insert({ id: jobId, user_id: userId, ranch_id: ranchId, device_id: null, hardware_id: 'smoke-scout', started_at: started, ended_at: ended, duration_s: 3600, seq_start: 1, seq_end: 400, event_count: 400, evicted_count: 0, coverage: 1, centroid_lat: 46.94, centroid_lng: -108.19, bbox: {}, track: [], pauses: [], multi_field: false, stats: {}, deriver_version: 'smoke', derived_at: new Date().toISOString() })
+      const { error: aErr } = jErr ? { error: null } : await admin.from('job_annotations').insert({ job_id: jobId, user_id: userId, ranch_id: ranchId, name: 'Baling', machine: 'baler', actual_bale_count: 32 })
+      if (jErr || aErr) skip('6J: Work under Ranch', `fixture: ${(jErr ?? aErr)!.message.slice(0, 80)}`)
+      else {
+        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+        const workSection = (await page.locator('[data-audit="ranch-section"]').filter({ has: page.locator('span', { hasText: /^Work$/ }) }).first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+        await page.goto('/ranch/work', { waitUntil: 'domcontentloaded' })
+        const row = page.locator('[data-audit="work-list"] > li').filter({ has: page.locator(`[data-id="${jobId}"]`) }).first()
+        const rowLi = page.locator(`[data-audit="work-list"] > li[data-id="${jobId}"]`)
+        const d = async (k: string) => (await rowLi.locator(`[data-audit="work-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        const type = await d('type'), state = await d('state'), machine = await d('machine'), origin = await d('origin'), qty = await d('quantity'), when = await d('when')
+        const stockRule = await page.locator('[data-audit="stock-rule"]').count()
+        void row
+        record('6J: Ranch lists Work as a section with its session count, and the Work page answers type, time, machine, origin, quantity and state — with the stock rule stated', /Work/.test(workSection) && /1 session/.test(workSection) && type === 'Baling' && state === 'ended' && /Machine: baler/.test(machine) && /^Origin: /.test(origin) && /32 bales counted by hand/.test(qty) && /\d – \d|\d –|–/.test(when) && stockRule === 1, `section "${workSection.slice(0, 60)}" · ${type} · ${state} · ${machine} · ${origin} · ${qty} · ${when} · stock rule ${stockRule}`)
+        await page.goto('/ranch/work?kind=cutting', { waitUntil: 'domcontentloaded' })
+        const cuttingEmpty = await page.locator('[data-audit="work-empty"]').count(), cuttingRows = await page.locator('[data-audit="work-row"]').count()
+        await page.goto('/ranch/work?kind=baling', { waitUntil: 'domcontentloaded' })
+        const balingRows = await page.locator(`[data-audit="work-list"] > li[data-id="${jobId}"]`).count()
+        record('6J: the kind filters hold — Cutting lists nothing (and says so), Baling lists the session', cuttingEmpty === 1 && cuttingRows === 0 && balingRows === 1, `cutting empty ${cuttingEmpty} rows ${cuttingRows} · baling rows ${balingRows}`)
+        await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+        const inRecord = page.locator(`[data-audit="activity-list"] li[data-id="${jobId}"] a`)
+        const recText = (await inRecord.innerText().catch(() => '')).replace(/\s+/g, ' '), recHref = await inRecord.getAttribute('href').catch(() => null)
+        const hayAfter = await onHandNow()
+        record('6J: the session is in the Activity record under the same id, opening its job — and the Scout\'s bale count never moved the hay balance', /Baling · 1 h/.test(recText) && /32 bales counted by hand/.test(recText) && recHref === `/jobs/${jobId}` && hayAfter === hayBefore, `"${recText.slice(0, 70)}" → ${recHref} · hay ${hayBefore} → ${hayAfter}`)
       }
     }
 
