@@ -37,6 +37,9 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const backdated = dayKey(row.ts) !== dayKey(row.ingested_at)
   const placeName = names.place(placeId)
   const lotName = names.lot(lotId)
+  const stockId = typeof row.payload.stock_place_id === 'string' ? row.payload.stock_place_id : null
+  const stockName = names.place(stockId)
+  const note = typeof row.payload.note === 'string' && row.payload.note.trim() ? row.payload.note.trim() : null
   const isVoid = Boolean(row.voided_at)
   const isCorrection = Boolean(row.supersedes_event_id) && !isVoid
   const replaced = correctedBy.length > 0
@@ -54,6 +57,10 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
     ...(lotName ? [['Lot', lotName] as [string, React.ReactNode]] : []),
     ...(placeName && placeId ? [['Place', <Link key="p" href={`/ranch/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
+    // 6E: the optional fields the form asks for read back here — a note, and the
+    // stack the hay was taken from. Absent = no row, never a blank.
+    ...(stockName && stockId ? [['Taken from', <Link key="s" href={`/ranch/places/${stockId}`} className="font-semibold text-brand underline underline-offset-2">{stockName}</Link>] as [string, React.ReactNode]] : stockId ? [['Taken from', <span key="s2" className="text-secondary-ink">A stack no longer on the list · {stockId.slice(0, 8)}</span>] as [string, React.ReactNode]] : []),
+    ...(note ? [['Note', note] as [string, React.ReactNode]] : []),
     ['Work time', when(row.ts)],
     ['Recorded', when(row.ingested_at)],
     ['Sync', row.device_id ? 'Received from a device' : 'Synced to ranch'],
