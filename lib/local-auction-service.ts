@@ -65,6 +65,7 @@ export interface LocalAuctionRead {
   cullCows: CullRead[]
   slaughterBulls: CullRead[]
   receipts: number | null
+  receiptsCommodity: string | null   // 6I: the report the receipts figure comes from (one commodity's receipts, not the sale's)
   receiptsWeekAgo: number | null
   receiptsYearAgo: number | null
 }
@@ -248,6 +249,7 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
       cullCows: cullReads(barn.rows, 'Cows'),
       slaughterBulls: cullReads(barn.rows, 'Bulls'),
       receipts: withReceipts?.receipts ?? null,
+      receiptsCommodity: withReceipts?.commodity ?? null,
       receiptsWeekAgo: withReceipts?.receipts_week_ago ?? null,
       receiptsYearAgo: withReceipts?.receipts_year_ago ?? null,
     }

@@ -127,13 +127,19 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
               report carries it. No unexplained total. */}
           {result.receipts != null && (
             <div className="mt-2 rounded-lg bg-forest-green/[0.04] px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="receipts-scope">
-              <p>
-                <span className="font-semibold">Receipts:</span> {result.receipts.toLocaleString('en-US')} head across {[
-                  (result.bands.length || result.classes.some(c => c.bands.length)) ? 'feeder' : null,
-                  (result.cullCows.length || result.slaughterBulls.length) ? 'slaughter (cull)' : null,
-                ].filter(Boolean).join(' and ') || 'the classes reported'} classes, {fmtDate(result.saleDate)}
-                {result.receiptsWeekAgo != null && <span className="text-secondary-ink"> · {result.receiptsWeekAgo.toLocaleString('en-US')} a week earlier</span>}
-              </p>
+              {/* 6I: the headline binds to what it counts. With every report's receipts in hand the
+                  total spans them and names them; with one report's figure it names that report —
+                  never "295 across feeder and slaughter" above a breakdown that sums to 797. */}
+              {(() => {
+                const known = (volume ?? []).filter(v => v.receipts != null)
+                const sum = known.reduce((s, v) => s + (v.receipts ?? 0), 0)
+                const names = known.map(v => v.commodity.toLowerCase())
+                const across = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+                return known.length > 0
+                  ? <p><span className="font-semibold">Receipts:</span> {sum.toLocaleString('en-US')} head across {across} {known.length > 1 ? 'classes' : 'class'}, {fmtDate(result.saleDate)}</p>
+                  : <p><span className="font-semibold">Receipts:</span> {result.receipts!.toLocaleString('en-US')} head on the {(result.receiptsCommodity ?? 'reported').toLowerCase()} report, {fmtDate(result.saleDate)}
+                      {result.receiptsWeekAgo != null && <span className="text-secondary-ink"> · {result.receiptsWeekAgo.toLocaleString('en-US')} a week earlier</span>}</p>
+              })()}
               {volume && volume.length > 0 && (
                 <ul className="mt-1 space-y-0.5 text-secondary-ink">
                   {volume.map(v => (

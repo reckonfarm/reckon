@@ -24,7 +24,9 @@ export default async function MarketsHistory({ resolved, lots, selectedLotId = n
   const isFeeder = (l: Lot) => l.class === 'steers' || l.class === 'heifers' || l.class === 'yearlings'
   // Block 6B: the selected lot (?lot=) drives the chart's lot measure when it is a feeder lot; else the first feeder lot.
   const feederLot = (selectedLotId ? lots.find(l => l.id === selectedLotId && isFeeder(l)) : null) ?? lots.find(isFeeder) ?? null
-  const lot = feederLot ? { head: feederLot.head_count, weightLb: lotToMarsKey(feederLot).avgWeightLb, label: `${lotLabel(feederLot)} · ${feederLot.head_count} head` } : null
+  // 6I: the selected lot drives the chart's class AND weight band, not only the lot measure —
+  // a replacement-heifer lot charts feeder heifers of its weight (its reference), never the steers.
+  const lot = feederLot ? (() => { const w = lotToMarsKey(feederLot).avgWeightLb; return { head: feederLot.head_count, weightLb: w, label: `${lotLabel(feederLot)} · ${feederLot.head_count} head`, cls: (feederLot.class === 'heifers' ? 'Heifers' : 'Steers') as 'Steers' | 'Heifers', band: String(Math.max(300, Math.min(900, Math.floor(w / 100) * 100))) } })() : null
   const dates = auction.flatMap(s => s.points.map(p => p.date)).sort()
   const town = localBarn?.town.replace(/,\s*[A-Z]{2}$/, '') ?? ''
   return (

@@ -39,7 +39,7 @@ export interface MarketsChartsProps {
   corn: CornPoint[]
   cycle: CyclePoint[]
   events: MarketEvent[]
-  lot: { head: number; weightLb: number; label: string } | null   // the person's matching lot, for the lot-value measure
+  lot: { head: number; weightLb: number; label: string; cls?: 'Steers' | 'Heifers'; band?: string } | null   // the person's matching lot: the lot-value measure, and (6I) the class + band the chart opens on
   spineStart: string | null       // earliest auction observation, ISO
   mode?: 'cattle' | 'context'     // Block 6B: 'context' draws only corn and the cattle cycle (Market context)
 }
@@ -359,8 +359,13 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [ctx, setCtx] = useState<ContextView>('corn')
   const mode = p.mode ?? 'cattle'
   const view: View = mode === 'context' ? ctx : range === 'season' ? 'season' : compare === 'local' ? 'year' : 'compare'
-  const [cls, setCls] = useState<'Steers' | 'Heifers'>('Steers')
-  const [band, setBand] = useState<string>('500')
+  const [cls, setCls] = useState<'Steers' | 'Heifers'>(p.lot?.cls ?? 'Steers')
+  const [band, setBand] = useState<string>(p.lot?.band ?? '500')
+  // 6I: one selected subject — when the lot changes (?lot=), the chart follows it. State
+  // adjusted during render on a prop change (React's pattern), never in an effect.
+  const lotKey = `${p.lot?.cls ?? ''}|${p.lot?.band ?? ''}`
+  const [seenLotKey, setSeenLotKey] = useState(lotKey)
+  if (lotKey !== seenLotKey) { setSeenLotKey(lotKey); if (p.lot?.cls) setCls(p.lot.cls); if (p.lot?.band) setBand(p.lot.band) }
   const [measure, setMeasure] = useState<Measure>('cwt')
   const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
