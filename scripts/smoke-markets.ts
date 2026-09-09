@@ -134,7 +134,7 @@ async function main() {
     record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
     record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
     // Phase A5 — units live with the number or in the heading; the essay is gone.
-    record('A5: the auction heading carries the unit', /Auction prices · \$\/cwt/.test(body))
+    record('A5: the auction heading carries the unit', /Other cattle markets · \$\/cwt/.test(body))
     record('A5: no repeated disclaimer block under the auction rows', !/Close match = same class/.test(body) && !/head-weighted within each 100-lb band/.test(body))
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
@@ -415,6 +415,7 @@ async function main() {
       record('6B: no gross total unless every lot clears 20 head and shares purpose and basis — and every row names its reference sale', gross === 0 && /^No gross total: /.test(noGross) && refSales.length >= 1 && refSales.every(r => /^Reference sale: /.test(r)), `gross ${gross} · "${noGross}" · [${refSales.join(' | ')}]`)
       const eyebrow = (await page.locator('[data-audit="herd-value-card"] p').first().innerText().catch(() => '')).trim()
       record('6B: the headline reads Market comparisons for N lots, never Herd value', /^Market comparisons for \d+ lots?$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
+      await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})   // Block 7: receipts sit behind Sale detail
       const receipts = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head (across .+ class(es)?|on the .+ report), /.test(receipts), `"${receipts.slice(0, 100)}"`)
 
@@ -442,6 +443,7 @@ async function main() {
       const deltaRows = await page.locator('[data-audit="delta-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const phLines = [...spreadRows, ...deltaRows]
       record('6I: Price history carries no barn in its heading — every range and movement names the barn it is measured at', /^price history$/i.test(phHeading) && phLines.length > 0 && phLines.every(t => / at [A-Z][^:]+:/.test(t)), `heading "${phHeading}" · ${phLines.length} lines · "${(phLines[0] ?? '').slice(0, 70)}"`)
+      if ((await page.locator('[data-audit="sale-detail"]').first().getAttribute('data-open').catch(() => 'false')) !== 'true') await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})
       const rc = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       const headline = rc.match(/^Receipts: ([\d,]+) head (across|on the) /)
       const parts = [...rc.matchAll(/: ([\d,]+) head/g)].map(m => parseInt(m[1].replace(/,/g, ''), 10)).slice(1)

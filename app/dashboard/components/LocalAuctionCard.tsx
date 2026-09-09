@@ -7,6 +7,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { isThin, scopeLabel, thinEvidence } from '@/lib/market-scope'
 import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
 import ReportEvidence from '@/app/components/ReportEvidence'
+import Disclosure from '@/app/components/ui/Disclosure'
 
 // ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
 // Every figure here is an AUCTION result with its scope named — the barn, never
@@ -84,9 +85,13 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
 export default function LocalAuctionCard({ result, volume = null }: { result: LocalAuctionResult; volume?: VolumeRow[] | null }) {
   return (
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
+      {/* Block 7 (Part 1, 5/8): the classes a rancher opened the page to check stay visible —
+          feeder steers and heifers, cull cows, slaughter bulls — compact rows. Receipts, the
+          fallback scope, the report evidence and the other classes sit behind "Sale detail".
+          Small-sample and slaughter-not-breeding labels never go behind it. */}
       <div className="mb-3">
-        <p className={EYEBROW}>Cattle markets</p>
-        <Heading level={3} visual={5} className="mt-1">Auction prices · $/cwt</Heading>
+        <p className={EYEBROW}>Other cattle markets</p>
+        <Heading level={3} visual={5} className="mt-1">Other cattle markets · $/cwt</Heading>
       </div>
 
       {result.status === 'data_unavailable' && (
@@ -116,6 +121,8 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
               : { kind: 'nearby', town: shortTown(result.town) },
             )}
           </p>
+          <Disclosure title="Sale detail" audit="sale-detail" remember="sale-detail" className="mt-3"
+            summary={<>{fmtDate(result.saleDate)}{result.receipts != null ? ` · ${fmtInt(result.receipts)} head` : ''} · ~{result.miles} mi · receipts, scope and report</>}>
           <p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="scope-fallback">
             {result.beyondHaul && !result.pinned ? 'Scope: Regional reference · falls back to National reference' : 'Scope: Local report · falls back to Regional reference, then National reference'}
           </p>
@@ -154,6 +161,16 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
             </div>
           )}
 
+          {result.classes.filter(c => c.bands.length > 0 && c.label !== 'Heifers').map(c => (
+            <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
+              <p className={EYEBROW}>{c.label} · $/cwt</p>
+              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+                {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />)}
+              </ul>
+            </div>
+          ))}
+          </Disclosure>
+
           {result.bands.length > 0 && (
             <div className="mt-4" data-audit="board-feeder-steers">
               <p className={EYEBROW}>Feeder steers · $/cwt</p>
@@ -162,9 +179,9 @@ export default function LocalAuctionCard({ result, volume = null }: { result: Lo
               </ul>
             </div>
           )}
-          {result.classes.filter(c => c.bands.length > 0).map(c => (
+          {result.classes.filter(c => c.bands.length > 0 && c.label === 'Heifers').map(c => (
             <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
-              <p className={EYEBROW}>{c.label === 'Heifers' ? 'Feeder heifers' : c.label} · $/cwt</p>
+              <p className={EYEBROW}>Feeder heifers · $/cwt</p>
               <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
                 {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label === 'Heifers' ? 'Heifers' : c.label} b={b} />)}
               </ul>
