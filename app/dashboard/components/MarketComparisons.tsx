@@ -133,7 +133,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
               return (
                 <li key={v.lotId} className="flex items-start justify-between gap-3 py-2" data-audit="comparison-row" data-selected={isSel ? 'true' : 'false'}>
                   <div className="min-w-0 font-dm-sans text-[16px] text-ink">
-                    <p className="font-semibold">{lot ? lotLabel(lot) : v.label}{isSel && <span className="ml-2 rounded-full bg-forest-green/10 px-2 py-0.5 text-[13px] font-semibold text-forest-green" data-audit="selected-lot-chip">selected</span>}</p>
+                    <p className="font-semibold">{lot ? lotLabel(lot) : v.label}{isSel && <span className="ml-2 rounded-full bg-forest-green/10 px-2 py-0.5 text-[14px] font-semibold text-forest-green" data-audit="selected-lot-chip">selected</span>}</p>
                     {src ? (
                       <>
                         <p className="text-secondary-ink">

@@ -20,6 +20,7 @@
 //   mid-save (page killed while offline) → reopened → exactly one row;
 //   double-tap Save → one row; a half-typed sheet survives a reload.
 
+import { guardWorktree } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
@@ -38,6 +39,7 @@ function loadEnv() {
   }
 }
 loadEnv()
+guardWorktree('smoke-daily-loop')
 
 const BASE = process.env.BASE ?? 'https://www.dryline.farm'
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL!

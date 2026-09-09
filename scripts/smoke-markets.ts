@@ -27,6 +27,7 @@
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/smoke-markets.ts
 
+import { guardWorktree } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
@@ -44,6 +45,7 @@ function loadEnv() {
   }
 }
 loadEnv()
+guardWorktree('smoke-markets')
 const BASE = process.env.BASE ?? 'https://www.dryline.farm'
 const BYPASS = BASE.includes('vercel.app') ? process.env.VERCEL_BYPASS : undefined
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -479,19 +481,16 @@ async function main() {
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="selected-price"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
       await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"]').waitFor({ timeout: 15_000 }).catch(() => {})
-      const firstThings = await page.evaluate(() => {
-        const main = document.querySelector('main')!
-        const price = main.querySelector('[data-audit="selected-price"]')
-        const y = (el: Element | null) => el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : -1
-        const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !el.closest('details:not([open])') }
-        const controls = Array.from(main.querySelectorAll('[role="radiogroup"], [role="radio"], select')).filter(visible)
-        const chart = main.querySelector('[data-audit="history-card"] [data-audit="chart"]')
-        const firstControlBefore = controls.some(c => price ? (c.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : true)
-        const groupsAboveChart = Array.from(main.querySelectorAll('[role="radiogroup"]')).filter(visible).filter(g => chart && y(g) < y(chart)).map(g => g.getAttribute('aria-label') ?? '?')
-        const cattleEyebrows = Array.from(main.querySelectorAll('p')).filter(visible).filter(e => (e.textContent ?? '').trim() === 'Cattle markets').length
-        const cull = main.querySelector('[data-audit="board-cull-cows"]'), bulls = main.querySelector('[data-audit="board-slaughter-bulls"]')
-        return { priceText: (price?.textContent ?? '').trim(), priceY: y(price), chartY: y(chart), firstControlBefore, groupsAboveChart, cattleEyebrows, cull: cull ? (visible(cull) ? 'visible' : 'hidden') : 'absent', bulls: bulls ? (visible(bulls) ? 'visible' : 'hidden') : 'absent', vertical: /Vertical axis/.test(main.textContent ?? '') }
-      })
+      const yOf = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? Math.round(b.y + Number(await page.evaluate('window.scrollY'))) : -1 }
+      const priceText = (await page.locator('[data-audit="selected-price"]').first().innerText().catch(() => '')).trim()
+      const priceY = await yOf('[data-audit="selected-price"]'), chartY = await yOf('[data-audit="history-card"] [data-audit="chart"]')
+      // visible controls, in document order, with whether each precedes the price (no named inner functions: esbuild's keepNames breaks page.evaluate)
+      const controlRows = await page.locator('main [role="radiogroup"], main [role="radio"], main select').evaluateAll(els => els.map(e => ({ y: Math.round(e.getBoundingClientRect().top + window.scrollY), label: e.getAttribute('aria-label') ?? e.tagName.toLowerCase(), group: e.getAttribute('role') === 'radiogroup', visible: e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'), beforePrice: !!document.querySelector('main [data-audit="selected-price"]') && (e.compareDocumentPosition(document.querySelector('main [data-audit="selected-price"]')!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 })))
+      const firstControlBefore = controlRows.some(c => c.visible && c.beforePrice)
+      const groupsAboveChart = controlRows.filter(c => c.group && c.visible && chartY > 0 && c.y < chartY).map(c => c.label)
+      const cattleEyebrows = (await page.locator('main p').evaluateAll(els => els.filter(e => (e.textContent ?? '').trim() === 'Cattle markets' && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])')).length))
+      const boardState = async (sel: string) => { const n = await page.locator(sel).count(); if (n === 0) return 'absent'; return (await page.locator(sel).first().evaluate(e => e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'))) ? 'visible' : 'hidden' }
+      const firstThings = { priceText, priceY, chartY, firstControlBefore, groupsAboveChart, cattleEyebrows, cull: await boardState('[data-audit="board-cull-cows"]'), bulls: await boardState('[data-audit="board-slaughter-bulls"]'), vertical: /Vertical axis/.test(await text(page)) }
       record('7-P1: the latest price is the first thing on Markets — above every control and above the chart', /^\$[\d,.]+/.test(firstThings.priceText) && firstThings.priceY > 0 && firstThings.chartY > firstThings.priceY && !firstThings.firstControlBefore, `"${firstThings.priceText}" at y=${firstThings.priceY} · chart y=${firstThings.chartY} · a control before it: ${firstThings.firstControlBefore}`)
       record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
       record('7-P1: cull cows and slaughter bulls are visible without expanding anything', firstThings.cull !== 'hidden' && firstThings.bulls !== 'hidden' && (firstThings.cull === 'visible' || firstThings.bulls === 'visible'), `cull cows ${firstThings.cull} · bulls ${firstThings.bulls}`)

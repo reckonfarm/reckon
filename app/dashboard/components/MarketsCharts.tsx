@@ -459,7 +459,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                 <p className="mt-1 font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
                 <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="selected-evidence">
                   {town} · {fmtDay(latest.date)} · {latest.head.toLocaleString('en-US')} head{latest.thin ? ' — limited sample' : ''}
-                  {' · '}<a href={reportUrl(latest.reportId)} target="_blank" rel="noopener noreferrer" className="font-semibold text-forest-green underline underline-offset-2" data-audit="report-link">Report ↗</a>
+                  {' · '}<a href={reportUrl(latest.reportId)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2" data-audit="report-link">Report ↗</a>
                 </p>
                 <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="selected-change">
                   {prev
