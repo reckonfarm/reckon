@@ -402,7 +402,37 @@ async function main() {
       const eyebrow = (await page.locator('[data-audit="herd-value-card"] p').first().innerText().catch(() => '')).trim()
       record('6B: the headline reads Market comparisons for N lots, never Herd value', /^Market comparisons for \d+ lots?$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
       const receipts = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head across .+ classes, /.test(receipts), `"${receipts.slice(0, 100)}"`)
+      record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head (across .+ class(es)?|on the .+ report), /.test(receipts), `"${receipts.slice(0, 100)}"`)
+
+      // ── Block 6 (6I): one selection context — lot, chart, heading, source and receipts agree ──
+      const { data: heiferLot } = await admin.from('herd_lots').select('id').eq('created_by', userId).eq('name', 'Replacement heifers').maybeSingle()
+      await page.goto(`/markets?fips=${HOME_FIPS}&lot=${heiferLot?.id}`, { waitUntil: 'domcontentloaded' })
+      const chartTitleLoc = page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart-title"]')
+      await chartTitleLoc.waitFor({ timeout: 30_000 }).catch(() => {})
+      const chartTitle = (await chartTitleLoc.innerText().catch(() => '')).trim()
+      const selLabel = (await page.locator('[data-audit="lot-selector"] option:checked').innerText().catch(() => '')).trim()
+      record('6I: selecting the heifer lot drives the chart too — class Heifers, the lot\'s own weight band', /^Heifers · 6\d\d/.test(chartTitle) && /Replacement heifers/.test(selLabel), `chart "${chartTitle.slice(0, 60)}" · selector "${selLabel}"`)
+      const marketLines = await page.locator('[data-audit="changed-market"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const editLines = await page.locator('[data-audit="changed-edit"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6I: what changed is two labeled lines — the market reference, and the lot\'s own edit — each with its own date', marketLines.length > 0 && marketLines.every(t => /^Market reference: /.test(t)) && editLines.every(t => /^Your lot changed: .*edited /.test(t)), `${marketLines.length} market lines · ${editLines.length} edit lines · "${(editLines[0] ?? marketLines[0] ?? '').slice(0, 80)}"`)
+      const thinRows = page.locator('[data-audit="comparison-row"]').filter({ hasText: 'limited sample' })
+      const thinN = await thinRows.count()
+      if (thinN === 0) skip('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', 'no lot priced off a thin sample this week')
+      else {
+        const abouts = await thinRows.locator('[data-audit="thin-about"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+        const exacts = await thinRows.locator('[data-audit="thin-exact"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
+        record('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', abouts.length === thinN && abouts.every(t => /^about \$[\d,]+k?$/.test(t)) && exacts.length === thinN && exacts.every(t => /\$[\d,]+ = [\d,]+ head ×/.test(t)), `${abouts.join(' | ')} · ${(exacts[0] ?? '').slice(0, 90)}`)
+      }
+      const phHeading = (await page.locator('#price-history-h').innerText().catch(() => '')).trim()
+      const spreadRows = await page.locator('[data-audit="spread-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const deltaRows = await page.locator('[data-audit="delta-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const phLines = [...spreadRows, ...deltaRows]
+      record('6I: Price history carries no barn in its heading — every range and movement names the barn it is measured at', /^price history$/i.test(phHeading) && phLines.length > 0 && phLines.every(t => / at [A-Z][^:]+:/.test(t)), `heading "${phHeading}" · ${phLines.length} lines · "${(phLines[0] ?? '').slice(0, 70)}"`)
+      const rc = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const headline = rc.match(/^Receipts: ([\d,]+) head (across|on the) /)
+      const parts = [...rc.matchAll(/: ([\d,]+) head/g)].map(m => parseInt(m[1].replace(/,/g, ''), 10)).slice(1)
+      const bound = !!headline && (headline[2] === 'on the' || parts.length === 0 || parts.reduce((a, b) => a + b, 0) === parseInt(headline[1].replace(/,/g, ''), 10))
+      record('6I: the receipts headline is bound to what it counts — the sum of the classes it spans, or the one report it came from', bound, rc.slice(0, 140))
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)

@@ -43,12 +43,16 @@ export function basisLine(lot: Lot | undefined, v: LotValuation): string | null 
 
 export interface ReportDate { label: string; date: string }
 
-export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, reports, titled = true }: {
+const usdAbout = (n: number) => (Math.abs(n) >= 10_000 ? `$${Math.round(n / 1000)}k` : usdRounded(n))
+const shortTown = (t: string) => t.replace(/,\s*[A-Z]{2}$/, '')
+
+export default function MarketComparisons({ estimate, lots, trend, selectedLotId, area, localSlug = null, reports, titled = true }: {
   estimate: HerdEstimate
   lots: Lot[]
   trend: TrendData | null
   selectedLotId: string | null
   area: string
+  localSlug?: string | null   // 6I: the barn the page is scoped to — a lot priced elsewhere says so
   reports: ReportDate[]
   titled?: boolean
 }) {
@@ -100,8 +104,9 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
               return (
                 <li key={v.lotId} className="py-2 font-dm-sans text-[16px] text-ink" data-audit="changed-row">
                   <span className="font-semibold">{lot ? lotLabel(lot) : v.label}</span>
-                  <span className="block" data-audit="changed-market">{market}</span>
-                  {edited && <span className="block text-secondary-ink" data-audit="changed-edit">Head or weight edited {edited} — the comparison follows the edit, not the market.</span>}
+                  {/* 6I: two labeled lines with their own dates — the reference's movement, and the lot's own edit — so neither reads as negating the other. */}
+                  <span className="block" data-audit="changed-market"><span className="font-medium text-secondary-ink">Market reference: </span>{market}</span>
+                  {edited && <span className="block text-secondary-ink" data-audit="changed-edit"><span className="font-medium">Your lot changed: </span>head or weight edited {edited} — this comparison reflects the edit.</span>}
                 </li>
               )
             })}
@@ -129,7 +134,14 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
                         <p className="text-secondary-ink">
                           <span data-audit="reference-sale">Reference sale: {src.head_count != null ? `${src.head_count.toLocaleString('en-US')} head` : 'head not reported'}{v.thin ? ' · limited sample' : ''}</span>
                           {' · '}<ReportEvidence barn={src.barn_name} date={src.report_date} head={src.head_count} slug={src.slug_id} />
+                          {localSlug && src.slug_id !== localSlug && <span data-audit="own-source"> · priced at {shortTown(src.town)}, not {area}</span>}
                         </p>
+                        {v.thin && v.value != null && (
+                          <details className="text-secondary-ink" data-audit="thin-exact">
+                            <summary className="inline-flex min-h-[44px] cursor-pointer items-center underline underline-offset-2">Exact arithmetic</summary>
+                            <p>{usd(v.value)} = {v.head_count.toLocaleString('en-US')} head × {src.price_basis === 'cwt' ? `${v.avg_weight_lb.toLocaleString('en-US')} lb ÷ 100 × $${src.avg_price}/cwt` : `$${src.avg_price}/head`} — one reported price off {src.head_count ?? '?'} head, applied to this lot.</p>
+                          </details>
+                        )}
                         {basis && <p className="font-medium text-amber-900" data-audit="basis-line">{basis}</p>}
                         {src.cull && !basis && <p className="font-medium text-amber-900">Cull price — salvage, not breeding value</p>}
                       </>
@@ -138,7 +150,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
                     )}
                   </div>
                   <p className="shrink-0 text-right font-dm-sans text-[17px] font-semibold tabular-price text-ink" data-audit="comparison-value">
-                    {v.value != null ? usd(v.value) : '—'}
+                    {v.value != null ? (v.thin ? <span data-audit="thin-about">about {usdAbout(v.value)}</span> : usd(v.value)) : '—'}
                     {src && <span className="block text-[14px] font-normal text-secondary-ink">${src.avg_price}/{src.price_basis === 'cwt' ? 'cwt' : 'hd'} reported</span>}
                   </p>
                 </li>
