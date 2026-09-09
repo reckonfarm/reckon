@@ -15,12 +15,12 @@ export interface PriceHistoryRow { slug_id: string; report_date: string; rows: M
 
 // Output (serializable → passed to the client panel).
 export interface VolumeRow { commodity: string; receipts: number | null; weekAgo: number | null; yearAgo: number | null }
-export interface SpreadRow { label: string; min: number; max: number; basis: 'cwt' | 'head' }
+export interface SpreadRow { label: string; min: number; max: number; basis: 'cwt' | 'head'; barn: string }   // 6I: the barn the range was reported at
 export type HerdDelta =
   | { status: 'ready'; abs: number; pct: number | null; sinceDate: string }
   | { status: 'accruing' }
   | { status: 'unavailable' }
-export interface PriceDeltaRow { label: string; status: 'ready' | 'accruing' | 'unavailable'; cwt?: number; sinceDate?: string }
+export interface PriceDeltaRow { label: string; status: 'ready' | 'accruing' | 'unavailable'; cwt?: number; sinceDate?: string; barn?: string }   // 6I: the barn the movement is measured at
 export interface TrendData {
   historyFrom: string | null   // Block 6B: the earliest herd snapshot date on record — "History begins {date}"; null with no snapshot
   barnName: string | null
@@ -89,7 +89,7 @@ export function buildTrend(input: {
   for (const l of estimate.perLot) {
     const s = l.source
     if (s && s.avg_price_min != null && s.avg_price_max != null) {
-      spread.push({ label: l.label, min: s.avg_price_min, max: s.avg_price_max, basis: s.price_basis })
+      spread.push({ label: l.label, min: s.avg_price_min, max: s.avg_price_max, basis: s.price_basis, barn: s.barn_name })
     }
   }
 
@@ -109,19 +109,19 @@ export function buildTrend(input: {
   for (const l of estimate.perLot) {
     const s = l.source
     if (!s || !s.commodity || !s.mars_class) continue // unpriced lot
-    if (priceHistory == null) { priceDeltas.push({ label: l.label, status: 'unavailable' }); continue }
+    if (priceHistory == null) { priceDeltas.push({ label: l.label, status: 'unavailable', barn: s.barn_name }); continue }
     const lot = lots.find(x => x.id === l.lotId)
     const wLb = lot ? lotToMarsKey(lot).avgWeightLb : null
     const barnRows = priceHistory.filter(p => p.slug_id === s.slug_id)
     const dates = [...new Set(barnRows.map(p => p.report_date))].sort().reverse()
-    if (wLb == null || dates.length < 2) { priceDeltas.push({ label: l.label, status: 'accruing' }); continue }
+    if (wLb == null || dates.length < 2) { priceDeltas.push({ label: l.label, status: 'accruing', barn: s.barn_name }); continue }
     const classes = s.mars_class.split('|')
     const latest = classPrice(barnRows.find(p => p.report_date === dates[0])!.rows, s.commodity, classes, wLb)
     const prior = classPrice(barnRows.find(p => p.report_date === dates[1])!.rows, s.commodity, classes, wLb)
     if (latest && prior && latest.basis === 'cwt' && prior.basis === 'cwt') {
-      priceDeltas.push({ label: l.label, status: 'ready', cwt: Math.round((latest.price - prior.price) * 100) / 100, sinceDate: dates[1] })
+      priceDeltas.push({ label: l.label, status: 'ready', cwt: Math.round((latest.price - prior.price) * 100) / 100, sinceDate: dates[1], barn: s.barn_name })
     } else {
-      priceDeltas.push({ label: l.label, status: 'accruing' })
+      priceDeltas.push({ label: l.label, status: 'accruing', barn: s.barn_name })
     }
   }
 

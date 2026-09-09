@@ -825,6 +825,7 @@ export async function MarketsViewBody({
           trend={anchor.trend}
           selectedLotId={selectedLotId}
           area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
+          localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null}
           reports={reportDates}
           titled={titled}
         />

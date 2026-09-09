@@ -126,7 +126,9 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
   if (!trend) return <Stub line="Price history is temporarily unavailable — check back shortly." />
   return (
     <section className="space-y-4" data-audit="price-history" aria-labelledby="price-history-h">
-      <h2 id="price-history-h" className={`${EYEBROW} !text-ink`}>Price history{trend.barnName ? ` · ${trend.barnName.replace(/,.*$/, '')}` : ''}</h2>
+      {/* 6I: no barn in the heading — each line below names the barn it is measured at, so a
+          pinned sale barn never heads a list of another barn's values. */}
+      <h2 id="price-history-h" className={`${EYEBROW} !text-ink`}>Price history</h2>
       {/* THIS WEEK'S RANGE — one price is one price, never "$X–$X" */}
       {trend.spread.length > 0 && (
         <div>
@@ -134,7 +136,7 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
           <div className="mt-1 space-y-1">
             {trend.spread.map((s, i) => (
               <p key={i} className="font-dm-sans text-[16px] text-ink" data-audit="spread-row">
-                {s.label}:{' '}
+                {s.label} at {s.barn.replace(/,.*$/, '')}:{' '}
                 {Math.round(s.min * 100) === Math.round(s.max * 100)
                   ? <><span className="tabular-price text-ink">${s.min.toFixed(2)}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported price</>
                   : <><span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported range</>}
@@ -166,8 +168,8 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
           <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Price movement</p>
           <div className="mt-1 space-y-1">
             {trend.priceDeltas.map((p, i) => (
-              <p key={i} className="font-dm-sans text-[16px]">
-                <span className="text-ink">{p.label}:</span>{' '}
+              <p key={i} className="font-dm-sans text-[16px]" data-audit="delta-row">
+                <span className="text-ink">{p.label}{p.barn ? ` at ${p.barn.replace(/,.*$/, '')}` : ''}:</span>{' '}
                 {p.status === 'ready' && p.cwt != null ? (
                   <>
                     <DeltaCwt cwt={p.cwt} />/cwt <span className="text-secondary-ink">vs last sale ({fmtShort(p.sinceDate ?? null)})</span>
