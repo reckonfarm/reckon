@@ -914,6 +914,42 @@ async function main() {
       }
     }
 
+    // ── Block 6 (6B-2): a void stands on every operational timeline — marked, greyed, not counted ──
+    // PK: a void is a fact about the day. The hand who logged it must never find
+    // his entry gone with no explanation; "caught up" never means an entry
+    // vanished. Void a feeding through the form and read it back off the place,
+    // the Ranch hub and Today's Activity tab, marked "voided", with the balance unmoved.
+    {
+      const EQ = /= (-?\d+) bales? on hand/
+      const onHandNow = async () => { await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' }); const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' '); return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10) }
+      const before = await onHandNow()   // read BEFORE the feeding: feed 7 then void it must net to zero
+      const { data: v0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 7, herd_lot_id: lotId, place_id: placeId } }).select('id').single()
+      if (!v0) skip('6B-2: voids', 'could not seed the feeding to void')
+      else {
+        const fed = await onHandNow()
+        await page.goto(`/ranch/activity/${v0.id}`, { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="void-entry"]').click()
+        await page.locator('[data-audit="correction-reason"]').fill('6B-2 never happened')
+        await page.locator('[data-audit="correction-save"]').click()
+        await page.waitForURL(/\/activity\/[0-9a-f-]{36}\?saved=1/, { timeout: 30_000 }).catch(() => {})
+        const voidId = (page.url().match(/\/activity\/([0-9a-f-]{36})/) ?? ['', ''])[1]
+        const after = await onHandNow()
+        const readRows = async (sel: string) => page.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({ id: li.getAttribute('data-id') ?? '', marker: li.getAttribute('data-marker') ?? 'none', text: (li.querySelector('a')?.textContent ?? '').replace(/\s+/g, ' ').trim(), grey: !!li.querySelector('a span.text-secondary-ink'), chain: (li.querySelector('[data-audit="row-chain"]')?.textContent ?? '').replace(/\s+/g, ' ') })))
+        await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+        const pl = (await readRows('[data-audit="place-activity"]')).find(r => r.id === voidId)
+        const plOrig = (await readRows('[data-audit="place-activity"]')).filter(r => r.id === v0.id)
+        record('6B-2: the voided feeding stands on the place timeline — marked voided, greyed, what it voided one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /voided/.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
+        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+        const hub = (await readRows('[data-audit="ranch-recent"]')).find(r => r.id === voidId)
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
+        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+        const today = (await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
+        record('6B-2: the Ranch hub and Today\'s Activity tab keep the void, marked the same way — never hidden', !!hub && hub.marker === 'voided' && !!today && today.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'} · today ${today?.marker ?? 'MISSING'}`)
+        record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}`)
+      }
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

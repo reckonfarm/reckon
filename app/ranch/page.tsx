@@ -7,7 +7,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { getRanch } from '@/lib/ranch-membership'
 import { privateTitle } from '@/lib/private-title'
 import { ranchNumbers } from '@/lib/ranch-summary'
-import { listActivity, describeEvent, effectiveRows, chainWithin } from '@/lib/activity'
+import { listActivity, describeEvent, standingRows, chainWithin } from '@/lib/activity'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import { fmtDay, fmtTime, plural } from '@/lib/jobs/format'
 
@@ -30,7 +30,7 @@ export default async function RanchPage() {
     ranchNumbers(supabase, user.id),
     listActivity(supabase, user.id, {}, null).catch(() => null),
   ])
-  const rows = recent ? effectiveRows(recent.rows).slice(0, 5) : []
+  const rows = recent ? standingRows(recent.rows).slice(0, 5) : []
   const sections: { href: string; label: string; blurb: string; number: string | null }[] = [
     { href: '/ranch/activity', label: 'Activity', blurb: 'Everything recorded, by the day the work happened.', number: null },
     { href: '/ranch/cattle',   label: 'Cattle',   blurb: 'Your lots — head, purpose, last recorded work.', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },

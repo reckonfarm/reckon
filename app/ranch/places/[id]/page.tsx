@@ -5,7 +5,7 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { getPlaceHistory } from '@/lib/places/history'
-import { listActivity, describeEvent, effectiveRows, chainWithin } from '@/lib/activity'
+import { listActivity, describeEvent, standingRows, chainWithin } from '@/lib/activity'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import { fmtDay, fmtTime, dayKey, todayKey } from '@/lib/jobs/format'
 import { privateTitle } from '@/lib/private-title'
@@ -40,7 +40,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
   ])
   if (!history.place) notFound()
   const { place, memory, counts } = history
-  const rows = activity ? effectiveRows(activity.rows).slice(0, 10) : []
+  const rows = activity ? standingRows(activity.rows).slice(0, 10) : []
   const devices = (devicesRes.data ?? []) as { id: string; name: string; type: string; last_seen: string | null }[]
 
   return (
