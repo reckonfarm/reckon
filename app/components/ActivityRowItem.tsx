@@ -37,7 +37,7 @@ const MARKER_TITLE: Record<Exclude<RowMarker, null>, string> = {
   voided: 'Voided — it no longer counts',
 }
 
-export default function ActivityRowItem({ id, who, line, when, marker, chain, aside, audit = 'activity-row', rowClass = 'px-4 py-3', sep = ' · ' }: {
+export default function ActivityRowItem({ id, who, line, when, marker, chain, aside, audit = 'activity-row', rowClass = 'px-4 py-3', sep = ' · ', href }: {
   id: string
   who?: string | null
   line: string
@@ -48,12 +48,13 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
   audit?: string
   rowClass?: string
   sep?: string              // between who and the line: ' · ' for a labelled row, ' ' for a sentence ("Smoke A fed 2 bales")
+  href?: string             // 6J: machine work opens its job (/jobs/[id]) — the same row, a different record
 }) {
   const struck = marker === 'replaced'
   const greyed = marker === 'voided'
   return (
     <li data-marker={marker ?? 'none'} data-id={id}>
-      <Link href={`/ranch/activity/${id}`} className={`flex min-h-[56px] items-center justify-between gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
+      <Link href={href ?? `/ranch/activity/${id}`} className={`flex min-h-[56px] items-center justify-between gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
         <span className={`min-w-0 font-dm-sans text-[17px] leading-snug ${greyed ? 'text-secondary-ink' : 'text-ink'}`}>
           {who ? <><span className="font-semibold">{who}</span>{sep}</> : null}
           {struck ? <s className="decoration-2">{line}</s> : line}

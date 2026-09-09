@@ -35,6 +35,7 @@ export default async function RanchPage() {
     { href: '/ranch/activity', label: 'Activity', blurb: 'Everything recorded, by the day the work happened.', number: null },
     { href: '/ranch/cattle',   label: 'Cattle',   blurb: 'Your lots — head, purpose, last recorded work.', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },
     { href: '/ranch/hay',      label: 'Hay',      blurb: 'Bales on hand, fed, and stacked.', number: numbers.hayOnHand != null ? `${plural(numbers.hayOnHand, 'bale')} on hand` : null },
+    { href: '/ranch/work',     label: 'Work',     blurb: 'Cutting and baling recorded by connected machines.', number: numbers.workSessions != null ? plural(numbers.workSessions, 'session') : null },
     { href: '/ranch/places',   label: 'Places',   blurb: 'Where things happen — pastures, stacks, tanks.', number: numbers.places != null ? plural(numbers.places, 'place') : null },
     { href: '/ranch/devices',  label: 'Devices',  blurb: 'Connected machines and loggers.', number: numbers.devices != null ? plural(numbers.devices, 'device') : null },
   ]

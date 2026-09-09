@@ -5,7 +5,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFilters } from '@/lib/activity'
-import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
+import { fmtDay, fmtTime, dayKey, fmtDuration } from '@/lib/jobs/format'
+import { listWork, describeWork } from '@/lib/jobs/work'
 import JobsView from '@/app/dashboard/components/JobsView'
 import { privateTitle } from '@/lib/private-title'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
@@ -42,6 +43,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const page = pageRes.page
 
   const filtering = Object.values(filters).some(Boolean)
+  // 6J: cutting and baling (the machines' sessions) appear in the record too, by their stable
+  // job ids, on the unfiltered listing — a job carries no actor, place or lot to filter by.
+  // Within this page's window only: on a later page, sessions newer than its newest row are
+  // on the page before; sessions older than its oldest row are on the page after.
+  const work = !filtering && page ? await listWork(supabase, { limit: 60 }).catch(() => []) : []
+  const newestTs = page?.rows[0]?.ts ?? null, oldestTs = page?.rows[page.rows.length - 1]?.ts ?? null
+  const workRows = work.filter(w => (!pick(sp.cursor) || (newestTs != null && w.startedAt <= newestTs)) && (!page?.nextCursor || (oldestTs != null && w.startedAt >= oldestTs)))
   const heading = filters.place && options.places.find(p => p.id === filters.place)
     ? `Activity at ${options.places.find(p => p.id === filters.place)!.name}`
     : filters.actor && options.people.find(p => p.id === filters.actor) ? `${options.people.find(p => p.id === filters.actor)!.name}'s activity`
@@ -49,8 +57,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     : 'Activity'
 
   // Rows grouped by ranch day so "Tuesday" reads as a heading, not a hunt.
-  const groups: { day: string; rows: NonNullable<typeof page>['rows'] }[] = []
-  for (const r of page?.rows ?? []) { const d = dayKey(r.ts); const g = groups[groups.length - 1]; if (g && g.day === d) g.rows.push(r); else groups.push({ day: d, rows: [r] }) }
+  type Entry = { at: string; event?: NonNullable<typeof page>['rows'][number]; work?: (typeof workRows)[number] }
+  const entries: Entry[] = [...(page?.rows ?? []).map(r => ({ at: r.ts, event: r })), ...workRows.map(w => ({ at: w.startedAt, work: w }))].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+  const groups: { day: string; rows: Entry[] }[] = []
+  for (const e of entries) { const d = dayKey(e.at); const g = groups[groups.length - 1]; if (g && g.day === d) g.rows.push(e); else groups.push({ day: d, rows: [e] }) }
 
   return (
     <>
@@ -89,7 +99,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
               </div>
             </form>
 
-            {page.rows.length === 0 ? (
+            {entries.length === 0 ? (
               <Card className="mt-4 p-5" data-audit="activity-empty"><p className="font-dm-sans text-[17px] text-ink">{filtering ? 'Nothing recorded matches those filters.' : 'Nothing recorded on the ranch yet.'}</p></Card>
             ) : groups.map(g => (
               <section key={g.day} className="mt-5" aria-label={fmtDay(`${g.day}T12:00:00-06:00`, 'long')}>
@@ -97,7 +107,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 <Card className="mt-2 p-0">
                   <ol className="divide-y divide-rule" data-audit="activity-list">
                     {/* Audit history (6B): every revision, each marked — replaced originals struck through. */}
-                    {g.rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={page.names.person(r.user_id)} line={describeEvent(r, page.names)} when={fmtTime(r.ts)} marker={markerFor(r)} />)}
+                    {g.rows.map(e => e.event
+                      ? <ActivityRowItem key={e.event.id} id={e.event.id} who={page.names.person(e.event.user_id)} line={describeEvent(e.event, page.names)} when={fmtTime(e.event.ts)} marker={markerFor(e.event)} />
+                      : <ActivityRowItem key={e.work!.id} id={e.work!.id} who={e.work!.device ? `${e.work!.device} (Scout)` : 'A Scout'} line={describeWork(e.work!, fmtDuration)} when={fmtTime(e.work!.startedAt)} marker={null} href={`/jobs/${e.work!.id}`} audit="activity-row" />)}
                   </ol>
                 </Card>
               </section>
