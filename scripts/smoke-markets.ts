@@ -474,6 +474,28 @@ async function main() {
       const cornTitlesAfter = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
       record('7-2: one cattle chart on the page by default — the corn view draws corn alone; "Compare with feeder cattle" opens a second aligned panel with its own unit', before7.length === 1 && cornTitlesBefore.length === 1 && /\$\/bu$/.test(cornTitlesBefore[0].trim()) && after7.length === 2 && cornTitlesAfter.length === 2 && /\$\/cwt$|\$\/head$|per head$/.test(cornTitlesAfter[0]) && /\$\/bu$/.test(cornTitlesAfter[1]), `default cattle titles ${before7.length} · corn card titles ${cornTitlesBefore.join(' | ')} → after opening: ${cornTitlesAfter.join(' | ')}`)
       await page.locator('[data-audit="corn-compare"]').click().catch(() => {})
+
+      // ── Block 7 (Part 1): done-when, as rendered ──
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="selected-price"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const firstThings = await page.evaluate(() => {
+        const main = document.querySelector('main')!
+        const price = main.querySelector('[data-audit="selected-price"]')
+        const y = (el: Element | null) => el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : -1
+        const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !el.closest('details:not([open])') }
+        const controls = Array.from(main.querySelectorAll('[role="radiogroup"], [role="radio"], select')).filter(visible)
+        const chart = main.querySelector('[data-audit="history-card"] [data-audit="chart"]')
+        const firstControlBefore = controls.some(c => price ? (c.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : true)
+        const groupsAboveChart = Array.from(main.querySelectorAll('[role="radiogroup"]')).filter(visible).filter(g => chart && y(g) < y(chart)).map(g => g.getAttribute('aria-label') ?? '?')
+        const cattleEyebrows = Array.from(main.querySelectorAll('p')).filter(visible).filter(e => (e.textContent ?? '').trim() === 'Cattle markets').length
+        const cull = main.querySelector('[data-audit="board-cull-cows"]'), bulls = main.querySelector('[data-audit="board-slaughter-bulls"]')
+        return { priceText: (price?.textContent ?? '').trim(), priceY: y(price), chartY: y(chart), firstControlBefore, groupsAboveChart, cattleEyebrows, cull: cull ? (visible(cull) ? 'visible' : 'hidden') : 'absent', bulls: bulls ? (visible(bulls) ? 'visible' : 'hidden') : 'absent', vertical: /Vertical axis/.test(main.textContent ?? '') }
+      })
+      record('7-P1: the latest price is the first thing on Markets — above every control and above the chart', /^\$[\d,.]+/.test(firstThings.priceText) && firstThings.priceY > 0 && firstThings.chartY > firstThings.priceY && !firstThings.firstControlBefore, `"${firstThings.priceText}" at y=${firstThings.priceY} · chart y=${firstThings.chartY} · a control before it: ${firstThings.firstControlBefore}`)
+      record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
+      record('7-P1: cull cows and slaughter bulls are visible without expanding anything', firstThings.cull !== 'hidden' && firstThings.bulls !== 'hidden' && (firstThings.cull === 'visible' || firstThings.bulls === 'visible'), `cull cows ${firstThings.cull} · bulls ${firstThings.bulls}`)
+      record('7-P1: no "Cattle markets" heading repeats on the default page, and no "Vertical axis" paragraph', firstThings.cattleEyebrows === 0 && !firstThings.vertical, `visible "Cattle markets" eyebrows ${firstThings.cattleEyebrows} · Vertical axis ${firstThings.vertical}`)
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)
