@@ -127,7 +127,7 @@ export function quantityOf(r: ActivityRow): string | null {
 // ── Names for a set of rows ───────────────────────────────────────────────────
 async function namesFor(supabase: SupabaseClient, userId: string, rows: ActivityRow[]): Promise<Names> {
   const placeIds = new Set<string>(); const userIds = new Set<string>()
-  for (const r of rows) { userIds.add(r.user_id); for (const k of ['place_id', 'from_place_id', 'to_place_id']) { const v = str(r.payload[k]); if (v) placeIds.add(v) } }
+  for (const r of rows) { userIds.add(r.user_id); for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) { const v = str(r.payload[k]); if (v) placeIds.add(v) } }   // stock_place_id: the stack hay was taken from (6E)
   const [places, profiles, lots] = await Promise.all([
     placeIds.size ? supabase.from('places').select('id, name').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     userIds.size ? createServiceClient().from('profiles').select('id, display_name, email').in('id', [...userIds]) : Promise.resolve({ data: [] as { id: string; display_name: string | null; email: string | null }[] }),

@@ -783,6 +783,11 @@ async function main() {
           await correct(page, o.id, async p => { await p.getByLabel('Bales', { exact: true }).fill('2') }, '6A quantity only')
           const h = await head(o.id); const bad = preserved(o, h, ['bales'])
           record('6A: a quantity-only correction keeps lot, place, note, stock source and the exact work time', h.id !== o.id && h.payload.bales === 2 && bad.length === 0, describe(bad, h))
+          // 6E: the optional fields read back on the entry — the note, and the stack the hay was taken from.
+          await page.goto(`/ranch/activity/${h.id}`, { waitUntil: 'domcontentloaded' })
+          const noteRow = (await page.locator('[data-audit="event-note"]').innerText().catch(() => '')).trim()
+          const takenRow = (await page.locator('[data-audit="event-taken-from"]').innerText().catch(() => '')).trim()
+          record('6E: the event detail shows the note and the stack the hay was taken from', noteRow === 'smoke 6A: the note' && /West stack/.test(takenRow), `note "${noteRow}" · taken from "${takenRow}"`)
         }
         // 2 · quantity-only on a SLOW option load: the form holds; the stored ids are the draft before any name arrives
         {
