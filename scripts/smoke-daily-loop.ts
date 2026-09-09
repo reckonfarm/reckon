@@ -642,6 +642,8 @@ async function main() {
         record('7-3: signed out, the Weather tab opens with the seven-day forecast (the destination) and Today keeps its brief outlook', todayStrip === 1 && fcSection === 1 && days >= 7 && order === 'forecast first', `Today strip ${todayStrip} · Weather forecast sections ${fcSection} · day chips ${days} · ${order}`)
         await pubCtx.close()
       }
+      for (const d of ['rain-history', 'rain-sources']) { const el = page.locator(`[data-audit="${d}"]`).first(); if (await el.count() && (await el.getAttribute('data-open')) !== 'true') await page.locator(`[data-audit="${d}-summary"]`).first().click().catch(() => {}) }   // Block 7: the chart and the sources expand
+      await page.waitForTimeout(500)
       const est = (await page.locator('[data-audit="weather-estimate"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ytdLabel = (await page.locator('[data-audit="ytd-measured-label"]').innerText().catch(() => '')).trim()
       const prism = /PRISM/i.test(est)
@@ -904,6 +906,60 @@ async function main() {
         const hayAfter = await onHandNow()
         record('6J: the session is in the Activity record under the same id, opening its job — and the Scout\'s bale count never moved the hay balance', /Baling · 1 h/.test(recText) && /32 bales counted by hand/.test(recText) && recHref === `/jobs/${jobId}` && hayAfter === hayBefore, `"${recText.slice(0, 70)}" → ${recHref} · hay ${hayBefore} → ${hayAfter}`)
       }
+    }
+
+    // ── Block 7 (Parts 2–3): Weather in the right order, and Rain on my places ──
+    // Two readings by two people at two places, a third place with none. Every
+    // place gets a row: the latest reading, its day, who recorded it; a missing
+    // reading is missing, never zero; totals are Recorded rain; the history
+    // expands; Log rain opens the sheet on Rain with the place chosen. And the
+    // order: (warning) → forecast → rain on my places → county rainfall summary
+    // (chart and sources behind disclosures) → drought leading with its category.
+    {
+      const mk = async (name: string, kind: string) => { const { data, error } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} ${name}`, kind }).select('id').single(); if (error) throw new Error(`7-3 place: ${error.message}`); return data.id as string }
+      const northId = await mk('North pasture', 'pasture'), auditId = await mk('Audit field', 'field')
+      const rain = async (uid: string, place: string, inchesIn: number, daysAgo: number) => { const { error } = await admin.from('events').insert({ user_id: uid, ranch_id: ranchId, device_id: null, type: 'rain', ts: new Date(Date.now() - daysAgo * 86_400_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, inches: inchesIn, place_id: place } }); if (error) throw new Error(`7-3 rain: ${error.message}`) }
+      await rain(userId, placeId, 0.35, 3)
+      await rain(userIdB, northId, 0.8, 1)
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="rain-on-my-places"]').waitFor({ timeout: 30_000 }).catch(() => {})
+      const rowText = async (id: string) => (await page.locator(`[data-audit="rain-place-row"][data-place="${id}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const north = await rowText(northId), west = await rowText(placeId), audit = await rowText(auditId)
+      const section = (await page.locator('[data-audit="rain-on-my-places"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('7-3: every place has a row — the latest reading, its day, who recorded it; a place with no reading says so and never shows zero', /0\.80" · [A-Z][a-z]{2} \d{1,2} · recorded by smoke-daily-loop-b/.test(north) && /0\.35" · [A-Z][a-z]{2} \d{1,2} · recorded by Smoke A/.test(west) && /no rain recorded yet/.test(audit) && !/0\.00/.test(audit) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}" · audit "${audit.slice(0, 60)}"`)
+      await page.locator(`[data-audit="rain-history-${northId}-summary"]`).click().catch(() => {})
+      const hist = (await page.locator(`[data-audit="rain-history-${northId}"] [data-audit="rain-readings"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('7-3: a row expands to its history — each reading with its day and who recorded it', /recorded by smoke-daily-loop-b/.test(hist) && /0\.80"/.test(hist), hist.slice(0, 80))
+      await page.locator(`[data-audit="rain-place-row"][data-place="${auditId}"] [data-audit="log-rain-here"]`).click()
+      await page.getByLabel('Where').waitFor({ timeout: 10_000 }).catch(() => {})
+      const wherePre = await page.getByLabel('Where').inputValue().catch(() => '')
+      const rainField = await page.getByLabel('Rain').count()
+      record('7-3: Log rain on a row opens the record sheet on Rain with that place chosen', rainField >= 1 && wherePre === auditId, `Where=${wherePre.slice(0, 8)}… · rain field ${rainField}`)
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="county-drought"]').waitFor({ timeout: 30_000 }).catch(() => {})
+      const orderIds = ['weather-warning', 'weather-forecast', 'rain-on-my-places', 'weather-estimate', 'county-drought', 'weather-drought-map']
+      const ys = await page.evaluate((ids: string[]) => ids.map(id => { const el = document.querySelector(`[data-audit="${id}"]`); return el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : null }), orderIds)
+      const present = ys.map((y, i) => ({ id: orderIds[i], y })).filter(x => x.y != null) as { id: string; y: number }[]
+      const inOrder = present.every((x, i) => i === 0 || x.y > present[i - 1].y)
+      record('7-2: Weather runs warning (when present) → forecast → rain on my places → county rainfall → drought → map', inOrder && present.length >= 5 && present[present[0].id === 'weather-warning' ? 1 : 0].id === 'weather-forecast', present.map(x => `${x.id}@${x.y}`).join(' < '))
+      const summary = (await page.locator('[data-audit="rain-summary-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const summarySrc = (await page.locator('[data-audit="rain-summary-source"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const chartsBefore = await page.locator('[data-audit="weather-estimate"] .recharts-wrapper').count()
+      await page.locator('[data-audit="rain-history-summary"]').click().catch(() => {})
+      await page.waitForTimeout(1_500)
+      const chartsAfter = await page.locator('[data-audit="weather-estimate"] .recharts-wrapper').count()
+      record('7-2: county rainfall reads as one answer — inches this year against station normal, county estimate or station gauge, through when — with the history behind View history', /^[\d.]+" this year · [\d.]+" (below|above) station normal$/.test(summary) && /^(County estimate|Station gauge) · through [A-Z][a-z]{2} \d{1,2}$/.test(summarySrc) && chartsBefore === 0 && chartsAfter === 1, `"${summary}" · "${summarySrc}" · charts ${chartsBefore} → ${chartsAfter}`)
+      const droughtCard = page.locator('[data-audit="county-drought"]')
+      const droughtText = (await droughtCard.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const ribbonBefore = await droughtCard.locator('[role="img"]').evaluateAll(els => els.filter(e => e.getBoundingClientRect().height > 0).length)
+      await page.locator('[data-audit="drought-history-summary"]').click().catch(() => {})
+      await page.waitForTimeout(500)
+      const ribbonAfter = await droughtCard.locator('[role="img"]').evaluateAll(els => els.filter(e => e.getBoundingClientRect().height > 0).length)
+      record('7-2: drought leads with its category and valid date; the three-year ribbon expands', /D\d · [A-Z][a-z]+ (drought|dry)|No drought/.test(droughtText) && /Valid [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(droughtText) && ribbonBefore === 0 && ribbonAfter >= 1, `${(droughtText.match(/D\d · [^·]{0,20}|No drought/) ?? [''])[0]} · ribbon ${ribbonBefore} → ${ribbonAfter}`)
+      await page.locator('[data-audit="forecast-strip"] button').first().click().catch(() => {})
+      const dayDetail = (await page.locator('[data-audit="forecast-day-detail"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('7-2: tapping a forecast day gives the chance of rain, the wind and the text', /chance of rain/.test(dayDetail) && /wind/.test(dayDetail), dayDetail.slice(0, 100))
     }
 
     // ── Block 6 (6A): single-field corrections preserve every other field ──────
