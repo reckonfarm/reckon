@@ -429,10 +429,11 @@ export async function WeatherViewBody({
           freshness is never hidden behind the fold (data-derived, never today's
           date). Own-ground places/device pins draw when expanded, unchanged. */}
       {/* 5. Radar and the regional map, and where the watched counties live. */}
+      {/* 6F: "Open radar →" pointed at /weather/radar, the flagged-off Hay Radar page (Page not
+          found). Weather radar is the first layer of the regional map below; the dead link is gone. */}
       <section aria-labelledby="wx-radar-h" data-audit="weather-radar" className="space-y-3">
         <h2 id="wx-radar-h" className={`${EYEBROW} !text-ink`}>Radar and regional map</h2>
-        <p className="font-dm-sans text-[16px]">
-          <Link href="/weather/radar" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Open radar →</Link>
+        <p className="font-dm-sans text-[16px] text-ink">Radar is the first layer on the map below.
           <span className="text-secondary-ink"> · </span>
           <Link href="/weather/locations" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">My Counties →</Link>
         </p>
