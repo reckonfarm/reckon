@@ -2,20 +2,27 @@ import { createClient } from '@/lib/supabase-server'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
+import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/geo'
 
-// Places — the named spots on the outfit (031). No map, no drawing: the
-// smallest path that lets a log say WHERE. geometry stays null ("undrawn",
-// the column's own words) until a later session draws it.
+// Places — the named spots on the outfit (031).
 //
-// GET  /api/places          → { places: [{id, name, kind}] } for the ranch
-// POST /api/places          → { name, kind? = 'field' } → { place } (201)
+// GET  /api/places   → { places: [{id, name, kind}] } for the ranch
+// POST /api/places   → { name, kind?, geometry? } → { place } (201)
 //
-// Both on the user-scoped SSR client; the 034 ranch policies ARE the scope
-// (no user_id filters here). ranch_id from the person's own membership, null
-// when none — the row still lands owner-visible.
-
-const MAX_NAME = 60
-const MAX_KIND = 30
+// Both on the user-scoped SSR client; the 043 membership policies ARE the
+// scope (no user_id filters here). ranch_id from the person's own membership.
+//
+// SLICE 1 CHANGE — `kind` and `geometry` are now accepted and persisted.
+// Before this, the only caller (LogIt.tsx) posted { name } alone and every
+// place on production landed as 'field', "Preston's house" included. `kind`
+// still DEFAULTS to 'field' so that caller is unchanged and the record sheet
+// keeps working exactly as it did; what is new is that a caller can say
+// otherwise. geometry stays optional — a place named in the record sheet with
+// no shape is still a legitimate place, and always will be.
+//
+// Acreage is NEVER taken from the client: it is computed here from the
+// geometry the client sent, by the same shoelace the map draws against.
 
 export async function GET() {
   const supabase = await createClient()
@@ -44,16 +51,41 @@ export async function POST(req: NextRequest) {
   if (body.kind != null && typeof body.kind !== 'string') {
     return NextResponse.json({ error: 'kind must be a string' }, { status: 400 })
   }
-  // Free text, not an enum (031:46) — lowercased so 'Field' and 'field' are
-  // one kind when anything later groups by it.
-  const kind = (typeof body.kind === 'string' ? body.kind.trim().toLowerCase().slice(0, MAX_KIND) : '') || 'field'
+  // Free text, not an enum (031:46) — PLACE_KINDS is what the UI offers, not
+  // what the column accepts. Lowercased so 'Field' and 'field' are one kind.
+  const kind = normalizeKind(body.kind)
+
+  // Optional shape at create time. Absent → an undrawn place, as before.
+  let geometry: unknown = null
+  let acres: number | null = null
+  let geometry_provenance: unknown = null
+  if (body.geometry != null) {
+    const v = validateGeoJSONPolygon(body.geometry)
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
+    geometry = ringToGeoJSON(v.ring)
+    acres = roundAcres(v.acres)
+    geometry_provenance = { source: 'drawn', created_at: new Date().toISOString(), corners: v.ring.length - 1 }
+  }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
 
+  // The slice-1 columns are touched ONLY when a shape came with the request.
+  // A place named from the record sheet inserts exactly the row it always did,
+  // so that path keeps working on a deploy that lands before migration 056 is
+  // run by hand. Drawing, which genuinely needs the columns, fails loudly.
+  const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
+  if (geometry) {
+    row.acres = acres
+    row.geometry_provenance = geometry_provenance
+  }
+  const cols = geometry
+    ? 'id, name, kind, geometry, acres, ranch_id, created_at'
+    : 'id, name, kind, geometry, ranch_id, created_at'
+
   const { data: place, error } = await supabase
     .from('places')
-    .insert({ user_id: user.id, ranch_id, name, kind, geometry: null })
-    .select('id, name, kind, ranch_id, created_at')
+    .insert(row)
+    .select(cols)
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ place }, { status: 201 })

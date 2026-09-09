@@ -23,7 +23,7 @@ export interface PlaceMemory {
 }
 
 export interface PlaceHistory {
-  place: { id: string; name: string; kind: string; created_at: string } | null
+  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null } | null
   memory: PlaceMemory[]           // present kinds only, most recent first
   counts: { entries: number; sinceIso: string | null }
 }
@@ -43,7 +43,12 @@ interface Row { id: string; type: string; ts: string; device_id: string | null; 
 export async function getPlaceHistory(supabase: SupabaseClient, placeId: string): Promise<PlaceHistory> {
   const empty: PlaceHistory = { place: null, memory: [], counts: { entries: 0, sinceIso: null } }
   try {
-    const { data: place } = await supabase.from('places').select('id, name, kind, created_at').eq('id', placeId).maybeSingle()
+    // Tolerant read (040's precedent): `acres` does not exist before migration
+    // 056, and asking for it would fail the select and 404 the whole page.
+    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres').eq('id', placeId).maybeSingle()
+    const place = withAcres.error
+      ? (await supabase.from('places').select('id, name, kind, created_at, geometry').eq('id', placeId).maybeSingle()).data
+      : withAcres.data
     if (!place) return empty
 
     // Manual lines that name this place (as where, or as the move's endpoints).
@@ -95,7 +100,7 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
     }
     memory.sort((a, b) => b.ts.localeCompare(a.ts))
     return {
-      place: place as PlaceHistory['place'],
+      place: { acres: null, ...place } as PlaceHistory['place'],
       memory,
       counts: await placeEntryCounts(supabase, placeId),   // Block 5A: exact, same predicate as /activity?place=
     }

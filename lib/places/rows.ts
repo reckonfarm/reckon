@@ -2,18 +2,31 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { effective } from '@/lib/ledger-effective'
 import { MANUAL_EVENT_TYPES } from '@/lib/manual-log'
+import { placeRing } from '@/lib/places/anchor'
+import type { LatLng } from '@/lib/places/geo'
 
-// ─── The places list's rows (Block 6A) ────────────────────────────────────────
+// ─── The places list's rows (Block 6A · shapes in slice 1) ────────────────────
 // name · type · last recorded work · last recorded rain — the last two only
 // when a line exists (through the correction chain). A place with no rain
 // reading shows no rain; zero is never inferred from silence.
+//
+// Slice 1 adds the shape and its acreage, both nullable and both silent when
+// absent: an undrawn place is a legitimate place and says nothing about acres.
 
-export interface PlaceRow { id: string; name: string; kind: string; lastWork: { ts: string; type: string } | null; lastRain: { ts: string; inches: number } | null }
+export interface PlaceRow {
+  id: string
+  name: string
+  kind: string
+  lastWork: { ts: string; type: string } | null
+  lastRain: { ts: string; inches: number } | null
+  ring: LatLng[] | null
+  acres: number | null
+}
 
 export async function placeRows(supabase: SupabaseClient): Promise<PlaceRow[]> {
-  const { data: places } = await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
-  const list = (places ?? []) as { id: string; name: string; kind: string }[]
-  if (list.length === 0) return []
+  const list = await selectPlaces(supabase)
+  const shaped = list.map(pl => ({ ...pl, ring: placeRing(pl.geometry), acres: typeof pl.acres === 'number' ? pl.acres : null }))
+  if (shaped.length === 0) return []
   const { data: events } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', [...MANUAL_EVENT_TYPES]).eq('payload->>source', 'manual'))
     .order('ts', { ascending: false }).limit(1000)
   const work = new Map<string, { ts: string; type: string }>()
@@ -26,5 +39,23 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRow[]> {
       if (r.type === 'rain' && p.place_id === pid && !rain.has(pid) && typeof p.inches === 'number') rain.set(pid, { ts: r.ts, inches: p.inches })
     }
   }
-  return list.map(pl => ({ ...pl, lastWork: work.get(pl.id) ?? null, lastRain: rain.get(pl.id) ?? null }))
+  return shaped.map(pl => ({
+    id: pl.id, name: pl.name, kind: pl.kind, ring: pl.ring, acres: pl.acres,
+    lastWork: work.get(pl.id) ?? null,
+    lastRain: rain.get(pl.id) ?? null,
+  }))
+}
+
+// TOLERANT READ, on 040's precedent (lib/jobs/annotations.ts fetchFieldsCut):
+// before migration 056 is applied `acres` does not exist, and asking for it
+// fails the WHOLE select — which would empty the places list and make it look
+// like the outfit has no ground. So ask for it, and if the column isn't there
+// yet, ask again without it. The acreage simply stays invisible until the
+// migration runs; nothing else on the page changes.
+async function selectPlaces(supabase: SupabaseClient) {
+  type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null }
+  const withAcres = await supabase.from('places').select('id, name, kind, geometry, acres').order('name', { ascending: true })
+  if (!withAcres.error) return (withAcres.data ?? []) as Row[]
+  const legacy = await supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true })
+  return ((legacy.data ?? []) as Omit<Row, 'acres'>[]).map(r => ({ ...r, acres: null }))
 }
