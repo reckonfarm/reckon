@@ -15,14 +15,16 @@ export interface RanchNumbers {
   headInLots: number | null     // sum of live lots' head counts, only with a live lot
   places: number | null
   devices: number | null
+  workSessions: number | null   // 6J: machine sessions this season (jobs), only when there is one
 }
 
 export async function ranchNumbers(supabase: SupabaseClient, userId: string): Promise<RanchNumbers> {
-  const [lots, hay, places, devices] = await Promise.all([
+  const [lots, hay, places, devices, work] = await Promise.all([
     getRanchLots(supabase, userId).catch(() => []),
     getHayLedger(supabase, { since: ranchYearStart() }).catch(() => null),
     supabase.from('places').select('id', { count: 'exact', head: true }),
     supabase.from('devices').select('id', { count: 'exact', head: true }),
+    supabase.from('jobs').select('id', { count: 'exact', head: true }).gte('started_at', ranchYearStart()),
   ])
   const head = lots.reduce((s, l) => s + (l.head_count > 0 ? l.head_count : 0), 0)
   return {
@@ -30,6 +32,7 @@ export async function ranchNumbers(supabase: SupabaseClient, userId: string): Pr
     headInLots: lots.length > 0 && head > 0 ? head : null,
     places: (places.count ?? 0) > 0 ? places.count! : null,
     devices: (devices.count ?? 0) > 0 ? devices.count! : null,
+    workSessions: (work.count ?? 0) > 0 ? work.count! : null,
   }
 }
 
