@@ -436,16 +436,17 @@ export async function WeatherViewBody({
           freshness is never hidden behind the fold (data-derived, never today's
           date). Own-ground places/device pins draw when expanded, unchanged. */}
       {/* 5. Radar and the regional map, and where the watched counties live. */}
-      {/* 6F: "Open radar →" pointed at /weather/radar, the flagged-off Hay Radar page (Page not
-          found). Weather radar is the first layer of the regional map below; the dead link is gone. */}
-      <section aria-labelledby="wx-radar-h" data-audit="weather-radar" className="space-y-3">
-        <h2 id="wx-radar-h" className={`${EYEBROW} !text-ink`}>Radar and regional map</h2>
-        <p className="font-dm-sans text-[16px] text-ink">Radar is the first layer on the map below.
-          <span className="text-secondary-ink"> · </span>
+      {/* Block 7 (1): this is a DROUGHT map. Radar has been parked in the layer registry since
+          July 26 (inToggle:false; proxy and renderer intact, deferred not dead), and 6F shipped a
+          sentence claiming it as the first layer — a checkable claim production contradicted. No
+          copy here names a layer the registry has parked; the daily loop checks that generally. */}
+      <section aria-labelledby="wx-drought-map-h" data-audit="weather-drought-map" className="space-y-3">
+        <h2 id="wx-drought-map-h" className={`${EYEBROW} !text-ink`}>Drought map</h2>
+        <p className="font-dm-sans text-[16px] text-ink">
           <Link href="/weather/locations" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">My Counties →</Link>
         </p>
       <DashboardAccordion
-        title="Regional map"
+        title="Drought map"
         preview={latest ? `U.S. Drought Monitor · valid ${formatDate(latest.week_date)} · released ${formatDate(usdmReleaseDate(latest.week_date))}` : 'U.S. Drought Monitor'}
       >
         <RegionalMapLoader
