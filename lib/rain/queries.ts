@@ -23,6 +23,7 @@ export interface RainEntry {
   ts: string
   inches: number
   place_id: string | null
+  user_id: string | null         // who recorded it (Block 7: part of the answer, like the feeding handoff)
 }
 
 export interface RainTotal {
@@ -38,6 +39,8 @@ export interface PlaceRain {
   last: string                   // ISO ts of the latest reading
   ytd: RainTotal & { year: string }   // readings whose ranch day falls in the current ranch year
   months: Record<string, RainTotal>   // 'YYYY-MM' ranch month → total (for a later monthly view)
+  latest: RainEntry              // the newest reading at this place — the row's answer
+  readings: RainEntry[]          // every reading, newest first — the row's history
 }
 
 export interface RainLedger {
@@ -58,6 +61,7 @@ interface EventRow {
   id: string
   ts: string
   payload: Record<string, unknown> | null
+  user_id?: string | null
 }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
@@ -68,7 +72,7 @@ function toEntry(r: EventRow): RainEntry | null {
   if (p.source !== 'manual') return null
   const inches = num(p.inches)
   if (inches == null || inches < 0) return null
-  return { id: r.id, ts: r.ts, inches, place_id: str(p.place_id) }
+  return { id: r.id, ts: r.ts, inches, place_id: str(p.place_id), user_id: str(r.user_id) }
 }
 
 // Reads the rain lines (RLS-scoped by the caller's client), resolves place
@@ -81,7 +85,7 @@ export async function getRainLedger(
   try {
     let q = effective(supabase   // Block 5B: through the correction chain
       .from('events')
-      .select('id, ts, payload')
+      .select('id, ts, payload, user_id')
       .eq('type', 'rain')
       .eq('payload->>source', 'manual'))
       .order('ts', { ascending: true })
@@ -144,6 +148,8 @@ export function summarizeRain(
       last: rows[rows.length - 1].ts,
       ytd: { ...total(ytdRows), year },
       months,
+      latest: rows[rows.length - 1],
+      readings: [...rows].reverse(),
     })
   }
   // Most YTD rain first; the no-place group always last.

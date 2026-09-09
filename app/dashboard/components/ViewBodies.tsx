@@ -35,7 +35,7 @@ import RegionalMapLoader from './RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './LatestReadingCard'
 import PrecipVsNormalPanel from './RainfallPanelLoader'
-import RainByPlaceCard from './RainByPlaceCard'
+import RainOnMyPlaces from './RainOnMyPlaces'
 import ForecastPanel from './ForecastPanel'
 import HayNearbyCards, { type NearbyHayCard } from './HayNearbyCards'
 import HayMapLoader from './HayMapLoader'
@@ -405,8 +405,9 @@ export async function WeatherViewBody({
         </section>
       )}
       {/* 2. Recorded rain at my places — gauge readings only, source named. */}
+      {/* Block 7 (Part 3): rain on my places — the latest reading per place, who recorded it, missing never zero. */}
       <Suspense fallback={null}>
-        <RainByPlaceCard precipPromise={precipPromise} user={user} />
+        <RainOnMyPlaces user={user} />
       </Suspense>
       {/* 3. County rainfall estimate vs station normal — the scope in the title; two sources, never one instrument. */}
       <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
