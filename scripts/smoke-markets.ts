@@ -119,7 +119,9 @@ async function main() {
     const page = await signIn(ctx)
     await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
-    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 6B: two chart instances (cattle, context)
+    await page.locator('[data-audit="compare-settings"]').first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 7: the chart's controls sit behind disclosures
+    await openChartControls(page)
+    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     // The chart card is server-rendered before it is hydrated; a click that lands in
     // between is dropped. Wait for the network to go quiet and a beat more.
@@ -166,11 +168,11 @@ async function main() {
           await page.getByRole('radio', { name: m, exact: true }).waitFor({ timeout: 5_000 }).catch(() => {})
         }
         await page.getByRole('radio', { name: m, exact: true }).click()
-        await page.locator('[data-audit="axis-unit"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
-        const titles = await page.locator('[data-audit="chart-title"]').allInnerTexts()
-        const axes = (await page.locator('[data-audit="axis-unit"]').allInnerTexts()).map(t => t.replace(/^Vertical axis · /, '').trim())
-        const agree = titles.length > 0 && titles.length === axes.length && titles.every((t, i) => t.trim().endsWith(axes[i]))
-        record(`2.6B ${v} × ${m}: title unit = axis unit`, agree, `${titles.map((t, i) => `"${t.split(' · ').slice(-1)[0]}" vs "${axes[i] ?? '∅'}"`).join('; ')}`)
+        await page.locator('[data-audit="chart-title"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+        const titles = (await page.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
+        // Block 7: the unit lives in the chart heading; the separate "Vertical axis" paragraph is gone.
+        const agree = titles.length > 0 && titles.every(t => /(\$\/cwt|\$\/head at \d+ lb|value of .+|\$\/bu)$/.test(t)) && !/Vertical axis/.test(await text(page))
+        record(`2.6B ${v} × ${m}: the unit is in every chart heading, and no axis paragraph`, agree, titles.map(t => `"${t.split(' · ').slice(-1)[0]}"`).join('; '))
       }
     }
     await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
@@ -202,7 +204,7 @@ async function main() {
         });
       })()`) as { role: string | null; tab: string | null; label: string; r: number; sw: number; fill: string }[]
       record('2.6H: every point group has role, tabindex, and a text label', pts.length > 0 && pts.every(x => x.role === 'button' && x.tab === '0' && /^Sale [A-Z][a-z]{2} \d{1,2}, \d{4} · \$/.test(x.label)), pts[0]?.label ?? 'no points')
-      record('2.6H: point size is 6 / 9 / 12 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [3, 4.5, 6].includes(x.r) && x.sw === 2 && (x.r !== 3 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
+      record('2.6H: point size is 8 / 12 / 16 px by head with a 2 px outline; thin points are open', pts.length > 0 && pts.every(x => [4, 6, 8].includes(x.r) && x.sw === 2 && (x.r !== 4 || x.fill === '#FFFFFF')), [...new Set(pts.map(x => `${x.r * 2}px`))].join(', '))
       const strip = page.locator('[data-audit="selection-strip"]').first()
       await strip.scrollIntoViewIfNeeded().catch(() => {})
       const sb = await strip.boundingBox()
@@ -240,13 +242,13 @@ async function main() {
       record('2.6H: Enter picks the focused point; ArrowRight walks sale by sale', !!k1 && !!k2 && !!k3 && (pts.length === 1 || (k2 !== k1 && (pts.length === 2 || k3 !== k2))), `${k1 ?? '∅'} → ${k2 ?? '∅'} → ${k3 ?? '∅'}`)
       await page.getByRole('button', { name: 'Close', exact: true }).first().click().catch(() => {})
       // The list: one 48 px row per sale, in date order.
-      await page.locator('[data-audit="sales-list-toggle"]').first().click()
+      await page.getByRole('radio', { name: /^Sales \(\d+\)$/ }).first().click()   // Block 7: Chart | Sales, two views of one section
       const rows = page.locator('[data-audit="sales-list"] li button')
       const n = await rows.count()
       const heights = await page.evaluate(`Array.from(document.querySelectorAll('[data-audit="sales-list"] li button')).map(function(e){ return e.getBoundingClientRect().height })`) as number[]
       const dates = (await rows.allInnerTexts()).map(t => Date.parse(t.match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? ''))
-      record('2.6H: "View sales as list" — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
-      await page.locator('[data-audit="sales-list-toggle"]').first().click()
+      record('2.6H: the Sales view — one 48 px row per point, chronological, focusable', n === pts.length && heights.every(h => h >= 48) && dates.every((d, i) => i === 0 || d >= dates[i - 1]), `${n} rows · min ${Math.min(...heights)}px`)
+      await page.getByRole('radio', { name: 'Chart', exact: true }).first().click()
     }
 
     // ── Block 2.6I — every price-bearing component links to its report ──
@@ -291,7 +293,10 @@ async function main() {
     const { error: evErr } = await admin.from('market_events').select('id').limit(1)
     if (evErr) skip('B6/B7: event markers and Since you last checked', `migration 048 not applied (${evErr.message.slice(0, 50)})`)
     else {
-      record('B6: event markers with a source link', /▾/.test(body), '')
+      await openChartControls(page)
+      const evToggle = page.locator('[data-audit="events-toggle"]').first()
+      if ((await evToggle.getAttribute('aria-pressed')) !== 'true') await evToggle.click()
+      record('B6 / Block 7: dated events are off by default and live in Compare and settings — one toggle shows the markers and their chips', (await evToggle.count()) === 1 && (await evToggle.getAttribute('aria-pressed')) === 'true', (await evToggle.innerText()).trim())
       // Block 2.6F — years on every closed chip, chronological, only in-period by default.
       const chips = (await page.locator('[data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
       const chipDates = chips.map(t => Date.parse(t))
