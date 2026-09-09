@@ -7,7 +7,7 @@ import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
-import LastSeenPing from './LastSeenPing'
+import ReviewedButton from '@/app/components/ReviewedButton'
 import { notSuperseded } from '@/lib/ledger-effective'
 import ActivityRowItem from '@/app/components/ActivityRowItem'
 
@@ -19,7 +19,8 @@ import ActivityRowItem from '@/app/components/ActivityRowItem'
 // ranch_members.last_seen_at (044) — an entry synced late from a phone still
 // counts as news — shown with the time it HAPPENED. The person's own entries
 // are not news to them. Nothing new → the block does not render at all.
-// Seen is not done: LastSeenPing marks the visit; nothing here completes.
+// Seen is not done, and seen is not "the page loaded" (6H): the boundary moves only
+// when the person presses Reviewed with every entry in front of them.
 
 // Block 6A: 3–5 rows on Today, the rest behind "View all N updates" (the record, filtered to the same window).
 const SHOW = 5
@@ -100,9 +101,9 @@ export default async function SinceYouWereHere() {
   if (rows.length === 0) {
     return (
       <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-empty">
-        <LastSeenPing />
         <p className={EYEBROW}>Recorded since you checked</p>
-        <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">No new crew entries since your last review.</p>
+        <p className="mt-2 font-dm-sans text-[16px] text-secondary-ink">No new crew entries since your last review{lastSeen ? ` (${when(lastSeen)})` : ''}.</p>
+        <Link href="/ranch/activity" className="mt-1 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="since-recent-link">Recent crew entries →</Link>
       </Card>
     )
   }
@@ -128,7 +129,6 @@ export default async function SinceYouWereHere() {
 
   return (
     <Card shadow="soft" className="p-4 sm:p-5">
-      <LastSeenPing />
       <p className={EYEBROW}>Recorded since you checked</p>
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(r => {
@@ -144,6 +144,8 @@ export default async function SinceYouWereHere() {
           was done — so an entry logged today for Tuesday's feeding rightly appears here,
           dated Tuesday. */}
       <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="since-note">Newest recorded first · each line shows when the work was done{lastSeen ? '' : ' · since yesterday'}.</p>
+      {/* 6H: Reviewed only when every entry is on this card; otherwise the whole list carries it. */}
+      {total <= rows.length && <ReviewedButton count={total} />}
       {total > rows.length && (
         <Link href={`/ranch/activity?since=${encodeURIComponent(since)}`} className="mt-1 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="since-view-all">View all {total} updates →</Link>
       )}
