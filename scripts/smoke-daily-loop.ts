@@ -465,12 +465,50 @@ async function main() {
       record('5A: the place\'s N entries opens the place\'s activity listing all N', claimed > 0 && listed === claimed && /place=/.test(pageB.url()), `${claimed} claimed · ${listed} listed · ${pageB.url().replace(BASE, '')}`)
       await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
-      await pageB.waitForTimeout(6_000)                                   // the visit is marked after 4 s in view
+      // 6H: the review boundary is an ACTION. Six seconds on the page mark nothing; Reviewed does.
+      await pageB.waitForTimeout(6_000)
       await pageB.reload({ waitUntil: 'domcontentloaded' })
-      await pageB.waitForTimeout(3_000)
+      await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
+      const stillRows = await pageB.locator('[data-audit="since-row"]').count()
+      const btnOnCard0 = await pageB.locator('[data-audit="mark-reviewed"]').count()
+      const viewAll0 = await pageB.locator('[data-audit="since-view-all"]').count()
+      // Reviewed sits on the card only when the card holds every entry; otherwise the full list carries it.
+      record('6H: time on the page marks nothing — after six seconds and a reload the rows are still there, and Reviewed is offered exactly where every entry is in view', stillRows >= 1 && (viewAll0 === 0 ? btnOnCard0 === 1 : btnOnCard0 === 0), `rows after reload ${stillRows} · Reviewed on card ${btnOnCard0} · View all ${viewAll0}`)
+      if (viewAll0 > 0) {
+        await pageB.locator('[data-audit="since-view-all"]').click()
+        await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+      }
+      await pageB.locator('[data-audit="mark-reviewed"]').click()
+      await pageB.waitForTimeout(1_500)
+      await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pageB.locator('[data-audit="since-empty"]').waitFor({ timeout: 20_000 }).catch(() => {})
       const afterRows = await pageB.locator('[data-audit="since-row"]').count()
       const quiet = await pageB.getByText('No new crew entries since your last review').count()
-      record('2E: after the visit, nothing new → no rows, the quiet line (never "All work complete")', afterRows === 0 && quiet === 1 && (await pageB.getByText('All work complete').count()) === 0, `rows ${afterRows} · quiet line ${quiet}`)
+      const recentLink = await pageB.locator('[data-audit="since-recent-link"]').count()
+      record('2E/6H: after Reviewed, nothing new → no rows, the quiet line with recent entries one tap away (never "All work complete")', afterRows === 0 && quiet === 1 && recentLink === 1 && (await pageB.getByText('All work complete').count()) === 0, `rows ${afterRows} · quiet line ${quiet} · recent link ${recentLink}`)
+      // 6H: pagination can't mark unseen entries — with more than the card shows, Reviewed lives on the full list only.
+      const six = Array.from({ length: 6 }, (_, i) => ({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date(Date.now() - (i + 1) * 60_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 1, herd_lot_id: null, place_id: placeId } }))
+      const { error: sixErr } = await admin.from('events').insert(six)
+      if (sixErr) skip('6H: pagination cannot mark unseen entries', sixErr.message)
+      else {
+        await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pageB.getByText('Recorded since you checked').waitFor({ timeout: 20_000 }).catch(() => {})
+        const shown = await pageB.locator('[data-audit="since-row"]').count()
+        const btnOnCard = await pageB.locator('[data-audit="mark-reviewed"]').count()
+        const viewAll = pageB.locator('[data-audit="since-view-all"]')
+        const viewAllText = (await viewAll.innerText().catch(() => '')).trim()
+        record('6H: more entries than the card shows → no Reviewed on the card, only View all', shown === 5 && btnOnCard === 0 && /View all 6 updates/.test(viewAllText), `shown ${shown} · Reviewed on card ${btnOnCard} · "${viewAllText}"`)
+        await viewAll.click().catch(() => {})
+        await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
+        const listed = await pageB.locator('[data-audit="activity-row"]').count()
+        const btnOnList = await pageB.locator('[data-audit="mark-reviewed"]').count()
+        await pageB.locator('[data-audit="mark-reviewed"]').click().catch(() => {})
+        await pageB.waitForTimeout(1_500)
+        await pageB.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pageB.locator('[data-audit="since-empty"]').waitFor({ timeout: 20_000 }).catch(() => {})
+        const quiet2 = await pageB.getByText('No new crew entries since your last review').count()
+        record('6H: the full list carries Reviewed once all six are in front of the person, and Today is quiet after it', listed === 6 && btnOnList === 1 && quiet2 === 1, `listed ${listed} · Reviewed on list ${btnOnList} · quiet after ${quiet2}`)
+      }
       // Gate 3 — acknowledgment never removes access: the record still lists A's feeding.
       await pageB.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await pageB.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 30_000 }).catch(() => {})
