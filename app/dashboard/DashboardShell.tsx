@@ -20,7 +20,7 @@ import WatchlistButton from './components/WatchlistButton'
 // loaders. Same pattern as RegionalMapLoader.
 import { type OfficialMapRecord } from './components/OfficialMap'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
-import { getLocalForecast, type LocalForecast } from '@/lib/nws'
+import { getLocalForecast, getActiveAlerts, type LocalForecast, type ActiveAlert } from '@/lib/nws'
 import ConditionsStrip from './components/ConditionsStrip'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getUpcomingDeadlines, isDeadlineLoud, type UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
@@ -296,6 +296,11 @@ export async function DashboardShell({
   const forecastPromise: Promise<LocalForecast | null> =
     selectedCounty && selectedCounty.lat != null && selectedCounty.lon != null
       ? getLocalForecast(selectedCounty.lat, selectedCounty.lon).catch(() => null)
+      : Promise.resolve(null)
+  // Block 7 (Part 2): active NWS warnings for the county center — first on Weather when present.
+  const alertsPromise: Promise<ActiveAlert[] | null> =
+    selectedCounty && selectedCounty.lat != null && selectedCounty.lon != null
+      ? getActiveAlerts(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
 
   // Insurance deadline countdown — shown for EVERY selected county in EVERY view (it
@@ -658,6 +663,7 @@ export async function DashboardShell({
                           lfpPromise={lfpPromise}
                           precipPromise={precipPromise}
                           forecastPromise={forecastPromise}
+                          alertsPromise={alertsPromise}
                           titled={route === 'weather'}
                         />
                       </Suspense>

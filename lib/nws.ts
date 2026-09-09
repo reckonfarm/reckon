@@ -45,6 +45,35 @@ interface RawPeriod {
   windDirection?: string
 }
 
+// ─── Active warnings for a point (Block 7, Part 2) ────────────────────────────
+// The first thing on Weather when one is in force; nothing at all when none is.
+// Same honesty as the forecast: a fetch failure is null (the page says nothing
+// rather than "no warnings"); an empty list is an empty list.
+export interface ActiveAlert {
+  id: string
+  event: string          // "Red Flag Warning"
+  headline: string | null
+  severity: string | null
+  urgency: string | null
+  onset: string | null
+  expires: string | null
+  description: string | null
+  instruction: string | null
+  senderName: string | null
+}
+export async function getActiveAlerts(lat: number, lon: number): Promise<ActiveAlert[] | null> {
+  try {
+    const res = await fetch(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: { 'User-Agent': UA }, signal: timeoutSignal(), next: { revalidate: 600 } })
+    if (!res.ok) return null
+    const json = await res.json() as { features?: { id?: string; properties?: Record<string, unknown> }[] }
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+    return (json.features ?? []).map(f => {
+      const p = f.properties ?? {}
+      return { id: String(f.id ?? p.id ?? ''), event: str(p.event) ?? 'Weather alert', headline: str(p.headline), severity: str(p.severity), urgency: str(p.urgency), onset: str(p.onset), expires: str(p.expires), description: str(p.description), instruction: str(p.instruction), senderName: str(p.senderName) }
+    }).filter(a => a.id)
+  } catch { return null }
+}
+
 export async function getLocalForecast(lat: number, lon: number): Promise<LocalForecast | null> {
   try {
     // The point→office lookup is effectively static for a given county centroid, so
