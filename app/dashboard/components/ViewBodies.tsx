@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase-server'
 import { computeLfpEligibility, type LfpEligibilityResult } from '@/lib/lfp-eligibility'
 import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import { getPrecipNormal, type PrecipNormalResult } from '@/lib/precip-normal'
-import { getLocalForecast, type LocalForecast } from '@/lib/nws'
+import { getLocalForecast, getActiveAlerts, type LocalForecast, type ActiveAlert } from '@/lib/nws'
 import { timeoutSignal } from '@/lib/external-fetch'
 import { estimatePayment } from '@/lib/lfp-payment'
 import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
@@ -35,7 +35,7 @@ import RegionalMapLoader from './RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './LatestReadingCard'
 import PrecipVsNormalPanel from './RainfallPanelLoader'
-import RainByPlaceCard from './RainByPlaceCard'
+import RainOnMyPlaces from './RainOnMyPlaces'
 import ForecastPanel from './ForecastPanel'
 import HayNearbyCards, { type NearbyHayCard } from './HayNearbyCards'
 import HayMapLoader from './HayMapLoader'
@@ -45,6 +45,7 @@ import LocalAuctionCard from './LocalAuctionCard'
 import NationalBeefCard from './NationalBeefCard'
 import MarketReadShell from './MarketReadShell'
 import Disclosure from '@/app/components/ui/Disclosure'
+import ActiveWarningCard from './ActiveWarningCard'
 import JobsView, { JobsViewSkeleton } from './JobsView'
 import type { DashboardViewKey, ViewParams } from './DashboardViews'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -126,12 +127,38 @@ function formatDate(iso: string) {
 export async function RainfallPanelAsync({
   dataPromise,
   countyName,
+  sources = null,
 }: {
   dataPromise: Promise<PrecipNormalResult>
   countyName: string
+  sources?: React.ReactNode   // Block 7: the methodology paragraph, behind "Sources and calculation"
 }) {
   const data = await dataPromise
-  return <PrecipVsNormalPanel data={data} countyName={countyName} />
+  // Block 7 (Part 2): the summary IS the answer — this year's inches against the station normal,
+  // what kind of number it is, and through when. The chart and the sources expand.
+  if (!data || data === 'data_unavailable' || data === 'no_qualifying_station' || data.ytdNormal === 0) return <PrecipVsNormalPanel data={data} countyName={countyName} />
+  const below = data.deficit < 0
+  const through = data.dataThrough ? new Date(`${data.dataThrough}T12:00:00-06:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="font-dm-sans text-[20px] font-semibold text-ink" data-audit="rain-summary-line">
+          <span className="tabular-nums">{data.ytdActual.toFixed(2)}&quot;</span> this year · <span className="tabular-nums">{Math.abs(data.deficit).toFixed(2)}&quot;</span> {below ? 'below' : 'above'} station normal
+        </p>
+        <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="rain-summary-source">
+          {data.source === 'grid' ? 'County estimate' : 'Station gauge'}{through ? ` · through ${through}` : ''}
+        </p>
+      </div>
+      <Disclosure title="View history" audit="rain-history" remember="rain-history" summary="This year's line against the 30-year normal, day by day">
+        <PrecipVsNormalPanel data={data} countyName={countyName} />
+      </Disclosure>
+      {sources && (
+        <Disclosure title="Sources and calculation" audit="rain-sources" summary={data.source === 'grid' ? 'PRISM county estimate · station normal' : `${data.label} · station normal`}>
+          {sources}
+        </Disclosure>
+      )}
+    </div>
+  )
 }
 
 // Quiet on-brand placeholder while the panel streams (animate-pulse is disabled in
@@ -193,7 +220,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, titled = false,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, alertsPromise = null, titled = false,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -202,6 +229,7 @@ export async function WeatherViewBody({
   lfpPromise: Promise<LfpFetchOutcome>
   precipPromise: Promise<PrecipNormalResult>
   forecastPromise?: Promise<LocalForecast | null> | null   // Block 6B — the forecast leads the Weather destination
+  alertsPromise?: Promise<ActiveAlert[] | null> | null      // Block 7 — an active warning, when present, comes first
   titled?: boolean                                         // Block 6B — the private /weather route owns its h1
 }) {
   const db = createServiceClient()
@@ -396,6 +424,13 @@ export async function WeatherViewBody({
         </div>
       )}
       {/* 1. The forecast, first (Block 6B). Today keeps a two-line preview only. */}
+      {/* Block 7 (Part 2): the order — active warning (when present) → seven-day forecast → rain on my
+          places (signed in) → county rainfall summary → drought status. Everything else expands. */}
+      {alertsPromise && (
+        <Suspense fallback={null}>
+          <ActiveWarningCard dataPromise={alertsPromise} />
+        </Suspense>
+      )}
       {forecastPromise && (
         <section aria-labelledby="wx-forecast-h" data-audit="weather-forecast">
           <h2 id="wx-forecast-h" className={`${EYEBROW} mb-3 !text-ink`}>7-day forecast · NWS</h2>
@@ -405,18 +440,18 @@ export async function WeatherViewBody({
         </section>
       )}
       {/* 2. Recorded rain at my places — gauge readings only, source named. */}
+      {/* Block 7 (Part 3): rain on my places — the latest reading per place, who recorded it, missing never zero. */}
       <Suspense fallback={null}>
-        <RainByPlaceCard precipPromise={precipPromise} user={user} />
+        <RainOnMyPlaces user={user} />
       </Suspense>
       {/* 3. County rainfall estimate vs station normal — the scope in the title; two sources, never one instrument. */}
       <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
-        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall estimate vs station normal · {selectedCounty.name}</h2>
+        <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall · {selectedCounty.name}</h2>
         <Suspense fallback={<RainfallPanelSkeleton />}>
-          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} />
-        </Suspense>
-        <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">
+          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} sources={<p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">
           The estimate is a PRISM modeled grid for the county, or the nearest NOAA COOP station when one qualifies; the normal is that station&rsquo;s 30-year normal. A modeled estimate and a station record are two different instruments — neither is a gauge on your place.
-        </p>
+        </p>} />
+        </Suspense>
       </section>
       {/* 4. County drought — the renamed card, with its timeline period labeled. */}
       {latest && (
@@ -997,6 +1032,8 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
       // the forecast on Today and never on Weather.
       const forecastPromise: Promise<LocalForecast | null> =
         county.lat != null && county.lon != null ? getLocalForecast(county.lat, county.lon).catch(() => null) : Promise.resolve(null)
+      const alertsPromise: Promise<ActiveAlert[] | null> =
+        county.lat != null && county.lon != null ? getActiveAlerts(county.lat, county.lon).catch(() => null) : Promise.resolve(null)
       return (
         <Suspense fallback={<RainfallPanelSkeleton />}>
           <WeatherViewBody
@@ -1007,6 +1044,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
             lfpPromise={lfpPromise}
             precipPromise={precipPromise}
             forecastPromise={forecastPromise}
+            alertsPromise={alertsPromise}
           />
         </Suspense>
       )

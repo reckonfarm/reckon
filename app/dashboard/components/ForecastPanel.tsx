@@ -200,8 +200,13 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
       {/* Detail-on-demand: tapping a day reveals NWS's prose for that day (kept hidden
           by default so the strip stays compact). */}
       {open != null && days[open] && (
-        <div className="mt-3 rounded-lg border border-forest-green/10 bg-[#FDFBF7] px-3 py-2">
-          <p className="font-dm-sans text-[14px] font-semibold text-forest-green">{days[open].label}</p>
+        <div className="mt-3 rounded-lg border border-forest-green/10 bg-[#FDFBF7] px-3 py-2" data-audit="forecast-day-detail">
+          <p className="font-dm-sans text-[14px] font-semibold text-forest-green">{days[open].label}{days[open].date ? ` · ${days[open].date}` : ''}</p>
+          {/* Block 7 (Part 2): the numbers a rancher taps for — chance of rain and wind — before the prose. */}
+          <p className="mt-1 font-dm-sans text-[16px] text-ink">
+            {days[open].precip != null ? `${days[open].precip}% chance of rain` : 'Chance of rain not given'} · {days[open].windMph != null ? `wind to ${days[open].windMph} mph` : 'wind not given'}
+            {days[open].high != null || days[open].low != null ? ` · ${days[open].high != null ? `${days[open].high}°` : '—'} / ${days[open].low != null ? `${days[open].low}°` : '—'}` : ''}
+          </p>
           {days[open].detailDay && (
             <p className="mt-1 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">{days[open].detailDay}</p>
           )}

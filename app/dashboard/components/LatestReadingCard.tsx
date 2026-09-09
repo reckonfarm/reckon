@@ -1,6 +1,7 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { usdmReleaseDate } from './ViewBodies'
+import Disclosure from '@/app/components/ui/Disclosure'
 
 // Weekly USDM history point (relocated from the old DroughtHistoryChart). d0..d4 are
 // CUMULATIVE coverage ("Dn or worse"); `none` is unused here but kept for shape parity
@@ -163,7 +164,7 @@ export default function LatestReadingCard({
   history: DroughtHistoryWeek[]
 }) {
   return (
-    <Card shadow="soft" className="p-4 sm:p-6">
+    <Card shadow="soft" className="p-4 sm:p-6" data-audit="county-drought">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Heading level={3} visual={5}>County drought</Heading>
         <span className="rounded-full bg-forest-green/10 px-3 py-1 text-[14px] font-medium text-forest-green font-dm-sans">
@@ -173,16 +174,17 @@ export default function LatestReadingCard({
 
       <Hero latest={latest} />
 
-      <div className="mt-4">
+      {/* Block 7 (Part 2): the category and its valid date lead; the three-year ribbon and its
+          summary expand. */}
+      <Disclosure title="Three-year history" audit="drought-history" remember="drought-history" className="mt-4" summary="Weekly categories for the last three years · U.S. Drought Monitor">
         <RibbonAndSummary history={history} />
-      </div>
-
-      <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
-        Source:{' '}
-        <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
-          U.S. Drought Monitor
-        </a>
-      </p>
+        <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
+          Source:{' '}
+          <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
+            U.S. Drought Monitor
+          </a>
+        </p>
+      </Disclosure>
     </Card>
   )
 }
