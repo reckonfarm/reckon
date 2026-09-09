@@ -950,6 +950,29 @@ async function main() {
       }
     }
 
+    // ── Block 6 (6D): a save refreshes what it changed, from every entry point ──
+    // The audit saved a feeding from Ranch: the sheet closed, the hub still read
+    // the old bales and the old recent rows. Record from the Ranch hub's FAB and,
+    // without navigating, watch the hub's Hay number and its recent list follow
+    // the sync — with the receipt strip on that page.
+    {
+      const prior6d = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })   // the FAB is the phone's entry point (md:hidden)
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      const hayNumber = async () => parseInt(((await page.locator('[data-audit="ranch-section"]', { hasText: 'Hay' }).locator('[data-audit="section-number"]').innerText().catch(() => '')).match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
+      const beforeHay = await hayNumber()
+      const firstBefore = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await logFeed(page, 2)
+      const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
+      let stripText = ''
+      for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /2 bales recorded/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      let afterHay = NaN, firstAfter = ''
+      for (let i = 0; i < 60 && afterHay !== beforeHay - 2; i++) { afterHay = await hayNumber(); firstAfter = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (afterHay !== beforeHay - 2) await page.waitForTimeout(500) }
+      record('6D: without navigating, the hub\'s Hay number and its recent rows follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay - 2 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && /\/ranch$/.test(page.url().replace(/\?.*$/, '')), `hay ${beforeHay} → ${afterHay} · first row "${firstAfter.slice(0, 50)}" · ${page.url().replace(BASE, '')}`)
+      if (prior6d) await page.setViewportSize(prior6d)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

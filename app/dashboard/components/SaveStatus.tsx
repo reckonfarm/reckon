@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState } from '@/lib/outbox'
 import SaveReceipt from '@/app/components/SaveReceipt'
 
@@ -12,8 +11,7 @@ import SaveReceipt from '@/app/components/SaveReceipt'
 // in order even on a fast network.
 // Pending count when more than one is waiting; Retry / Discard on a refusal;
 // Undo while an entry is still held on the phone (2B); the consequence lines
-// once the server has said what the entry meant (2C). When the latest entry
-// syncs, the page refreshes once so the ledgers below pick it up.
+// once the server has said what the entry meant (2C).
 
 // The outbox enforces the minimum dwell per state (MIN_DWELL_MS), so the
 // strip is a pure function of the stored state — nothing to sequence here.
@@ -32,28 +30,15 @@ function Dot({ state }: { state: OutboxState }) {
 
 // `itemId` pins the strip to one entry (Repeat last shows the entry it just
 // made, with its undo, right where the tap happened); default = the latest.
-export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
-  const router = useRouter()
+// `fadeAfterMs`: how long a synced receipt stays (Today's strip under Record:
+// ten minutes; the global strip on every other page: a short while).
+// The refresh of the server-rendered ledgers after a sync is NOT here — it is
+// RecordSheetHost's SyncRefresh, once, on every page (Block 6D).
+export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { itemId?: string; fadeAfterMs?: number } = {}) {
   const items = useOutbox()
   const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
   const shown = item?.state ?? null
-  // Refresh the server-rendered ledgers once per entry that syncs WHILE this
-  // strip is mounted — never for entries that had already synced before it
-  // mounted (a page opened after a sync would otherwise refresh itself).
-  const refreshed = useRef<Set<string> | null>(null)
-  if (refreshed.current === null) refreshed.current = new Set(items.filter(i => i.state === 'synced').map(i => i.id))
   const [now, setNow] = useState(0)
-
-  // Refresh the server-rendered ledgers once per synced entry.
-  useEffect(() => {
-    const seen = refreshed.current!
-    for (const i of items) {
-      if (i.state === 'synced' && !seen.has(i.id)) {
-        seen.add(i.id)
-        router.refresh()
-      }
-    }
-  }, [items, router])
 
   // A clock, ticked in an effect (never read in render): drives the undo
   // countdown and the "old news" cutoff below.
@@ -68,7 +53,7 @@ export default function SaveStatus({ itemId }: { itemId?: string } = {}) {
 
   if (!item || !shown) return null
   // A synced entry older than a few minutes has said its piece.
-  if (item.state === 'synced' && item.syncedAt && now > 0 && now - item.syncedAt > 10 * 60 * 1000) return null
+  if (item.state === 'synced' && item.syncedAt && now > 0 && now - item.syncedAt > fadeAfterMs) return null
 
   const waiting = items.filter(i => i.state === 'local' || i.state === 'queued').length
   const secondsLeft = held ? Math.ceil((held.holdUntil! - now) / 1000) : 0
