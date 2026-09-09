@@ -382,8 +382,12 @@ async function main() {
         record(`${width}px: no tooltip lingers over the chart after the tap`, lingering === 0, `${lingering} tooltip(s)`)
       }
       else record(`${width}px: tapping a point opens its evidence`, false, 'no points')
-      const chip = mp.getByRole('button', { name: /^▾/ }).first()
-      if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source`, src) }
+      // Block 7: dated events are opt-in from Compare and settings — open it and switch them on before looking for a chip.
+      await mp.locator('[data-audit="compare-settings"]').first().click().catch(() => {})
+      const evT = mp.locator('[data-audit="events-toggle"]').first()
+      if (await evT.count() && (await evT.getAttribute('aria-pressed')) !== 'true') await evT.click().catch(() => {})
+      const chip = mp.locator('[data-audit="event-chip"]').first()
+      if (await chip.count()) { await chip.tap().catch(() => chip.click()); const src = await mp.getByRole('link', { name: /^Source:/ }).first().isVisible().catch(() => false); record(`${width}px: tapping an event chip shows its source (events switched on from Compare and settings)`, src) }
       else skip(`${width}px: tapping an event chip shows its source`, 'no events (migration 048?)')
       if (width === 390 && process.env.SHOT_DIR) {
         await mp.locator('[data-audit="history-card"]').first().screenshot({ path: `${process.env.SHOT_DIR}/markets-history-390.png` }).catch(() => {})
@@ -477,7 +481,9 @@ async function main() {
       record('7-2: one cattle chart on the page by default — the corn view draws corn alone; "Compare with feeder cattle" opens a second aligned panel with its own unit', before7.length === 1 && cornTitlesBefore.length === 1 && /\$\/bu$/.test(cornTitlesBefore[0].trim()) && after7.length === 2 && cornTitlesAfter.length === 2 && /\$\/cwt$|\$\/head$|per head$/.test(cornTitlesAfter[0]) && /\$\/bu$/.test(cornTitlesAfter[1]), `default cattle titles ${before7.length} · corn card titles ${cornTitlesBefore.join(' | ')} → after opening: ${cornTitlesAfter.join(' | ')}`)
       await page.locator('[data-audit="corn-compare"]').click().catch(() => {})
 
-      // ── Block 7 (Part 1): done-when, as rendered ──
+      // ── Block 7 (Part 1): done-when, as rendered — on the DEFAULT page: the disclosures this run opened are
+      // remembered per browser (by design), so forget them first and measure what a first visit sees.
+      await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('dryline_disclosure_')) localStorage.removeItem(k) })
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="selected-price"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
       await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"]').waitFor({ timeout: 15_000 }).catch(() => {})
