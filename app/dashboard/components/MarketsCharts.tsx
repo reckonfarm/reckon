@@ -371,6 +371,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [more, setMore] = useState(false)          // band + measure live behind "More" on a phone
   const [listOpen, setListOpen] = useState(false)  // Block 2.6H — "View sales as list"
+  const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
   const [pickedKey, setPickedKey] = useState<string | null>(null)
@@ -568,19 +569,31 @@ export default function MarketsCharts(p: MarketsChartsProps) {
 
       {view === 'corn' && (
         <div className="mt-4">
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Corn and feeder cattle · two charts, one time axis</p>
+          {/* Block 7 (2): the Sept audit saw the cattle chart twice — this corn view drew the same
+              class, band, barn and unit as the cattle card above. Corn stands alone by default; a
+              person who wants the feeder panel beside it opens the comparison, and the two panels
+              share one time axis with their own units. */}
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{cornCompare ? 'Corn and feeder cattle · two charts, one time axis' : 'Corn · the feedlot’s input cost'}</p>
+          <button type="button" aria-pressed={cornCompare} onClick={() => setCornCompare(v => !v)} data-audit="corn-compare"
+            className="mt-2 min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
+            {cornCompare ? 'Hide feeder cattle ▴' : 'Compare with feeder cattle ▾'}
+          </button>
           {(() => {
-            const feeder = cornFeederList.flatMap(s => s.dots)
+            const feeder = cornCompare ? cornFeederList.flatMap(s => s.dots) : []
             const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100 }))
             const all = [...feeder.map(d => d.t), ...cornDots.map(d => d.t)]
             if (all.length === 0) return <Note>No observations to draw yet.</Note>
             const x0 = Math.min(...all) - 86_400_000 * 2, x1 = Math.max(...all) + 86_400_000 * 2
             return (
               <>
-                <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
-                {feeder.length > 0
-                  ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
-                  : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
+                {cornCompare && (
+                  <>
+                    <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
+                    {feeder.length > 0
+                      ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
+                      : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
+                  </>
+                )}
                 <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · CBOT via Yahoo Finance · $/bu</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">

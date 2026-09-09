@@ -433,6 +433,20 @@ async function main() {
       const parts = [...rc.matchAll(/: ([\d,]+) head/g)].map(m => parseInt(m[1].replace(/,/g, ''), 10)).slice(1)
       const bound = !!headline && (headline[2] === 'on the' || parts.length === 0 || parts.reduce((a, b) => a + b, 0) === parseInt(headline[1].replace(/,/g, ''), 10))
       record('6I: the receipts headline is bound to what it counts — the sum of the classes it spans, or the one report it came from', bound, rc.slice(0, 140))
+
+      // ── Block 7 (2): one cattle chart on the page by default; the feeder panel beside corn only when opened ──
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      const cattleTitles = () => page.locator('[data-audit="chart-title"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^(Steers|Heifers) · /.test(t)))
+      const before7 = await cattleTitles()
+      const contextCard = page.locator('[data-audit="history-card"]').nth(1)
+      const cornTitlesBefore = await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()
+      await page.locator('[data-audit="corn-compare"]').click()
+      await page.waitForTimeout(800)
+      const after7 = await cattleTitles()
+      const cornTitlesAfter = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
+      record('7-2: one cattle chart on the page by default — the corn view draws corn alone; "Compare with feeder cattle" opens a second aligned panel with its own unit', before7.length === 1 && cornTitlesBefore.length === 1 && /\$\/bu$/.test(cornTitlesBefore[0].trim()) && after7.length === 2 && cornTitlesAfter.length === 2 && /\$\/cwt$|\$\/head$|per head$/.test(cornTitlesAfter[0]) && /\$\/bu$/.test(cornTitlesAfter[1]), `default cattle titles ${before7.length} · corn card titles ${cornTitlesBefore.join(' | ')} → after opening: ${cornTitlesAfter.join(' | ')}`)
+      await page.locator('[data-audit="corn-compare"]').click().catch(() => {})
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)
