@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 import { forestGreen, warning } from '@/lib/brand-colors'
 import { BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import type { JobMapProps } from './JobMapLoader'
+import { BASEMAPS, type Basemap } from '@/lib/map-basemaps'
 
 // ─── The job map — a product view with a diagnostic behind a toggle ────────────
 // Which field, and how much of it is done. That is the whole question this map
@@ -24,39 +25,14 @@ import type { JobMapProps } from './JobMapLoader'
 // the path. Bales never get connecting lines — they are a scatter on the
 // ground, not a path the machine drove.
 //
-// Basemap: Esri World Imagery by default — a rancher reads their own ground
-// from the air — with an OSM street fallback (also the lighter option on one
-// bar of 3G). Styling follows the basemap; the choice lives in the URL
+// Basemap: the shared definition in lib/map-basemaps.ts (Esri World Imagery
+// by default, OSM street fallback) — the places draw surface uses the same
+// imagery. Styling follows the basemap; the choice lives in the URL
 // (?base=street; satellite is the unmarked default) via history.replaceState.
 //
 // Live follow: while the view is untouched we re-fit to the track as it grows;
 // the moment the user pans or zooms, follow stops — the map is read one-handed
 // in a moving tractor and must never yank. A Recenter button re-arms it.
-
-type Basemap = 'satellite' | 'street'
-
-const BASEMAPS: Record<Basemap, {
-  url: string
-  attribution: string
-  maxNativeZoom: number
-  maxZoom: number
-}> = {
-  satellite: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution:
-      'Imagery &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    // Rural imagery thins out past ~z17 — overzoom native tiles instead of
-    // serving gray.
-    maxNativeZoom: 17,
-    maxZoom: 19,
-  },
-  street: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxNativeZoom: 19,
-    maxZoom: 19,
-  },
-}
 
 const GAP_GRAY = '#6B7280'
 const CASING_DARK = '#111827'

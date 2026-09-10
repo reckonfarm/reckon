@@ -24,6 +24,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local']) {
@@ -607,6 +608,165 @@ async function ingestChecks() {
   record('ingest (token A → hw A)', `POST /api/ingest → 201 (control)`, ownStatus === 201, String(ownStatus))
 }
 
+
+// ─── Places, slice 1 — the shape, the acreage, and who may change them ────────
+// Four things this proves, in the order they can go wrong:
+//   1. The ring validator refuses what it must, as a PURE function — instant,
+//      no database, no network. If this fails, nothing below is meaningful.
+//   2. Acreage is computed SERVER-SIDE against a known synthetic rectangle. A
+//      client that posts its own `acres` is ignored.
+//   3. `kind` round-trips through POST and PATCH. Before slice 1 nothing could
+//      set it and every place on production landed as 'field'.
+//   4. PATCH is membership-gated: ranch A cannot reshape or rename ranch B's
+//      ground. The 043 "member places updatable" policy is the whole gate —
+//      the route uses the user-scoped client and no service role — so a
+//      cross-ranch PATCH must match zero rows and 404.
+// Needs migration 056 on BASE's database; skips (never fails) without it.
+async function placesChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A')
+
+  // ── 1. The validator, as a pure function ────────────────────────────────────
+  // A closed, simple, plausible rectangle near Petroleum County: 0.01° of
+  // latitude by 0.01° of longitude.
+  const LAT = 47.0, LNG = -108.2, D = 0.01
+  const rect = (close = true) => {
+    const r = [
+      { lat: LAT, lng: LNG },
+      { lat: LAT, lng: LNG + D },
+      { lat: LAT + D, lng: LNG + D },
+      { lat: LAT + D, lng: LNG },
+    ]
+    return close ? [...r, r[0]] : r
+  }
+  const cases: [string, unknown, boolean][] = [
+    ['a closed simple rectangle', rect(), true],
+    ['an OPEN ring (last corner does not meet the first)', rect(false), false],
+    ['fewer than 4 points', [{ lat: LAT, lng: LNG }, { lat: LAT + D, lng: LNG }, { lat: LAT, lng: LNG }], false],
+    ['a corner outside the plausible window', [{ lat: LAT, lng: LNG }, { lat: LAT, lng: LNG + D }, { lat: 12.3, lng: 4.5 }, { lat: LAT, lng: LNG }], false],
+    ['lat and lng swapped', [{ lat: LNG, lng: LAT }, { lat: LNG + D, lng: LAT }, { lat: LNG + D, lng: LAT + D }, { lat: LNG, lng: LAT }], false],
+    ['raw 1e-7 degrees, unconverted', [{ lat: 470000000, lng: -1082000000 }, { lat: 470100000, lng: -1082000000 }, { lat: 470100000, lng: -1081900000 }, { lat: 470000000, lng: -1082000000 }], false],
+    // A bow tie: the two diagonals cross.
+    ['a self-intersecting bow tie', [{ lat: LAT, lng: LNG }, { lat: LAT + D, lng: LNG + D }, { lat: LAT + D, lng: LNG }, { lat: LAT, lng: LNG + D }, { lat: LAT, lng: LNG }], false],
+    ['three collinear taps (no ground enclosed)', [{ lat: LAT, lng: LNG }, { lat: LAT, lng: LNG + D }, { lat: LAT, lng: LNG + 2 * D }, { lat: LAT, lng: LNG }], false],
+  ]
+  for (const [label, ring, shouldPass] of cases) {
+    const v = validateRing(ring)
+    record('validator', `${shouldPass ? 'accepts' : 'rejects'} ${label}`, v.ok === shouldPass, v.ok ? `${v.acres.toFixed(2)} ac` : v.error)
+  }
+
+  // ── 2. Acreage against a known synthetic rectangle ──────────────────────────
+  // 0.01° lat = 1111.32 m (M_PER_LAT). 0.01° lng at 47.005° = 1113.20·cos(lat).
+  // The expected value is computed from the SAME constants the code uses, so
+  // this checks the arithmetic, not the constants — a projection change moves
+  // both sides and is caught by scripts/field-report.ts, which owns that.
+  const midLat = LAT + D / 2
+  const expectedM2 = (D * 111_132) * (D * 111_320 * Math.cos((midLat * Math.PI) / 180))
+  const localAcres = polygonAreaAcres(rect())
+  record('validator', 'acreage of a known rectangle matches the shoelace', Math.abs(localAcres * 4046.8564224 - expectedM2) / expectedM2 < 0.001, `${localAcres.toFixed(3)} ac vs ${(expectedM2 / 4046.8564224).toFixed(3)} ac expected`)
+
+  // A non-finite acreage must never become a stored number. NaN and Infinity
+  // both survive JSON as `null`, which in this column is indistinguishable
+  // from "not drawn yet" — so the guard refuses instead of writing.
+  for (const [label, v] of [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['zero', 0], ['negative', -3]] as const) {
+    record('validator', `a ${label} acreage is refused, never stored`, storableAcres(v) === null, `storableAcres(${label}) = ${String(storableAcres(v))}`)
+  }
+  record('validator', 'a real acreage stores rounded to two decimals', storableAcres(12.3456) === 12.35, String(storableAcres(12.3456)))
+
+  // ── The database has to have 056 for anything below ─────────────────────────
+  const probe = await admin.from('places').select('acres, geometry_provenance, parent_id').limit(1)
+  if (probe.error) { record('(skipped)', 'places slice-1 route checks — migration 056 not applied', true, probe.error.message.slice(0, 70)); return }
+
+  const geometry = { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] }
+
+  // ── Is the [id] route even deployed on BASE? ────────────────────────────────
+  // Learned the hard way: run against a host without this route and Next
+  // answers 404 to everything under it, so "cross-ranch PATCH → 404" PASSES
+  // for entirely the wrong reason while the anonymous 401 check fails. One
+  // probe up front turns that whole confusing scatter into one honest line,
+  // and the 404-shaped checks below refuse to count unless it is up.
+  const up = await api(A, `/api/places/${a.placeId}`, undefined, 'GET')
+  const routeUp = up.status === 200
+  record('user A (owner)', 'GET /api/places/<own> is reachable and authenticated on BASE', routeUp, `${up.status}${routeUp ? '' : ' — /api/places/[id] is not deployed here, or it will not take a Bearer session'}`)
+
+  // ── 3. POST persists kind + geometry, and computes acres itself ─────────────
+  let createdId: string | null = null
+  {
+    // `acres` is posted deliberately wrong: the server must ignore it.
+    const r = await api(A, '/api/places', { name: `${PREFIX}drawn`, kind: 'pasture', geometry, acres: 99999 })
+    const place = (r.json.place ?? {}) as Record<string, unknown>
+    // Teardown sweeps places by the RLS-TEST- name prefix, so nothing to track.
+    createdId = typeof place.id === 'string' ? place.id : null
+    const acres = typeof place.acres === 'number' ? place.acres : null
+    record('user A (owner)', 'POST /api/places persists kind (not the old "field" default)', r.status === 201 && place.kind === 'pasture', `${r.status} · kind=${String(place.kind)}`)
+    // Detail says "(absent)" when the route returned nothing. It used to print
+    // NaN, which reads like a value that reached the column and sent PK
+    // hunting for a stored NaN that never existed. A check that fails must
+    // describe what happened, not hand back its own placeholder.
+    record('user A (owner)', 'POST /api/places computes acres server-side, ignoring the client', acres != null && Math.abs(acres - localAcres) < 0.02, `${r.status} · stored ${acres == null ? '(absent — the route returned no place)' : acres} vs ${localAcres.toFixed(2)} expected · posted 99999`)
+  }
+
+  // ── The validator is wired into the route, not just unit-tested ─────────────
+  {
+    const open = { type: 'Polygon', coordinates: [rect(false).map(p => [p.lng, p.lat])] }
+    const r = await api(A, '/api/places', { name: `${PREFIX}open`, geometry: open })
+    record('user A (owner)', 'POST /api/places rejects an open ring → 400', r.status === 400 && typeof r.json.error === 'string', `${r.status} · ${String(r.json.error).slice(0, 48)}`)
+  }
+  {
+    const bow = { type: 'Polygon', coordinates: [[[LNG, LAT], [LNG + D, LAT + D], [LNG, LAT + D], [LNG + D, LAT], [LNG, LAT]]] }
+    const r = await api(A, '/api/places', { name: `${PREFIX}bow`, geometry: bow })
+    record('user A (owner)', 'POST /api/places rejects a self-intersecting ring → 400', r.status === 400, `${r.status} · ${String(r.json.error).slice(0, 48)}`)
+  }
+
+  // ── 4. PATCH: own place yes, another ranch's place never ────────────────────
+  if (createdId) {
+    const r = await api(A, `/api/places/${createdId}`, { kind: 'stackyard', name: `${PREFIX}renamed` }, 'PATCH')
+    const place = (r.json.place ?? {}) as Record<string, unknown>
+    record('user A (owner)', 'PATCH /api/places/<own> round-trips kind and name', r.status === 200 && place.kind === 'stackyard' && place.name === `${PREFIX}renamed`, `${r.status} · ${String(place.kind)} · ${String(place.name)}`)
+    // The shape survives a name-only PATCH — a partial write must not blank it.
+    const r2 = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}renamed2` }, 'PATCH')
+    const p2 = (r2.json.place ?? {}) as Record<string, unknown>
+    record('user A (owner)', 'a name-only PATCH leaves the drawn shape alone', r2.status === 200 && p2.geometry != null && typeof p2.acres === 'number', `${r2.status} · geometry ${p2.geometry == null ? 'LOST' : 'kept'}`)
+  }
+  // ── Geometry is SET-ONCE: a drawn shape is never silently overwritten ───────
+  if (createdId) {
+    // A second, different polygon over the same place.
+    const L2 = LNG + 0.05
+    const moved = { type: 'Polygon', coordinates: [[[L2, LAT], [L2 + D, LAT], [L2 + D, LAT + D], [L2, LAT + D], [L2, LAT]]] }
+    const before = (await admin.from('places').select('geometry, acres').eq('id', createdId).maybeSingle()).data
+    const r = await api(A, `/api/places/${createdId}`, { geometry: moved }, 'PATCH')
+    const after = (await admin.from('places').select('geometry, acres').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'PATCH cannot overwrite a shape that is already drawn → 409', r.status === 409, `${r.status} · ${String(r.json.error).slice(0, 52)}`)
+    record('user A (owner)', 'the refused overwrite left the original shape and acreage exactly as they were', JSON.stringify(after?.geometry) === JSON.stringify(before?.geometry) && after?.acres === before?.acres, `acres ${String(before?.acres)} → ${String(after?.acres)}`)
+    // Clearing is the same act by another route, and is refused too.
+    const rc = await api(A, `/api/places/${createdId}`, { geometry: null }, 'PATCH')
+    const afterClear = (await admin.from('places').select('geometry').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'PATCH cannot clear a drawn shape either → 400, shape still there', rc.status === 400 && afterClear?.geometry != null, `${rc.status} · geometry ${afterClear?.geometry == null ? 'LOST' : 'kept'}`)
+    // …but set-once locks the SHAPE, not the row: the name still moves, and a
+    // rejected geometry in the same body must not smuggle a name change past it.
+    const rn = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}named-after-lock` }, 'PATCH')
+    record('user A (owner)', 'set-once locks the shape, not the row — name still changes on a drawn place', rn.status === 200 && ((rn.json.place ?? {}) as Record<string, unknown>).name === `${PREFIX}named-after-lock`, `${rn.status}`)
+    const rboth = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}smuggled`, geometry: moved }, 'PATCH')
+    const afterBoth = (await admin.from('places').select('name').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'a rejected geometry takes the whole patch with it — no name slips through', rboth.status === 409 && afterBoth?.name === `${PREFIX}named-after-lock`, `${rboth.status} · name "${String(afterBoth?.name).slice(-18)}"`)
+  }
+
+  {
+    const r = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}tampered`, geometry }, 'PATCH')
+    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', routeUp && r.status === 404, `${r.status}${routeUp ? '' : ' (route not up — a 404 here proves nothing)'}`)
+    const { data: after } = await admin.from('places').select('name, geometry').eq('id', b.placeId).maybeSingle()
+    record('user A (owner)', 'ranch B\'s place kept its name and stayed undrawn', after?.name !== `${PREFIX}tampered` && after?.geometry == null, `name=${String(after?.name)} · geometry=${after?.geometry == null ? 'null' : 'SET'}`)
+  }
+  {
+    const res = await fetch(`${BASE}/api/places/${a.placeId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', ...(process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {}) },
+      body: JSON.stringify({ name: `${PREFIX}anon` }),
+    })
+    record('anonymous', 'PATCH /api/places/<any> → 401', res.status === 401, `${res.status}`)
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 // A Ctrl-C or a kill mid-run still tears the fixture down (a hard kill cannot be
 // caught; scripts/teardown-fixtures.ts sweeps whatever a hard kill leaves).
@@ -628,6 +788,7 @@ async function main() {
     await lotsChecks()          // Block 4A — needs migration 050
     await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
     await correctionChecks()    // Block 5B — needs migration 054 (skips without it)
+    await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')

@@ -11,12 +11,19 @@ import { fmtDay, fmtTime, dayKey, todayKey } from '@/lib/jobs/format'
 import { privateTitle } from '@/lib/private-title'
 import PlaceActions from '../PlaceActions'
 import RecordHere from '../RecordHere'
+import DrawPlace from '../DrawPlace'
+import { placeRing, resolveMapCentre } from '@/lib/places/anchor'
+import { kindLabel } from '@/lib/places/kinds'
 
-// ─── /ranch/places/[id] (Block 6A) ────────────────────────────────────────────
-// name / type → recent rain, work, and stock lines → the full activity here
-// (the Block 5 record, filtered) → connected devices. One primary Record here;
-// the old full-width log bar is gone. No "cattle currently here": the model
-// holds no lot placement. No map: nothing here would draw one honestly yet.
+// ─── /ranch/places/[id] (Block 6A · the shape in slice 1) ─────────────────────
+// name / type → THE GROUND (its shape on satellite, with acreage, or the offer
+// to draw one) → recent rain, work, and stock lines → the full activity here
+// (the Block 5 record, filtered) → connected devices. One primary Record here.
+// No "cattle currently here": the model holds no lot placement.
+//
+// The map used to be absent because nothing here would draw one honestly. Now
+// a drawn place draws itself, and an undrawn one still says so in words rather
+// than showing an empty map.
 export const dynamic = 'force-dynamic'
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -24,8 +31,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { data } = await supabase.from('places').select('name').eq('id', id).maybeSingle()
   return privateTitle((data as { name?: string } | null)?.name?.trim() || 'Place')
 }
-
-const kindLabel = (k: string) => k.replace(/_/g, ' ')
 
 export default async function PlacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -40,6 +45,8 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
   ])
   if (!history.place) notFound()
   const { place, memory, counts } = history
+  const ring = placeRing(place.geometry)
+  const centre = await resolveMapCentre(supabase, user.id, ring ? [ring] : [])
   const rows = activity ? standingRows(activity.rows).slice(0, 10) : []
   const devices = (devicesRes.data ?? []) as { id: string; name: string; type: string; last_seen: string | null }[]
 
@@ -54,6 +61,21 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         <h1 className="mt-1 type-page-heading text-ink">{place.name}</h1>
 
         <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>
+
+        <section className="mt-6" aria-labelledby="place-ground">
+          <h2 id="place-ground" className={`${EYEBROW} !text-ink`}>The ground</h2>
+          <div className="mt-2">
+            <DrawPlace
+              place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }}
+              initialCenter={centre}
+            />
+            {!ring && (
+              <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
+                This place has a name but no shape yet. Draw it once and it stays drawn.
+              </p>
+            )}
+          </div>
+        </section>
 
         <section className="mt-6" aria-labelledby="place-recent">
           <h2 id="place-recent" className={`${EYEBROW} !text-ink`}>Recent here</h2>
