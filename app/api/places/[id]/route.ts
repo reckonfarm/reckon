@@ -28,6 +28,8 @@ import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/
 // NO DELETE, deliberately. events.payload->>place_id has no foreign key, no
 // index and no constraint across 9,186 rows, so the first delete would orphan
 // ledger references silently. Referential correctness there is its own work.
+//
+// AND GEOMETRY IS SET-ONCE — see the block in PATCH below.
 
 const SELECT = 'id, name, kind, geometry, acres, parent_id, geometry_provenance, created_at, updated_at'
 
@@ -71,24 +73,33 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     patch.kind = normalizeKind(body.kind)
   }
 
-  if ('geometry' in body) {
+  // ── GEOMETRY IS SET-ONCE IN THIS SLICE ──────────────────────────────────────
+  // An undrawn place can be given a shape. A place that HAS one keeps it: this
+  // route will not overwrite a drawn shape, and will not clear one either.
+  //
+  // Why, and why now: changing a boundary is not an edit, it is a correction
+  // to a fact other rows will come to depend on, and this codebase already has
+  // a doctrine for that — the ledger never rewrites, a correction is a new row
+  // that names what it replaced (054). A place has no such chain yet. Until it
+  // does, a silent overwrite would erase the only record of what the ground
+  // was, with nothing to point back at. Zero polygons exist in production
+  // today, so this costs nothing to establish and everything to retrofit.
+  //
+  // Name and kind stay editable on a drawn place — set-once is about the
+  // shape, not the row.
+  const settingGeometry = 'geometry' in body
+  if (settingGeometry) {
     if (body.geometry === null) {
-      // Clearing a shape is a real act (a bad draw, undone). The acreage and
-      // the provenance go with it — an acreage with no shape behind it would
-      // be a number nothing can explain.
-      patch.geometry = null
-      patch.acres = null
-      patch.geometry_provenance = null
-    } else {
-      const v = validateGeoJSONPolygon(body.geometry)
-      if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
-      patch.geometry = ringToGeoJSON(v.ring)
-      patch.acres = roundAcres(v.acres)
-      patch.geometry_provenance = {
-        source: 'drawn',
-        created_at: new Date().toISOString(),
-        corners: v.ring.length - 1,
-      }
+      return NextResponse.json({ error: 'Clearing a shape is not something this can do yet.' }, { status: 400 })
+    }
+    const v = validateGeoJSONPolygon(body.geometry)
+    if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
+    patch.geometry = ringToGeoJSON(v.ring)
+    patch.acres = roundAcres(v.acres)
+    patch.geometry_provenance = {
+      source: 'drawn',
+      created_at: new Date().toISOString(),
+      corners: v.ring.length - 1,
     }
   }
 
@@ -123,10 +134,26 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 })
   }
 
-  const { data, error } = await supabase.from('places').update(patch).eq('id', id).select(SELECT).maybeSingle()
+  // Set-once is enforced IN THE WRITE, not by a read-then-write: `is('geometry',
+  // null)` makes "only if still undrawn" part of the statement, so two people
+  // drawing the same place at the same moment can't both win. The loser gets
+  // the 409 below, having changed nothing — name and kind included, since the
+  // whole patch is one statement.
+  const write = supabase.from('places').update(patch).eq('id', id)
+  const { data, error } = await (settingGeometry ? write.is('geometry', null) : write).select(SELECT).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  // Zero rows means the membership policy did not match — another ranch's
-  // place, or none. Same answer for both: it isn't there for you.
-  if (!data) return NextResponse.json({ error: 'No such place' }, { status: 404 })
+  if (!data) {
+    // Zero rows has two causes and they need different words. Re-read under
+    // the same policies: if the row is visible, the guard is what stopped us.
+    if (settingGeometry) {
+      const { data: existing } = await supabase.from('places').select('id, geometry').eq('id', id).maybeSingle()
+      if (existing && (existing as { geometry: unknown }).geometry != null) {
+        return NextResponse.json({ error: 'This place already has a shape, and redrawing one is not in yet.' }, { status: 409 })
+      }
+    }
+    // Otherwise the membership policy did not match — another ranch's place,
+    // or none. Same answer for both: it isn't there for you.
+    return NextResponse.json({ error: 'No such place' }, { status: 404 })
+  }
   return NextResponse.json({ place: data })
 }

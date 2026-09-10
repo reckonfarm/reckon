@@ -205,20 +205,20 @@ export default function DrawPlace({
   // ── IDLE ────────────────────────────────────────────────────────────────────
   // A place that has a shape shows it. One that doesn't says so plainly and
   // offers the draw — never an empty map pretending to be information.
+  //
+  // A drawn place offers NO redraw, because the route refuses one: geometry is
+  // set-once in this slice. Offering a button that can only fail would be the
+  // same lie as naming a surface that isn't built — so the page says what is
+  // true instead, and does not promise when that changes.
   if (place?.ring) {
     return (
       <div data-audit="place-shape">
         <PlaceMapLoader key="idle" shapes={[{ id: place.id, ring: place.ring }]} initialCenter={initialCenter} />
-        <p className="mt-2 flex flex-wrap items-center justify-between gap-2 font-dm-sans text-[16px] text-ink">
-          <span data-audit="place-acres">{fmtAcres(place.acres) ?? 'Shape drawn'}</span>
-          <button
-            type="button"
-            onClick={openDraw}
-            className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2"
-            data-audit="place-redraw-open"
-          >
-            Redraw shape
-          </button>
+        <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="place-acres">
+          {fmtAcres(place.acres) ?? 'Shape drawn'}
+        </p>
+        <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="place-shape-set">
+          The shape is saved. Redrawing a place isn&rsquo;t in yet.
         </p>
       </div>
     )

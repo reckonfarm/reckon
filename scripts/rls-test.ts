@@ -706,6 +706,29 @@ async function placesChecks() {
     const p2 = (r2.json.place ?? {}) as Record<string, unknown>
     record('user A (owner)', 'a name-only PATCH leaves the drawn shape alone', r2.status === 200 && p2.geometry != null && typeof p2.acres === 'number', `${r2.status} · geometry ${p2.geometry == null ? 'LOST' : 'kept'}`)
   }
+  // ── Geometry is SET-ONCE: a drawn shape is never silently overwritten ───────
+  if (createdId) {
+    // A second, different polygon over the same place.
+    const L2 = LNG + 0.05
+    const moved = { type: 'Polygon', coordinates: [[[L2, LAT], [L2 + D, LAT], [L2 + D, LAT + D], [L2, LAT + D], [L2, LAT]]] }
+    const before = (await admin.from('places').select('geometry, acres').eq('id', createdId).maybeSingle()).data
+    const r = await api(A, `/api/places/${createdId}`, { geometry: moved }, 'PATCH')
+    const after = (await admin.from('places').select('geometry, acres').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'PATCH cannot overwrite a shape that is already drawn → 409', r.status === 409, `${r.status} · ${String(r.json.error).slice(0, 52)}`)
+    record('user A (owner)', 'the refused overwrite left the original shape and acreage exactly as they were', JSON.stringify(after?.geometry) === JSON.stringify(before?.geometry) && after?.acres === before?.acres, `acres ${String(before?.acres)} → ${String(after?.acres)}`)
+    // Clearing is the same act by another route, and is refused too.
+    const rc = await api(A, `/api/places/${createdId}`, { geometry: null }, 'PATCH')
+    const afterClear = (await admin.from('places').select('geometry').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'PATCH cannot clear a drawn shape either → 400, shape still there', rc.status === 400 && afterClear?.geometry != null, `${rc.status} · geometry ${afterClear?.geometry == null ? 'LOST' : 'kept'}`)
+    // …but set-once locks the SHAPE, not the row: the name still moves, and a
+    // rejected geometry in the same body must not smuggle a name change past it.
+    const rn = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}named-after-lock` }, 'PATCH')
+    record('user A (owner)', 'set-once locks the shape, not the row — name still changes on a drawn place', rn.status === 200 && ((rn.json.place ?? {}) as Record<string, unknown>).name === `${PREFIX}named-after-lock`, `${rn.status}`)
+    const rboth = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}smuggled`, geometry: moved }, 'PATCH')
+    const afterBoth = (await admin.from('places').select('name').eq('id', createdId).maybeSingle()).data
+    record('user A (owner)', 'a rejected geometry takes the whole patch with it — no name slips through', rboth.status === 409 && afterBoth?.name === `${PREFIX}named-after-lock`, `${rboth.status} · name "${String(afterBoth?.name).slice(-18)}"`)
+  }
+
   {
     const r = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}tampered`, geometry }, 'PATCH')
     record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', r.status === 404, `${r.status}`)

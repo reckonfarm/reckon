@@ -346,15 +346,26 @@ export default function PlaceMapClient({
             </button>
           ))}
         </div>
+        {/* The FIRST time Dryline ever asks for a location, and the people it
+            asks are the pilot crew. The button does not stand alone: it says
+            what it does and what happens to the answer, before the phone's own
+            permission sheet appears. Both are true — the fix moves the map and
+            drops the blue dot, and it is never written down, never sent, and
+            gone when the map closes. */}
         {drawing && geolocatable && (
-          <button
-            type="button"
-            onClick={locate}
-            className="pointer-events-auto min-h-[44px] rounded-lg border border-gray-200 bg-white/95 px-3 font-dm-sans text-[14px] font-semibold text-forest-green"
-            data-audit="draw-locate"
-          >
-            Find me
-          </button>
+          <div className="pointer-events-auto max-w-[13.5rem] overflow-hidden rounded-lg border border-gray-200 bg-white/95">
+            <p className="px-3 pt-2 font-dm-sans text-[13px] leading-snug text-secondary-ink" data-audit="draw-locate-note">
+              Moves the map to where you&rsquo;re standing. Your location isn&rsquo;t saved or sent anywhere.
+            </p>
+            <button
+              type="button"
+              onClick={locate}
+              className="min-h-[44px] w-full px-3 pb-1 text-right font-dm-sans text-[15px] font-semibold text-forest-green"
+              data-audit="draw-locate"
+            >
+              Find me
+            </button>
+          </div>
         )}
       </div>
 

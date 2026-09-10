@@ -54,6 +54,15 @@
 --   • No check constraint on provenance.source. Same reason `kind` is text:
 --     a new source must never require a migration.
 --
+-- SET-ONCE, and the column cannot say so: app/api/places/[id] refuses to
+-- overwrite or clear a geometry that is already non-null (the write carries
+-- `is('geometry', null)`, so two people drawing the same place cannot both
+-- win). No constraint here enforces it, deliberately — a later slice will add
+-- a correction chain for shapes the way 054 did for events, and that slice
+-- will need to write a new shape over an old one. This is a PRODUCT rule for
+-- as long as places have no way to record what a boundary used to be. Do not
+-- read a non-null geometry as permanent; read it as unrewritable so far.
+--
 -- TRAP, recorded because it cost time in recon: `kind` is nominally free text
 -- and functionally dead. LogIt.tsx posts { name } alone, so the API defaults
 -- EVERYTHING to 'field' — on production "Preston's house" is a field. This
