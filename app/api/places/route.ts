@@ -1,17 +1,21 @@
-import { createClient } from '@/lib/supabase-server'
+import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
-import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/geo'
+import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 
 // Places — the named spots on the outfit (031).
 //
 // GET  /api/places   → { places: [{id, name, kind}] } for the ranch
 // POST /api/places   → { name, kind?, geometry? } → { place } (201)
 //
-// Both on the user-scoped SSR client; the 043 membership policies ARE the
-// scope (no user_id filters here). ranch_id from the person's own membership.
+// AUTH via lib/auth-user sessionUser(req): cookies first, then a Bearer JWT.
+// Both come back as a USER-SCOPED client, so the 043 membership policies stay
+// the scope (no user_id filters here) — this is not a service-role door. The
+// Bearer leg is why the isolation suite can reach these routes at all; the
+// older cookie-only pattern 401s every machine caller, which is exactly what
+// it did here until the suite covered places.
 //
 // SLICE 1 CHANGE — `kind` and `geometry` are now accepted and persisted.
 // Before this, the only caller (LogIt.tsx) posted { name } alone and every
@@ -24,10 +28,10 @@ import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/
 // Acreage is NEVER taken from the client: it is computed here from the
 // geometry the client sent, by the same shoelace the map draws against.
 
-export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+export async function GET(req: NextRequest) {
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase } = session
 
   const { data, error } = await supabase
     .from('places')
@@ -38,9 +42,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { user, supabase } = session
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -62,8 +66,9 @@ export async function POST(req: NextRequest) {
   if (body.geometry != null) {
     const v = validateGeoJSONPolygon(body.geometry)
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
+    acres = storableAcres(v.acres)
+    if (acres == null) return NextResponse.json({ error: 'That shape could not be measured, so it was not saved.' }, { status: 400 })
     geometry = ringToGeoJSON(v.ring)
-    acres = roundAcres(v.acres)
     geometry_provenance = { source: 'drawn', created_at: new Date().toISOString(), corners: v.ring.length - 1 }
   }
 

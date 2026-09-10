@@ -24,7 +24,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { validateRing, polygonAreaAcres } from '../lib/places/geo'
+import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local']) {
@@ -665,11 +665,29 @@ async function placesChecks() {
   const localAcres = polygonAreaAcres(rect())
   record('validator', 'acreage of a known rectangle matches the shoelace', Math.abs(localAcres * 4046.8564224 - expectedM2) / expectedM2 < 0.001, `${localAcres.toFixed(3)} ac vs ${(expectedM2 / 4046.8564224).toFixed(3)} ac expected`)
 
+  // A non-finite acreage must never become a stored number. NaN and Infinity
+  // both survive JSON as `null`, which in this column is indistinguishable
+  // from "not drawn yet" — so the guard refuses instead of writing.
+  for (const [label, v] of [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['zero', 0], ['negative', -3]] as const) {
+    record('validator', `a ${label} acreage is refused, never stored`, storableAcres(v) === null, `storableAcres(${label}) = ${String(storableAcres(v))}`)
+  }
+  record('validator', 'a real acreage stores rounded to two decimals', storableAcres(12.3456) === 12.35, String(storableAcres(12.3456)))
+
   // ── The database has to have 056 for anything below ─────────────────────────
   const probe = await admin.from('places').select('acres, geometry_provenance, parent_id').limit(1)
   if (probe.error) { record('(skipped)', 'places slice-1 route checks — migration 056 not applied', true, probe.error.message.slice(0, 70)); return }
 
   const geometry = { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] }
+
+  // ── Is the [id] route even deployed on BASE? ────────────────────────────────
+  // Learned the hard way: run against a host without this route and Next
+  // answers 404 to everything under it, so "cross-ranch PATCH → 404" PASSES
+  // for entirely the wrong reason while the anonymous 401 check fails. One
+  // probe up front turns that whole confusing scatter into one honest line,
+  // and the 404-shaped checks below refuse to count unless it is up.
+  const up = await api(A, `/api/places/${a.placeId}`, undefined, 'GET')
+  const routeUp = up.status === 200
+  record('user A (owner)', 'GET /api/places/<own> is reachable and authenticated on BASE', routeUp, `${up.status}${routeUp ? '' : ' — /api/places/[id] is not deployed here, or it will not take a Bearer session'}`)
 
   // ── 3. POST persists kind + geometry, and computes acres itself ─────────────
   let createdId: string | null = null
@@ -679,9 +697,13 @@ async function placesChecks() {
     const place = (r.json.place ?? {}) as Record<string, unknown>
     // Teardown sweeps places by the RLS-TEST- name prefix, so nothing to track.
     createdId = typeof place.id === 'string' ? place.id : null
-    const acres = typeof place.acres === 'number' ? place.acres : NaN
+    const acres = typeof place.acres === 'number' ? place.acres : null
     record('user A (owner)', 'POST /api/places persists kind (not the old "field" default)', r.status === 201 && place.kind === 'pasture', `${r.status} · kind=${String(place.kind)}`)
-    record('user A (owner)', 'POST /api/places computes acres server-side, ignoring the client', Math.abs(acres - localAcres) < 0.02, `stored ${acres} vs ${localAcres.toFixed(2)} · posted 99999`)
+    // Detail says "(absent)" when the route returned nothing. It used to print
+    // NaN, which reads like a value that reached the column and sent PK
+    // hunting for a stored NaN that never existed. A check that fails must
+    // describe what happened, not hand back its own placeholder.
+    record('user A (owner)', 'POST /api/places computes acres server-side, ignoring the client', acres != null && Math.abs(acres - localAcres) < 0.02, `${r.status} · stored ${acres == null ? '(absent — the route returned no place)' : acres} vs ${localAcres.toFixed(2)} expected · posted 99999`)
   }
 
   // ── The validator is wired into the route, not just unit-tested ─────────────
@@ -731,7 +753,7 @@ async function placesChecks() {
 
   {
     const r = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}tampered`, geometry }, 'PATCH')
-    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', r.status === 404, `${r.status}`)
+    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', routeUp && r.status === 404, `${r.status}${routeUp ? '' : ' (route not up — a 404 here proves nothing)'}`)
     const { data: after } = await admin.from('places').select('name, geometry').eq('id', b.placeId).maybeSingle()
     record('user A (owner)', 'ranch B\'s place kept its name and stayed undrawn', after?.name !== `${PREFIX}tampered` && after?.geometry == null, `name=${String(after?.name)} · geometry=${after?.geometry == null ? 'null' : 'SET'}`)
   }

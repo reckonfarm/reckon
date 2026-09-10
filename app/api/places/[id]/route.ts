@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
+import { sessionUser } from '@/lib/auth-user'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
-import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/geo'
+import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 
 // One place (places, slice 1).
 //
 //   GET   /api/places/[id]  → { place }
 //   PATCH /api/places/[id]  → { name?, kind?, geometry?, parent_id? } → { place }
+//
+// AUTH via lib/auth-user sessionUser(req) — cookies first, then a Bearer JWT,
+// both returning a user-scoped client. The older cookie-only pattern this
+// route was first written with 401s every machine caller, so the isolation
+// suite could not reach it; places is a write surface now and the suite has to
+// be able to.
 //
 // USER-SCOPED CLIENT, NO SERVICE ROLE. Unlike /api/ranch (ranches has no
 // update policy, so a rename there has to go service-role after proving
@@ -33,11 +39,11 @@ import { validateGeoJSONPolygon, ringToGeoJSON, roundAcres } from '@/lib/places/
 
 const SELECT = 'id, name, kind, geometry, acres, parent_id, geometry_provenance, created_at, updated_at'
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase } = session
 
   const { data, error } = await supabase.from('places').select(SELECT).eq('id', id).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -47,9 +53,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase } = session
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -94,8 +100,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
     const v = validateGeoJSONPolygon(body.geometry)
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
+    const acres = storableAcres(v.acres)
+    if (acres == null) return NextResponse.json({ error: 'That shape could not be measured, so it was not saved.' }, { status: 400 })
     patch.geometry = ringToGeoJSON(v.ring)
-    patch.acres = roundAcres(v.acres)
+    patch.acres = acres
     patch.geometry_provenance = {
       source: 'drawn',
       created_at: new Date().toISOString(),

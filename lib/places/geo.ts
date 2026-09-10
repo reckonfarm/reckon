@@ -172,8 +172,14 @@ export function validateRing(input: unknown): RingValidation {
     return { ok: false, error: 'The edges cross each other. Redraw it without the shape folding over itself.' }
   }
 
+  // `!Number.isFinite` FIRST, and not folded into the `<` comparison: every
+  // comparison against NaN is false, so a bare `areaM2 < MIN_AREA_M2` would
+  // wave a NaN straight through this guard and on into the column. Nothing
+  // reachable produces one today — the coordinates are already proven finite —
+  // but the guard was written the wrong way round, and a number that cannot be
+  // compared is not a measurement.
   const areaM2 = polygonAreaM2(ring)
-  if (areaM2 < MIN_AREA_M2) {
+  if (!Number.isFinite(areaM2) || areaM2 < MIN_AREA_M2) {
     return { ok: false, error: 'Those corners do not enclose any ground.' }
   }
 
@@ -208,9 +214,20 @@ export function fmtAcres(acres: number | null | undefined): string | null {
 }
 
 /**
- * What gets stored. Two decimals is finer than anyone reads acreage and
- * coarse enough that the column never holds float noise.
+ * What may be stored — or null, meaning nothing may be. Two decimals is finer
+ * than anyone reads acreage and coarse enough that the column never holds
+ * float noise.
+ *
+ * The null is the point. `acres` is a measurement of real ground and a
+ * non-finite one is not a small error, it is the absence of an answer wearing
+ * a number's clothes: NaN survives JSON as `null`, Infinity as `null`, and
+ * either would land in the column looking exactly like "not drawn yet". So the
+ * check happens HERE, at the last point before the write, and the caller
+ * refuses rather than persisting. Belt to validateRing's braces — that guard
+ * should already have caught it, and if it ever doesn't, this one stops the
+ * column from lying.
  */
-export function roundAcres(acres: number): number {
+export function storableAcres(acres: number): number | null {
+  if (!Number.isFinite(acres) || acres <= 0) return null
   return Math.round(acres * 100) / 100
 }
