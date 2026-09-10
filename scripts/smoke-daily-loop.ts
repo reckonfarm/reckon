@@ -948,20 +948,16 @@ async function main() {
       const rowText = async (id: string) => (await page.locator(`[data-audit="rain-place-row"][data-place="${id}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
       const north = await rowText(northId), west = await rowText(placeId), audit = await rowText(auditId)
       const section = (await page.locator('[data-audit="rain-on-my-places"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      // Split from the day format below, which is an open copy question. This
-      // half is settled and stays strict: the reading, who recorded it, an
-      // explicit no-reading, and never an inferred zero.
-      record('7-3: every place has a row — the latest reading, who recorded it; a place with no reading says so and never shows zero', /0\.80" · .* · recorded by smoke-daily-loop-b/.test(north) && /0\.35" · .* · recorded by Smoke A/.test(west) && /no rain recorded yet/.test(audit) && !/0\.00/.test(audit) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}" · audit "${audit.slice(0, 60)}"`)
-      // PENDING — a copy decision PK has not made, deliberately not guessed.
-      // The row renders lib/jobs/format fmtDay ("Tue, Sep 8, 2026"), the format
-      // every other surface in the app uses. This check was written expecting a
-      // compact "Sep 8" — which is what the rain SUMMARY line right above it
-      // renders ("County estimate · through Sep 8"). One page, two day formats;
-      // one of them has to move and it is not the suite's call which.
-      // Recorded, not asserted, so the suite does not sit red on an open
-      // question — and it names the question every run so it cannot be lost.
-      const rowDay = (north.match(/0\.80" · ([^·]+) · recorded by/) ?? ['', '(not found)'])[1].trim()
-      skip('7-3: the day format on a rain row — AWAITING PK', `renders "${rowDay}" via fmtDay, the format every other surface uses; this check was written for a compact "Sep 8", which is what the rain summary line directly above it renders. One page, two day formats — one has to move, and it is not the suite's call which.`)
+      // The day is fmtDay's short style — "Tue, Sep 8, 2026" — asserted exactly,
+      // not loosely: this is the one day format the whole app uses (places,
+      // activity, work), and PK settled it here on 2026-09-10 rather than let
+      // Rain on my places grow a compact one of its own. The rain SUMMARY line
+      // above it still renders a bare "Sep 8" from a different formatter; that
+      // inconsistency is known and left alone deliberately, so if either side
+      // ever moves, this regex is what notices.
+      const DAY = String.raw`[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{4}`
+      const rowRe = (inches: string, who: string) => new RegExp(`${inches}" \u00b7 ${DAY} \u00b7 recorded by ${who}`)
+      record('7-3: every place has a row — the latest reading, its day, who recorded it; a place with no reading says so and never shows zero', rowRe('0\\.80', 'smoke-daily-loop-b').test(north) && rowRe('0\\.35', 'Smoke A').test(west) && /no rain recorded yet/.test(audit) && !/0\.00/.test(audit) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}" · audit "${audit.slice(0, 60)}"`)
       await page.locator(`[data-audit="rain-history-${northId}-summary"]`).click().catch(() => {})
       const hist = (await page.locator(`[data-audit="rain-history-${northId}"] [data-audit="rain-readings"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7-3: a row expands to its history — each reading with its day and who recorded it', /recorded by smoke-daily-loop-b/.test(hist) && /0\.80"/.test(hist), hist.slice(0, 80))
