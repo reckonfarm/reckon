@@ -17,16 +17,20 @@ export interface PlaceRow {
   id: string
   name: string
   kind: string
+  retiredAt: string | null
   lastWork: { ts: string; type: string } | null
   lastRain: { ts: string; inches: number } | null
   ring: LatLng[] | null
   acres: number | null
 }
 
-export async function placeRows(supabase: SupabaseClient): Promise<PlaceRow[]> {
+/** Live rows first, retired kept separate — never dropped (they must stay reachable). */
+export interface PlaceRows { live: PlaceRow[]; retired: PlaceRow[] }
+
+export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
   const list = await selectPlaces(supabase)
   const shaped = list.map(pl => ({ ...pl, ring: placeRing(pl.geometry), acres: typeof pl.acres === 'number' ? pl.acres : null }))
-  if (shaped.length === 0) return []
+  if (shaped.length === 0) return { live: [], retired: [] }
   const { data: events } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', [...MANUAL_EVENT_TYPES]).eq('payload->>source', 'manual'))
     .order('ts', { ascending: false }).limit(1000)
   const work = new Map<string, { ts: string; type: string }>()
@@ -39,11 +43,13 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRow[]> {
       if (r.type === 'rain' && p.place_id === pid && !rain.has(pid) && typeof p.inches === 'number') rain.set(pid, { ts: r.ts, inches: p.inches })
     }
   }
-  return shaped.map(pl => ({
+  const rows: PlaceRow[] = shaped.map(pl => ({
     id: pl.id, name: pl.name, kind: pl.kind, ring: pl.ring, acres: pl.acres,
+    retiredAt: pl.retired_at ?? null,
     lastWork: work.get(pl.id) ?? null,
     lastRain: rain.get(pl.id) ?? null,
   }))
+  return { live: rows.filter(r => !r.retiredAt), retired: rows.filter(r => r.retiredAt) }
 }
 
 // TOLERANT READ, on 040's precedent (lib/jobs/annotations.ts fetchFieldsCut):
@@ -53,9 +59,9 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRow[]> {
 // yet, ask again without it. The acreage simply stays invisible until the
 // migration runs; nothing else on the page changes.
 async function selectPlaces(supabase: SupabaseClient) {
-  type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null }
-  const withAcres = await supabase.from('places').select('id, name, kind, geometry, acres').order('name', { ascending: true })
-  if (!withAcres.error) return (withAcres.data ?? []) as Row[]
+  type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null; retired_at: string | null }
+  const full = await supabase.from('places').select('id, name, kind, geometry, acres, retired_at').order('name', { ascending: true })
+  if (!full.error) return (full.data ?? []) as Row[]
   const legacy = await supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true })
-  return ((legacy.data ?? []) as Omit<Row, 'acres'>[]).map(r => ({ ...r, acres: null }))
+  return ((legacy.data ?? []) as Omit<Row, 'acres' | 'retired_at'>[]).map(r => ({ ...r, acres: null, retired_at: null }))
 }

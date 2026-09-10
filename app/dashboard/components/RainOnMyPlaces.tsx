@@ -29,7 +29,10 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
   const supabase = await createClient()
   const [ledger, placesRes] = await Promise.all([
     getRainLedger(supabase),
-    supabase.from('places').select('id, name').order('name'),
+    // Live only — each row offers Log rain, and nothing new is recorded at a
+    // retired place. Tolerant of a database without 057: every place is live there.
+    supabase.from('places').select('id, name').is('retired_at', null).order('name')
+      .then(r => (r.error ? supabase.from('places').select('id, name').order('name') : r)),
   ])
   const places = ((placesRes.data ?? []) as { id: string; name: string }[])
   const noPlace = ledger.places.find(p => p.place_id === null) ?? null

@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveRanchId } from './ranch-membership'
 import { normalizeLot, isLotPurpose, type Lot } from './herd'
-import { createServiceClient } from './supabase'
+import { staleEdit, retiredWhileOpen } from './stale-edit'
 
 // ─── The ranch's cattle lots — real rows (Block 4B, migration 051) ─────────────
 // One row per lot on herd_lots, membership-gated (043 shape). Two members
@@ -110,16 +110,13 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   const { data, error } = await q.select(LOT_COLUMNS)
   if (error) return { ok: false, status: 500, error: error.message }
   if (data && data.length === 1) return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data[0] as LotRow)]))[0] }
-  // Nothing moved: distinguish "gone" from "changed under you".
+  // Nothing moved: distinguish "gone" from "changed under you". The words for
+  // both live in lib/stale-edit.ts now, so places inherits them verbatim
+  // instead of growing a second dialect of the same sentence.
   const { data: current } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('id', id).maybeSingle()
-  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: 'That lot was retired while you had it open. Nothing of yours was written; it is off the live list now.' }
-  // Say WHO and WHEN, and what was kept: the row was not written, the other person's
-  // version is what the form now shows, and the editor's entries are still in the form.
+  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: retiredWhileOpen('lot') }
   const row = current as LotRow
-  const { data: changer } = row.updated_by ? await createServiceClient().from('profiles').select('display_name, email').eq('id', row.updated_by).maybeSingle() : { data: null }
-  const name = (changer as { display_name?: string | null; email?: string | null } | null)?.display_name?.trim() || (changer as { email?: string | null } | null)?.email || 'Someone else on the ranch'
-  const at = new Date(row.updated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })
-  return { ok: false, status: 409, changed_by: name, changed_at: row.updated_at, error: `${name} changed this lot at ${at}, while you had it open. Your change was not saved over theirs — their version is on the screen now, and your entries are still in the form. Check theirs, then save yours again.` }
+  return { ok: false, ...(await staleEdit('lot', row)) }
 }
 
 // Retire — the lot leaves the pickers and the estimate; its name still resolves.

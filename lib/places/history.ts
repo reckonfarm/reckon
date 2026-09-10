@@ -23,7 +23,7 @@ export interface PlaceMemory {
 }
 
 export interface PlaceHistory {
-  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null } | null
+  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null; updated_at: string; updated_by: string | null; retired_at: string | null } | null
   memory: PlaceMemory[]           // present kinds only, most recent first
   counts: { entries: number; sinceIso: string | null }
 }
@@ -45,7 +45,7 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
   try {
     // Tolerant read (040's precedent): `acres` does not exist before migration
     // 056, and asking for it would fail the select and 404 the whole page.
-    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres').eq('id', placeId).maybeSingle()
+    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres, updated_at, updated_by, retired_at').eq('id', placeId).maybeSingle()
     const place = withAcres.error
       ? (await supabase.from('places').select('id, name, kind, created_at, geometry').eq('id', placeId).maybeSingle()).data
       : withAcres.data
@@ -100,7 +100,7 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
     }
     memory.sort((a, b) => b.ts.localeCompare(a.ts))
     return {
-      place: { acres: null, ...place } as PlaceHistory['place'],
+      place: { acres: null, updated_by: null, retired_at: null, ...place } as PlaceHistory['place'],
       memory,
       counts: await placeEntryCounts(supabase, placeId),   // Block 5A: exact, same predicate as /activity?place=
     }

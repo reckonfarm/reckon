@@ -673,21 +673,51 @@ async function placesChecks() {
   }
   record('validator', 'a real acreage stores rounded to two decimals', storableAcres(12.3456) === 12.35, String(storableAcres(12.3456)))
 
-  // ── The database has to have 056 for anything below ─────────────────────────
-  const probe = await admin.from('places').select('acres, geometry_provenance, parent_id').limit(1)
-  if (probe.error) { record('(skipped)', 'places slice-1 route checks — migration 056 not applied', true, probe.error.message.slice(0, 70)); return }
+  // ── ONE gate for every route check below ────────────────────────────────────
+  // 056 gave the route `acres` / `geometry_provenance`; 057 gave it
+  // `updated_by` / `retired_at`. The route writes both on every PATCH, so on a
+  // database missing either it fails loudly and correctly — and seven red lines
+  // saying "500" tell you far less than one line naming the migration. Same
+  // lesson as the route-up probe: collapse a knowable cause into one sentence.
+  const probe = await admin.from('places').select('acres, geometry_provenance, parent_id, updated_by, retired_at, revision').limit(1)
+  if (probe.error) { record('(skipped)', 'places route checks — migration 056/057 not applied', true, probe.error.message.slice(0, 70)); return }
 
   const geometry = { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] }
 
-  // ── Is the [id] route even deployed on BASE? ────────────────────────────────
-  // Learned the hard way: run against a host without this route and Next
-  // answers 404 to everything under it, so "cross-ranch PATCH → 404" PASSES
-  // for entirely the wrong reason while the anonymous 401 check fails. One
-  // probe up front turns that whole confusing scatter into one honest line,
-  // and the 404-shaped checks below refuse to count unless it is up.
+  // ── Is BASE running the code these checks are written against? ──────────────
+  // This probe has now been wrong twice, in two different ways, and the second
+  // way is the interesting one.
+  //
+  //   v1 asked nothing, and a host WITHOUT the route answered 404 to
+  //   everything under it — so "cross-ranch PATCH → 404" PASSED for entirely
+  //   the wrong reason while the anonymous 401 check failed.
+  //
+  //   v2 asked "does GET answer 200?" That catches an ABSENT route and nothing
+  //   else. Production then hit the state neither version anticipated: the
+  //   route file present but at an OLDER BUILD. GET answered 200, the probe
+  //   was happy, and ten checks failed one at a time — a missing DELETE is
+  //   405, not 404, and an older PATCH is a perfectly healthy 200 that simply
+  //   ignores fields it has never heard of.
+  //
+  // So stop asking whether the file is there and ask whether it can do what
+  // these checks require. The response SHAPE is that contract: this build's
+  // SELECT returns updated_by / retired_at / revision and no earlier one does.
+  // Existence is not capability, and a suite that cannot tell them apart
+  // reports ten symptoms instead of one cause.
   const up = await api(A, `/api/places/${a.placeId}`, undefined, 'GET')
-  const routeUp = up.status === 200
-  record('user A (owner)', 'GET /api/places/<own> is reachable and authenticated on BASE', routeUp, `${up.status}${routeUp ? '' : ' — /api/places/[id] is not deployed here, or it will not take a Bearer session'}`)
+  const shape = (up.json.place ?? {}) as Record<string, unknown>
+  const missing = ['updated_by', 'retired_at', 'revision'].filter(k => !(k in shape))
+  const routeUp = up.status === 200 && missing.length === 0
+  record('user A (owner)', 'GET /api/places/<own> answers, and BASE is running this slice\'s build', routeUp,
+    up.status !== 200
+      ? `${up.status} — /api/places/[id] is not reachable here, or will not take a Bearer session`
+      : missing.length
+        ? `200 but the reply is missing ${missing.join(', ')} — BASE is on an older build; deploy this branch and re-run`
+        : '200 · current')
+  if (!routeUp) {
+    record('(skipped)', 'places route checks — BASE is not running this build (see the line above)', true, 'one cause, not ten symptoms')
+    return
+  }
 
   // ── 3. POST persists kind + geometry, and computes acres itself ─────────────
   let createdId: string | null = null
@@ -753,7 +783,7 @@ async function placesChecks() {
 
   {
     const r = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}tampered`, geometry }, 'PATCH')
-    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', routeUp && r.status === 404, `${r.status}${routeUp ? '' : ' (route not up — a 404 here proves nothing)'}`)
+    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', r.status === 404, `${r.status}`)
     const { data: after } = await admin.from('places').select('name, geometry').eq('id', b.placeId).maybeSingle()
     record('user A (owner)', 'ranch B\'s place kept its name and stayed undrawn', after?.name !== `${PREFIX}tampered` && after?.geometry == null, `name=${String(after?.name)} · geometry=${after?.geometry == null ? 'null' : 'SET'}`)
   }
@@ -764,6 +794,75 @@ async function placesChecks() {
       body: JSON.stringify({ name: `${PREFIX}anon` }),
     })
     record('anonymous', 'PATCH /api/places/<any> → 401', res.status === 401, `${res.status}`)
+  }
+  {
+    const res = await fetch(`${BASE}/api/places/${a.placeId}`, { method: 'DELETE', headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} })
+    record('anonymous', 'DELETE /api/places/<any> → 401', res.status === 401, `${res.status}`)
+  }
+
+  // ── 057: a place can be corrected, with who, when, and a real token ─────────
+  if (!createdId) return
+
+  const readPlace = async (id: string) => (await admin.from('places').select('name, kind, geometry, acres, geometry_provenance, updated_at, updated_by, retired_at, retired_by, revision').eq('id', id).maybeSingle()).data as Record<string, unknown> | null
+
+  // Rename + re-kind, and authorship is stamped.
+  {
+    const before = await readPlace(createdId)
+    const r = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}corrected`, kind: 'yard', expected_updated_at: before!.updated_at }, 'PATCH')
+    const after = await readPlace(createdId)
+    record('user A (owner)', 'PATCH renames and re-kinds a place', r.status === 200 && after!.name === `${PREFIX}corrected` && after!.kind === 'yard', `${r.status} · ${String(after!.name).slice(-10)} · ${String(after!.kind)}`)
+    record('user A (owner)', 'the correction stamps updated_by with the person who made it', after!.updated_by === a.userId, `${String(after!.updated_by).slice(0, 8)} vs ${a.userId.slice(0, 8)}`)
+    record('user A (owner)', 'the DATABASE moved updated_at — the token is not the app\'s to forget', after!.updated_at !== before!.updated_at, `${String(before!.updated_at).slice(11, 23)} → ${String(after!.updated_at).slice(11, 23)}`)
+    // The rename must not disturb the shape it was drawn with.
+    record('user A (owner)', 'a rename leaves geometry, acres and provenance byte-identical', JSON.stringify(after!.geometry) === JSON.stringify(before!.geometry) && after!.acres === before!.acres && JSON.stringify(after!.geometry_provenance) === JSON.stringify(before!.geometry_provenance), `acres ${String(before!.acres)} → ${String(after!.acres)}`)
+  }
+
+  // A stale token loses, and is told who won.
+  {
+    const stale = (await readPlace(createdId))!.updated_at as string
+    const win = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}first-in`, expected_updated_at: stale }, 'PATCH')
+    const lose = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}second-in`, expected_updated_at: stale }, 'PATCH')
+    const after = await readPlace(createdId)
+    record('user A (owner)', 'a stale expected_updated_at → 409 and the first edit stands', win.status === 200 && lose.status === 409 && after!.name === `${PREFIX}first-in`, `${win.status} then ${lose.status} · "${String(after!.name).slice(-9)}"`)
+    record('user A (owner)', 'the 409 names who changed it and when, in the herd_lots words', lose.json.code === 'stale' && typeof lose.json.changed_by === 'string' && /while you had it open/.test(String(lose.json.error)) && /your entries are still in the form/.test(String(lose.json.error)), `${String(lose.json.changed_by)} · "${String(lose.json.error).slice(0, 46)}…"`)
+    const fresh = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}retry-wins`, expected_updated_at: after!.updated_at }, 'PATCH')
+    record('user A (owner)', 'the CURRENT token saves — "save yours again" is true', fresh.status === 200 && ((await readPlace(createdId))!.name === `${PREFIX}retry-wins`), `${fresh.status}`)
+  }
+
+  // Geometry is still set-once after all of this.
+  {
+    const g = { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] }
+    const over = await api(A, `/api/places/${createdId}`, { geometry: g }, 'PATCH')
+    const clear = await api(A, `/api/places/${createdId}`, { geometry: null }, 'PATCH')
+    record('user A (owner)', 'geometry is still set-once once a place is correctable', over.status === 409 && clear.status === 400 && (await readPlace(createdId))!.geometry != null, `${over.status} / ${clear.status}`)
+  }
+
+  // Retire: off the picker, still naming its history, and reversible.
+  {
+    const del = await api(A, `/api/places/${createdId}`, undefined, 'DELETE')
+    const after = await readPlace(createdId)
+    record('user A (owner)', 'DELETE retires — the row stays, with who retired it', del.status === 200 && after !== null && after.retired_at != null && after.retired_by === a.userId, `${del.status} · retired_at ${after?.retired_at ? 'set' : 'NULL'}`)
+    const picker = await api(A, '/api/places', undefined, 'GET')
+    const ids = ((picker.json.places ?? []) as { id: string }[]).map(p => p.id)
+    record('user A (owner)', 'a retired place is gone from the logging picker', !ids.includes(createdId) && ids.includes(a.placeId), `${ids.length} live place(s)`)
+    const opts = await api(A, '/api/activity/options', undefined, 'GET')
+    const opt = ((opts.json.places ?? []) as { id: string; name: string; retired?: boolean }[]).find(p => p.id === createdId)
+    record('user A (owner)', 'but the correction picker still names it, flagged retired', !!opt && opt.retired === true && !!opt.name, `${opt ? `"${opt.name.slice(-10)}" retired=${opt.retired}` : 'ABSENT — history would lose its where'}`)
+    // Every other edit is refused while it is retired.
+    const blocked = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}while-retired` }, 'PATCH')
+    record('user A (owner)', 'a retired place refuses every edit but the way back', blocked.status === 404 && /retired while you had it open/.test(String(blocked.json.error)), `${blocked.status} · ${String(blocked.json.error).slice(0, 40)}`)
+    const back = await api(A, `/api/places/${createdId}`, { retired: false }, 'PATCH')
+    const live = await readPlace(createdId)
+    record('user A (owner)', 'PATCH { retired: false } puts it back and it is never gone', back.status === 200 && live!.retired_at === null, `${back.status}`)
+  }
+
+  // Cross-ranch: neither verb reaches another outfit's ground.
+  {
+    const beforeB = await readPlace(b.placeId)
+    const patch = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}stolen` }, 'PATCH')
+    const del = await api(A, `/api/places/${b.placeId}`, undefined, 'DELETE')
+    const afterB = await readPlace(b.placeId)
+    record('user A (owner)', 'PATCH and DELETE on ranch B\'s place → 404, untouched', patch.status === 404 && del.status === 404 && afterB!.name === beforeB!.name && afterB!.retired_at === null, `${patch.status} / ${del.status} · "${String(afterB!.name)}"`)
   }
 }
 

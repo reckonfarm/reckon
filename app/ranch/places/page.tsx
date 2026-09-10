@@ -12,6 +12,7 @@ import { kindLabel } from '@/lib/places/kinds'
 import { MANUAL_EVENT_LABELS, isManualEventType } from '@/lib/manual-log'
 import { fmtDay } from '@/lib/jobs/format'
 import RecordHere from './RecordHere'
+import Disclosure from '@/app/components/ui/Disclosure'
 import DrawPlace from './DrawPlace'
 import PlaceMapLoader from './PlaceMapLoader'
 
@@ -33,10 +34,10 @@ export default async function PlacesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/places')
-  const rows = await placeRows(supabase)
-  const drawn = rows.filter(r => r.ring)
+  const { live, retired } = await placeRows(supabase)
+  const drawn = live.filter(r => r.ring)
   const centre = await resolveMapCentre(supabase, user.id, drawn.map(r => r.ring!))
-  const undrawn = rows.length - drawn.length
+  const undrawn = live.length - drawn.length
 
   return (
     <>
@@ -59,14 +60,14 @@ export default async function PlacesPage() {
           </div>
         )}
 
-        {rows.length === 0 ? (
+        {live.length === 0 ? (
           <Card className="mt-4 p-5">
             <p className="font-dm-sans text-[17px] text-ink">No places named yet. Draw one on the map, or record work and name the place in the same entry — it is created with it.</p>
           </Card>
         ) : (
           <Card className="mt-4 p-0">
             <ul className="divide-y divide-rule" data-audit="place-rows">
-              {rows.map(p => (
+              {live.map(p => (
                 <li key={p.id}>
                   <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-row">
                     <span className="min-w-0">
@@ -82,6 +83,33 @@ export default async function PlacesPage() {
               ))}
             </ul>
           </Card>
+        )}
+
+        {/* Retired places are OFF the live list but never out of reach — the
+            standing rule is that every surface stays findable from where a
+            person would look, and "put it back" is unreachable if the place
+            itself is. Closed by default; the count is the answer on the row. */}
+        {retired.length > 0 && (
+          <Disclosure
+            className="mt-4"
+            title="Retired places"
+            summary={`${retired.length} retired · still named in the entries that happened there`}
+            audit="retired-places"
+          >
+            <ul className="divide-y divide-rule" data-audit="retired-place-rows">
+              {retired.map(p => (
+                <li key={p.id}>
+                  <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 py-3 hover:bg-forest-green/[0.03]" data-audit="retired-place-row">
+                    <span className="min-w-0">
+                      <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span></span>
+                      <span className="block font-dm-sans text-[15px] text-secondary-ink">Retired {fmtDay(p.retiredAt!)}</span>
+                    </span>
+                    <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
         )}
 
         <div className="mt-4 space-y-3">

@@ -374,7 +374,7 @@ export async function WeatherViewBody({
         // Places + PLACED devices in parallel (unplaced devices are honestly
         // off the map — the Devices tab is the full registry).
         const [placesRes, devicesRes] = await Promise.all([
-          sb.from('places').select('id, name, kind, geometry').order('name', { ascending: true }),
+          sb.from('places').select('id, name, kind, geometry').is('retired_at', null).order('name', { ascending: true }),
           sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
         ])
         ownGround = {

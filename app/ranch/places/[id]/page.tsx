@@ -12,6 +12,7 @@ import { privateTitle } from '@/lib/private-title'
 import PlaceActions from '../PlaceActions'
 import RecordHere from '../RecordHere'
 import DrawPlace from '../DrawPlace'
+import EditPlace from '../EditPlace'
 import { placeRing, resolveMapCentre } from '@/lib/places/anchor'
 import { kindLabel } from '@/lib/places/kinds'
 
@@ -57,22 +58,35 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         <p className="mb-3 font-dm-sans text-[16px]">
           <Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
-        <p className={EYEBROW}>{kindLabel(place.kind)}</p>
+        <p className={EYEBROW}>{kindLabel(place.kind)}{place.retired_at ? ' · retired' : ''}</p>
         <h1 className="mt-1 type-page-heading text-ink">{place.name}</h1>
 
-        <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>
+        {/* Correcting what a place IS (057): name, kind, retire. A retired place
+            shows only the way back — the route refuses every other edit on one,
+            so offering more would be a button that can only fail. */}
+        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at }} />
+
+        {!place.retired_at && <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>}
 
         <section className="mt-6" aria-labelledby="place-ground">
           <h2 id="place-ground" className={`${EYEBROW} !text-ink`}>The ground</h2>
           <div className="mt-2">
-            <DrawPlace
-              place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }}
-              initialCenter={centre}
-            />
-            {!ring && (
-              <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
-                This place has a name but no shape yet. Draw it once and it stays drawn.
-              </p>
+            {place.retired_at ? (
+              ring
+                ? <DrawPlace place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }} initialCenter={centre} />
+                : <p className="font-dm-sans text-[15px] text-secondary-ink">This place was retired without a shape drawn.</p>
+            ) : (
+              <>
+                <DrawPlace
+                  place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }}
+                  initialCenter={centre}
+                />
+                {!ring && (
+                  <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
+                    This place has a name but no shape yet. Draw it once and it stays drawn.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </section>

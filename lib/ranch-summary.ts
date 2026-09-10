@@ -22,7 +22,9 @@ export async function ranchNumbers(supabase: SupabaseClient, userId: string): Pr
   const [lots, hay, places, devices, work] = await Promise.all([
     getRanchLots(supabase, userId).catch(() => []),
     getHayLedger(supabase, { since: ranchYearStart() }).catch(() => null),
-    supabase.from('places').select('id', { count: 'exact', head: true }),
+    // Live places only; tolerant of a database without 057.
+    supabase.from('places').select('id', { count: 'exact', head: true }).is('retired_at', null)
+      .then(r => (r.error ? supabase.from('places').select('id', { count: 'exact', head: true }) : r)),
     supabase.from('devices').select('id', { count: 'exact', head: true }),
     supabase.from('jobs').select('id', { count: 'exact', head: true }).gte('started_at', ranchYearStart()),
   ])

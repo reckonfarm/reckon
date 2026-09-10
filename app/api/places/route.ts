@@ -33,10 +33,19 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   const { supabase } = session
 
-  const { data, error } = await supabase
-    .from('places')
-    .select('id, name, kind')
-    .order('name', { ascending: true })
+  // LIVE ONLY. This is the picker a person chooses from when logging work, and
+  // you cannot do new work at a place that has been retired. History keeps
+  // naming retired places — every by-id name resolver is deliberately
+  // unfiltered — and the correction form offers them flagged
+  // (lib/activity filterOptions), which is the same split herd_lots uses.
+  // Tolerant of a database that has not run 057 yet (040's precedent, and the
+  // same shape lib/places/rows.ts uses for `acres`): ask for live places, and if
+  // `retired_at` does not exist, ask again without the filter. Every place is
+  // live on such a database, so the unfiltered answer is the correct one.
+  const live = await supabase.from('places').select('id, name, kind').is('retired_at', null).order('name', { ascending: true })
+  const { data, error } = live.error
+    ? await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
+    : live
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ places: data ?? [] })
 }
