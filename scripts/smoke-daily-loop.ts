@@ -678,9 +678,18 @@ async function main() {
       // why this check kept finding the section and then counting zero rows.
       const rainRows = await page.locator('[data-audit="rain-place-row"][data-state="read"]').count()
       const noneRows = await page.locator('[data-audit="rain-place-row"][data-state="none"]').count()
+      // Part 2 moved the instrument note behind its own "sources" disclosure.
+      // innerText is layout-aware, so reading it while that <details> is closed
+      // returns "" — measured: innerText 0 chars, textContent 256 with PRISM in
+      // it. Open the disclosure and read, which asserts the stronger thing: the
+      // words are correct AND the operator can reach them. Nothing that must
+      // stay visible is hidden here — the short instrument label ("County
+      // estimate · through Sep 8") is outside it, and 7-2 asserts that.
+      await page.locator('[data-audit="rain-sources-summary"]').click().catch(() => {})
+      await page.waitForTimeout(400)
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ribbonLabel = await page.locator('[data-audit="drought-ribbon"]').getAttribute('aria-label').catch(() => null)
-      record('6B: Weather says it plainly — recorded rain only when a reading exists, county estimate vs station normal (PRISM/NOAA footer), the drought ribbon in words; one h1; title Weather; never a zero for no reading', /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows + noneRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · ribbon "${(ribbonLabel ?? '').slice(0, 60)}"`)
+      record('6B: Weather says it plainly — recorded rain only when a reading exists, county estimate vs station normal (PRISM/NOAA footer), the drought ribbon in words; one h1; title Weather; never a zero for no reading', /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows + noneRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · footer "${footer.slice(0, 46)}" · ribbon "${(ribbonLabel ?? '').slice(0, 46)}"`)
       // 6F: no link on the Weather view is dead — every same-site href answers something other than 404 (the audit's /weather/radar).
       const hrefs = [...new Set(await page.locator('main a[href^="/"]').evaluateAll(els => els.map(a => a.getAttribute('href') ?? '')))].filter(h => h && !h.startsWith('/api/'))
       const dead: string[] = []
