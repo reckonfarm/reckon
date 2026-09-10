@@ -684,15 +684,40 @@ async function placesChecks() {
 
   const geometry = { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] }
 
-  // ── Is the [id] route even deployed on BASE? ────────────────────────────────
-  // Learned the hard way: run against a host without this route and Next
-  // answers 404 to everything under it, so "cross-ranch PATCH → 404" PASSES
-  // for entirely the wrong reason while the anonymous 401 check fails. One
-  // probe up front turns that whole confusing scatter into one honest line,
-  // and the 404-shaped checks below refuse to count unless it is up.
+  // ── Is BASE running the code these checks are written against? ──────────────
+  // This probe has now been wrong twice, in two different ways, and the second
+  // way is the interesting one.
+  //
+  //   v1 asked nothing, and a host WITHOUT the route answered 404 to
+  //   everything under it — so "cross-ranch PATCH → 404" PASSED for entirely
+  //   the wrong reason while the anonymous 401 check failed.
+  //
+  //   v2 asked "does GET answer 200?" That catches an ABSENT route and nothing
+  //   else. Production then hit the state neither version anticipated: the
+  //   route file present but at an OLDER BUILD. GET answered 200, the probe
+  //   was happy, and ten checks failed one at a time — a missing DELETE is
+  //   405, not 404, and an older PATCH is a perfectly healthy 200 that simply
+  //   ignores fields it has never heard of.
+  //
+  // So stop asking whether the file is there and ask whether it can do what
+  // these checks require. The response SHAPE is that contract: this build's
+  // SELECT returns updated_by / retired_at / revision and no earlier one does.
+  // Existence is not capability, and a suite that cannot tell them apart
+  // reports ten symptoms instead of one cause.
   const up = await api(A, `/api/places/${a.placeId}`, undefined, 'GET')
-  const routeUp = up.status === 200
-  record('user A (owner)', 'GET /api/places/<own> is reachable and authenticated on BASE', routeUp, `${up.status}${routeUp ? '' : ' — /api/places/[id] is not deployed here, or it will not take a Bearer session'}`)
+  const shape = (up.json.place ?? {}) as Record<string, unknown>
+  const missing = ['updated_by', 'retired_at', 'revision'].filter(k => !(k in shape))
+  const routeUp = up.status === 200 && missing.length === 0
+  record('user A (owner)', 'GET /api/places/<own> answers, and BASE is running this slice\'s build', routeUp,
+    up.status !== 200
+      ? `${up.status} — /api/places/[id] is not reachable here, or will not take a Bearer session`
+      : missing.length
+        ? `200 but the reply is missing ${missing.join(', ')} — BASE is on an older build; deploy this branch and re-run`
+        : '200 · current')
+  if (!routeUp) {
+    record('(skipped)', 'places route checks — BASE is not running this build (see the line above)', true, 'one cause, not ten symptoms')
+    return
+  }
 
   // ── 3. POST persists kind + geometry, and computes acres itself ─────────────
   let createdId: string | null = null
@@ -758,7 +783,7 @@ async function placesChecks() {
 
   {
     const r = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}tampered`, geometry }, 'PATCH')
-    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', routeUp && r.status === 404, `${r.status}${routeUp ? '' : ' (route not up — a 404 here proves nothing)'}`)
+    record('user A (owner)', 'PATCH /api/places/<ranch B place> → 404, shape untouched', r.status === 404, `${r.status}`)
     const { data: after } = await admin.from('places').select('name, geometry').eq('id', b.placeId).maybeSingle()
     record('user A (owner)', 'ranch B\'s place kept its name and stayed undrawn', after?.name !== `${PREFIX}tampered` && after?.geometry == null, `name=${String(after?.name)} · geometry=${after?.geometry == null ? 'null' : 'SET'}`)
   }
