@@ -221,12 +221,16 @@ export async function getEvent(supabase: SupabaseClient, userId: string, id: str
 }
 
 // The people and places a filter can name (for the filter controls).
-export async function filterOptions(supabase: SupabaseClient, userId: string): Promise<{ people: { id: string; name: string }[]; places: { id: string; name: string }[]; lots: { id: string; name: string; retired?: boolean }[] }> {
+export async function filterOptions(supabase: SupabaseClient, userId: string): Promise<{ people: { id: string; name: string }[]; places: { id: string; name: string; retired?: boolean }[]; lots: { id: string; name: string; retired?: boolean }[] }> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return { people: [], places: [], lots: [] }
   const [{ data: members }, { data: places }, lots] = await Promise.all([
     createServiceClient().from('ranch_members').select('user_id').eq('ranch_id', ranchId),
-    supabase.from('places').select('id, name').eq('ranch_id', ranchId).order('name'),
+    // Tolerant of a database without 057 — there, no place is retired.
+    supabase.from('places').select('id, name, retired_at').eq('ranch_id', ranchId).order('name')
+      .then(async r => (r.error
+        ? { data: (((await supabase.from('places').select('id, name').eq('ranch_id', ranchId).order('name')).data ?? []) as { id: string; name: string }[]).map(x => ({ ...x, retired_at: null as string | null })) }
+        : { data: (r.data ?? []) as { id: string; name: string; retired_at: string | null }[] })),
     getRanchLotsIncludingRetired(supabase, userId),
   ])
   const ids = (members ?? []).map(m => m.user_id as string)
@@ -235,7 +239,12 @@ export async function filterOptions(supabase: SupabaseClient, userId: string): P
     // Every member is listed — a member with no profiles row yet is still a person
     // whose entries can be filtered, named the way the record's lines name them.
     people: ids.map(id => { const p = (profiles ?? []).find(x => x.id === id); return { id, name: ((p?.display_name as string | null)?.trim() || (p?.email as string | null) || 'Someone on the ranch') } }).sort((a, b) => a.name.localeCompare(b.name)),
-    places: (places ?? []).map(p => ({ id: p.id as string, name: p.name as string })),
+    // Retired places are LISTED AND FLAGGED here, not hidden — the same as
+    // retired lots below. This is the correction form's picker: an old entry
+    // that happened at a place since retired must be able to keep naming it,
+    // and the operator has to be able to see that is what they are doing.
+    // (The logging picker, GET /api/places, is live-only.)
+    places: (places ?? []).map(p => ({ id: p.id as string, name: p.name as string, ...(p.retired_at ? { retired: true } : {}) })),
     lots: (lots as Lot[]).map(l => ({ id: l.id, name: lotLabel(l), ...(l.retired_at ? { retired: true } : {}) })),   // retired lots are named, and say so (6A)
   }
 }

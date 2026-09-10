@@ -3,11 +3,14 @@ import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
+import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
 
 // One place (places, slice 1).
 //
-//   GET   /api/places/[id]  → { place }
-//   PATCH /api/places/[id]  → { name?, kind?, geometry?, parent_id? } → { place }
+//   GET    /api/places/[id]  → { place }
+//   PATCH  /api/places/[id]  → { name?, kind?, geometry?, parent_id?, retired?,
+//                                expected_updated_at? } → { place }
+//   DELETE /api/places/[id]  → { place }   RETIRES it. Nothing is deleted.
 //
 // AUTH via lib/auth-user sessionUser(req) — cookies first, then a Bearer JWT,
 // both returning a user-scoped client. The older cookie-only pattern this
@@ -31,13 +34,30 @@ import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/plac
 // (lib/places/geo.ts, sharing lib/jobs/boundary.ts's projection). A client
 // that posts `acres` is ignored.
 //
-// NO DELETE, deliberately. events.payload->>place_id has no foreign key, no
-// index and no constraint across 9,186 rows, so the first delete would orphan
-// ledger references silently. Referential correctness there is its own work.
+// THE VERB IS DELETE, THE EFFECT IS RETIRE. events.payload->>place_id has no
+// foreign key, no index and no constraint across 9,186 rows: a hard delete
+// leaves 40 manual entries pointing at nothing and silently loses their WHERE.
+// A retired place keeps resolving its name in that history and leaves every
+// picker. Doctrine agrees — "Disable, don't delete" (docs/01:31).
+//
+// UN-RETIRE IS `PATCH { retired: false }`, NOT a second DELETE-shaped route.
+// Retiring is the destructive-feeling act and gets the destructive-looking
+// verb; putting a place back is an ordinary edit of its state, and that is
+// what PATCH is for. It also matches the one reversible flag this repo already
+// has — job dismiss is `PATCH { dismissed: boolean }`, never DELETE twice.
+//
+// CONCURRENCY: pass `expected_updated_at` and the write carries
+// `.eq('updated_at', …)`. Two people editing the same place cannot both win;
+// the loser is told who changed it and when, in the words lib/stale-edit.ts
+// holds for both this and herd_lots. Omitting it is allowed and means
+// last-write-wins — the record sheet's inline create has no form to go stale.
+//
+// A RETIRED PLACE IS NOT EDITABLE except to un-retire it, mirroring
+// lib/herd-lots.ts updateLot's `.is('retired_at', null)`.
 //
 // AND GEOMETRY IS SET-ONCE — see the block in PATCH below.
 
-const SELECT = 'id, name, kind, geometry, acres, parent_id, geometry_provenance, created_at, updated_at'
+const SELECT = 'id, name, kind, geometry, acres, parent_id, geometry_provenance, created_at, updated_at, updated_by, retired_at, retired_by, revision'
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
@@ -62,9 +82,28 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  // 031's convention: updated_at is app-stamped, there is no trigger function
-  // in this repo.
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  // updated_at is NOT set here. 057 gives places the trigger herd_lots has had
+  // since 051, so the database bumps the token on every UPDATE — measured
+  // beforehand: without it, a write that omits the column leaves it completely
+  // unchanged, which would make every staleness check below a no-op the first
+  // time some other writer forgot. One source of truth, and it is the database.
+  const patch: Record<string, unknown> = { updated_by: session.user.id }
+
+  // Un-retire is the one edit a retired place accepts, so it is read first.
+  let unretiring = false
+  if ('retired' in body) {
+    if (typeof body.retired !== 'boolean') {
+      return NextResponse.json({ error: 'retired must be true or false' }, { status: 400 })
+    }
+    if (body.retired) {
+      patch.retired_at = new Date().toISOString()
+      patch.retired_by = session.user.id
+    } else {
+      unretiring = true
+      patch.retired_at = null
+      patch.retired_by = null
+    }
+  }
 
   if ('name' in body) {
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME) : ''
@@ -142,26 +181,77 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: 'Nothing to change' }, { status: 400 })
   }
 
+  // The concurrency token the editor was looking at, if their form carried one.
+  const expected = typeof body.expected_updated_at === 'string' && body.expected_updated_at
+    ? body.expected_updated_at
+    : null
+
   // Set-once is enforced IN THE WRITE, not by a read-then-write: `is('geometry',
   // null)` makes "only if still undrawn" part of the statement, so two people
   // drawing the same place at the same moment can't both win. The loser gets
   // the 409 below, having changed nothing — name and kind included, since the
   // whole patch is one statement.
-  const write = supabase.from('places').update(patch).eq('id', id)
-  const { data, error } = await (settingGeometry ? write.is('geometry', null) : write).select(SELECT).maybeSingle()
+  let write = supabase.from('places').update(patch).eq('id', id)
+  // Three guards that answer three different questions, all in the statement so
+  // none of them can lose a race: is this still the row I read · is this still
+  // undrawn · is this still live.
+  if (expected) write = write.eq('updated_at', expected)
+  if (settingGeometry) write = write.is('geometry', null)
+  if (!unretiring) write = write.is('retired_at', null)
+
+  const { data, error } = await write.select(SELECT).maybeSingle()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!data) {
-    // Zero rows has two causes and they need different words. Re-read under
-    // the same policies: if the row is visible, the guard is what stopped us.
-    if (settingGeometry) {
-      const { data: existing } = await supabase.from('places').select('id, geometry').eq('id', id).maybeSingle()
-      if (existing && (existing as { geometry: unknown }).geometry != null) {
-        return NextResponse.json({ error: 'This place already has a shape, and redrawing one is not in yet.' }, { status: 409 })
-      }
-    }
-    // Otherwise the membership policy did not match — another ranch's place,
-    // or none. Same answer for both: it isn't there for you.
-    return NextResponse.json({ error: 'No such place' }, { status: 404 })
+  if (data) return NextResponse.json({ place: data })
+
+  // Zero rows has four causes and they need four different sentences. Re-read
+  // under the same policies: whatever is visible tells us which guard bit.
+  const { data: cur } = await supabase
+    .from('places')
+    .select('id, geometry, updated_at, updated_by, retired_at')
+    .eq('id', id)
+    .maybeSingle()
+  const row = cur as { geometry: unknown; updated_at: string; updated_by: string | null; retired_at: string | null } | null
+
+  // Not visible at all: another ranch's place, or none. Same answer for both —
+  // it isn't there for you, and we never confirm that it exists elsewhere.
+  if (!row) return NextResponse.json({ error: 'No such place' }, { status: 404 })
+
+  if (!unretiring && row.retired_at) {
+    return NextResponse.json({ error: retiredWhileOpen('place') }, { status: 404 })
   }
-  return NextResponse.json({ place: data })
+  if (settingGeometry && row.geometry != null) {
+    return NextResponse.json({ error: 'This place already has a shape, and redrawing one is not in yet.' }, { status: 409 })
+  }
+  if (expected && row.updated_at !== expected) {
+    const stale = await staleEdit('place', row)
+    return NextResponse.json({ error: stale.error, code: 'stale', changed_by: stale.changed_by, changed_at: stale.changed_at }, { status: 409 })
+  }
+  // Visible, live, and the token matched — nothing left that could have
+  // stopped it. Say so honestly rather than inventing a cause.
+  return NextResponse.json({ error: 'That change could not be saved. Open the place again and retry.' }, { status: 409 })
+}
+
+// ─── DELETE = retire ──────────────────────────────────────────────────────────
+// The row stays, its name keeps resolving in every entry that references it,
+// and it leaves every picker. Retiring an already-retired place is a no-op that
+// reports success: the caller asked for it to be off the list, and it is.
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase, user } = session
+
+  const { data, error } = await supabase
+    .from('places')
+    .update({ retired_at: new Date().toISOString(), retired_by: user.id, updated_by: user.id })
+    .eq('id', id)
+    .is('retired_at', null)
+    .select(SELECT)
+    .maybeSingle()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (data) return NextResponse.json({ place: data })
+
+  const { data: cur } = await supabase.from('places').select(SELECT).eq('id', id).maybeSingle()
+  if (!cur) return NextResponse.json({ error: 'No such place' }, { status: 404 })
+  return NextResponse.json({ place: cur })
 }
