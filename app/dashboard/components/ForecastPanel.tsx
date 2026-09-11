@@ -152,21 +152,15 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
                 isOpen ? 'bg-forest-green/5' : 'hover:bg-forest-green/5'
               }`}
             >
-              {/* Wind badge — top-right corner, only on periods over 15 mph sustained.
-                  Absolutely positioned so no-wind cards keep their exact stacked layout.
-                  Forest-green + muted: it's spray-planning context, not an alarm. */}
-              {isWindy && (
-                <span
-                  className="pointer-events-none absolute right-0.5 top-1 flex flex-col items-center gap-0 font-dm-sans text-[14px] font-semibold leading-none text-ink"
-                  title={`Wind to ${d.windMph} mph`}
-                >
-                  <WindGlyph size={12} />
-                  {d.windMph}<span className="text-[11px] font-medium">mph</span>
-                </span>
-              )}
               <div className="text-[14px] font-dm-sans font-semibold leading-tight text-ink">{d.label}</div>
               <div className="text-[14px] font-dm-sans leading-tight text-secondary-ink">{d.date}</div>
               <div className="my-1 flex justify-center leading-none"><WeatherGlyph kind={d.iconKind} /><span className="sr-only">{d.iconKind}</span></div>
+              {/* Block 7.10 — the wind badge used to be absolutely positioned in the
+                  tile's top-right corner, which on a 64px-wide tile put "17mph" and its
+                  glyph directly on top of the weekday and date. It sits in flow at the
+                  BOTTOM now, and every tile reserves the row whether it is windy or
+                  not, so no-wind tiles keep the same height and nothing overlaps at any
+                  width. */}
               {/* Hero: % chance of rain — the field a rancher reads first. Emphasis scales
                   with the value (same RAIN_BLUE, opacity ramps 55%→100% across 0–100%,
                   heavier weight from 50%) so a 70% reads louder than a 15%. Styling only —
@@ -185,6 +179,16 @@ export default function ForecastPanel({ data }: { data: LocalForecast | null }) 
               <div className="mt-1.5 font-dm-sans text-[14px] text-forest-green">
                 {d.high != null ? `${d.high}°` : '—'}
                 <span className="text-secondary-ink"> / {d.low != null ? `${d.low}°` : '—'}</span>
+              </div>
+              {/* Reserved on every tile, filled only when it blows: same height
+                  windy or not, so the strip never jumps and nothing overlaps. */}
+              <div className="mt-1 flex h-[14px] items-center justify-center gap-0.5 font-dm-sans text-[12px] font-semibold leading-none text-ink">
+                {isWindy && (
+                  <span className="pointer-events-none inline-flex items-center gap-0.5" title={`Wind to ${d.windMph} mph`}>
+                    <WindGlyph size={11} />
+                    {d.windMph}<span className="text-[10px] font-medium">mph</span>
+                  </span>
+                )}
               </div>
             </button>
           )

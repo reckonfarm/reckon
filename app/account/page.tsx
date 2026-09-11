@@ -28,7 +28,9 @@ export default async function AccountPage() {
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>Account</p>
-        <h1 className="mt-1 type-page-heading text-ink">{user.email}</h1>
+        {/* Block 7.10 — an address long enough to be a real one must wrap inside
+            the card rather than widen the page on a 320px phone. */}
+        <h1 className="mt-1 type-page-heading break-words text-ink">{user.email}</h1>
 
         <section className="mt-6" aria-labelledby="acct-identity">
           <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>Identity</h2>

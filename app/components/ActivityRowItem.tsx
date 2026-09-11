@@ -54,7 +54,11 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
   const greyed = marker === 'voided'
   return (
     <li data-marker={marker ?? 'none'} data-id={id}>
-      <Link href={href ?? `/ranch/activity/${id}`} className={`flex min-h-[56px] items-center justify-between gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
+      {/* Block 7.10 — below 360px the two columns squeeze the sentence into a
+          ribbon two or three words wide. Under that width the row becomes one
+          full-width line with the time beneath it; from 360 up it is exactly
+          the two-column row it has always been, so 390 is untouched. */}
+      <Link href={href ?? `/ranch/activity/${id}`} className={`flex min-h-[56px] flex-col items-start gap-0.5 min-[360px]:flex-row min-[360px]:items-center min-[360px]:justify-between min-[360px]:gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
         <span className={`min-w-0 font-dm-sans text-[17px] leading-snug ${greyed ? 'text-secondary-ink' : 'text-ink'}`}>
           {who ? <><span className="font-semibold">{who}</span>{sep}</> : null}
           {struck ? <s className="decoration-2">{line}</s> : line}
