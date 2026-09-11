@@ -665,14 +665,19 @@ export async function DashboardShell({
                             stream in, and an empty fallback meant the Repeat-feeding
                             button climbed the page as each one landed: measured CLS 0.855
                             on Today at 320px. A thumb already travelling toward "Record 13
-                            bales now" can arrive somewhere else. The reserve is a floor,
-                            not a fixed height — content taller than the box still grows,
-                            it just never grows from zero. */}
-                        <Suspense fallback={<div className="min-h-[132px]" aria-hidden />}>
+                            bales now" can arrive somewhere else.
+
+                            The floors are MEASURED, not guessed: a populated
+                            since-you-checked card renders 397px at 390 and 378 at 320, and
+                            the repeat card 232 and 253. A floor cannot be exact for both a
+                            populated and a quiet state, so it is set for the populated one
+                            — the state a working ranch is in most mornings, and the only
+                            state where the button below it is worth mis-tapping. */}
+                        <Suspense fallback={<div className="min-h-[360px]" aria-hidden />}>
                           <SinceYouWereHere />
                         </Suspense>
                         {/* 5. Quick record — repeat last (Block 2B), then Log it. */}
-                        <Suspense fallback={<div className="min-h-[208px]" aria-hidden />}>
+                        <Suspense fallback={<div className="min-h-[248px]" aria-hidden />}>
                           <RepeatLastFeeding />
                         </Suspense>
                         <LogIt sheet={false} />
