@@ -109,12 +109,6 @@ function Stub({ line }: { line: string }) {
 // color = good/bad for a cow-calf operator. Herd value and cattle prices up are good, so raw
 // direction and meaning coincide — these local helpers already satisfy the rule.
 
-function DeltaUSD({ abs }: { abs: number }) {
-  if (abs === 0) return <span className="font-medium text-secondary-ink">unchanged</span>
-  const up = abs > 0
-  return <span className={`font-semibold tabular-price ${up ? 'text-up' : 'text-down'}`}>{up ? '▲' : '▼'} {formatUSD(Math.abs(abs))}</span>
-}
-
 function DeltaCwt({ cwt }: { cwt: number }) {
   if (cwt === 0) return <span className="font-medium text-secondary-ink">unchanged</span>
   const up = cwt > 0
@@ -145,23 +139,13 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
           </div>
         </div>
       )}
-      {/* HERD COMPARISON Δ — one ranch total per day is all the history holds */}
-      <div>
-        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Your comparison over time</p>
-        {trend.herd.status === 'ready' ? (
-          <p className="mt-1 font-dm-sans text-[16px]">
-            <DeltaUSD abs={trend.herd.abs} />{' '}
-            <span className="text-secondary-ink">
-              since {fmtShort(trend.herd.sinceDate)}
-              {trend.herd.pct != null && ` (${trend.herd.pct >= 0 ? '+' : ''}${trend.herd.pct.toFixed(1)}%)`}
-            </span>
-          </p>
-        ) : trend.herd.status === 'accruing' ? (
-          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="history-begins">{trend.historyFrom ? `History begins ${fmtShort(trend.historyFrom)}. New points appear when the reference changes.` : 'No snapshot on record yet. New points appear when the reference changes.'}</p>
-        ) : (
-          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Temporarily unavailable.</p>
-        )}
-      </div>
+      {/* Block 7.2b — the aggregate "Your comparison over time" line was here and
+          is gone. herd_estimate_history stores ONE summed ranch total per day
+          across unlike purposes (sale calves and replacements added together),
+          which is the same gross total the rest of Markets refuses to show. No
+          honest aggregate change can be computed from it, so none is offered.
+          Per-lot "what changed" (6B/6I) below is unaffected — it compares like
+          with like, one lot at a time, and names the barn it measured at. */}
       {/* PER-CLASS PRICE Δ */}
       {trend.priceDeltas.length > 0 && (
         <div>

@@ -16,7 +16,9 @@ import type { Lot } from '../lib/herd'
 // unavailable here: Actions has no NEXT_PUBLIC env, Node has no global WebSocket). Reads are
 // HOISTED to bulk (barns once; profiles/counties chunked), so the per-user work is pure +
 // in-memory — no per-item network, hence no concurrency throttle is needed (unlike lfp's
-// per-county USDM calls). Records HONESTLY even when unpriced (total 0 / lots_priced 0 / tier) —
+// per-county USDM calls). A ranch with no USABLE total (every priced lot thin, or none
+// priced) records NO ROW for that day — zero is the absence of a valuation, not a
+// valuation of zero, and total_value is NOT NULL so a gap is the only honest shape —
 // never skips a herd it could place, never fakes $0-worth. NEVER fails the price step (the
 // workflow runs this with continue-on-error).
 
@@ -119,6 +121,7 @@ async function main() {
   const now = Date.now()
   const rows: Array<Record<string, unknown>> = []
   let skipped = 0
+  let unvalued = 0
   for (const u of users) {
     // 052: the ranch's own home county first; the writer's county until it is set.
     const fips = ranchHome.get(u.ranch_id) ?? homeByUser.get(u.user_id)
@@ -129,6 +132,23 @@ async function main() {
       ...rankFreshBarns({ lat: c.lat, lon: c.lon }, barns, now),
     }
     const est = estimateHerd({ lots: u.lots }, resolved)
+    // ── A DAY WITH NO USABLE VALUATION WRITES NOTHING (Block 7.2a) ────────────
+    // total_priced sums priced lots that are NOT thin; lots_priced counts them
+    // thin or not. So a ranch whose every lot priced off a thin reference came
+    // out as total_value 0 with lots_priced 2 — a withheld total stored as a
+    // real zero. Test Ranch's 2026-09-10 row is exactly that, sitting between
+    // two ~88k days, and lib/trend.ts differenced against it and reported a
+    // $481,564 gain.
+    //
+    // Zero is not a valuation. It is the absence of one, and this column cannot
+    // say so: total_value is NOT NULL (026:28), so the honest record of "we
+    // could not value this ranch today" is no row at all. Readers already
+    // handle a gap — they compare the two most recent rows, whatever their
+    // dates, and say "since {that date}".
+    //
+    // Nothing here rewrites history; the zero rows already on record stay until
+    // PK rules on them.
+    if (!(est.total_priced > 0)) { unvalued++; continue }
     rows.push({
       user_id:       u.user_id,       // who last wrote the ranch's profile row, else its first owner (NOT NULL column; placement fallback)
       ranch_id:      u.ranch_id,      // the row's subject (050)
@@ -152,7 +172,7 @@ async function main() {
     written += chunk.length
   }
 
-  console.log(`[herd-estimate-snapshot] ${snapshotDate}: ${users.length} ranch herds → ${written} recorded, ${skipped} skipped (no home county)`)
+  console.log(`[herd-estimate-snapshot] ${snapshotDate}: ${users.length} ranch herds → ${written} recorded, ${skipped} skipped (no home county), ${unvalued} skipped (no usable valuation — every priced lot thin, or none priced)`)
 }
 
 main().catch(err => {

@@ -16,10 +16,6 @@ export interface PriceHistoryRow { slug_id: string; report_date: string; rows: M
 // Output (serializable → passed to the client panel).
 export interface VolumeRow { commodity: string; receipts: number | null; weekAgo: number | null; yearAgo: number | null }
 export interface SpreadRow { label: string; min: number; max: number; basis: 'cwt' | 'head'; barn: string }   // 6I: the barn the range was reported at
-export type HerdDelta =
-  | { status: 'ready'; abs: number; pct: number | null; sinceDate: string }
-  | { status: 'accruing' }
-  | { status: 'unavailable' }
 export interface PriceDeltaRow { label: string; status: 'ready' | 'accruing' | 'unavailable'; cwt?: number; sinceDate?: string; barn?: string }   // 6I: the barn the movement is measured at
 export interface TrendData {
   historyFrom: string | null   // Block 6B: the earliest herd snapshot date on record — "History begins {date}"; null with no snapshot
@@ -27,7 +23,6 @@ export interface TrendData {
   reportDate: string | null
   volume: VolumeRow[]
   spread: SpreadRow[]
-  herd: HerdDelta
   priceDeltas: PriceDeltaRow[]
 }
 
@@ -94,14 +89,15 @@ export function buildTrend(input: {
   }
 
   // HERD Δ (accruing) — owner-scoped history, newest first. null = read error.
-  let herd: HerdDelta
-  if (herdHistory == null) herd = { status: 'unavailable' }
-  else if (herdHistory.length < 2) herd = { status: 'accruing' }
-  else {
-    const [cur, prior] = herdHistory
-    const abs = cur.total_value - prior.total_value
-    herd = { status: 'ready', abs, pct: prior.total_value > 0 ? (abs / prior.total_value) * 100 : null, sinceDate: prior.snapshot_date }
-  }
+  // Block 7.2b — the herd-value delta was computed here: the two most recent
+  // snapshots differenced, with no check that they were comparable. Test
+  // Ranch's 2026-09-10 snapshot was total_value 0 (every priced lot thin), and
+  // this reported "▲ $481,564 since Sep 10". It also summed unlike purposes.
+  // Both the number and the line it fed are gone; the writer no longer records
+  // an unusable day at all (scripts/herd-estimate-snapshot.ts).
+  //
+  // herdHistory is still read, for historyFrom below — the per-lot
+  // "History begins {date}" line, which is honest and stays.
 
   // PRICE Δ (accruing) — per priced lot, diff the matched class across the barn's 2 latest sale
   // dates. <2 dates → 'accruing'; read error → 'unavailable'; per-head/unmatchable → 'accruing'.
@@ -126,5 +122,5 @@ export function buildTrend(input: {
   }
 
   const historyFrom = herdHistory && herdHistory.length ? herdHistory.reduce((min, r) => (r.snapshot_date < min ? r.snapshot_date : min), herdHistory[0].snapshot_date) : null
-  return { historyFrom, barnName: primary?.barn_name ?? null, reportDate: primary?.report_date ?? null, volume, spread, herd, priceDeltas }
+  return { historyFrom, barnName: primary?.barn_name ?? null, reportDate: primary?.report_date ?? null, volume, spread, priceDeltas }
 }
