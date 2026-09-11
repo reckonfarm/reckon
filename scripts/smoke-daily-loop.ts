@@ -359,9 +359,11 @@ async function main() {
           await page.waitForTimeout(800)
         }
       }
-      // The FAB is md:hidden — present but invisible at this suite's width. The
-      // header's Record is the launcher that exists at every size.
-      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').first().click()
+      // Two launchers exist and exactly one is visible at any width — the FAB
+      // is md:hidden, the header's Record is hidden on the narrow layout. Pick
+      // by VISIBILITY, not DOM order: .first() on the pair silently chose the
+      // hidden one and every assertion after it read a sheet that never opened.
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
       // An empty number can never save as 0 — it is refused in the form now,
@@ -1353,7 +1355,7 @@ async function main() {
       // unsynced, and it says what each button does to them.
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
       await page.context().setOffline(true)
-      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').first().click().catch(() => {})
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click().catch(() => {})
       await page.locator('[data-audit="tile-hay_fed"]').first().click().catch(() => {})
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})
