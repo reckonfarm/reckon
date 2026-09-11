@@ -359,7 +359,9 @@ async function main() {
           await page.waitForTimeout(800)
         }
       }
-      await page.locator('[data-audit="record-fab"]').first().click()
+      // The FAB is md:hidden — present but invisible at this suite's width. The
+      // header's Record is the launcher that exists at every size.
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
       // An empty number can never save as 0 — it is refused in the form now,
@@ -1344,7 +1346,7 @@ async function main() {
       // unsynced, and it says what each button does to them.
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
       await page.context().setOffline(true)
-      await page.locator('[data-audit="record-fab"]').first().click().catch(() => {})
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').first().click().catch(() => {})
       await page.locator('[data-audit="tile-hay_fed"]').first().click().catch(() => {})
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})
