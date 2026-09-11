@@ -156,6 +156,15 @@ async function main() {
     // Block 7.3 — the carried-forward toggle is gone. What must be true now is
     // that no control offers to draw between sales, and the copy says so once.
     const stepCopy = cattleCard.locator('[data-audit="step-copy"]')
+    // ── 7.2: no gain without a real baseline ───────────────────────────────
+    // The aggregate "Your comparison over time / ▲ $N since {date}" is gone:
+    // herd_estimate_history stores one summed ranch total per day across unlike
+    // purposes, and Test Ranch's Sep 10 row was total_value 0 (every priced lot
+    // thin), which the old code differenced into a $481,564 gain. Per-lot
+    // "what changed" stays, because it compares like with like.
+    record('7.2: no aggregate herd-value change line anywhere', !/Your comparison over time/i.test(body), (body.match(/.{0,50}comparison over time.{0,50}/i) ?? ['absent'])[0])
+    record('7.2: no ranch-total dollar gain "since" a date', !/[▲▼]\s*\$[\d,]+\s+since/.test(body), (body.match(/[▲▼]\s*\$[\d,]+\s+since[^·]{0,30}/) ?? ['absent'])[0])
+    record('7.2: per-lot what-changed survives, naming its barn', /WHAT CHANGED FOR MY CATTLE/i.test(body) && /\/cwt at /i.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
     record('7.3: no carried-forward control anywhere on Markets', (await page.getByRole('button', { name: /carried-forward/i }).count()) === 0)
     record('7.3: the chart says points only, in one state', /Points are reported sales\. Nothing is drawn between them/.test((await stepCopy.innerText()).replace(/\s+/g, ' ')) && !/Dashed steps/.test(await stepCopy.innerText()), (await stepCopy.innerText()).replace(/\s+/g, ' ').slice(0, 80))
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))

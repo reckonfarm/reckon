@@ -25,6 +25,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo'
+import { buildProgramAlerts } from '../lib/program-alerts'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local']) {
@@ -672,6 +673,30 @@ async function placesChecks() {
     record('validator', `a ${label} acreage is refused, never stored`, storableAcres(v) === null, `storableAcres(${label}) = ${String(storableAcres(v))}`)
   }
   record('validator', 'a real acreage stores rounded to two decimals', storableAcres(12.3456) === 12.35, String(storableAcres(12.3456)))
+
+  // ── 7.9: an alert fires on a CHANGE, and a dismissal is of that change ──────
+  // Pure, no database: the whole promise of the design lives in the key, and a
+  // key is computable without a table. What must hold — an unchanged weekly
+  // publication is silent; a change alerts; a LATER, DIFFERENT change produces
+  // a DIFFERENT key so dismissing the first cannot silence the second.
+  {
+    const wk = (week: string, d2: number, d3: number) => ({ week_date: week, d0: 100, d1: 100, d2, d3, d4: 0 })
+    const base = { fips: '30069', countyName: 'Petroleum County', lfpTier: null, priorLfpTier: null, deadlines: { status: 'none' } as const }
+    const same = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 40, 0), prior: wk('2026-09-01', 40, 0) })
+    record('alerts', 'an unchanged weekly publication raises nothing', same.length === 0, `${same.length} alert(s)`)
+    const worse = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 30), prior: wk('2026-09-01', 40, 0) })
+    record('alerts', 'a drought designation change raises exactly one alert', worse.length === 1 && worse[0].kind === 'drought', worse.map(a => a.headline).join(' | '))
+    const later = buildProgramAlerts({ ...base, latest: wk('2026-09-22', 70, 60), prior: wk('2026-09-15', 60, 30) })
+    record('alerts', 'a LATER, different change has a DIFFERENT key — dismissing the first cannot silence it', later.length === 1 && later[0].key !== worse[0].key, `${worse[0]?.key} vs ${later[0]?.key}`)
+    const first = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 30), prior: null })
+    record('alerts', 'a first observation is not a change', first.length === 0, `${first.length} alert(s)`)
+    const tier = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 0), prior: wk('2026-09-01', 60, 0), lfpTier: 2, priorLfpTier: 1 })
+    record('alerts', 'an LFP tier move alerts, and says FSA decides', tier.length === 1 && tier[0].kind === 'lfp' && /FSA makes the final determination/.test(tier[0].detail), tier[0]?.headline ?? '')
+    const dl = (days: number) => buildProgramAlerts({ ...base, latest: null, prior: null, deadlines: { status: 'ok', deadlines: [{ crop_or_program: 'prf', deadline_type: 'sales_closing', deadline_date: '2026-12-01', daysUntil: days, source: 'x', as_of: null }] } })
+    record('alerts', 'a deadline alerts at 30, 7 and 1 days and is silent between', dl(30).length === 1 && dl(7).length === 1 && dl(1).length === 1 && dl(29).length === 0 && dl(14).length === 0, `30/7/1 = ${dl(30).length}/${dl(7).length}/${dl(1).length} · 29/14 = ${dl(29).length}/${dl(14).length}`)
+    record('alerts', 'each deadline window is its own key — 30 days cannot silence tomorrow', dl(30)[0].key !== dl(1)[0].key, `${dl(30)[0].key} vs ${dl(1)[0].key}`)
+    record('alerts', 'a deadline alert NAMES its program, never a bare date', /prf/i.test(dl(7)[0].headline) && /sales closing/i.test(dl(7)[0].headline), dl(7)[0].headline)
+  }
 
   // ── ONE gate for every route check below ────────────────────────────────────
   // 056 gave the route `acres` / `geometry_provenance`; 057 gave it
