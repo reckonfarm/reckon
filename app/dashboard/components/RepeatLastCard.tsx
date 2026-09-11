@@ -65,6 +65,17 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
         {last.placeName ? `${last.placeName} · ` : ''}last logged {last.whenLabel}
       </p>
 
+      {/* Block 7.7 — what this button will actually write, before it writes it:
+          the quantity, the bunch, the place, and the day it lands on. The card
+          above shows the LAST feeding; this line shows the NEW one. */}
+      {!active && (
+        <p className="mt-3 font-dm-sans text-[16px] leading-snug text-secondary-ink" data-audit="repeat-preview">
+          Records {last.bales} {last.bales === 1 ? 'bale' : 'bales'}
+          {last.lotLabel ? ` to ${last.lotLabel}` : ''}
+          {last.placeName ? ` at ${last.placeName}` : ''}, dated today.
+        </p>
+      )}
+
       {active ? (
         <div className="mt-4"><SaveStatus itemId={madeId!} /></div>
       ) : (

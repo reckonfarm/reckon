@@ -40,6 +40,7 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
+import NeedsAttention from './components/NeedsAttention'
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
@@ -567,6 +568,10 @@ export async function DashboardShell({
                         Same self-gating components; every card that has nothing to say renders nothing. */}
                     {priv && route === 'today' && (
                       <>
+                        {/* 2. Live job — conditional behaviour untouched; it renders
+                            nothing unless a machine is working. Nothing is reserved for
+                            it, because reserving space for a card that is usually absent
+                            would put a permanent hole at the top of Today. */}
                         <Suspense fallback={null}>
                           <LiveJobCard />
                         </Suspense>
@@ -613,12 +618,22 @@ export async function DashboardShell({
 
                     {priv && route === 'today' && (
                       <>
-                        {/* 3. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new. */}
-                        <Suspense fallback={null}>
+                        {/* 3. Needs attention — only real state, nothing when there is none. */}
+                        <NeedsAttention />
+                        {/* 4. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new.
+
+                            Block 7.7 — RESERVED HEIGHT, not `fallback={null}`. These two
+                            stream in, and an empty fallback meant the Repeat-feeding
+                            button climbed the page as each one landed: measured CLS 0.855
+                            on Today at 320px. A thumb already travelling toward "Record 13
+                            bales now" can arrive somewhere else. The reserve is a floor,
+                            not a fixed height — content taller than the box still grows,
+                            it just never grows from zero. */}
+                        <Suspense fallback={<div className="min-h-[132px]" aria-hidden />}>
                           <SinceYouWereHere />
                         </Suspense>
-                        {/* 4. Quick record — repeat last (Block 2B), then Log it. */}
-                        <Suspense fallback={null}>
+                        {/* 5. Quick record — repeat last (Block 2B), then Log it. */}
+                        <Suspense fallback={<div className="min-h-[208px]" aria-hidden />}>
                           <RepeatLastFeeding />
                         </Suspense>
                         <LogIt sheet={false} />

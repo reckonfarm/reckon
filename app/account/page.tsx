@@ -65,6 +65,11 @@ export default async function AccountPage() {
             <p className="font-dm-sans text-[16px] text-ink">Questions or something wrong? Write to <a href={`mailto:${CONTACT_EMAIL}`} className={link}>{CONTACT_EMAIL}</a>.</p>
             <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{OPERATOR_NAME}. <Link href="/terms" className="underline underline-offset-2">Terms</Link> · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link></p>
             <p className="mt-2"><Link href="/ranch/devices/setup" className={link}>Setting up a device →</Link></p>
+            {/* Block 7.7 — the Feedback button left Today, where it floated over the
+                controls the screen exists for. It is still on every other page, and
+                this says so, because a button that moved without a word is a button
+                a person concludes was taken away. */}
+            <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink" data-audit="help-feedback">Telling us something is off: the <span className="font-semibold">Feedback</span> button sits in the corner of every page except Today, this one included.</p>
           </Card>
         </section>
 

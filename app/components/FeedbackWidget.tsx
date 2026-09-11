@@ -17,6 +17,10 @@ const SENTIMENTS: { value: Sentiment; emoji: string; label: string }[] = [
 // next visit — early on, every response matters, so we never lock the channel.
 const DISMISS_KEY = 'dryline_feedback_dismissed'
 
+// Block 7.7 — Today is a work screen. A floating button that follows the thumb
+// down the page, over the very controls the screen exists for, is not what a
+// rancher needs at 6am. It lives everywhere else, and on Today it lives under
+// Account → Help instead.
 export default function FeedbackWidget() {
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(true) // assume hidden until we read sessionStorage
@@ -42,6 +46,7 @@ export default function FeedbackWidget() {
 
   // Mirror BottomTabBar: stay out of the auth flow.
   if (pathname.startsWith('/signin') || pathname.startsWith('/auth')) return null
+  if (pathname === '/today') return null
   if (dismissed) return null
 
   function dismiss() {

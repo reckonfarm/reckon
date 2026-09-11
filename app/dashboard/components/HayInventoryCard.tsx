@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
+import Disclosure from '@/app/components/ui/Disclosure'
 import { getHayLedger } from '@/lib/hay/queries'
 import { explainOnHand } from '@/lib/hay/explain'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
@@ -106,16 +107,30 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           ))}
         </div>
       )}
-      {equation && (
-        <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="hay-equation">{equation.line}{equation.note ? ` ${equation.note}` : ''}</p>
-      )}
-      {rateLine && (
-        <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
-      )}
-      {range && (
-        <p className="mt-3 font-dm-sans text-[14px] text-ink">
-          Since {fmtDay(range.from)} · from what you logged.
-        </p>
+      {/* Block 7.7 — one dominant number and the date it was counted stay in
+          the open; the arithmetic behind it moves one tap away. The equation is
+          the honest provenance of the number and is never removed — but a
+          rancher glancing at Today wants "265 bales, counted Aug 10", not a
+          sentence of bookkeeping every morning. */}
+      {(equation || rateLine || range) && (
+        <Disclosure
+          title="Details"
+          audit="hay-details"
+          className="mt-3"
+          summary={equation ? 'How the number was reached, and the burn rate behind the runway' : 'The burn rate behind the runway'}
+        >
+          {equation && (
+            <p className="font-dm-sans text-[16px] text-ink" data-audit="hay-equation">{equation.line}{equation.note ? ` ${equation.note}` : ''}</p>
+          )}
+          {rateLine && (
+            <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
+          )}
+          {range && (
+            <p className="mt-3 font-dm-sans text-[14px] text-ink">
+              Since {fmtDay(range.from)} · from what you logged.
+            </p>
+          )}
+        </Disclosure>
       )}
     </Card>
     </LedgerPanel>

@@ -2,12 +2,19 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { flagDisabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
 import { bindPrivateStateTo } from '@/lib/private-state'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 
+// Block 7.7 — the tagline is a signed-OUT promise. On the ranch's own work
+// screen it is a second line of chrome above the first thing a person came to
+// do, repeating what they already know, on the narrowest screen the app has.
+// Today gets the compact lockup: mark, wordmark, ranch, account. Every other
+// page keeps the full one.
+//
 // The wordmark tagline is a fixed lockup — rendered identically on every page, never
 // overridden per-caller. (Was previously a per-page `subtitle` prop, which drifted:
 // "Markets" on the homepage, nothing on most pages.)
@@ -25,6 +32,8 @@ interface Props {
 }
 
 export default function SiteHeader({ center }: Props) {
+  const pathname = usePathname()
+  const compact = pathname === '/today'
   const [user, setUser] = useState<User | null>(null)
   const [unread, setUnread] = useState(0)
   // Block 6A — the selected ranch, on every page for a signed-in person. One
@@ -97,9 +106,11 @@ export default function SiteHeader({ center }: Props) {
               Dryline
             </span>
           </span>
-          <span className="text-[14px] sm:text-[14px] leading-tight text-ink font-dm-sans">
-            {TAGLINE}
-          </span>
+          {!compact && (
+            <span className="text-[14px] sm:text-[14px] leading-tight text-ink font-dm-sans">
+              {TAGLINE}
+            </span>
+          )}
         </Link>
 
         {center && (
