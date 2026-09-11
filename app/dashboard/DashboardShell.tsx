@@ -774,16 +774,14 @@ export async function DashboardShell({
           {/* Today's strips (Block 6A): conditions (weather only), then programs — LFP as one
               quiet line with its details one tap away. One column on a phone, below the
               record; a right column on desktop (the shell is 1,160 px wide there). */}
-          {priv && route === 'today' && (
-            <aside className="space-y-4 pb-16 lg:pb-0" data-audit="today-strips" aria-label="Conditions and programs">
-              {/* Today keeps the two-line preview only (Block 6B); the 7-day carousel lives on Weather. */}
-              <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-              <DeadlineQuietRow
-                countyName={selectedCounty.name}
-                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
-              />
-            </aside>
-          )}
+          {/* Block 7.7/7.8 — the Today strips are GONE. This aside still carried
+              the drought chip (ConditionsStrip) and the program deadline row
+              (DeadlineQuietRow) after the LFP card had already moved, which is
+              two of the three things the order takes off Today. Both live in
+              Weather now: the drought reading in the county-drought card, the
+              deadline in Weather → Programs, where it names its program. It
+              was also the last big late-arriving block on the page and half of
+              the remaining layout shift. */}
           </>
         )}
       </main>

@@ -48,7 +48,9 @@ export default function SignOutButton() {
           {n} {n === 1 ? 'entry hasn’t' : 'entries haven’t'} reached the ranch yet.
         </p>
         <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          They are on this phone only. Signing out clears the phone, so they would be gone for good.
+          {n === 1
+            ? 'It is on this phone only. Signing out clears the phone, so it would be gone for good.'
+            : 'They are on this phone only. Signing out clears the phone, so they would be gone for good.'}
         </p>
         <button
           type="button"
