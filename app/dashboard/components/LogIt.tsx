@@ -107,6 +107,36 @@ const TILE_HINT: Record<ManualEventType, string> = {
   hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
 }
 
+// The day a form is recording, in the words a person would use. '' means now.
+// Named days only go back one: past that a bare "Sep 8" is clearer than
+// counting backwards, and the exact picker is one tap away either way.
+function whenSentence(when: string): string {
+  if (!when) return 'Now.'
+  const d = new Date(when)
+  if (Number.isNaN(d.getTime())) return 'Now.'
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const day = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((midnight(new Date()) - midnight(d)) / 86_400_000)
+  if (days === 0) return `Today, ${day} · ${time}`
+  if (days === 1) return `Yesterday, ${day} · ${time}`
+  return `${day} · ${time}`
+}
+
+function yesterdayAtNow(): Date {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d
+}
+
+function isYesterday(when: string): boolean {
+  if (!when) return false
+  const d = new Date(when)
+  if (Number.isNaN(d.getTime())) return false
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  return Math.round((midnight(new Date()) - midnight(d)) / 86_400_000) === 1
+}
+
 // datetime-local wants local wall time without zone; the API wants ISO.
 function toLocalInput(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -674,28 +704,44 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
               >
                 {fields}
 
-                {/* Time: now by default, one tap to change — never a fourth field. */}
-                {editWhen ? (
-                  <Field label="When">
-                    <Input
-                      type="datetime-local"
-                      value={when || toLocalInput(new Date())}
-                      max={toLocalInput(new Date())}
-                      onChange={e => setWhen(e.target.value)}
-                    />
-                  </Field>
-                ) : (
-                  <p className="font-dm-sans text-[16px] text-ink">
-                    Now ·{' '}
-                    <button
-                      type="button"
-                      onClick={() => { setWhen(toLocalInput(new Date())); setEditWhen(true) }}
-                      className="min-h-[48px] font-semibold text-forest-green underline underline-offset-2 hover:text-ink"
-                    >
-                      change time
-                    </button>
+                {/* ── WHEN, INLINE, ABOVE SAVE (Block 7.5) ──────────────────
+                    Every form says which day it is recording, in a sentence,
+                    right where the thumb already is. It used to be one word —
+                    "Now ·" — with the day only ever visible after tapping
+                    "change time", so a backdate you had set two fields ago was
+                    invisible at the moment you committed it.
+
+                    Today and Yesterday are chips because those are the two
+                    answers a rancher actually gives; anything else opens the
+                    exact picker, which is unchanged. No expander is added and
+                    no form grows a field: this is one line plus two chips, and
+                    it collapses back to "Now." the moment Today is tapped. */}
+                <div className="flex flex-col gap-2">
+                  <p className="font-dm-sans text-[16px] text-ink" data-audit="when-sentence">
+                    <span className="font-semibold">{whenSentence(editWhen ? when : '')}</span>
                   </p>
-                )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => { setWhen(''); setEditWhen(false) }} aria-pressed={!editWhen}
+                      className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${!editWhen ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`}
+                      data-audit="when-today">Today</button>
+                    <button type="button" onClick={() => { setWhen(toLocalInput(yesterdayAtNow())); setEditWhen(true) }} aria-pressed={editWhen && isYesterday(when)}
+                      className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${editWhen && isYesterday(when) ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`}
+                      data-audit="when-yesterday">Yesterday</button>
+                    <button type="button" onClick={() => { if (!editWhen) setWhen(toLocalInput(new Date())); setEditWhen(v => !v) }}
+                      className="min-h-[48px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2"
+                      data-audit="when-exact">{editWhen ? 'Hide exact time' : 'Exact time'}</button>
+                  </div>
+                  {editWhen && (
+                    <Field label="When">
+                      <Input
+                        type="datetime-local"
+                        value={when || toLocalInput(new Date())}
+                        max={toLocalInput(new Date())}
+                        onChange={e => setWhen(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                </div>
 
                 {error && (
                   <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>
