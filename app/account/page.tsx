@@ -73,7 +73,7 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-signout">
           <h2 id="acct-signout" className={`${EYEBROW} !text-ink`}>Sign out</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Signing out clears everything private from this phone — the outbox, drafts, and receipts — before the next person picks it up.</p>
+            <p className="font-dm-sans text-[16px] text-ink">Signing out clears everything private from this phone — the outbox, drafts, and receipts — before the next person picks it up. Anything still waiting to sync is sent first; if any of it will not go, you are told how many and asked before it is discarded.</p>
             <SignOutButton />
           </Card>
         </section>
