@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
-import { flagEnabled } from '@/lib/flags'
 import { CONTACT_EMAIL, OPERATOR_NAME } from '@/lib/legal'
 import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -44,11 +43,11 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-crew">
           <h2 id="acct-crew" className={`${EYEBROW} !text-ink`}>Crew and access</h2>
           <RanchPeopleCard />
-          {flagEnabled('messaging') && (
-            <Card className="mt-3 px-5 py-4">
-              <Link href="/messages" className={link}>Messages →</Link>
-            </Card>
-          )}
+          {/* Block 7.6 — the Messages link is gone. /messages renders "Page not
+              found" while messaging is flagged off, and the flag has been off
+              since the North Star v3 demotion. It was already invisible here
+              (flagEnabled('messaging') hid it), so nothing on screen changes;
+              what goes is a link to a dead page waiting for a flag flip. */}
         </section>
 
         <section className="mt-6" aria-labelledby="acct-prefs">
@@ -56,7 +55,6 @@ export default async function AccountPage() {
           <Card className="px-5 py-4">
             <ul className="divide-y divide-rule">
               <li><Link href="/weather/locations" className={link} data-audit="pref-counties">My Counties →</Link><p className="font-dm-sans text-[15px] text-secondary-ink">Home county, watched counties, and alert preferences.</p></li>
-              {flagEnabled('marketplace') && <li className="pt-2"><Link href="/hay" className={link}>Hay marketplace →</Link></li>}
             </ul>
           </Card>
         </section>

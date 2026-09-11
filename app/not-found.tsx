@@ -1,6 +1,17 @@
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase-server'
 
-export default function NotFound() {
+// Block 7.6 — a signed-in person who lands here is not looking for a county.
+// They mistyped, or followed a link the app itself used to offer, and the only
+// way out was "Search counties" — the public funnel, which reads as being
+// thrown out of your own ranch. Signed in, the way back is Today.
+export default async function NotFound() {
+  let signedIn = false
+  try {
+    const supabase = await createClient()
+    signedIn = !!(await supabase.auth.getUser()).data.user
+  } catch { /* a 404 must render for anyone, session or not */ }
+
   return (
     <div className="min-h-screen bg-cream flex flex-col">
       <header className="border-b border-forest-green/10">
@@ -32,10 +43,16 @@ export default function NotFound() {
             Page not found
           </h1>
           <p className="font-dm-sans text-secondary-ink mb-6">
-            This page does not exist. Search for your county to check drought conditions and FSA program status.
+            {signedIn
+              ? 'This page does not exist. Everything on the ranch is on Today.'
+              : 'This page does not exist. Search for your county to check drought conditions and FSA program status.'}
           </p>
-          <Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-cream hover:bg-forest-green/90 transition-colors">
-            Search counties
+          <Link
+            href={signedIn ? '/today' : '/'}
+            className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-forest-green px-5 py-2.5 font-dm-sans text-[16px] font-semibold text-cream hover:bg-forest-green/90 transition-colors"
+            data-audit="notfound-primary"
+          >
+            {signedIn ? 'Back to Today' : 'Search counties'}
           </Link>
         </div>
       </main>
