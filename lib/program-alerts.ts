@@ -1,4 +1,3 @@
-import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { droughtSeverity, type UsdmReading } from '@/lib/drought-severity'
 import type { UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
@@ -7,6 +6,12 @@ import type { UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 export type DatedReading = UsdmReading & { week_date: string }
 
 // ─── Change-only alerts (Block 7.9) ───────────────────────────────────────────
+//
+// NOT marked 'server-only', deliberately. Nothing here touches a server-only
+// API — buildProgramAlerts is pure and readDismissals takes a client as an
+// argument — and the isolation suite runs the pure builder directly under tsx,
+// where a 'server-only' import is an unresolvable module. The key semantics are
+// the whole design, so they must be testable without a browser or a database.
 //
 // Today shows a program alert ONLY when something actually changed. Three
 // things qualify, and nothing else does:
