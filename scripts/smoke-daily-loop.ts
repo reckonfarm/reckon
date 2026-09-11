@@ -272,15 +272,21 @@ async function main() {
     const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2C: the answer — recorded, remaining from the count, no invented runway',
       /4 bales recorded/.test(strip1) && /200 counted [^+]+ \+ 0 added \u2212 4 fed = 196 bales on hand/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))   // 6C: the complete equation
-    // Block 5E — Today, reordered: quick record above the ledgers, the ledger strip open on Hay,
-    // conditions and the forecast below, and no news feed on the signed-in Today.
+    // Block 7.7 — Today is a work screen. The order is live job · needs attention ·
+    // since you checked · repeat feeding · hay, and the conditions strip is NOT on it
+    // any more: the drought reading and the program deadline moved to Weather with the
+    // LFP card, so the check that required a conditions strip BELOW the ledgers was
+    // asserting the shape this block deliberately removed.
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]'), yForecast = await pos('[data-audit="conditions-strip"]')   // Block 6B: Today keeps the two-line conditions preview; the 7-day carousel lives on Weather
+      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const headlines = await page.getByText('Headlines', { exact: true }).count()
-      record('5E: Today order — repeat last · Log it · ledgers (open on Hay) · conditions strip, and no news feed signed in', yRepeat < yLog && yLog < yTabs && yTabs < yForecast && activeTab === 'Hay' && headlines === 0, `y: repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · forecast ${Math.round(yForecast)} · active tab "${activeTab}" · Headlines blocks ${headlines}`)
+      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), no news feed signed in', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && activeTab === 'Hay' && headlines === 0, `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · active tab "${activeTab}" · Headlines ${headlines}`)
+      const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
+      record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
     }
     // Block 5C — one receipt: the strip's link opens the exact entry it just made.
     {
@@ -1385,7 +1391,14 @@ async function main() {
       const afterText = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const keysAfter = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
       const signIn = await page.locator('a[href^="/signin"]').count() + (/sign in/i.test(afterText) ? 1 : 0)   // the public page offers a way in, in whatever words
-      record('5D: after sign-out — fresh signed-out page, no ranch name, no quantities, no receipt, no private keys', !/SMOKE-DAILY-LOOP/.test(afterText) && !/Fed \d+ bales/.test(afterText) && !/bales on hand/.test(afterText) && !/Synced to ranch/.test(afterText) && keysAfter.length === 0 && signIn >= 1, `url ${page.url().replace(BASE, '') || '/'} · keys left: ${keysAfter.join(', ') || 'none'} · sign-in links ${signIn}`)
+      // The receipt is checked by ELEMENT, not by text: the public landing page's
+      // own marketing copy contains the words "Saved on this phone → Waiting to
+      // sync → Synced to ranch", so a body-text match for that phrase was testing
+      // Dryline's sales pitch, not whether a private receipt survived. It passed
+      // only while the assertion happened to run before the landing finished
+      // rendering; a slower sign-out (7.1 flushes first) exposed it.
+      const receiptEls = await page.locator('[role="status"], [data-audit="global-save-status"]').count()
+      record('5D: after sign-out — fresh signed-out page, no ranch name, no quantities, no receipt, no private keys', !/SMOKE-DAILY-LOOP/.test(afterText) && !/Fed \d+ bales/.test(afterText) && !/bales on hand/.test(afterText) && receiptEls === 0 && keysAfter.length === 0 && signIn >= 1, `url ${page.url().replace(BASE, '') || '/'} · keys left: ${keysAfter.join(', ') || 'none'} · receipt elements ${receiptEls} · sign-in links ${signIn}`)
       // Account switch WITHOUT a clean sign-out: plant a stale outbox item under A's id, then open B's magic link in the same browser.
       await page.evaluate(([outboxKey, ownerKey, uid]: string[]) => {
         localStorage.setItem(ownerKey, uid)
