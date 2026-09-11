@@ -693,8 +693,15 @@ async function main() {
       await page.waitForTimeout(500)
       const est = (await page.locator('[data-audit="weather-estimate"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ytdLabel = (await page.locator('[data-audit="ytd-measured-label"]').innerText().catch(() => '')).trim()
-      const prism = /PRISM/i.test(est)
-      record('6K: the rainfall figures say what they are — a county estimate (PRISM) or a station gauge — never "Actual"', !/YTD Actual|\bActual:/.test(est) && (ytdLabel === '' ? /rather show nothing|No nearby weather station/.test(est) : prism ? /County estimate/.test(ytdLabel) : /Station gauge/.test(ytdLabel)), `label "${ytdLabel}" · ${prism ? 'PRISM footer' : 'station footer'}`)
+      // The instrument comes from the line that STATES it, not from sniffing the
+      // sources footer: that footer names PRISM and NOAA in the same sentence
+      // ("a PRISM modeled grid … or the nearest NOAA COOP station when one
+      // qualifies"), so /PRISM/ is true whichever instrument is actually in use.
+      // It only ever passed while the county happened to be on the grid;
+      // Petroleum picked up a qualifying station and the check inverted.
+      const sourceLine = (await page.locator('[data-audit="rain-summary-source"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const prism = /County estimate/i.test(sourceLine)
+      record('6K: the rainfall figures say what they are — a county estimate (PRISM) or a station gauge — never "Actual"', !/YTD Actual|\bActual:/.test(est) && (ytdLabel === '' ? /rather show nothing|No nearby weather station/.test(est) : prism ? /County estimate/.test(ytdLabel) : /Station gauge/.test(ytdLabel)), `label "${ytdLabel}" · source line "${sourceLine}"`)
       record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText), `${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
     }
 
@@ -1351,6 +1358,11 @@ async function main() {
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})
       await page.waitForTimeout(3_000)
+      // The precondition, asserted rather than assumed: without an unsynced
+      // entry the block SHOULD not appear, and three cascading failures below
+      // would say nothing about the guard.
+      const heldOffline = await page.evaluate(`(() => { try { return (JSON.parse(localStorage.getItem('dryline_outbox_v1') || '[]')).filter(i => i.state !== 'synced').length } catch (e) { return -1 } })()`)
+      record('7.1: offline, the entry is held on the phone (precondition)', (heldOffline as number) > 0, `${heldOffline} unsynced`)
       await page.locator('[data-audit="sign-out"]').first().click().catch(() => {})
       await page.waitForTimeout(2_500)
       const blockTxt = (await page.locator('[data-audit="signout-block"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
