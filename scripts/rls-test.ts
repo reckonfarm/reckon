@@ -686,8 +686,10 @@ async function placesChecks() {
     record('alerts', 'an unchanged weekly publication raises nothing', same.length === 0, `${same.length} alert(s)`)
     const worse = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 30), prior: wk('2026-09-01', 40, 0) })
     record('alerts', 'a drought designation change raises exactly one alert', worse.length === 1 && worse[0].kind === 'drought', worse.map(a => a.headline).join(' | '))
-    const later = buildProgramAlerts({ ...base, latest: wk('2026-09-22', 70, 60), prior: wk('2026-09-15', 60, 30) })
-    record('alerts', 'a LATER, different change has a DIFFERENT key — dismissing the first cannot silence it', later.length === 1 && later[0].key !== worse[0].key, `${worse[0]?.key} vs ${later[0]?.key}`)
+    // The SAME transition, a fortnight later, is a different fact and must be a
+    // different key — this is the case a timestamp cursor gets wrong.
+    const later = buildProgramAlerts({ ...base, latest: wk('2026-09-22', 70, 60), prior: wk('2026-09-15', 60, 0) })
+    record('alerts', 'a LATER change has a DIFFERENT key — dismissing the first cannot silence it', later.length === 1 && later[0].key !== worse[0].key, `${worse[0]?.key} vs ${later[0]?.key}`)
     const first = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 30), prior: null })
     record('alerts', 'a first observation is not a change', first.length === 0, `${first.length} alert(s)`)
     const tier = buildProgramAlerts({ ...base, latest: wk('2026-09-08', 60, 0), prior: wk('2026-09-01', 60, 0), lfpTier: 2, priorLfpTier: 1 })
