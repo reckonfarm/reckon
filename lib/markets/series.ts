@@ -10,7 +10,7 @@ import { THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 // is an OBSERVATION the source reported: an auction sale date, a weekly
 // national report, a settle, a quarterly inventory point. Nothing here
 // interpolates, smooths, or fills; the chart draws points and, at most, a
-// visibly distinct carried-forward step. Each point carries its evidence
+// Each point carries its evidence
 // (head reported, class, weight range, report id) so a tap can show it.
 //
 // mars_price_history is read at its CURRENT revision (superseded_by IS NULL

@@ -6,7 +6,7 @@
 //   • match labels present; a thin reference shows a range, not cents
 //   • the sensitivity line is exact: 300 × 550 / 100 = $1,650 per $1/cwt
 //   • culls listed under "slaughter prices, not breeding value"
-//   • the history card renders with the carried-forward toggle and date ticks
+//   • the history card renders with date ticks and the points-only copy
 //   • "Where I sell" pin: PATCH → reload → "Where you sell — Miles City"
 //   • event markers and Since-you-last-checked SKIP until migration 048
 //   • Phase A5: unit in the heading and beside every price; head count beneath at meta; no essay
@@ -19,7 +19,7 @@
 //   • Block 2.6D: no displayed "as of" date exceeds today (five counties, Today view)
 //   • Block 2.6C: LRP hero follows the picked term; chips read date · weeks; no monotonic claim
 //   • Block 2.6F: event chips carry years, run chronologically, in-period only by default
-//   • Block 2.6E: carried-forward steps default OFF; the copy follows the toggle
+//   • Block 7.3: there is no carried-forward toggle — points only, one honest sentence
 //   • Block 2.6B: chart title unit = axis unit for every view × measure
 //   • Block 2.6A: Potter TX, Custer NE, Polk IA, Lane OR (signed out) never show a
 //     "Nearby" label; the no-coverage sentence and a Nearby label never co-occur
@@ -131,7 +131,7 @@ async function main() {
     await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
     await page.locator('[data-audit="compare-settings"]').first().waitFor({ timeout: 45_000 }).catch(() => {})   // Block 7: the chart's controls sit behind disclosures
     await openChartControls(page)
-    await page.getByText(/carried-forward steps/).first().waitFor({ timeout: 15_000 }).catch(() => {})
+    await page.getByText(/Points are reported sales/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     await page.getByText(/Every \$1\/cwt/).first().waitFor({ timeout: 15_000 }).catch(() => {})
     // The chart card is server-rendered before it is hydrated; a click that lands in
     // between is dropped. Wait for the network to go quiet and a beat more.
@@ -150,16 +150,14 @@ async function main() {
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
-    record('B3: history card with the carried-forward toggle', /Selected cattle/i.test(body) && /carried-forward steps/i.test(body))
+    record('B3: history card renders, points only', /Selected cattle/i.test(body) && /Points are reported sales/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
-    const stepBtn = cattleCard.getByRole('button', { name: /carried-forward steps/ })
+    // Block 7.3 — the carried-forward toggle is gone. What must be true now is
+    // that no control offers to draw between sales, and the copy says so once.
     const stepCopy = cattleCard.locator('[data-audit="step-copy"]')
-    record('2.6E: carried-forward steps default OFF', /^Show carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Nothing is drawn between them/.test(await stepCopy.innerText()), (await stepBtn.innerText()).trim())
-    await stepBtn.click()
-    await cattleCard.getByRole('button', { name: /^Hide carried-forward steps/ }).waitFor({ timeout: 5_000 }).catch(() => {})
-    record('2.6E: copy follows the state when steps are shown', /^Hide carried-forward steps/.test((await stepBtn.innerText()).trim()) && /Dashed steps only carry the last sale forward/.test(await stepCopy.innerText()))
-    await stepBtn.click()
+    record('7.3: no carried-forward control anywhere on Markets', (await page.getByRole('button', { name: /carried-forward/i }).count()) === 0)
+    record('7.3: the chart says points only, in one state', /Points are reported sales\. Nothing is drawn between them/.test((await stepCopy.innerText()).replace(/\s+/g, ' ')) && !/Dashed steps/.test(await stepCopy.innerText()), (await stepCopy.innerText()).replace(/\s+/g, ' ').slice(0, 80))
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
     record('B5: no correlation number anywhere', !/R²|R\^2|correlation|explains \d+%/i.test(body))
     const svgPoints = await page.locator('svg circle').count()
@@ -358,7 +356,7 @@ async function main() {
       const mctx = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       const mp = await signIn(mctx)
       await mp.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
-      await mp.getByText(/carried-forward steps/).first().waitFor({ timeout: 45_000 }).catch(() => {})
+      await mp.getByText(/Points are reported sales/).first().waitFor({ timeout: 45_000 }).catch(() => {})
       await mp.waitForTimeout(1200)
       const m = await mp.evaluate(`${MEASURE}(${width})`) as { overflowX: number; small: string[]; smallCount: number; tiny: string[]; tinyCount: number; chartW: number; cardW: number; cardInner: number; pts: number }
       record(`${width}px: no horizontal page scroll`, m.overflowX === 0, `overflow ${m.overflowX}px`)
@@ -517,7 +515,7 @@ async function main() {
         const pp = await pub.newPage()
         await pp.goto(`/dashboard?fips=${fips}&view=markets`, { waitUntil: 'domcontentloaded' })
         await pp.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
-        await pp.getByText(/carried-forward steps|No nearby barn|Regional reference/).first().waitFor({ timeout: 45_000 }).catch(() => {})
+        await pp.getByText(/Points are reported sales|No nearby barn|Regional reference/).first().waitFor({ timeout: 45_000 }).catch(() => {})
         const b = await text(pp)
         const nearby = /Local report —|Nearby auction reference|Nearby —/.test(b)
         const noLocal = /No reporting auction within \d+ approx\. straight-line miles/.test(b)

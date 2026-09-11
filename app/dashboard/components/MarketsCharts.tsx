@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ResponsiveContainer, ComposedChart, Scatter, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
+  ResponsiveContainer, ComposedChart, Scatter, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from 'recharts'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -13,7 +13,7 @@ import ReportEvidence from '@/app/components/ReportEvidence'
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
 // RULES, enforced here and nowhere else:
 //   • Observed points render as points. Between them: nothing, or a visibly
-//     distinct carried-forward STEP (dashed, faint). Never a spline, never
+//     Never a spline, never
 //     'monotone', never a straight line implying a price on a day nobody
 //     reported one.
 //   • X-axis ticks are the actual report dates.
@@ -266,12 +266,11 @@ function useHoverable(): boolean {
   return hover
 }
 
-function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pickedKey, height = 320, domain }: {
+function ObservationChart({ seriesList, ordered, unit, events, onPick, pickedKey, height = 320, domain }: {
   seriesList: { name: string; color: string; dots: Dot[] }[]
   ordered: Dot[]           // every point of the chart in date order (Block 2.6H)
   unit: string
   events: MarketEvent[]
-  step: boolean
   onPick: (d: Dot) => void
   pickedKey: string | null // the picked point's key — the tooltip is forced off while a panel is open so it never lingers over the chart
   height?: number
@@ -313,9 +312,6 @@ function ObservationChart({ seriesList, ordered, unit, events, step, onPick, pic
           <YAxis type="number" dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => fmtMoney(Number(v)).replace('.00', '')} />
           {hoverable && !pickedKey && <Tooltip content={<PointTip unit={unit} />} cursor={{ stroke: FOREST, strokeOpacity: 0.15 }} />}
           <EventMarkers events={events} x0={x0} x1={x1} />
-          {seriesList.map(s => (
-            <Line key={`step-${s.name}`} data={s.dots} dataKey="v" type="stepAfter" stroke={s.color} strokeOpacity={step ? 0.3 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} name={`${s.name} (carried forward)`} />
-          ))}
           {seriesList.map(s => (
             <Scatter key={s.name} data={s.dots} dataKey="v" fill={s.color} name={s.name} shape={<EvidenceDot fill={s.color} unit={unit} pickedKey={pickedKey} onPick={onPick} onKeyPick={onKeyPick} onStep={onStep} />} isAnimationActive={false} />
           ))}
@@ -365,12 +361,11 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [seenLotKey, setSeenLotKey] = useState(lotKey)
   if (lotKey !== seenLotKey) { setSeenLotKey(lotKey); if (p.lot?.cls) setCls(p.lot.cls); if (p.lot?.band) setBand(p.lot.band) }
   const [measure, setMeasure] = useState<Measure>('cwt')
-  const [step, setStep] = useState(false)   // Block 2.6E — observed points only by default; never imply a price between sales
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [showEvents, setShowEvents] = useState(false)    // Block 7: dated event markers live in Compare and settings, off by default
   const [salesView, setSalesView] = useState(false)      // Block 7: Chart | Sales — two views of one section
   const [changeOpen, setChangeOpen] = useState(false)     // Block 7: class · weight band · measure, behind "Change cattle"
-  const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and, from 3/8, steps, events, details) behind "Compare and settings"
+  const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and events, details) behind "Compare and settings"
   const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
@@ -436,7 +431,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     ...(p.lot ? [{ value: 'lot' as Measure, label: 'My lot' }] : []),
   ]
 
-  const chartProps = { ordered, unit, events: showEvents ? p.events : [], step, onPick: pick, pickedKey: livePickedKey }
+  const chartProps = { ordered, unit, events: showEvents ? p.events : [], onPick: pick, pickedKey: livePickedKey }
 
   return (
     // On a phone the card bleeds to the screen edges and pads 12 px, so the
@@ -522,14 +517,13 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                     className="min-h-[48px] rounded-lg border border-rust/40 px-4 font-dm-sans text-[16px] font-semibold text-rust hover:bg-rust/5">
                     {showEvents ? 'Hide dated events' : 'Show dated events'}
                   </button>
-                  <button type="button" onClick={() => setStep(v => !v)} className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green">
-                    {step ? 'Hide carried-forward steps' : 'Show carried-forward steps'} <span className="font-normal">· last available reference</span>
-                  </button>
                 </div>
+                {/* Block 7.3 — the carried-forward toggle and its dashed steps are gone.
+                    A weekly auction observation is a point; a line between two of them
+                    would draw a price nobody reported. There is no longer a state in
+                    which this copy is anything but the plain truth. */}
                 <span className="block font-dm-sans text-[16px] text-ink" data-audit="step-copy">
-                  {step
-                    ? <>Points are reported sales. Dashed steps only carry the last sale forward — the last available reference, not a price anyone reported.</>
-                    : <>Points are reported sales. Nothing is drawn between them — no price between sales was reported.</>}
+                  Points are reported sales. Nothing is drawn between them — no price between sales was reported.
                 </span>
                 {showEvents && view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
                 <details className="w-full" data-audit="chart-details">
@@ -668,7 +662,6 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                       <XAxis type="number" dataKey="t" domain={[x0, x1]} ticks={cornDots.filter((_, i) => i % Math.max(1, Math.floor(cornDots.length / 8)) === 0).map(d => d.t)} tickFormatter={t => fmtDay(isoOf(Number(t)))} tick={{ fontSize: 15, fill: FOREST }} minTickGap={48} />
                       <YAxis dataKey="v" domain={['auto', 'auto']} tick={{ fontSize: 15, fill: FOREST }} width={46} tickFormatter={v => `$${Number(v).toFixed(2)}`} />
                       <Tooltip formatter={(v: unknown) => [`$${Number(v).toFixed(2)}/bu`, 'Settle']} labelFormatter={t => fmtDayYear(isoOf(Number(t)))} />
-                      <Line data={cornDots} dataKey="v" type="stepAfter" stroke={RUST} strokeOpacity={step ? 0.35 : 0} strokeDasharray="3 5" dot={false} activeDot={false} isAnimationActive={false} />
                       <Scatter data={cornDots} dataKey="v" fill={RUST} isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
