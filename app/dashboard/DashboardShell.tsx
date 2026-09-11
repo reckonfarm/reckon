@@ -41,6 +41,8 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
 import NeedsAttention from './components/NeedsAttention'
+import ProgramAlerts from './components/ProgramAlerts'
+import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/program-alerts'
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
@@ -279,6 +281,7 @@ export async function DashboardShell({
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let latest: DroughtReading | null                 = null
+  let priorReading: DroughtReading | null           = null   // Block 7.9 — the week before, for the change alert
 
   // Rainfall (ACIS) is held as a PROMISE and resolved behind a <Suspense> boundary in
   // the chrome (RainfallPanelAsync below) so it NEVER blocks the page's server render —
@@ -341,8 +344,10 @@ export async function DashboardShell({
         .select('week_date, d0, d1, d2, d3, d4')
         .eq('county_id', selectedCounty.id)
         .order('week_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        // Block 7.9 — TWO readings, not one. The change alert needs the week
+        // before to know whether anything changed at all; one extra row on an
+        // indexed read, no extra round trip.
+        .limit(2),
       getUpcomingDeadlines(selectedCounty.fips, crops),
       // The operation's county for the orientation line. When it's the county in
       // view the row is already here; only a DIFFERENT home county costs a read
@@ -354,7 +359,9 @@ export async function DashboardShell({
         return (data as HomeCounty | null) ?? null
       }).catch(() => null),
     ])
-    latest = latestRow as DroughtReading | null
+    const readings = (latestRow ?? []) as DroughtReading[]
+    latest = readings[0] ?? null
+    priorReading = readings[1] ?? null
     deadlineResult = deadlineRes
     homeCounty = home
   }
@@ -373,6 +380,35 @@ export async function DashboardShell({
         .then(result => ({ ok: true as const, result }))
         .catch(() => ({ ok: false as const }))
     : Promise.resolve({ ok: false as const })
+
+  // ── Change-only program alerts (Block 7.9) ────────────────────────────────
+  // Computed only for Today, only for a signed-in member. Everything standing
+  // lives in Weather → Programs; this is strictly what CHANGED. The prior LFP
+  // tier comes from lfp_eligibility_snapshots (018) — the audited weekly
+  // engine output — rather than a second expensive USDM recomputation.
+  let programAlerts: ProgramAlert[] = []
+  if (priv && route === 'today' && selectedCounty && user) {
+    try {
+      const { data: tiers } = await db
+        .from('lfp_eligibility_snapshots')
+        .select('week_date, max_tier')
+        .eq('county_id', selectedCounty.id)
+        .order('week_date', { ascending: false })
+        .limit(2)
+      const t = (tiers ?? []) as { week_date: string; max_tier: number }[]
+      const all = buildProgramAlerts({
+        fips: selectedCounty.fips,
+        countyName: selectedCounty.name,
+        latest,
+        prior: priorReading,
+        lfpTier: t[0]?.max_tier ?? null,
+        priorLfpTier: t[1]?.max_tier ?? null,
+        deadlines: deadlineResult,
+      })
+      const seen = await readDismissals(supabase, user.id)
+      programAlerts = all.filter(a => !seen.has(a.key))
+    } catch { programAlerts = [] }
+  }
 
   // Prior-year LFP (same forage period, year − 1) for the card's eligibility-math
   // comparison. Started here, awaited only inside LfpCardAsync once the current
@@ -618,7 +654,10 @@ export async function DashboardShell({
 
                     {priv && route === 'today' && (
                       <>
-                        {/* 3. Needs attention — only real state, nothing when there is none. */}
+                        {/* 3. Changed — program news only when something actually
+                            changed, dismissible per person and per change. */}
+                        <ProgramAlerts alerts={programAlerts} />
+                        {/* 4. Needs attention — only real state, nothing when there is none. */}
                         <NeedsAttention />
                         {/* 4. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new.
 
