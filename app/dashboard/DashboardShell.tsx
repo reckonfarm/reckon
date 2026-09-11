@@ -576,19 +576,27 @@ export async function DashboardShell({
                       </>
                     )}
 
-                    {/* 2. Needs attention. LFP loud only (triggered / pending-OBBBA / building a
-                        D2 streak / data unavailable); a deadline card only when loud (≤45 days,
-                        newly published, or unavailable); the quiet row is the quiet home for both. */}
-                    <Suspense fallback={<LfpAlertSkeleton />}>
-                      <LfpCardAsync
-                        dataPromise={lfpPromise}
-                        priorYearPromise={priorYearPromise}
-                        countyName={selectedCounty.name}
-                        fips={selectedCounty.fips}
-                      />
-                    </Suspense>
-                    {isDeadlineLoud(deadlineResult) && (
-                      <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                    {/* 2. Needs attention. Block 7.7/7.8: the LFP card, the drought
+                        designation and the deadline cards are NOT on Today any more —
+                        they live in Weather → Programs, because none of them is
+                        something the ranch does today. They still lead the PUBLIC county
+                        page, which is a drought-and-program tool and the signed-out
+                        funnel depends on them; this block only ever reached county and
+                        today, so `route !== 'today'` leaves the public page untouched. */}
+                    {route !== 'today' && (
+                      <>
+                        <Suspense fallback={<LfpAlertSkeleton />}>
+                          <LfpCardAsync
+                            dataPromise={lfpPromise}
+                            priorYearPromise={priorYearPromise}
+                            countyName={selectedCounty.name}
+                            fips={selectedCounty.fips}
+                          />
+                        </Suspense>
+                        {isDeadlineLoud(deadlineResult) && (
+                          <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                        )}
+                      </>
                     )}
                     {/* "Check device" — only when a device has a known cadence and missed it (Block 6A). */}
                     {priv && route === 'today' && (
@@ -665,6 +673,21 @@ export async function DashboardShell({
                           forecastPromise={forecastPromise}
                           alertsPromise={alertsPromise}
                           titled={route === 'weather'}
+                          programs={route === 'weather' ? (
+                            <>
+                              <Suspense fallback={<LfpAlertSkeleton />}>
+                                <LfpCardAsync
+                                  dataPromise={lfpPromise}
+                                  priorYearPromise={priorYearPromise}
+                                  countyName={selectedCounty.name}
+                                  fips={selectedCounty.fips}
+                                />
+                              </Suspense>
+                              {isDeadlineLoud(deadlineResult)
+                                ? <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                                : <DeadlineQuietRow countyName={selectedCounty.name} quietDeadline={deadlineResult} />}
+                            </>
+                          ) : null}
                         />
                       </Suspense>
                     ) }
