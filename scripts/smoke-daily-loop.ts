@@ -349,6 +349,16 @@ async function main() {
     // ── 7.4 + 7.5: what a form says before it saves ────────────────────────
     {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_500)
+      // The check before this one deliberately leaves a half-typed sheet
+      // restored, so the FAB is behind it. Clear the draft before opening a new
+      // form, or every assertion below reads the wrong sheet.
+      for (let i = 0; i < 2; i++) {
+        if (await page.locator('button:has-text("Cancel")').first().isVisible().catch(() => false)) {
+          await page.locator('button:has-text("Cancel")').first().click().catch(() => {})
+          await page.waitForTimeout(800)
+        }
+      }
       await page.locator('[data-audit="record-fab"]').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
