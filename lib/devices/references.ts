@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasEventDeletion } from '@/lib/schema-capability'
+import { splitEvents, CASCADE_COLS, type CascadeRow } from '@/lib/cascade'
 
 // ─── What still points at a device (Block 7D.3) ───────────────────────────────
 //
@@ -52,4 +53,41 @@ export function deviceRefsSentence(refs: DeviceRefs): string {
   if (parts.length === 0) return 'Nothing points at it.'
   const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
   return `${list} still ${refs.total === 1 ? 'points' : 'point'} at it.`
+}
+
+
+// ── 8B.2 for devices ──────────────────────────────────────────────────────────
+// Same rule, and the numbers matter more here: a logger can carry thousands of
+// observations, so the count is the whole decision.
+
+export interface DeviceCascade { hard: string[]; record: string[]; jobs: number; detections: number }
+
+export async function planDeviceCascade(supabase: SupabaseClient, userId: string, ranchId: string, deviceId: string): Promise<DeviceCascade> {
+  const canDel = await hasEventDeletion(supabase)
+  let q = supabase.from('events').select(CASCADE_COLS).eq('device_id', deviceId)
+  if (canDel) q = q.is('deleted_at', null)
+  const { data } = await q
+  const rows = (data ?? []) as unknown as CascadeRow[]
+  const { hard, record } = await splitEvents(supabase, userId, ranchId, rows)
+  const [{ count: jobs }, { count: detections }] = await Promise.all([
+    supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('device_id', deviceId),
+    supabase.from('detections').select('id', { count: 'exact', head: true }).eq('device_id', deviceId),
+  ])
+  return { hard, record, jobs: jobs ?? 0, detections: detections ?? 0 }
+}
+
+export function deviceCascadeSentence(name: string, refs: DeviceRefs, plan: DeviceCascade): string {
+  const n = (v: number) => v.toLocaleString('en-US')
+  const what = deviceRefsSentence(refs).replace(/\.$/, '').replace(/ still points? at it/, ` point at ${name}`)
+  const bits: string[] = []
+  if (plan.hard.length > 0) bits.push(`${n(plan.hard.length)} will be deleted outright`)
+  if (plan.record.length > 0) bits.push(`${n(plan.record.length)} ${plan.record.length === 1 ? 'was corrected or already seen, so the record keeps it' : 'were corrected or already seen, so the record keeps them'}`)
+  // Jobs and detections are DERIVED — the cron rebuilds them from device
+  // events every three minutes. Removing the events removes their source, so
+  // they go on their own; saying they are "deleted" would claim an action
+  // nothing here performs.
+  if (plan.jobs > 0 || plan.detections > 0) {
+    bits.push(`${n(plan.jobs)} ${plan.jobs === 1 ? 'job' : 'jobs'} and ${n(plan.detections)} ${plan.detections === 1 ? 'detection' : 'detections'} are derived from those observations and will stop being rebuilt`)
+  }
+  return bits.length > 0 ? `${what}. ${bits.join('; ')}.` : `${what}.`
 }

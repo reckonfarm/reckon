@@ -46,13 +46,26 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
       if (r.type === 'rain' && p.place_id === pid && !rain.has(pid) && typeof p.inches === 'number') rain.set(pid, { ts: r.ts, inches: p.inches })
     }
   }
+  // 8B.4 — ORDER BY WHAT YOU'D REACH FOR. Alphabetical is an ordering of
+  // names, not of a ranch: "Audit pen" outranks "Home pasture" for no reason
+  // anyone standing in a field would recognise. Most-recently-used first, and
+  // places with no activity fall to the back in name order so the list is
+  // still findable once you are past the ones you use. Same principle as the
+  // Weather fallback picking by evidence rather than alphabetically.
   const rows: PlaceRow[] = shaped.map(pl => ({
     id: pl.id, name: pl.name, kind: pl.kind, ring: pl.ring, acres: pl.acres,
     retiredAt: pl.retired_at ?? null,
     lastWork: work.get(pl.id) ?? null,
     lastRain: rain.get(pl.id) ?? null,
   }))
-  return { live: rows.filter(r => !r.retiredAt), retired: rows.filter(r => r.retiredAt) }
+  const byUse = (a: PlaceRow, b: PlaceRow) => {
+    const at = a.lastWork?.ts ?? '', bt = b.lastWork?.ts ?? ''
+    if (at && bt) return bt.localeCompare(at)        // most recent first
+    if (at) return -1                                 // used beats unused
+    if (bt) return 1
+    return a.name.localeCompare(b.name)               // never used → findable
+  }
+  return { live: rows.filter(r => !r.retiredAt).sort(byUse), retired: rows.filter(r => r.retiredAt).sort(byUse) }
 }
 
 // TOLERANT READ, on 040's precedent (lib/jobs/annotations.ts fetchFieldsCut):

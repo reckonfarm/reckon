@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
-import { hasPlacePin } from '@/lib/schema-capability'
+import { hasPlacePin, hasEventDeletion } from '@/lib/schema-capability'
 import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
 
 // Places — the named spots on the outfit (031).
@@ -49,7 +49,37 @@ export async function GET(req: NextRequest) {
     ? await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
     : live
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ places: data ?? [] })
+
+  // 8B.4 — the picker is what you reach for while standing somewhere, so it is
+  // ordered by what you last used, not by the alphabet. Places never used yet
+  // keep their name order at the back so the list stays findable.
+  //
+  // One extra read, capped, and TOLERANT: if it fails the picker still answers
+  // in name order rather than not answering. An ordering is a convenience; the
+  // list is not.
+  const places = (data ?? []) as { id: string; name: string; kind: string }[]
+  try {
+    const canDel = await hasEventDeletion(supabase)
+    let q = supabase.from('events').select('ts, payload').eq('payload->>source', 'manual')
+    if (canDel) q = q.is('deleted_at', null)
+    const { data: recent } = await q.order('ts', { ascending: false }).limit(400)
+    const lastUsed = new Map<string, string>()
+    for (const r of (recent ?? []) as { ts: string; payload: Record<string, unknown> }[]) {
+      for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) {
+        const v = r.payload?.[k]
+        if (typeof v === 'string' && v && !lastUsed.has(v)) lastUsed.set(v, r.ts)
+      }
+    }
+    places.sort((a, b) => {
+      const at = lastUsed.get(a.id) ?? '', bt = lastUsed.get(b.id) ?? ''
+      if (at && bt) return bt.localeCompare(at)
+      if (at) return -1
+      if (bt) return 1
+      return a.name.localeCompare(b.name)
+    })
+  } catch { /* name order stands */ }
+
+  return NextResponse.json({ places })
 }
 
 export async function POST(req: NextRequest) {

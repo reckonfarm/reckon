@@ -24,14 +24,17 @@ export default function DeleteDevice({ id, name }: { id: string; name: string })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refs, setRefs] = useState<string | null>(null)
+  const [canCascade, setCanCascade] = useState(false)
 
-  async function remove() {
+  async function remove(cascade = false) {
     setBusy(true); setError(null)
     try {
-      const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' })
-      const json = await res.json().catch(() => ({})) as { deleted?: boolean; message?: string; error?: string }
+      const res = await fetch(`/api/devices/${id}${cascade ? '?cascade=1' : ''}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({})) as { deleted?: boolean; message?: string; cascadeMessage?: string; error?: string }
       if (res.status === 409 && json.error === 'still referenced') {
-        setRefs(json.message ?? 'Something still points at it.'); setMode('referenced'); setBusy(false); return
+        setRefs(json.cascadeMessage ?? json.message ?? 'Something still points at it.')
+        setCanCascade(!!json.cascadeMessage)
+        setMode('referenced'); setBusy(false); return
       }
       if (!res.ok) { setError(json.error ?? 'That device could not be deleted just now'); setBusy(false); return }
       router.refresh()
@@ -45,9 +48,14 @@ export default function DeleteDevice({ id, name }: { id: string; name: string })
       <div className="mt-3 rounded-lg border p-3" style={{ borderColor: warning }} data-audit="device-referenced">
         <p className="font-dm-sans text-[16px] font-semibold text-ink">{name} wasn&rsquo;t deleted.</p>
         <p className="mt-1 font-dm-sans text-[15px] leading-snug text-secondary-ink" data-audit="device-referenced-count">
-          {refs} Deleting it would cut them loose from the machine that recorded them.
+          {refs}
         </p>
         <div className="mt-3 flex flex-wrap gap-3">
+          {canCascade && (
+            <button type="button" disabled={busy} onClick={() => void remove(true)} className="min-h-[48px] w-full rounded-lg px-4 font-dm-sans text-[16px] font-semibold text-cream disabled:opacity-50" style={{ backgroundColor: warning }} data-audit="device-cascade-delete">
+              {busy ? 'Deleting…' : `Delete ${name} and everything it recorded`}
+            </button>
+          )}
           <Link href={`/ranch/work?device=${id}`} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="device-referenced-go">
             See its work →
           </Link>

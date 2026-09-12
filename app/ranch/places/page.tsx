@@ -119,6 +119,7 @@ export default async function PlacesPage() {
               the ones you cannot get to (8.5). Both produce the same kind of
               row, so nothing downstream can tell them apart except by reading
               provenance, which is why provenance is recorded. */}
+          <div id="capture" />
           <CapturePlace />
           <DrawPlace
             initialCenter={centre}
