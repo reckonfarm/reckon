@@ -21,7 +21,11 @@ const DOW = (iso: string) => new Date(`${iso}T12:00:00-06:00`).toLocaleDateStrin
 
 // `reference` (Block 2.6A): the barn is beyond the discovery radius — a regional reference,
 // so the quiet line never calls it local.
-export default async function MarketsSince({ localSlug, pinned, reference = false }: { localSlug: string | null; pinned: boolean; reference?: boolean }) {
+// `embedded` (7C): render only the lines, with no Card and no heading of its
+// own. "Since you last checked" and the per-lot "What changed" rows answered
+// the same question 200px apart, so they are now one section — this supplies
+// its half of it.
+export default async function MarketsSince({ localSlug, pinned, reference = false, embedded = false }: { localSlug: string | null; pinned: boolean; reference?: boolean; embedded?: boolean }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -51,13 +55,20 @@ export default async function MarketsSince({ localSlug, pinned, reference = fals
   if (lrp) lines.push(isNew(lrp.created_at) ? `New LRP coverage prices — effective ${day(lrp.effective_date)}` : `LRP coverage prices unchanged since ${day(lrp.effective_date)}`)
   if (lines.length === 0) return <LastSeenPing surface="markets" />
 
-  return (
-    <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-card">
+  const body = (
+    <>
       <LastSeenPing surface="markets" />
-      <p className={EYEBROW}>{seen ? 'Since you last checked' : 'Since yesterday'}</p>
-      <ul className="mt-2 space-y-1.5">
+      <ul className={embedded ? 'space-y-1.5' : 'mt-2 space-y-1.5'} data-audit="since-lines">
         {lines.map(l => <li key={l} className="font-dm-sans text-[16px] leading-snug text-forest-green">{l}</li>)}
       </ul>
+    </>
+  )
+  if (embedded) return body
+
+  return (
+    <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-card">
+      {body}
+      <p className={EYEBROW}>{seen ? 'Since you last checked' : 'Since yesterday'}</p>
     </Card>
   )
 }
