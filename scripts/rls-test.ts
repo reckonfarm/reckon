@@ -679,22 +679,29 @@ async function logRouteChecks() {
     const { data: memberships } = await admin.from('ranch_members').select('ranch_id').eq('user_id', cUser?.id ?? '')
     const ranchless = !!cUser && (memberships ?? []).length === 0
     const wrote = await api(C, '/api/log', { type: 'rain', inches: 0.55 })
-    const cid = String(((wrote.json.event ?? {}) as { id?: string }).id ?? '')
-    record('user E (no ranch)', '7E: a person with no ranch can still record — the write SUCCEEDS', ranchless && wrote.status === 201 && !!cid, `${ranchless ? '' : 'E ALREADY HAS A RANCH — this proves nothing · '}${wrote.status}${cid ? '' : ' · no event'}`)
 
-    const { data: crow } = cid ? await admin.from('events').select('ranch_id, user_id').eq('id', cid).maybeSingle() : { data: null }
-    const cr = crow as { ranch_id: string | null; user_id: string } | null
-    record('user E (no ranch)', '7E: the ranchless entry is stored with ranch_id NULL, owned by its writer', !!cr && cr.ranch_id === null, `ranch_id ${cr ? String(cr.ranch_id) : 'NO ROW'}`)
+    // THE ROUTE'S DOCUMENTED CLAIM WAS FALSE, and this is what found it. It
+    // said a ranchless write "still lands, owner-visible" — true under 034,
+    // whose INSERT policy was user_id = auth.uid(). 043 made membership the
+    // sole gate, so ranch_id NULL makes the policy's `in (…)` NULL, not TRUE,
+    // and the insert is refused. The READ policy has the same shape, so a
+    // landed row would have been invisible to its own writer too. The claim
+    // outlived its truth by nine migrations because nothing asked.
+    //
+    // So the assertion is the true behaviour, and the bar is higher than "does
+    // not error": the person must get an ACTIONABLE answer, never a 500
+    // carrying a policy message, and no row may exist anywhere afterwards.
+    record('user E (no ranch)', '7E: a ranchless person is told they have no ranch — 409 and a sentence they can act on, never a 500',
+      ranchless && wrote.status === 409 && wrote.json.code === 'no_ranch' && /not on a ranch/i.test(String(wrote.json.error)),
+      `${ranchless ? '' : 'E ALREADY HAS A RANCH — this proves nothing · '}${wrote.status} · ${String(wrote.json.error ?? '').slice(0, 60)}`)
 
-    // The claim worth making: no ranch can see it. Not A, not B.
-    const aSees = await A.from('events').select('id').eq('id', cid)
-    const bSees2 = await Bc.from('events').select('id').eq('id', cid)
-    record('user E (no ranch)', '7E: the ranchless entry is invisible to EVERY ranch — not A, not B', !!cid && (aSees.data ?? []).length === 0 && (bSees2.data ?? []).length === 0, `A sees ${(aSees.data ?? []).length} · B sees ${(bSees2.data ?? []).length}`)
+    const { count: strays } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', cUser?.id ?? '')
+    record('user E (no ranch)', '7E: and no row was written anywhere — not owner-visible, not orphaned, not at all',
+      (strays ?? 0) === 0, `${strays ?? 0} row(s) exist for E`)
 
-    // And its writer can still read their own — a row nobody can see would be
-    // a row nobody should have been allowed to write.
-    const cSees = await C.from('events').select('id').eq('id', cid)
-    record('user E (no ranch)', '7E: but its own writer can read it back — not a write into the void', (cSees.data ?? []).length === 1, `${(cSees.data ?? []).length} row(s) visible to C`)
+    const { count: nullRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).is('ranch_id', null)
+    record('user E (no ranch)', '7E: no ranchless event exists on this database at all — a row no ranch can see is a row nobody should hold',
+      (nullRanch ?? 0) === 0, `${nullRanch ?? 0} event(s) with ranch_id NULL`)
   }
 }
 
