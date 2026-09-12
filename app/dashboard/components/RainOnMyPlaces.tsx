@@ -6,6 +6,9 @@ import Disclosure from '@/app/components/ui/Disclosure'
 import { getRainLedger, type RainEntry } from '@/lib/rain/queries'
 import { fmtDay } from '@/lib/jobs/format'
 import LogRainButton from './LogRainButton'
+import { weatherPlaces } from '@/lib/rain/weather-places'
+import WeatherPlacePicker from './WeatherPlacePicker'
+import WeatherPlaceActions from './WeatherPlaceActions'
 
 // ─── Rain on my places (Block 7, Part 3) ──────────────────────────────────────
 // The one thing no forecast app can copy: Haley read the gauge at the north
@@ -27,16 +30,15 @@ const STALE_DAYS = 7
 export default async function RainOnMyPlaces({ user }: { user: { id: string } | null }) {
   if (!user) return null
   const supabase = await createClient()
-  const [ledger, placesRes] = await Promise.all([
-    getRainLedger(supabase),
-    // Live only — each row offers Log rain, and nothing new is recorded at a
-    // retired place. Tolerant of a database without 057: every place is live there.
-    supabase.from('places').select('id, name').is('retired_at', null).order('name')
-      .then(r => (r.error ? supabase.from('places').select('id, name').order('name') : r)),
-  ])
-  const places = ((placesRes.data ?? []) as { id: string; name: string }[])
+  const ledger = await getRainLedger(supabase)
+  // 7D.4 — a place earns a row by having a rain reading, a device, or a pin.
+  // Everything else goes behind the picker, and Weather is never blank: see
+  // lib/rain/weather-places.ts for the two guards.
+  const withReadings = new Set(ledger.places.map(p => p.place_id).filter((v): v is string => !!v))
+  const { listed, rest } = await weatherPlaces(supabase, withReadings)
+  const places = listed.map(p => ({ id: p.id, name: p.name, pinned: p.pinned }))
   const noPlace = ledger.places.find(p => p.place_id === null) ?? null
-  if (places.length === 0 && !noPlace) return null
+  if (places.length === 0 && !noPlace && rest.length === 0) return null
 
   // Who recorded it: display names through the service role (profiles is not ranch-scoped), only for the ids on these readings.
   const userIds = [...new Set(ledger.entries.map(e => e.user_id).filter((v): v is string => !!v))]
@@ -49,8 +51,8 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
   const now = Date.now()
   const stale = (e: RainEntry) => now - Date.parse(e.ts) > STALE_DAYS * 86_400_000
   const rows = [
-    ...places.map(pl => ({ id: pl.id as string | null, name: pl.name, rain: byPlace.get(pl.id) ?? null })),
-    ...(noPlace ? [{ id: null as string | null, name: 'No place given', rain: noPlace }] : []),
+    ...places.map(pl => ({ id: pl.id as string | null, name: pl.name, pinned: pl.pinned, rain: byPlace.get(pl.id) ?? null })),
+    ...(noPlace ? [{ id: null as string | null, name: 'No place given', pinned: false, rain: noPlace }] : []),
   ]
 
   return (
@@ -92,12 +94,14 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
                     </Disclosure>
                   )}
                   {r.id && <LogRainButton placeId={r.id} placeName={r.name} compact />}
+                  {r.id && <WeatherPlaceActions id={r.id} name={r.name} pinned={r.pinned} />}
                 </div>
               </li>
             )
           })}
         </ul>
       </Card>
+      <WeatherPlacePicker rest={rest} />
       <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">Recorded rain is what someone on the ranch read off a gauge and logged. A place with no reading has no reading — that is not zero rain.</p>
     </section>
   )

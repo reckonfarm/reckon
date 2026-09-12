@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
+import { hasPlacePin } from '@/lib/schema-capability'
 
 // Places — the named spots on the outfit (031).
 //
@@ -88,6 +89,17 @@ export async function POST(req: NextRequest) {
   // so that path keeps working on a deploy that lands before migration 056 is
   // run by hand. Drawing, which genuinely needs the columns, fails loudly.
   const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
+
+  // 7D.4 — a ranch's FIRST place is pinned to Weather as it is created.
+  // Without this a new ranch draws its first pasture, opens Weather and finds
+  // nothing, because nothing has been recorded there yet: an empty Weather on
+  // day one reads as broken. Only the first, and only when the column exists;
+  // on a database without 062 the key is simply not set.
+  if (ranch_id && await hasPlacePin(supabase)) {
+    const { count } = await supabase.from('places').select('id', { count: 'exact', head: true }).eq('ranch_id', ranch_id)
+    if ((count ?? 0) === 0) row.pinned_at = new Date().toISOString()
+  }
+
   if (geometry) {
     row.acres = acres
     row.geometry_provenance = geometry_provenance

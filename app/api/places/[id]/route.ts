@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
 import { createServiceClient } from '@/lib/supabase'
 import { placeReferences, refsSentence } from '@/lib/places/references'
+import { hasPlacePin } from '@/lib/schema-capability'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
@@ -105,6 +106,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       patch.retired_at = null
       patch.retired_by = null
     }
+  }
+
+  // 7D.4 — the pin. A place earns its row on Weather by having a rain reading,
+  // a device, or this. Tolerated on a database without 062: the write is simply
+  // dropped rather than 400-ing, so the button is inert instead of broken.
+  if ('pinned' in body) {
+    if (typeof body.pinned !== 'boolean') {
+      return NextResponse.json({ error: 'pinned must be true or false' }, { status: 400 })
+    }
+    if (await hasPlacePin(supabase)) patch.pinned_at = body.pinned ? new Date().toISOString() : null
   }
 
   if ('name' in body) {
