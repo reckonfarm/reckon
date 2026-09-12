@@ -152,7 +152,27 @@ async function main() {
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
-    record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
+    // 7C: read this from the DOM, not from visible page text. The cull and
+    // slaughter boards now sit behind "N more classes" unless one of them is
+    // the selected lot's class, and innerText returns nothing for a closed
+    // <details> — so a body-text match would report the label MISSING when it
+    // is present and correct, which is the worst kind of red.
+    //
+    // The rule it protects is that the label never separates from the number it
+    // qualifies. That is asserted directly: every cull/slaughter board carries
+    // the phrase in its own heading, open or closed, and the priced rows live
+    // in that same board.
+    {
+      const cullBoards = await page.locator('[data-audit="board-cull-cows"], [data-audit="board-slaughter-bulls"]').evaluateAll(els => els.map(e => ({
+        audit: e.getAttribute('data-audit'),
+        heading: (e.querySelector('p')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        rows: e.querySelectorAll('li').length,
+      })))
+      const labelled = cullBoards.filter(b => /slaughter prices, not breeding value/i.test(b.heading) && b.rows > 0)
+      record('A5: culls listed as slaughter prices, not breeding value — the label in the same board as the rows, open or collapsed',
+        cullBoards.length > 0 && labelled.length === cullBoards.length,
+        cullBoards.map(b => `${b.audit}: ${b.rows} row(s) "${b.heading.slice(0, 54)}"`).join(' | ') || 'no cull or slaughter board on this report')
+    }
     record('B3: history card renders, points only', /Selected cattle/i.test(body) && /Points are reported sales/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
