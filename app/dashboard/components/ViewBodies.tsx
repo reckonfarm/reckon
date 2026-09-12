@@ -151,9 +151,15 @@ export async function RainfallPanelAsync({
           {data.source === 'grid' ? 'County estimate' : 'Station gauge'}{through ? ` · through ${through}` : ''}
         </p>
       </div>
-      <Disclosure title="View history" audit="rain-history" remember="rain-history" summary="This year's line against the 30-year normal, day by day">
-        <PrecipVsNormalPanel data={data} countyName={countyName} />
-      </Disclosure>
+      {/* 7D.5 — ALWAYS OPEN. This was behind "View history", and the cost of
+          opening it is layout only: measured +404px at 390 and +447px at 320,
+          and ZERO requests, because the data is already resolved server-side
+          on precipPromise and the panel is inert markup either way. A chart
+          that costs nothing to show should not ask to be asked. */}
+      <div data-audit="rain-history">
+        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">This year against the 30-year normal</p>
+        <div className="mt-2"><PrecipVsNormalPanel data={data} countyName={countyName} /></div>
+      </div>
       {sources && (
         <Disclosure title="Sources and calculation" audit="rain-sources" summary={data.source === 'grid' ? 'PRISM county estimate · station normal' : `${data.label} · station normal`}>
           {sources}
