@@ -1370,6 +1370,20 @@ async function main() {
       const prior7b = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      // Drop the SYNCED receipt the 6D check above deliberately leaves up. It is
+      // pinned to the bottom of the viewport for 90 s and it is the previous
+      // check's state, not this one's subject — the same clean-up 7.4 needed
+      // when a restored half-typed sheet sat on top of the FAB. Only synced
+      // entries go: anything genuinely unsynced is real work and stays.
+      await page.evaluate((k: string) => {
+        try {
+          const raw = localStorage.getItem(k)
+          if (!raw) return
+          const kept = (JSON.parse(raw) as { state: string }[]).filter(i => i.state !== 'synced')
+          localStorage.setItem(k, JSON.stringify(kept))
+        } catch { /* no outbox, nothing to clear */ }
+      }, 'dryline_outbox_v1')
+      await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_500)
       const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
       // This page has a fixed overlay at BOTH ends. The save receipt is pinned
@@ -1392,7 +1406,20 @@ async function main() {
           await btn.click({ timeout: 15_000 })
           return null
         } catch (e) {
-          return (e instanceof Error ? e.message : String(e)).split('\n')[0]
+          // Say WHAT was on top, not just that the click timed out. Playwright
+          // names the interceptor in its call log, and elementFromPoint at the
+          // button's own centre says it independently — a bare "Timeout 15000ms
+          // exceeded" sent me guessing at overlays twice.
+          const msg = (e instanceof Error ? e.message : String(e)).split('\n')
+          const intercept = msg.find(l => l.includes('intercepts pointer events'))?.trim()
+          const onTop = await btn.evaluate(el => {
+            const r = el.getBoundingClientRect()
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+            if (!top) return 'nothing (off-screen)'
+            const a = top.closest('[data-audit]')?.getAttribute('data-audit')
+            return `${top.tagName.toLowerCase()}${a ? `[${a}]` : ''}`
+          }).catch(() => 'unreadable')
+          return `${msg[0]} · on top: ${onTop}${intercept ? ` · ${intercept.slice(0, 120)}` : ''}`
         }
       }
       const shown = await liCount()
