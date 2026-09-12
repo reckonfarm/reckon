@@ -277,13 +277,19 @@ async function main() {
     // any more: the drought reading and the program deadline moved to Weather with the
     // LFP card, so the check that required a conditions strip BELOW the ledgers was
     // asserting the shape this block deliberately removed.
+    //
+    // Block 7B.1 amends the tail of that order, not its principle. Headlines are
+    // back on Today — they were only ever hidden, gated to the signed-out county
+    // page — and they sit LAST, below the ledgers. "No news on Today" becomes
+    // "news below all of the work": still nothing above the ranch's own business,
+    // which is what 7.7 was protecting.
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
       const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
-      const headlines = await page.getByText('Headlines', { exact: true }).count()
-      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), no news feed signed in', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && activeTab === 'Hay' && headlines === 0, `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · active tab "${activeTab}" · Headlines ${headlines}`)
+      const yNews = await pos('[data-audit="news-hook"]')
+      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), headlines last (7B.1)', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && yTabs < yNews && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · news ${Math.round(yNews)} · active tab "${activeTab}"`)
       const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
@@ -594,7 +600,12 @@ async function main() {
       const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
       // The fixture has one live lot with a head count and one place; it has no devices and its hay
       // count IS a baseline, so on hand exists. No device number may render.
-      record('6A: the hub shows recent rows and only the numbers something stands behind (no devices → no device number)', recentRows === Math.min(5, eventsOnRanch ?? 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · numbers [${numbers.join(' | ')}]`)
+      // 7B.2: the hub opens on TWO rows, not five, with the rest behind an
+      // in-place expander — so the count asserted here is 2 (or however few
+      // the ranch has), and the expander must be offered when there are more.
+      const wantRows = Math.min(2, eventsOnRanch ?? 0)
+      const expander = await page.locator('[data-audit="ranch-recent-more"]').count()
+      record('6A/7B.2: the hub opens on two recent rows with the rest one tap away, and shows only the numbers something stands behind (no devices → no device number)', recentRows === wantRows && expander === ((eventsOnRanch ?? 0) > wantRows ? 1 : 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · expander ${expander} · numbers [${numbers.join(' | ')}]`)
       // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
@@ -1268,6 +1279,12 @@ async function main() {
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
         record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
         await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+        // 7B.2: the hub opens on two rows. Open it before reading — the invariant
+        // is about how a correction is marked WHEREVER it appears, so the whole
+        // list is the subject, not the first screenful. This reads more of the
+        // hub than the check ever did before, when it saw at most five rows.
+        await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
+        await page.waitForTimeout(600)
         const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
         record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
