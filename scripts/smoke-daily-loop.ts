@@ -1283,7 +1283,7 @@ async function main() {
         // is about how a correction is marked WHEREVER it appears, so the whole
         // list is the subject, not the first screenful. This reads more of the
         // hub than the check ever did before, when it saw at most five rows.
-        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'start' })).catch(() => {})
+        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'center' })).catch(() => {})
         await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
         await page.waitForTimeout(600)
         const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
@@ -1372,18 +1372,28 @@ async function main() {
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_500)
       const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
-      // The save receipt is pinned to the BOTTOM of the viewport for 90 s
-      // (RecordSheetHost, fadeAfterMs 90_000) and the 6D check immediately
-      // above deliberately leaves one on screen. Playwright's auto-scroll drops
-      // the expander into exactly that band and the click is intercepted — the
-      // same shape as the leftover record sheet that ate the FAB in 7.4. Put
-      // the button at the TOP of the viewport first, which is also what a
-      // person does, and Playwright then clicks it where it already is.
-      const tapMore = async () => {
+      // This page has a fixed overlay at BOTH ends. The save receipt is pinned
+      // to the bottom for 90 s (RecordSheetHost, fadeAfterMs 90_000) and the 6D
+      // check immediately above deliberately leaves one up; the site header is
+      // sticky at the top. Playwright's own auto-scroll put the button under
+      // the receipt, and scrolling it to `start` put it under the header — two
+      // crashed runs, one for each end. `center` is the clear band between
+      // them, which is where a person reading the list has it anyway.
+      //
+      // The click is also no longer allowed to take the run down with it. A
+      // 30 s actionability timeout inside a 25-minute suite should be one red
+      // line naming what intercepted the tap, not an exception that discards
+      // every check after it.
+      const tapMore = async (): Promise<string | null> => {
         const btn = page.locator('[data-audit="ranch-recent-more"]')
-        await btn.evaluate(el => el.scrollIntoView({ block: 'start' }))
-        await page.waitForTimeout(200)
-        await btn.click()
+        try {
+          await btn.evaluate(el => el.scrollIntoView({ block: 'center' }))
+          await page.waitForTimeout(200)
+          await btn.click({ timeout: 15_000 })
+          return null
+        } catch (e) {
+          return (e instanceof Error ? e.message : String(e)).split('\n')[0]
+        }
       }
       const shown = await liCount()
       const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
@@ -1398,21 +1408,21 @@ async function main() {
       const countReq = () => { during++ }
       page.on('request', countReq)
       const urlBefore = page.url()
-      await tapMore()
+      const tapErr = await tapMore()
       await page.waitForTimeout(1_500)
       page.off('request', countReq)
       const opened = await liCount()
       const sections = await page.locator('[data-audit="ranch-sections"]').count()
       const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
       record('7B.2: the rest open in place — no request, no navigation, the Sections list and its Activity link untouched',
-        opened === shown + promised && during === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
-        `${shown} → ${opened} row(s) (promised ${promised}) · ${during} request(s) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
+        !tapErr && opened === shown + promised && during === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
+        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${during} request(s) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
 
       const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
-      await tapMore()
+      const closeErr = await tapMore()
       await page.waitForTimeout(800)
-      record('7B.2: it closes again to two rows', (await liCount()) === 2 && /Show fewer/.test(collapsed),
-        `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
+      record('7B.2: it closes again to two rows', !closeErr && (await liCount()) === 2 && /Show fewer/.test(collapsed),
+        closeErr ? `the expander could not be tapped: ${closeErr}` : `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
       if (prior7b) await page.setViewportSize(prior7b)
     }
 
