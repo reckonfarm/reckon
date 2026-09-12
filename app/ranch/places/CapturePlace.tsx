@@ -75,8 +75,12 @@ export default function CapturePlace() {
     const fixes = cap.fixes
     await cap.stop()
     if (byHand) {
+      // closeByHand answers with a VERDICT. A straight line home can cut
+      // across the ride — a U around a creek does it every time — and the
+      // save would refuse the shape. Refusing here means the person never
+      // reaches a confirm screen for a polygon that cannot be saved.
       const hand = closeByHand(fixes)
-      if (!hand) { setOutcomeMsg('Not enough of a ride to close by hand yet.'); return }
+      if (!hand.ok) { setOutcomeMsg(hand.error); setOfferDrop(hand.reason === 'too_small'); return }
       setPending({ kind: 'ring', ring: hand.ring, acres: hand.acres, snapped: false, byHand: true, status: 'closed_by_hand' })
       setMode('name'); return
     }
@@ -221,12 +225,12 @@ export default function CapturePlace() {
   // ── name it ─────────────────────────────────────────────────────────────────
   return (
     <Card className="mt-4 p-4 sm:p-5" data-audit="capture-name">
-      {pending?.kind === 'point' && (
+      {!saveErr && pending?.kind === 'point' && (
         <p className="font-dm-sans text-[17px] text-ink" data-audit="capture-summary">
           A point, ±{pending.accM.toFixed(0)} m, averaged from {pending.used} {pending.used === 1 ? 'reading' : 'readings'}.
         </p>
       )}
-      {pending?.kind === 'ring' && (
+      {!saveErr && pending?.kind === 'ring' && (
         <>
           <p className="font-dm-sans text-[20px] font-semibold text-ink" data-audit="capture-summary">{fmtAcres(pending.acres)} acres</p>
           {pending.byHand && (
@@ -259,9 +263,15 @@ export default function CapturePlace() {
         </select>
       </label>
 
+      {/* ONE VERDICT PER POLYGON. A save error means the server refused the
+          shape, which the screen should have caught before offering Save — so
+          when it happens the labels above are suppressed and Save is disabled,
+          rather than leaving a red rejection sitting beside a green summary.
+          That state is the bug PK found: "closed by hand" and "the edges cross
+          each other" on one screen with Save still live. */}
       {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-save-error">{saveErr}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="capture-save">
+        <button type="button" disabled={busy || !name.trim() || !!saveErr} onClick={() => void save()} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="capture-save">
           {busy ? 'Saving…' : 'Save'}
         </button>
         <button type="button" disabled={busy} onClick={() => { setPending(null); setMode('choose') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-discard">Discard</button>

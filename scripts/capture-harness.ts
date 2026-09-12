@@ -3,7 +3,8 @@ import {
   hasSettled, settledRun, isOutlier, gapsIn, rideBoundary, closeByHand,
   averagePosition, rideOutcome, metresBetween, TOO_SMALL_M2, type CaptureFix,
 } from '../lib/places/capture'
-import { ACRE_M2 } from '../lib/jobs/boundary'
+import { ACRE_M2, MAX_LOOP_SELF_CROSSINGS } from '../lib/jobs/boundary'
+import { validateGeoJSONPolygon } from '../lib/places/geo'
 
 // ─── Block 8 capture harness — the profile, proved before any UI ──────────────
 // Synthetic rides built from PK's measured numbers (1 Hz, ±2.1 m median), run
@@ -151,12 +152,47 @@ check('profile: closure tolerance is 2× the measured p90, and leave is 2× that
     r.gaps.length === 1 && r.boundary.polygon !== null, `${r.gaps.length} gap(s) · status ${r.boundary.status}`)
 }
 
-// 9 — hand closure (8.3)
+// 9 — hand closure (8.3), and the crossing it can produce
 {
   const open = ride(400, 300, { closeGapM: 120 })
   const byHand = closeByHand(open)
   check('an unclosable ride can be finished by hand and still measures',
-    byHand !== null && byHand.acres > 5, `${byHand ? byHand.acres.toFixed(2) : '—'} ac by hand`)
+    byHand.ok && byHand.acres > 5, byHand.ok ? `${byHand.acres.toFixed(2)} ac by hand` : `refused: ${byHand.error.slice(0, 50)}`)
+
+  // A U-shaped ride: the straight line home cuts across the track. This is the
+  // ordinary case — riding round a creek — and it is what put two
+  // contradictory messages on one confirm screen with Save still enabled.
+  const u: CaptureFix[] = []
+  const t0 = Date.now()
+  const leg = (x0: number, y0: number, x1: number, y1: number) => {
+    const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 8))
+    for (let k = 0; k < n; k++) u.push({
+      t: t0 + u.length * 1000,
+      lat: LAT0 + (y0 + ((y1 - y0) * k) / n) / M_PER_LAT,
+      lng: LNG0 + (x0 + ((x1 - x0) * k) / n) / mPerLng,
+      acc: 2.1,
+    })
+  }
+  // Offsets chosen so the doubling-back leg CROSSES the first leg rather than
+  // touching a vertex of it. segmentsCross counts proper crossings only —
+  // collinear touches are GPS-noise overlaps on retraced ground — so a test
+  // shape whose vertices land exactly on the line proves nothing. 300/38 × 19
+  // is exactly 150, which is how the first two attempts at this shape passed.
+  leg(0, 0, 300, 0); leg(300, 0, 300, 205); leg(300, 205, 151, 205)
+  leg(151, 205, 151, -83); leg(151, -83, 40, -83)   // cuts back across the first leg
+  const crossed = closeByHand(u)
+  check('a hand closure that would fold the shape over is REFUSED, before Save is offered',
+    !crossed.ok && crossed.reason === 'crossed',
+    crossed.ok ? `WRONGLY ALLOWED — ${crossed.acres.toFixed(2)} ac` : `refused (${crossed.reason}): "${crossed.error.slice(0, 56)}…"`)
+
+  // And the thing that made it a bug rather than a rejection: a ridden ring is
+  // now judged at the driven-lap tolerance, not the tap-draw zero.
+  const ridden = rideBoundary(ride(400, 300))
+  const ring = ridden.boundary.polygon ? [...ridden.boundary.polygon, ridden.boundary.polygon[0]] : []
+  const asDrawn = validateGeoJSONPolygon({ type: 'Polygon', coordinates: [ring.map(p => [p.lng, p.lat])] }, 0)
+  const asRidden = validateGeoJSONPolygon({ type: 'Polygon', coordinates: [ring.map(p => [p.lng, p.lat])] }, MAX_LOOP_SELF_CROSSINGS)
+  check('a ridden ring is validated at the driven-lap tolerance, and the save accepts what the geometry blessed',
+    asRidden.ok, `as ridden ${asRidden.ok ? 'ok' : asRidden.error.slice(0, 40)} · as tap-drawn ${asDrawn.ok ? 'ok' : 'refused'}`)
 }
 
 // 10 — 8.1's averaged drop

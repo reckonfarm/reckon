@@ -237,7 +237,7 @@ export function distToRing(p: Pt, ring: Pt[]): number {
 // win: count proper segment crossings among non-adjacent edges, tolerating a
 // couple (GPS scatter can nick a corner); a serpentine fails in the first few
 // comparisons, a real lap — even a long thin strip field — has none.
-function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+export function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
   const o = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
   const o1 = o(a, b, c)
   const o2 = o(a, b, d)
@@ -262,7 +262,13 @@ export function loopSelfCrossings(loop: Pt[], stopAbove = 2): number {
   return n
 }
 
-const MAX_LOOP_SELF_CROSSINGS = 2
+/**
+ * How many self-crossings a DRIVEN or RIDDEN loop may have and still count as
+ * simple. Not zero, because GPS scatter nicks a corner on a real lap — the
+ * shape is simple, the receiver wobbled. A tap-drawn ring has no scatter and
+ * gets zero (lib/places/geo.ts).
+ */
+export const MAX_LOOP_SELF_CROSSINGS = 2
 
 // Convex hull (monotone chain) — the sanity check the boundary is judged
 // against, never the boundary itself: a hull can't see concave field edges and

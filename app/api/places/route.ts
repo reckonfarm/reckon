@@ -5,6 +5,7 @@ import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { hasPlacePin } from '@/lib/schema-capability'
+import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
 
 // Places — the named spots on the outfit (031).
 //
@@ -74,7 +75,12 @@ export async function POST(req: NextRequest) {
   let acres: number | null = null
   let geometry_provenance: unknown = null
   if (body.geometry != null) {
-    const v = validateGeoJSONPolygon(body.geometry)
+    // A RIDDEN ring gets the driven-lap tolerance, a tap-drawn one gets zero.
+    // Same rule boundary.ts has always applied to a swather lap: scatter nicks
+    // a corner, the shape is still simple. Reading `capture.source` here keeps
+    // the decision with the thing that knows how the ring was made.
+    const ridden = (body.capture as { source?: unknown } | null)?.source === 'ridden'
+    const v = validateGeoJSONPolygon(body.geometry, ridden ? MAX_LOOP_SELF_CROSSINGS : 0)
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
     acres = storableAcres(v.acres)
     if (acres == null) return NextResponse.json({ error: 'That shape could not be measured, so it was not saved.' }, { status: 400 })

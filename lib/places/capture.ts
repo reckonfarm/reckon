@@ -183,18 +183,58 @@ export function rideBoundary(fixes: CaptureFix[]): RideResult {
   }
 }
 
-/** Straight-line closure — 8.3's "Finish here". Never applied silently. */
-export function closeByHand(fixes: CaptureFix[]): { ring: { lat: number; lng: number }[]; areaM2: number; acres: number } | null {
+export type HandClosure =
+  | { ok: true; ring: { lat: number; lng: number }[]; areaM2: number; acres: number }
+  // A REASON CODE, not just a sentence. rideOutcome has to classify the same
+  // failures and must not do it by matching the words — a copy-edit to a
+  // message should never change what the screen decides.
+  | { ok: false; reason: 'too_few' | 'crossed' | 'too_small'; areaM2: number | null; error: string }
+
+/**
+ * Straight-line closure — 8.3's "Finish here". Never applied silently, and
+ * never offered on a shape the save will refuse.
+ *
+ * IT CAN CROSS ITSELF, and that is the whole reason this returns a verdict
+ * instead of a ring. A straight line from where you stopped back to where you
+ * started will cut through the ride whenever the track doubles back — a U
+ * around a creek is the ordinary case. Producing the ring anyway and letting
+ * the route reject it is what put two contradictory messages on one screen
+ * with Save still enabled.
+ */
+export function closeByHand(fixes: CaptureFix[]): HandClosure {
   const kept = fixes.filter(f => !isOutlier(f))
-  if (kept.length < 3) return null
+  if (kept.length < 3) return { ok: false, reason: 'too_few', areaM2: null, error: 'Not enough of a ride to close by hand yet.' }
   const ring = kept.map(f => ({ lat: f.lat, lng: f.lng }))
-  const lat0 = ring.reduce((s, p) => s + p.lat, 0) / ring.length
+  const closed = [...ring, ring[0]]
+
+  // ZERO crossings, and this is the one place that differs from a ridden loop.
+  //
+  // A tied ride goes through computeFieldBoundary, which SELECTS the largest
+  // tied loop out of the track and can tolerate MAX_LOOP_SELF_CROSSINGS corner
+  // nicks because the loop it returns is already a chosen, coherent shape.
+  // Hand closure has no selection step: the polygon IS the raw track with its
+  // ends joined, so a crossing anywhere in it is a genuine ambiguity about
+  // which side is inside — and a count cannot tell a 1 m nick from a 150 m
+  // fold. Borrowing the driven-lap tolerance here waved a real fold through.
+  //
+  // At PK's measured 8 m/s and 1 Hz the fixes are ~8 m apart, so scatter
+  // cannot produce a crossing on its own; a doubled-back track is a doubled-
+  // back track.
+  const lat0 = meanLat(closed)
+  const pts = projectXY(closed, lat0)
+  if (loopSelfCrossings(pts, 0) > 0) {
+    return { ok: false, reason: 'crossed', areaM2: null, error: 'Closing straight back to your start would fold the shape over itself — the ride doubles back across its own line. Keep riding toward where you began, or drop a single point instead.' }
+  }
+
   const mPerLng = 111_320 * Math.cos((lat0 * Math.PI) / 180)
   const xy = ring.map(p => ({ x: p.lng * mPerLng, y: p.lat * M_PER_LAT }))
   let a = 0
   for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) a += xy[j].x * xy[i].y - xy[i].x * xy[j].y
   const areaM2 = Math.abs(a) / 2
-  return { ring: [...ring, ring[0]], areaM2, acres: areaM2 / ACRE_M2 }
+  if (areaM2 < TOO_SMALL_M2) {
+    return { ok: false, reason: 'too_small', areaM2, error: `That would enclose about ${Math.round(areaM2)} m² — less than ${Math.round(TOO_SMALL_M2)} m², which is smaller than this phone can tell from its own scatter. Drop a single point instead.` }
+  }
+  return { ok: true, ring: closed, areaM2, acres: areaM2 / ACRE_M2 }
 }
 
 /** Below this a ride cannot honestly enclose anything — 8.1 is the right tool. */
@@ -243,17 +283,17 @@ export function rideOutcome(r: RideResult, fixes: CaptureFix[]): RideOutcome {
   // What WOULD it enclose if we simply joined the ends? That answers "is this
   // thing too small to resolve" and "did the track cross itself", neither of
   // which the boundary status can tell us on its own.
+  // What WOULD it be if the ends were simply joined? closeByHand already
+  // answers that with a reason code, so the classification here is that code
+  // rather than a second, drifting copy of the same tests.
   const hand = closeByHand(kept)
-  if (hand) {
-    if (hand.areaM2 < TOO_SMALL_M2) {
-      return { kind: 'too_small', acres: null, offerDrop: true,
-        message: `That encloses about ${Math.round(hand.areaM2)} m² — less than ${Math.round(TOO_SMALL_M2)} m², which is smaller than this phone can tell from its own scatter. For a tank, a gate or a stack, drop a point instead.` }
-    }
-    const lat0 = meanLat(hand.ring)
-    if (loopSelfCrossings(projectXY(hand.ring, lat0), 1) > 0) {
-      return { kind: 'crossed', acres: null, offerDrop: false,
-        message: 'The track crosses itself, so the shape is ambiguous. Ride the outside line once, without cutting back through.' }
-    }
+  if (!hand.ok && hand.reason === 'too_small') {
+    return { kind: 'too_small', acres: null, offerDrop: true,
+      message: `That encloses about ${Math.round(hand.areaM2 ?? 0)} m² — less than ${Math.round(TOO_SMALL_M2)} m², which is smaller than this phone can tell from its own scatter. For a tank, a gate or a stack, drop a point instead.` }
+  }
+  if (!hand.ok && hand.reason === 'crossed') {
+    return { kind: 'crossed', acres: null, offerDrop: false,
+      message: 'The track crosses itself, so the shape is ambiguous. Ride the outside line once, without cutting back through.' }
   }
 
   return { kind: 'open', acres: null, offerDrop: false,
