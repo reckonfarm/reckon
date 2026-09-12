@@ -14,6 +14,7 @@ import { fmtDay } from '@/lib/jobs/format'
 import RecordHere from './RecordHere'
 import Disclosure from '@/app/components/ui/Disclosure'
 import DrawPlace from './DrawPlace'
+import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
@@ -113,6 +114,12 @@ export default async function PlacesPage() {
         )}
 
         <div className="mt-4 space-y-3">
+          {/* Block 8 — capture comes FIRST. Standing in the place is the way
+              most places get recorded; drawing on a map is the fallback for
+              the ones you cannot get to (8.5). Both produce the same kind of
+              row, so nothing downstream can tell them apart except by reading
+              provenance, which is why provenance is recorded. */}
+          <CapturePlace />
           <DrawPlace
             initialCenter={centre}
             otherShapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))}

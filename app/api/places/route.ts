@@ -80,6 +80,34 @@ export async function POST(req: NextRequest) {
     if (acres == null) return NextResponse.json({ error: 'That shape could not be measured, so it was not saved.' }, { status: 400 })
     geometry = ringToGeoJSON(v.ring)
     geometry_provenance = { source: 'drawn', created_at: new Date().toISOString(), corners: v.ring.length - 1 }
+
+    // Block 8 — a captured place carries its EVIDENCE (8.6). The track that
+    // produced the polygon rides along in provenance: the same column that
+    // already says how a shape came to be, so no migration and no new table.
+    // It is ranch-scoped by the same RLS as the place, and it is deliberately
+    // NOT in the places list read — see the SELECT in this file. This is the
+    // evidence behind one polygon, never a record of where a person went.
+    const cap = body.capture
+    if (cap && typeof cap === 'object') {
+      const c = cap as Record<string, unknown>
+      const src = c.source === 'ridden' || c.source === 'dropped' ? c.source : null
+      if (src) {
+        geometry_provenance = {
+          source: src,
+          created_at: new Date().toISOString(),
+          corners: v.ring.length - 1,
+          // The grade the geometry gave it. 'snapped' means the loop closed on
+          // the guess rather than a true tie, and the place is labelled for it.
+          ...(typeof c.status === 'string' ? { status: c.status } : {}),
+          ...(c.snapped === true ? { snapped: true } : {}),
+          ...(c.closedByHand === true ? { closed_by_hand: true } : {}),
+          ...(typeof c.accuracyM === 'number' ? { accuracy_m: Math.round(c.accuracyM * 10) / 10 } : {}),
+          ...(typeof c.rejected === 'number' ? { rejected_fixes: c.rejected } : {}),
+          ...(Array.isArray(c.gaps) ? { gaps: c.gaps.slice(0, 50) } : {}),
+          ...(Array.isArray(c.track) ? { track: (c.track as unknown[]).slice(0, 5000) } : {}),
+        }
+      }
+    }
   }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
@@ -89,6 +117,12 @@ export async function POST(req: NextRequest) {
   // so that path keeps working on a deploy that lands before migration 056 is
   // run by hand. Drawing, which genuinely needs the columns, fails loudly.
   const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
+
+  // Field systems (Aug 10, and PK's ruling): a named area can contain fields,
+  // and 056 already carries parent_id. Threaded through capture now with NO UI
+  // in this block — cheap insurance against designing it out, which is exactly
+  // what a flat capture flow would have done.
+  if (typeof body.parent_id === 'string' && body.parent_id) row.parent_id = body.parent_id
 
   // 7D.4 — a ranch's FIRST place is pinned to Weather as it is created.
   // Without this a new ranch draws its first pasture, opens Weather and finds
