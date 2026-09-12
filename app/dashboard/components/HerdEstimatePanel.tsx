@@ -5,8 +5,7 @@ import type { LotValuation } from '@/lib/herd-estimate'
 import type { TrendData } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import ReportEvidence from '@/app/components/ReportEvidence'
-import { matchLabel, scopeLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { matchLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -68,9 +67,11 @@ export function LotCard({ l }: { l: LotValuation }) {
                 <MatchChip label={label!} />
                 {src!.cull && <span className="rounded-lg bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 border border-amber-200">Cull price — salvage, not breeding value</span>}
               </p>
-              <p className="mt-1 font-dm-sans text-[16px] text-ink">
-                {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · <ReportEvidence barn={src!.barn_name} date={src!.report_date} head={src!.head_count} slug={src!.slug_id} />
-              </p>
+              {/* 7C: no barn, date, head or Report link here. This card renders
+                  inside "How this is figured" on Markets, where ReportedSale has
+                  already stated all four once, at the top, beside the number they
+                  back. A lot priced at a DIFFERENT barn is named by the hero's
+                  own-source line — the 6I exception lives there, not here. */}
               <p className="font-dm-sans text-[16px] text-ink">
                 {src!.mars_class ?? 'class'}{src!.exact_bracket ? ` · ${src!.matched.split(' / ').slice(-1)[0]}` : ' · class average, no exact bracket'} · {src!.head_count != null ? `${src!.head_count.toLocaleString('en-US')} head reported` : 'head count not reported'} ·{' '}
                 {l.thin
