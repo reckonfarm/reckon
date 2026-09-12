@@ -978,7 +978,17 @@ async function main() {
     // A Scout's bale count is bales made — the hay ledger never reads it.
     {
       const EQ = /= (-?\d+) bales? on hand/
-      const onHandNow = async () => { await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' }); const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' '); return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10) }
+      // WAIT for the equation, do not sample it. This navigated with
+      // domcontentloaded and read innerText on the next line, so an unstreamed
+      // page returned '' and the balance parsed as NaN — which is how a
+      // "voided entry moved the balance" red gets reported when the balance
+      // was simply not on screen yet. Five call sites shared the race.
+      const onHandNow = async () => {
+        await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="hay-equation"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+        const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+      }
       const hayBefore = await onHandNow()
       const jobId = randomUUID()
       const started = new Date(Date.now() - 2 * 3_600_000).toISOString(), ended = new Date(Date.now() - 3_600_000).toISOString()
@@ -1332,7 +1342,17 @@ async function main() {
     // the Ranch hub and Today's Activity tab, marked "voided", with the balance unmoved.
     {
       const EQ = /= (-?\d+) bales? on hand/
-      const onHandNow = async () => { await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' }); const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' '); return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10) }
+      // WAIT for the equation, do not sample it. This navigated with
+      // domcontentloaded and read innerText on the next line, so an unstreamed
+      // page returned '' and the balance parsed as NaN — which is how a
+      // "voided entry moved the balance" red gets reported when the balance
+      // was simply not on screen yet. Five call sites shared the race.
+      const onHandNow = async () => {
+        await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="hay-equation"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+        const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+      }
       const before = await onHandNow()   // read BEFORE the feeding: feed 7 then void it must net to zero
       const { data: v0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 7, herd_lot_id: lotId, place_id: placeId } }).select('id').single()
       if (!v0) skip('6B-2: voids', 'could not seed the feeding to void')
