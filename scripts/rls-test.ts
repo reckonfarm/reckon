@@ -922,13 +922,27 @@ async function placesChecks() {
       record('(skipped)', '7D delete checks — migration 061 not applied', true, probe.error.message.slice(0, 70))
     } else {
       // A's own fresh entry, unseen by B: hard delete, no row left.
-      const own = await api(A, '/api/log', { type: 'rain', inches: 0.11, place_id: a.placeId })
-      const ownId = String(((own.json.event ?? {}) as { id?: string }).id ?? '')
+      //
+      // Inserted with the SERVICE ROLE, not through /api/log. That route uses
+      // the cookie-only createClient(), so this suite's Bearer token cannot
+      // reach it — the standing two-auth-patterns rule. Going through it here
+      // produced an empty id and a 405 on a malformed URL, which read as "the
+      // delete route is missing" when the route was fine. The subject of these
+      // checks is the DELETE route's isolation, so the fixture is made
+      // directly and precisely: A's user, A's ranch, landed just now.
+      const mk = async (inches: number) => {
+        const { data } = await admin.from('events').insert({
+          user_id: a.userId, ranch_id: a.ranchId, type: 'rain', ts: new Date().toISOString(),
+          payload: { source: 'manual', schema_version: 1, place_id: a.placeId, inches },
+        }).select('id').single()
+        return String((data as { id?: string } | null)?.id ?? '')
+      }
+      const ownId = await mk(0.11)
       const plan = await api(A, `/api/activity/${ownId}/delete`, undefined, 'GET')
       const mode = ((plan.json.plan ?? {}) as { mode?: string }).mode
       const killed = await api(A, `/api/activity/${ownId}/delete`, undefined, 'DELETE')
       const { data: goneRow } = await admin.from('events').select('id').eq('id', ownId).maybeSingle()
-      record('user A (owner)', '7D.1: my own unseen entry hard-deletes — the row is gone, no tombstone', mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && goneRow === null, `plan ${mode} · ${killed.status} · row ${goneRow === null ? 'gone' : 'STILL THERE'}`)
+      record('user A (owner)', '7D.1: my own unseen entry hard-deletes — the row is gone, no tombstone', !!ownId && mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && goneRow === null, `${ownId ? `plan ${mode} · ${killed.status} · row ${goneRow === null ? 'gone' : 'STILL THERE'}` : 'FIXTURE NOT CREATED — the check proved nothing'}`)
 
       // A cross-ranch delete reaches nothing and says nothing about the row.
       const { data: bEvent } = await admin.from('events').select('id').eq('ranch_id', b.ranchId).is('deleted_at', null).limit(1).maybeSingle()
@@ -943,9 +957,7 @@ async function placesChecks() {
 
       // The deletion record itself is ranch-scoped: A deletes one of its own
       // and B can read nothing about it — not the row, not who deleted it.
-      const mine = await api(A, '/api/log', { type: 'rain', inches: 0.22, place_id: a.placeId })
-      const mineId = String(((mine.json.event ?? {}) as { id?: string }).id ?? '')
-      await admin.from('events').update({ superseded_by: null }).eq('id', mineId)   // no-op; keeps the row plain
+      const mineId = await mk(0.22)
       await api(A, `/api/activity/${mineId}/delete`, undefined, 'DELETE')
       const Bc = await userClient('B')
       const bSees = await Bc.from('events').select('id, deleted_at, deleted_by').eq('id', mineId)
