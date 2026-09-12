@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
+import { createServiceClient } from '@/lib/supabase'
+import { placeReferences, refsSentence } from '@/lib/places/references'
+import { hasPlacePin } from '@/lib/schema-capability'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
@@ -103,6 +106,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       patch.retired_at = null
       patch.retired_by = null
     }
+  }
+
+  // 7D.4 — the pin. A place earns its row on Weather by having a rain reading,
+  // a device, or this. Tolerated on a database without 062: the write is simply
+  // dropped rather than 400-ing, so the button is inert instead of broken.
+  if ('pinned' in body) {
+    if (typeof body.pinned !== 'boolean') {
+      return NextResponse.json({ error: 'pinned must be true or false' }, { status: 400 })
+    }
+    if (await hasPlacePin(supabase)) patch.pinned_at = body.pinned ? new Date().toISOString() : null
   }
 
   if ('name' in body) {
@@ -232,26 +245,48 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 }
 
 // ─── DELETE = retire ──────────────────────────────────────────────────────────
-// The row stays, its name keeps resolving in every entry that references it,
-// and it leaves every picker. Retiring an already-retired place is a no-op that
-// reports success: the caller asked for it to be off the list, and it is.
+// ─── DELETE — a real delete when nothing points at it (Block 7D.3) ───────────
+//
+// 057 made this verb mean RETIRE, because with no reference check a hard
+// delete would have orphaned entries silently. 7D.3 does the check, so the
+// verb means what it says:
+//
+//   nothing points at it  → the row is removed. One tap, gone.
+//   something does        → 409, NOT deleted and NOT quietly retired, with a
+//                           count of what still points at it. The caller can
+//                           still retire it (PATCH { retired: true }); this
+//                           route will not decide that for them.
+//
+// The counts come from lib/places/references.ts on the CALLER's client, so RLS
+// scopes them: a place can never read as free-to-delete because the rows
+// holding it belong to another ranch.
+//
+// The delete itself runs on the caller's client too. 062 revokes the client
+// DELETE policy on places, so this is a service-role write after the
+// membership check the caller's own read has already made — the same shape as
+// the ranch-name write.
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const session = await sessionUser(req)
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  const { supabase, user } = session
+  const { supabase } = session
 
-  const { data, error } = await supabase
-    .from('places')
-    .update({ retired_at: new Date().toISOString(), retired_by: user.id, updated_by: user.id })
-    .eq('id', id)
-    .is('retired_at', null)
-    .select(SELECT)
-    .maybeSingle()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (data) return NextResponse.json({ place: data })
+  // Read it through the caller's client first: RLS is the membership gate, and
+  // a place on another ranch must be indistinguishable from one that is gone.
+  const { data: place } = await supabase.from('places').select(SELECT).eq('id', id).maybeSingle()
+  if (!place) return NextResponse.json({ error: 'No such place' }, { status: 404 })
 
-  const { data: cur } = await supabase.from('places').select(SELECT).eq('id', id).maybeSingle()
-  if (!cur) return NextResponse.json({ error: 'No such place' }, { status: 404 })
-  return NextResponse.json({ place: cur })
+  const refs = await placeReferences(supabase, id)
+  if (refs.total > 0) {
+    return NextResponse.json({
+      error: 'still referenced',
+      place,
+      refs,
+      message: refsSentence(refs),
+    }, { status: 409 })
+  }
+
+  const { error } = await createServiceClient().from('places').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: 'That place could not be deleted just now' }, { status: 500 })
+  return NextResponse.json({ deleted: true, place })
 }

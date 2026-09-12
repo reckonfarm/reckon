@@ -8,8 +8,9 @@ import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from '@/li
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import ReviewedButton from '@/app/components/ReviewedButton'
-import { notSuperseded } from '@/lib/ledger-effective'
+import { ledgerFilters } from '@/lib/ledger-effective'
 import ActivityRowItem from '@/app/components/ActivityRowItem'
+import { hasEventDeletion } from '@/lib/schema-capability'
 
 // ─── Since you last checked (Block 2E) ────────────────────────────────────────
 // What the OTHER people (and the alert service) put in the ranch ledger since
@@ -79,6 +80,8 @@ export default async function SinceYouWereHere() {
   // Block 5B: a correction or a void recorded since the visit IS news (its
   // ingested_at is now, whatever day the work was); the original it replaced
   // is not — its replacement speaks for it.
+  // 7D: skip the deleted filter on a database without 061 (temporary).
+  const { notSuperseded } = ledgerFilters(await hasEventDeletion(supabase))
   const [{ data }, { count }] = await Promise.all([
     notSuperseded(supabase
       .from('events')

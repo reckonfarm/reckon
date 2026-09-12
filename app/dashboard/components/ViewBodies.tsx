@@ -151,9 +151,15 @@ export async function RainfallPanelAsync({
           {data.source === 'grid' ? 'County estimate' : 'Station gauge'}{through ? ` · through ${through}` : ''}
         </p>
       </div>
-      <Disclosure title="View history" audit="rain-history" remember="rain-history" summary="This year's line against the 30-year normal, day by day">
-        <PrecipVsNormalPanel data={data} countyName={countyName} />
-      </Disclosure>
+      {/* 7D.5 — ALWAYS OPEN. This was behind "View history", and the cost of
+          opening it is layout only: measured +404px at 390 and +447px at 320,
+          and ZERO requests, because the data is already resolved server-side
+          on precipPromise and the panel is inert markup either way. A chart
+          that costs nothing to show should not ask to be asked. */}
+      <div data-audit="rain-history">
+        <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">This year against the 30-year normal</p>
+        <div className="mt-2"><PrecipVsNormalPanel data={data} countyName={countyName} /></div>
+      </div>
       {sources && (
         <Disclosure title="Sources and calculation" audit="rain-sources" summary={data.source === 'grid' ? 'PRISM county estimate · station normal' : `${data.label} · station normal`}>
           {sources}
@@ -222,7 +228,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, alertsPromise = null, titled = false, programs = null,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, alertsPromise = null, titled = false, programs = null, only = null,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -233,6 +239,7 @@ export async function WeatherViewBody({
   forecastPromise?: Promise<LocalForecast | null> | null   // Block 6B — the forecast leads the Weather destination
   alertsPromise?: Promise<ActiveAlert[] | null> | null      // Block 7 — an active warning, when present, comes first
   titled?: boolean                                         // Block 6B — the private /weather route owns its h1
+  only?: 'programs' | null                                 // Block 7D.6 — /weather/programs renders this section alone
   programs?: React.ReactNode                               // Block 7.8 — LFP status + program deadlines, moved off Today
 }) {
   const db = createServiceClient()
@@ -407,6 +414,39 @@ export async function WeatherViewBody({
   const cashToHayTons = (bannerDefaultEstimate > 0 && hayAvgPrice != null && hayAvgPrice > 0)
     ? Math.round(bannerDefaultEstimate / hayAvgPrice)
     : null
+
+  // ── 7D.6 — /weather/programs: this section, alone, on its own page ──────────
+  // NOT a fifth tab: four at 320 is already tight, and /weather/locations and
+  // /weather/radar are the established pattern for a Weather destination that
+  // is not one. The data path is the Weather body's, unchanged — the page is
+  // the same body asked for one section, so a program surface can never drift
+  // from the county the rest of Weather is showing.
+  //
+  // LRP is NOT here. It stays on Markets, where someone is deciding whether to
+  // sell; duplicating a price floor would give the ranch two places to read one
+  // number. Programs links to it instead.
+  if (only === 'programs') {
+    return (
+      <>
+        <h1 className="type-page-heading text-ink" data-audit="programs-title">Programs · {selectedCounty.name}, {selectedCounty.state}</h1>
+        <p className="font-dm-sans text-[16px] text-secondary-ink" data-audit="programs-intro">
+          Where this county stands, and what closes when. FSA makes the final determination on every
+          one of these.
+        </p>
+        {programs}
+        <section aria-labelledby="programs-lrp-h" className="space-y-2">
+          <h2 id="programs-lrp-h" className={`${EYEBROW} !text-ink`}>Price protection</h2>
+          <Link href="/markets" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="programs-lrp-link">
+            <span className="min-w-0">
+              <span className="block font-dm-sans text-[17px] font-semibold text-ink">LRP is on Markets</span>
+              <span className="block font-dm-sans text-[15px] text-secondary-ink">The coverage floor sits with the prices it is measured against.</span>
+            </span>
+            <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+          </Link>
+        </section>
+      </>
+    )
+  }
 
   return (
     <>
@@ -586,12 +626,18 @@ export async function WeatherViewBody({
           It sits last so the 7-2 order above it (warning · forecast · rain on
           my places · county rainfall · drought · map) is untouched. Every
           deadline names its own program (ProgramStatusRow, DeadlineCountdownCard). */}
-      {programs && (
-        <section aria-labelledby="wx-programs-h" data-audit="weather-programs" className="space-y-3">
-          <h2 id="wx-programs-h" className={`${EYEBROW} !text-ink`}>Programs</h2>
-          {programs}
-        </section>
-      )}
+      {/* 7D.6 — Programs left this page for one of its own. What stays is the
+          door to it, where the section used to be. */}
+      <section aria-labelledby="wx-programs-h" data-audit="weather-programs-link" className="space-y-2">
+        <h2 id="wx-programs-h" className={`${EYEBROW} !text-ink`}>Programs</h2>
+        <Link href="/weather/programs" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="programs-link">
+          <span className="min-w-0">
+            <span className="block font-dm-sans text-[17px] font-semibold text-ink">Drought, LFP and PRF</span>
+            <span className="block font-dm-sans text-[15px] text-secondary-ink">Where your county stands, and what closes when.</span>
+          </span>
+          <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+        </Link>
+      </section>
     </>
   )
 }

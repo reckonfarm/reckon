@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { navigateTo } from '@/lib/standalone-nav'
 import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
+import { warning } from '@/lib/brand-colors'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
 // From an event that currently stands. A correction is a crossed-out number on
@@ -68,7 +69,11 @@ function fromOriginal(event: Editable): Draft {
 
 export default function CorrectionActions({ event }: { event: Editable }) {
   const router = useRouter()
-  const [mode, setMode] = useState<'idle' | 'correct' | 'void'>('idle')
+  const [mode, setMode] = useState<'idle' | 'correct' | 'void' | 'delete'>('idle')
+  // 7D: what deleting THIS entry would do, asked before the sheet can say it.
+  // Loaded when the sheet opens, never guessed on the client — the answer
+  // depends on whether another member has read the ledger since it landed.
+  const [plan, setPlan] = useState<{ state: 'loading' } | { state: 'failed' } | { state: 'ready'; mode: 'hard' | 'record' | 'unavailable'; reason: string | null; label: string }>({ state: 'loading' })
   const [draft, setDraft] = useState<Draft>(() => fromOriginal(event))
   const [options, setOptions] = useState<Options>({ state: 'loading' })
   const [busy, setBusy] = useState(false)
@@ -77,6 +82,23 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   const v = event.values
   const initial = localParts(event.ts)
   const set = (k: keyof Draft, value: string) => setDraft(d => ({ ...d, [k]: value }))
+
+  useEffect(() => {
+    if (mode !== 'delete') return
+    let cancelled = false
+    // No synchronous setState here: the initial state is already 'loading',
+    // and on a re-open the previous answer holds for the moment the fetch
+    // takes rather than flashing back to "checking". The outcome does not
+    // depend on it either way — DELETE re-plans on the server.
+    fetch(`/api/activity/${event.id}/delete`)
+      .then(r => (r.ok ? r.json() : null))
+      .then((j: { plan?: { mode: 'hard' | 'record' | 'unavailable'; reason: string | null; label: string } } | null) => {
+        if (cancelled) return
+        setPlan(j?.plan ? { state: 'ready', ...j.plan } : { state: 'failed' })
+      })
+      .catch(() => { if (!cancelled) setPlan({ state: 'failed' }) })
+    return () => { cancelled = true }
+  }, [mode, event.id])
 
   useEffect(() => {
     if (mode !== 'correct') return
@@ -104,6 +126,20 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     }
     if (draft.date && draft.time && (draft.date !== initial.date || draft.time !== initial.time)) p.ts = new Date(`${draft.date}T${draft.time}:00`).toISOString()
     return p
+  }
+
+  async function remove() {
+    setError(null); setBusy(true)
+    try {
+      const res = await fetch(`/api/activity/${event.id}/delete`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({})) as { mode?: string; error?: string }
+      if (!res.ok) { setError(json.error ?? 'That entry could not be deleted just now'); setBusy(false); return }
+      // Gone from here either way, so there is nothing to return to.
+      router.push('/ranch/activity')
+      router.refresh()
+    } catch {
+      setError('That entry could not be deleted just now'); setBusy(false)
+    }
   }
 
   async function submit(kind: 'correct' | 'void') {
@@ -157,6 +193,65 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       <div className="mt-5 flex flex-wrap gap-3" data-audit="correction-actions">
         <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Correct this entry</button>
         <button type="button" onClick={() => setMode('void')} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="void-entry">Void this entry</button>
+        <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">Delete this entry</button>
+      </div>
+    )
+  }
+
+  // ── The delete confirm (7D.1) ───────────────────────────────────────────────
+  // It names WHAT is being deleted, and on the record path says in one plain
+  // sentence that the record keeps it. It never shows a database error: the
+  // route answers with a plan, and a plan that cannot be fetched disables the
+  // button rather than guessing which path a tap would take.
+  if (mode === 'delete') {
+    const ready = plan.state === 'ready' ? plan : null
+    return (
+      <div className="mt-5 rounded-xl border p-4" style={{ borderColor: warning }} data-audit="delete-form">
+        <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="delete-title">
+          Delete {ready ? ready.label.toLowerCase() : 'this entry'}?
+        </p>
+
+        {plan.state === 'loading' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-checking">Checking what this will do…</p>
+        )}
+        {plan.state === 'failed' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-unknown">
+            This can&rsquo;t be checked just now, so it isn&rsquo;t offered. Try again in a moment.
+          </p>
+        )}
+
+        {ready?.mode === 'unavailable' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="unavailable">
+            Deleting isn&rsquo;t switched on for this ranch yet. Correct or void the entry instead —
+            both are available now.
+          </p>
+        )}
+        {ready?.mode === 'hard' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="hard">
+            It will be gone, and every total recalculated without it. Nothing is kept.
+          </p>
+        )}
+        {ready?.mode === 'record' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="record">
+            It will be gone from your Activity. The record keeps that you deleted it, and when
+            {ready.reason ? ` — ${ready.reason}` : ''}.
+          </p>
+        )}
+
+        {error && <p className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} role="alert" data-audit="delete-error">{error}</p>}
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" disabled={busy || !ready || ready.mode === 'unavailable'} onClick={() => void remove()}
+            className="inline-flex min-h-[52px] items-center rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
+            style={{ backgroundColor: warning }} data-audit="delete-confirm">
+            {busy ? 'Deleting…' : 'Delete it'}
+          </button>
+          <button type="button" disabled={busy} onClick={() => { setMode('idle'); setError(null) }}
+            className="inline-flex min-h-[52px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink"
+            data-audit="delete-cancel">
+            Keep it
+          </button>
+        </div>
       </div>
     )
   }
@@ -167,7 +262,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   )
 
   return (
-    <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode) }} data-audit={`${mode}-form`}>
+    <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode as 'correct' | 'void') }} data-audit={`${mode}-form`}>
       <p className="font-dm-sans text-[17px] font-semibold text-ink">{mode === 'correct' ? 'What was it really?' : 'Void this entry?'}</p>
       <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">
         {mode === 'correct'
