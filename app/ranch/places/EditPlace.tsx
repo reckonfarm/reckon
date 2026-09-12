@@ -54,13 +54,13 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   const [error, setError] = useState<string | null>(null)
   // 7D.3: what the route said still points at this place. Set only by a 409
   // from DELETE, so the message is counted server-side, never guessed here.
-  const [refs, setRefs] = useState<{ message: string; entries: number } | null>(null)
+  const [refs, setRefs] = useState<{ message: string; entries: number; cascadeMessage?: string; hard?: number; record?: number } | null>(null)
 
-  const send = async (body: Record<string, unknown>, method: 'PATCH' | 'DELETE' = 'PATCH') => {
+  const send = async (body: Record<string, unknown>, method: 'PATCH' | 'DELETE' = 'PATCH', qs = '') => {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(`/api/places/${place.id}`, {
+      const res = await fetch(`/api/places/${place.id}${qs}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         ...(method === 'DELETE' ? {} : { body: JSON.stringify(body) }),
@@ -69,7 +69,12 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
       if (!res.ok) {
         // 7D.3: it is referenced. Not an error to apologise for — an answer.
         if (res.status === 409 && json.error === 'still referenced') {
-          setRefs({ message: String(json.message ?? ''), entries: Number(json.refs?.entries ?? 0) })
+          setRefs({
+            message: String(json.message ?? ''),
+            entries: Number(json.refs?.entries ?? 0),
+            cascadeMessage: typeof json.cascadeMessage === 'string' ? json.cascadeMessage : undefined,
+            hard: json.cascade?.hard, record: json.cascade?.record,
+          })
           setMode('referenced')
           setBusy(false)
           return
@@ -127,12 +132,23 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
     return (
       <Card className="mt-4 p-4 sm:p-5" data-audit="place-referenced">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">{place.name} wasn&rsquo;t deleted.</p>
+        {/* 8B.2 — the plain answer STAYS, and the way through it is offered in
+            the same breath. Both numbers are stated before the tap, so the
+            cascade is one decision rather than a refusal followed by a
+            second, differently-worded prompt. */}
         <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink" data-audit="place-referenced-count">
-          {refs?.message || 'Something still points at it.'} Deleting it would leave those pointing at nothing.
+          {refs?.cascadeMessage || refs?.message || 'Something still points at it.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
+          {refs?.cascadeMessage && (
+            <button type="button" disabled={busy} onClick={() => send({}, 'DELETE', '?cascade=1')}
+              className="min-h-[52px] w-full rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
+              style={{ backgroundColor: warning }} data-audit="place-cascade-delete">
+              {busy ? 'Deleting…' : `Delete ${place.name} and everything recorded there`}
+            </button>
+          )}
           {(refs?.entries ?? 0) > 0 && (
-            <Link href={`/ranch/activity?place=${place.id}`} className="inline-flex min-h-[52px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream" data-audit="place-referenced-go">
+            <Link href={`/ranch/activity?place=${place.id}`} className="inline-flex min-h-[52px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="place-referenced-go">
               See what points at it
             </Link>
           )}

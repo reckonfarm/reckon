@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
 import { createServiceClient } from '@/lib/supabase'
-import { placeReferences, refsSentence } from '@/lib/places/references'
+import { placeReferences, refsSentence, planPlaceCascade, cascadeSentence } from '@/lib/places/references'
+import { applySplit, cascadeAvailable } from '@/lib/cascade'
+import { resolveRanchId } from '@/lib/ranch-membership'
 import { hasPlacePin } from '@/lib/schema-capability'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
@@ -277,16 +279,42 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!place) return NextResponse.json({ error: 'No such place' }, { status: 404 })
 
   const refs = await placeReferences(supabase, id)
-  if (refs.total > 0) {
+  const cascade = req.nextUrl.searchParams.get('cascade') === '1'
+
+  if (refs.total > 0 && !cascade) {
+    // 8B.2 — the refusal carries the PLAN, so the confirm can state both
+    // numbers and offer the way through in the same breath. One tap, one
+    // decision, no second prompt.
+    const ranchId = await resolveRanchId(supabase, session.user.id)
+    const plan = ranchId && await cascadeAvailable(supabase)
+      ? await planPlaceCascade(supabase, session.user.id, ranchId, id)
+      : null
     return NextResponse.json({
       error: 'still referenced',
       place,
       refs,
       message: refsSentence(refs),
+      ...(plan ? {
+        cascade: { hard: plan.hard.length, record: plan.record.length, devices: plan.devices },
+        cascadeMessage: cascadeSentence(String((place as { name?: string }).name ?? 'this place'), refs, plan),
+      } : {}),
     }, { status: 409 })
+  }
+
+  if (refs.total > 0 && cascade) {
+    const ranchId = await resolveRanchId(supabase, session.user.id)
+    if (!ranchId) return NextResponse.json({ error: 'No ranch' }, { status: 404 })
+    if (!(await cascadeAvailable(supabase))) {
+      return NextResponse.json({ error: 'Deleting entries is not switched on for this ranch yet.', code: 'no_deletion' }, { status: 503 })
+    }
+    // The entries first, then the place — so nothing live points at it by the
+    // time it goes, and PK is never left with a place he cannot remove.
+    const plan = await planPlaceCascade(supabase, session.user.id, ranchId, id)
+    const applied = await applySplit(session.user.id, plan.hard, plan.record)
+    if (!applied.ok) return NextResponse.json({ error: 'Those entries could not be deleted just now' }, { status: 500 })
   }
 
   const { error } = await createServiceClient().from('places').delete().eq('id', id)
   if (error) return NextResponse.json({ error: 'That place could not be deleted just now' }, { status: 500 })
-  return NextResponse.json({ deleted: true, place })
+  return NextResponse.json({ deleted: true, place, ...(cascade ? { cascaded: true } : {}) })
 }
