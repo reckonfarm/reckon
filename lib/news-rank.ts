@@ -33,6 +33,20 @@ export interface NewsItem {
   ts: number // epoch ms for sort; 0 when pubDate is unknown
 }
 
+/** The /api/news response contract. */
+export interface NewsResponse {
+  items: NewsItem[]
+  /**
+   * Candidates BEFORE ?limit truncated them. A card that asked for 3 has no
+   * other way to know a fourth exists, and "More headlines" must not vanish
+   * just because the wire got cheaper.
+   */
+  total?: number
+  region: string | null
+  error?: boolean
+  sources?: { id: string; name: string; ok: boolean; count: number }[]
+}
+
 // ─── categorization (pure, from title+snippet alone — no new data source) ─────
 // Word-boundary on both sides keeps short words precise — "cowboy"/"important"/
 // "bulletin" don't false-match cow/import/bull. Zero-match falls back to

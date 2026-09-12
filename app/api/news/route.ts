@@ -8,7 +8,7 @@ import {
   isRegionalSourceForState,
   type NewsSource,
 } from '@/lib/news-sources'
-import { type NewsItem } from '@/lib/news-rank'
+import { selectHeadlines, type NewsItem } from '@/lib/news-rank'
 
 // GET /api/news — on-request, region-aware ag-news aggregator.
 //
@@ -26,6 +26,13 @@ import { type NewsItem } from '@/lib/news-rank'
 //
 // COPYRIGHT: we emit headline + short snippet (~200 chars) + link out ONLY. Never
 // full article text.
+//
+// ?limit=N (Block 7B.1) caps what crosses the wire. It is applied AFTER the shared
+// ranking in lib/news-rank.ts, never before — see that file for why the route
+// cannot slice its own order. Absent limit = the full list in the legacy order,
+// so the parked MarketsNews feed is byte-for-byte unaffected. Every response
+// carries `total`, the candidate count before truncation, because a card that
+// asked for 3 has no other way to know a fourth exists.
 
 const FEED_TIMEOUT_MS = 8000
 const SNIPPET_MAX = 200
@@ -364,9 +371,46 @@ async function newestIngestedMs(): Promise<number> {
   }
 }
 
+// ─── response shaping ─────────────────────────────────────────────────────────
+
+// A card asks for what it renders. The ceiling is a sanity bound, not a policy:
+// anything wanting the whole river omits the parameter entirely.
+const MAX_LIMIT = 100
+
+function parseLimit(req: NextRequest): number | null {
+  const raw = req.nextUrl.searchParams.get('limit')
+  if (raw == null || raw.trim() === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 1) return null // garbage reads as "no cap", never as zero items
+  return Math.min(Math.floor(n), MAX_LIMIT)
+}
+
+const CACHE_HEADERS = {
+  // Region varies by ?fips and ?limit (in the URL → CDN-keyed) and by the geo
+  // header (→ Vary so the edge can't serve one region's ordering to another).
+  'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=600',
+  Vary: 'x-vercel-ip-country-region',
+}
+
+function respond(
+  items: NewsItem[],
+  region: string | null,
+  sources: SourceStatus[],
+  limit: number | null,
+) {
+  // No limit → the legacy order, untouched. With a limit, rank first and cut the
+  // finished order, so the Nth item is the same item the browser would have picked.
+  const out = limit == null ? items : selectHeadlines(items, limit)
+  return NextResponse.json(
+    { items: out, total: items.length, region, sources },
+    { headers: CACHE_HEADERS },
+  )
+}
+
 export async function GET(request: NextRequest) {
   const state = await resolveState(request)
   const boostTerms = boostTermsForState(state)
+  const limit = parseLimit(request)
 
   // Prefer the pre-tagged snapshot (the full, richer tagged feed set, sourced off
   // the render path). Serve it only when it is present AND fresh; otherwise fall
@@ -376,15 +420,7 @@ export async function GET(request: NextRequest) {
   if (freshMs > 0 && Date.now() - freshMs < TABLE_STALE_MS) {
     const table = await readNewsFromTable(state, boostTerms)
     if (table && table.items.length > 0) {
-      return NextResponse.json(
-        { items: table.items, region: state, sources: table.sources },
-        {
-          headers: {
-            'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=600',
-            Vary: 'x-vercel-ip-country-region',
-          },
-        },
-      )
+      return respond(table.items, state, table.sources, limit)
     }
   }
 
@@ -395,7 +431,7 @@ export async function GET(request: NextRequest) {
   // All feeds failed → honest error, never cached.
   if (sources.every(s => !s.ok)) {
     return NextResponse.json(
-      { items: [], error: true, region: state, sources },
+      { items: [], total: 0, error: true, region: state, sources },
       { status: 200, headers: { 'Cache-Control': 'no-store' } },
     )
   }
@@ -418,15 +454,5 @@ export async function GET(request: NextRequest) {
     items.push(it)
   }
 
-  return NextResponse.json(
-    { items, region: state, sources },
-    {
-      headers: {
-        // Region varies by ?fips (in the URL → CDN-keyed) and by the geo header
-        // (→ Vary so the edge can't serve one region's ordering to another).
-        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=600',
-        Vary: 'x-vercel-ip-country-region',
-      },
-    },
-  )
+  return respond(items, state, sources, limit)
 }

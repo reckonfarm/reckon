@@ -9,13 +9,14 @@ import {
   rankItems,
   type Category,
   type NewsItem,
+  type NewsResponse,
 } from '@/lib/news-rank'
 
 // The ranking pipeline lives in lib/news-rank.ts so /api/news can apply the SAME
 // order before it truncates (Block 7B.1). Re-exported here because this file was
 // its address for two blocks and NewsHookCard still reads it from the old one.
 export { diversifyLead, rankItems }
-export type { NewsItem }
+export type { NewsItem, NewsResponse }
 
 // Markets news feed UI. Reads /api/news (region-aware: passes through ?fips when the
 // surface knows a county, else the route falls back to the geo header). Headline +
@@ -23,12 +24,6 @@ export type { NewsItem }
 // carry a "Near you" badge. On-brand loading/empty/error states — never a dead box.
 
 
-export interface NewsResponse {
-  items: NewsItem[]
-  region: string | null
-  error?: boolean
-  sources?: { id: string; name: string; ok: boolean; count: number }[]
-}
 
 type State =
   | { phase: 'loading' }
