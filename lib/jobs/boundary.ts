@@ -84,6 +84,17 @@ export const BOUNDARY_CONFIG = {
   mosaicResidueShare: 0.5,
 } as const
 
+/**
+ * The config's SHAPE, with the values widened to number.
+ *
+ * BOUNDARY_CONFIG is `as const`, so its type is a wall of literals — 4.9, 3.7,
+ * 12 — and a caller passing its own profile could not satisfy it even though
+ * every function here already takes `cfg` as an argument. Block 8's phone
+ * profile is the first such caller. This widens the TYPE and nothing else: no
+ * value, no comparison and no line of the closure math changes.
+ */
+export type BoundaryConfig = { [K in keyof typeof BOUNDARY_CONFIG]: number }
+
 export const ACRE_M2 = 4046.8564224
 export const M_PER_LAT = 111_132
 
@@ -226,7 +237,7 @@ export function distToRing(p: Pt, ring: Pt[]): number {
 // win: count proper segment crossings among non-adjacent edges, tolerating a
 // couple (GPS scatter can nick a corner); a serpentine fails in the first few
 // comparisons, a real lap — even a long thin strip field — has none.
-function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+export function segmentsCross(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
   const o = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
   const o1 = o(a, b, c)
   const o2 = o(a, b, d)
@@ -251,7 +262,13 @@ export function loopSelfCrossings(loop: Pt[], stopAbove = 2): number {
   return n
 }
 
-const MAX_LOOP_SELF_CROSSINGS = 2
+/**
+ * How many self-crossings a DRIVEN or RIDDEN loop may have and still count as
+ * simple. Not zero, because GPS scatter nicks a corner on a real lap — the
+ * shape is simple, the receiver wobbled. A tap-drawn ring has no scatter and
+ * gets zero (lib/places/geo.ts).
+ */
+export const MAX_LOOP_SELF_CROSSINGS = 2
 
 // Convex hull (monotone chain) — the sanity check the boundary is judged
 // against, never the boundary itself: a hull can't see concave field edges and
@@ -288,7 +305,7 @@ export interface LoopCandidate {
   closure: number
 }
 
-function scanTiedLoops(pts: XY[], cfg: typeof BOUNDARY_CONFIG): LoopCandidate[] {
+function scanTiedLoops(pts: XY[], cfg: BoundaryConfig): LoopCandidate[] {
   const eps2 = cfg.closureEpsM ** 2
   const snap2 = cfg.snapClosureM ** 2
   const leave2 = cfg.leaveMinM ** 2
@@ -336,7 +353,7 @@ function isSimpleLoop(pts: XY[], c: LoopCandidate): boolean {
 export function computeFieldBoundary(
   track: TrackPoint[],
   multiField: boolean,
-  cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
+  cfg: BoundaryConfig = BOUNDARY_CONFIG,
 ): BoundaryResult {
   const empty: Omit<BoundaryResult, 'status'> = {
     polygon: null, areaM2: null, acres: null, rawAreaM2: null, perimeterM: null,
@@ -466,7 +483,7 @@ export function computeFieldBoundary(
 
 // Headland guard: track in the band just outside the ring (excluding the
 // lap's own span) ÷ track inside it.
-function headlandRatio(all: XY[], ring: XY[], cfg: typeof BOUNDARY_CONFIG): number {
+function headlandRatio(all: XY[], ring: XY[], cfg: BoundaryConfig): number {
   const spanStart = ring[0].idx
   const spanEnd = ring[ring.length - 1].idx
   let outside = 0
@@ -530,7 +547,7 @@ const NESTED_ABSORB_SHARE = 0.5
 
 function computeClusterFields(
   track: TrackPoint[],
-  cfg: typeof BOUNDARY_CONFIG = BOUNDARY_CONFIG,
+  cfg: BoundaryConfig = BOUNDARY_CONFIG,
 ): { fields: TrackPoint[][]; residueShare: number } {
   if (track.length < cfg.minTrackPoints) return { fields: [track], residueShare: 0 }
 

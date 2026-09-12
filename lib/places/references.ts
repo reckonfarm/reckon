@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { hasEventDeletion } from '@/lib/schema-capability'
+import { splitEvents, CASCADE_COLS, type CascadeRow } from '@/lib/cascade'
 
 // ─── What still points at a place (Block 7D.3) ────────────────────────────────
 //
@@ -68,4 +69,48 @@ export function refsSentence(refs: PlaceRefs): string {
   if (parts.length === 0) return 'Nothing points at it.'
   const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
   return `${list} still ${refs.total === 1 ? 'points' : 'point'} at it.`
+}
+
+
+// ── 8B.2 — what a cascade would actually do ───────────────────────────────────
+// The confirm has to state BOTH numbers before the tap, so the split is
+// computed on the read, not discovered during the write.
+
+export interface PlaceCascade {
+  rows: CascadeRow[]
+  hard: string[]
+  record: string[]
+  devices: number
+}
+
+/** Every live entry naming this place, already classified. */
+export async function planPlaceCascade(supabase: SupabaseClient, userId: string, ranchId: string, placeId: string): Promise<PlaceCascade> {
+  const canDel = await hasEventDeletion(supabase)
+  const seen = new Map<string, CascadeRow>()
+  for (const k of PLACE_KEYS) {
+    let q = supabase.from('events').select(CASCADE_COLS).eq(`payload->>${k}`, placeId)
+    if (canDel) q = q.is('deleted_at', null)
+    const { data } = await q
+    for (const r of (data ?? []) as unknown as CascadeRow[]) seen.set(r.id, r)
+  }
+  const rows = [...seen.values()]
+  const { hard, record } = await splitEvents(supabase, userId, ranchId, rows)
+  const { count: devices } = await supabase.from('devices').select('id', { count: 'exact', head: true }).eq('place_id', placeId)
+  return { rows, hard, record, devices: devices ?? 0 }
+}
+
+/**
+ * "4 entries and 1 device point at Rattlesnake. 3 will be deleted outright;
+ * 1 was corrected, so the record keeps it."
+ *
+ * One sentence for what is there, one for what will happen. The second half is
+ * omitted when there is nothing to say rather than padded with a zero.
+ */
+export function cascadeSentence(name: string, refs: PlaceRefs, plan: PlaceCascade): string {
+  const what = refsSentence(refs).replace(/\.$/, '').replace(/ still points? at it/, ` point at ${name}`)
+  const bits: string[] = []
+  if (plan.hard.length > 0) bits.push(`${plan.hard.length} will be deleted outright`)
+  if (plan.record.length > 0) bits.push(`${plan.record.length} ${plan.record.length === 1 ? 'was corrected or already seen, so the record keeps it' : 'were corrected or already seen, so the record keeps them'}`)
+  if (plan.devices > 0) bits.push(`${plan.devices} ${plan.devices === 1 ? 'device is' : 'devices are'} unassigned, not deleted`)
+  return bits.length > 0 ? `${what}. ${bits.join('; ')}.` : `${what}.`
 }

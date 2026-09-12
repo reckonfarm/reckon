@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
-import { hasPlacePin } from '@/lib/schema-capability'
+import { hasPlacePin, hasEventDeletion } from '@/lib/schema-capability'
+import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
 
 // Places — the named spots on the outfit (031).
 //
@@ -48,7 +49,37 @@ export async function GET(req: NextRequest) {
     ? await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
     : live
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ places: data ?? [] })
+
+  // 8B.4 — the picker is what you reach for while standing somewhere, so it is
+  // ordered by what you last used, not by the alphabet. Places never used yet
+  // keep their name order at the back so the list stays findable.
+  //
+  // One extra read, capped, and TOLERANT: if it fails the picker still answers
+  // in name order rather than not answering. An ordering is a convenience; the
+  // list is not.
+  const places = (data ?? []) as { id: string; name: string; kind: string }[]
+  try {
+    const canDel = await hasEventDeletion(supabase)
+    let q = supabase.from('events').select('ts, payload').eq('payload->>source', 'manual')
+    if (canDel) q = q.is('deleted_at', null)
+    const { data: recent } = await q.order('ts', { ascending: false }).limit(400)
+    const lastUsed = new Map<string, string>()
+    for (const r of (recent ?? []) as { ts: string; payload: Record<string, unknown> }[]) {
+      for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) {
+        const v = r.payload?.[k]
+        if (typeof v === 'string' && v && !lastUsed.has(v)) lastUsed.set(v, r.ts)
+      }
+    }
+    places.sort((a, b) => {
+      const at = lastUsed.get(a.id) ?? '', bt = lastUsed.get(b.id) ?? ''
+      if (at && bt) return bt.localeCompare(at)
+      if (at) return -1
+      if (bt) return 1
+      return a.name.localeCompare(b.name)
+    })
+  } catch { /* name order stands */ }
+
+  return NextResponse.json({ places })
 }
 
 export async function POST(req: NextRequest) {
@@ -74,12 +105,45 @@ export async function POST(req: NextRequest) {
   let acres: number | null = null
   let geometry_provenance: unknown = null
   if (body.geometry != null) {
-    const v = validateGeoJSONPolygon(body.geometry)
+    // A RIDDEN ring gets the driven-lap tolerance, a tap-drawn one gets zero.
+    // Same rule boundary.ts has always applied to a swather lap: scatter nicks
+    // a corner, the shape is still simple. Reading `capture.source` here keeps
+    // the decision with the thing that knows how the ring was made.
+    const ridden = (body.capture as { source?: unknown } | null)?.source === 'ridden'
+    const v = validateGeoJSONPolygon(body.geometry, ridden ? MAX_LOOP_SELF_CROSSINGS : 0)
     if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 })
     acres = storableAcres(v.acres)
     if (acres == null) return NextResponse.json({ error: 'That shape could not be measured, so it was not saved.' }, { status: 400 })
     geometry = ringToGeoJSON(v.ring)
     geometry_provenance = { source: 'drawn', created_at: new Date().toISOString(), corners: v.ring.length - 1 }
+
+    // Block 8 — a captured place carries its EVIDENCE (8.6). The track that
+    // produced the polygon rides along in provenance: the same column that
+    // already says how a shape came to be, so no migration and no new table.
+    // It is ranch-scoped by the same RLS as the place, and it is deliberately
+    // NOT in the places list read — see the SELECT in this file. This is the
+    // evidence behind one polygon, never a record of where a person went.
+    const cap = body.capture
+    if (cap && typeof cap === 'object') {
+      const c = cap as Record<string, unknown>
+      const src = c.source === 'ridden' || c.source === 'dropped' ? c.source : null
+      if (src) {
+        geometry_provenance = {
+          source: src,
+          created_at: new Date().toISOString(),
+          corners: v.ring.length - 1,
+          // The grade the geometry gave it. 'snapped' means the loop closed on
+          // the guess rather than a true tie, and the place is labelled for it.
+          ...(typeof c.status === 'string' ? { status: c.status } : {}),
+          ...(c.snapped === true ? { snapped: true } : {}),
+          ...(c.closedByHand === true ? { closed_by_hand: true } : {}),
+          ...(typeof c.accuracyM === 'number' ? { accuracy_m: Math.round(c.accuracyM * 10) / 10 } : {}),
+          ...(typeof c.rejected === 'number' ? { rejected_fixes: c.rejected } : {}),
+          ...(Array.isArray(c.gaps) ? { gaps: c.gaps.slice(0, 50) } : {}),
+          ...(Array.isArray(c.track) ? { track: (c.track as unknown[]).slice(0, 5000) } : {}),
+        }
+      }
+    }
   }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
@@ -89,6 +153,12 @@ export async function POST(req: NextRequest) {
   // so that path keeps working on a deploy that lands before migration 056 is
   // run by hand. Drawing, which genuinely needs the columns, fails loudly.
   const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
+
+  // Field systems (Aug 10, and PK's ruling): a named area can contain fields,
+  // and 056 already carries parent_id. Threaded through capture now with NO UI
+  // in this block — cheap insurance against designing it out, which is exactly
+  // what a flat capture flow would have done.
+  if (typeof body.parent_id === 'string' && body.parent_id) row.parent_id = body.parent_id
 
   // 7D.4 — a ranch's FIRST place is pinned to Weather as it is created.
   // Without this a new ranch draws its first pasture, opens Weather and finds

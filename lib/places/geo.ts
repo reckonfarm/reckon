@@ -136,7 +136,7 @@ function isClosed(ring: LatLng[]): boolean {
  * coordinates inside the plausibility window · no self-intersection · more
  * than a degenerate sliver of area.
  */
-export function validateRing(input: unknown): RingValidation {
+export function validateRing(input: unknown, tolerance = 0): RingValidation {
   if (!Array.isArray(input)) return { ok: false, error: 'The shape is missing its corners.' }
   if (input.length > MAX_RING_POINTS) {
     return { ok: false, error: `That shape has ${input.length} corners — more than ${MAX_RING_POINTS}.` }
@@ -162,13 +162,20 @@ export function validateRing(input: unknown): RingValidation {
   if (ring.length < 4) return { ok: false, error: 'A shape needs at least three corners.' }
 
   // Self-intersection, on the boundary layer's own simple-closed-curve test.
-  // ZERO tolerance here, unlike boundary.ts's stopAbove = 2: that tolerance
-  // exists because GPS scatter can nick a corner of a driven lap. A person
-  // tapping corners has no scatter — a crossing is a crossing.
+  //
+  // THE TOLERANCE DEPENDS ON WHO DREW IT, and Block 8 is why this is now an
+  // argument. A person TAPPING corners has no scatter, so a crossing is a
+  // crossing and the tolerance is zero. A ring that was RIDDEN carries the
+  // receiver's wobble, and boundary.ts has always allowed
+  // MAX_LOOP_SELF_CROSSINGS nicks for exactly that reason on a driven lap.
+  //
+  // Sending ridden rings through the tap-draw tolerance meant a ride the
+  // boundary layer had already blessed could be refused at the last step —
+  // which is what PK hit on his first hand-closed ride.
   const open = ring.slice(0, -1)
   const closedPts: Pt[] = [...projectXY(open, meanLat(open))]
   closedPts.push(closedPts[0])
-  if (loopSelfCrossings(closedPts, 0) > 0) {
+  if (loopSelfCrossings(closedPts, tolerance) > tolerance) {
     return { ok: false, error: 'The edges cross each other. Redraw it without the shape folding over itself.' }
   }
 
@@ -187,7 +194,7 @@ export function validateRing(input: unknown): RingValidation {
 }
 
 /** Validate a stored/posted GeoJSON Polygon end to end. */
-export function validateGeoJSONPolygon(geometry: unknown): RingValidation {
+export function validateGeoJSONPolygon(geometry: unknown, tolerance = 0): RingValidation {
   const g = geometry as { type?: unknown; coordinates?: unknown } | null
   if (!g || typeof g !== 'object') return { ok: false, error: 'The shape is missing.' }
   if (g.type !== 'Polygon') return { ok: false, error: 'A place takes a single drawn outline.' }
@@ -196,7 +203,7 @@ export function validateGeoJSONPolygon(geometry: unknown): RingValidation {
   }
   const ring = ringFromGeoJSON(g)
   if (!ring) return { ok: false, error: 'A corner is missing its position.' }
-  return validateRing(ring)
+  return validateRing(ring, tolerance)
 }
 
 // ─── Display ──────────────────────────────────────────────────────────────────

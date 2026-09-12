@@ -25,6 +25,11 @@ export const PLACE_KINDS: readonly PlaceKind[] = [
   { value: 'pasture',   label: 'Pasture',   hint: 'Grazing ground' },
   { value: 'field',     label: 'Field',     hint: 'Hay or crop ground you cut' },
   { value: 'stackyard', label: 'Stackyard', hint: 'Where the hay sits' },
+  // Block 8: a STACK is not a stackyard. The stackyard is the area; a stack is
+  // the individual pile you feed off, and a ranch feeds off one stack at a
+  // time inside a yard that holds several. Both stay — PK's ruling.
+  { value: 'stack',     label: 'Stack',     hint: 'One pile you feed off' },
+  { value: 'gate',      label: 'Gate',      hint: 'A gate worth naming' },
   { value: 'yard',      label: 'Yard',      hint: 'Corrals, the shop, the house' },
   { value: 'tank',      label: 'Tank',      hint: 'Water' },
 ] as const

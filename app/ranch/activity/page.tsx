@@ -5,12 +5,14 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFilters } from '@/lib/activity'
-import { fmtDay, fmtTime, dayKey, fmtDuration } from '@/lib/jobs/format'
+import { fmtDay, fmtTime, dayKey, fmtDuration, RANCH_TZ } from '@/lib/jobs/format'
 import { listWork, describeWork } from '@/lib/jobs/work'
 import JobsView from '@/app/dashboard/components/JobsView'
 import { privateTitle } from '@/lib/private-title'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import ReviewedButton from '@/app/components/ReviewedButton'
+import FilterShell from './ActivityFilters'
+import ActivityDays from './ActivityDays'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
@@ -58,6 +60,26 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   // Rows grouped by ranch day so "Tuesday" reads as a heading, not a hunt.
   type Entry = { at: string; event?: NonNullable<typeof page>['rows'][number]; work?: (typeof workRows)[number] }
+  // 8B.3 — which days open. Today and yesterday, BY DATE, on the ranch clock
+  // (America/Denver, the same day boundary every balance uses). Not "the last
+  // N groups": the measured record had 17 entries on one day and one each on
+  // the nineteen behind it, so a count of days predicts nothing about volume.
+  const ranchToday = new Date(new Date().toLocaleString('en-US', { timeZone: RANCH_TZ }))
+  const dayKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const yesterday = new Date(ranchToday); yesterday.setDate(yesterday.getDate() - 1)
+  const openDays = [dayKeyOf(ranchToday), dayKeyOf(yesterday)]
+
+  // The active-filter sentence. Hiding a filter is only safe if a filtered
+  // view can never look unfiltered, so this is what the collapsed row says.
+  const activeFilterLabel = (() => {
+    const bits: string[] = []
+    if (filters.actor) bits.push(options.people.find(p => p.id === filters.actor)?.name ?? 'one person')
+    if (filters.place) bits.push(options.places.find(p => p.id === filters.place)?.name ?? 'one place')
+    if (filters.lot) bits.push(options.lots.find(l => l.id === filters.lot)?.name ?? 'one lot')
+    if (filters.from || filters.to) bits.push([filters.from, filters.to].filter(Boolean).join(' to '))
+    return bits.length > 0 ? bits.join(' · ') : null
+  })()
+
   const entries: Entry[] = [...(page?.rows ?? []).map(r => ({ at: r.ts, event: r })), ...workRows.map(w => ({ at: w.startedAt, work: w }))].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
   const groups: { day: string; rows: Entry[] }[] = []
   for (const e of entries) { const d = dayKey(e.at); const g = groups[groups.length - 1]; if (g && g.day === d) g.rows.push(e); else groups.push({ day: d, rows: [e] }) }
@@ -76,7 +98,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
           <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
         ) : (
           <>
-            <form method="get" action="/ranch/activity" className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3" data-audit="activity-filters">
+            <FilterShell active={activeFilterLabel} filtering={filtering}>
+            <form method="get" action="/ranch/activity" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">Person
                 <select name="actor" defaultValue={filters.actor ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
                   <option value="">Everyone</option>{options.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -95,25 +118,32 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 <input type="date" name="to" defaultValue={filters.to ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" /></label>
               <div className="flex items-end gap-2">
                 <button type="submit" className="min-h-[48px] flex-1 rounded-lg bg-brand px-4 font-dm-sans text-[17px] font-semibold text-on-brand">Show</button>
-                {filtering && <Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center px-2 font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Clear</Link>}
               </div>
             </form>
+            </FilterShell>
 
             {entries.length === 0 ? (
               <Card className="mt-4 p-5" data-audit="activity-empty"><p className="font-dm-sans text-[17px] text-ink">{filtering ? 'Nothing recorded matches those filters.' : 'Nothing recorded on the ranch yet.'}</p></Card>
-            ) : groups.map(g => (
-              <section key={g.day} className="mt-5" aria-label={fmtDay(`${g.day}T12:00:00-06:00`, 'long')}>
-                <h2 className="font-dm-sans text-[16px] font-semibold uppercase tracking-wide text-secondary-ink">{fmtDay(`${g.day}T12:00:00-06:00`, 'long')}</h2>
-                <Card className="mt-2 p-0">
-                  <ol className="divide-y divide-rule" data-audit="activity-list">
-                    {/* Audit history (6B): every revision, each marked — replaced originals struck through. */}
-                    {g.rows.map(e => e.event
-                      ? <ActivityRowItem key={e.event.id} id={e.event.id} who={page.names.person(e.event.user_id)} line={describeEvent(e.event, page.names)} when={fmtTime(e.event.ts)} marker={markerFor(e.event)} />
-                      : <ActivityRowItem key={e.work!.id} id={e.work!.id} who={e.work!.device ? `${e.work!.device} (Scout)` : 'A Scout'} line={describeWork(e.work!, fmtDuration)} when={fmtTime(e.work!.startedAt)} marker={null} href={`/jobs/${e.work!.id}`} audit="activity-row" />)}
-                  </ol>
-                </Card>
-              </section>
-            ))}
+            ) : (
+              <ActivityDays
+                openDays={openDays}
+                groups={groups.map(g => ({
+                  day: g.day,
+                  label: fmtDay(`${g.day}T12:00:00-06:00`, 'long'),
+                  count: g.rows.length,
+                  body: (
+                    <Card className="mt-2 p-0">
+                      <ol className="divide-y divide-rule" data-audit="activity-list">
+                        {/* Audit history (6B): every revision, each marked — replaced originals struck through. */}
+                        {g.rows.map(e => e.event
+                          ? <ActivityRowItem key={e.event.id} id={e.event.id} who={page.names.person(e.event.user_id)} line={describeEvent(e.event, page.names)} when={fmtTime(e.event.ts)} marker={markerFor(e.event)} />
+                          : <ActivityRowItem key={e.work!.id} id={e.work!.id} who={e.work!.device ? `${e.work!.device} (Scout)` : 'A Scout'} line={describeWork(e.work!, fmtDuration)} when={fmtTime(e.work!.startedAt)} marker={null} href={`/jobs/${e.work!.id}`} audit="activity-row" />)}
+                      </ol>
+                    </Card>
+                  ),
+                }))}
+              />
+            )}
 
             {/* 6H: the review boundary moves only from a page that has every entry since the last review on it. */}
             {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} />}

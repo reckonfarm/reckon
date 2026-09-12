@@ -976,6 +976,71 @@ async function placesChecks() {
     record('user A (owner)', 'PATCH and DELETE on ranch B\'s place → 404, untouched', patch.status === 404 && del.status === 404 && afterB !== null && afterB.name === beforeB!.name && afterB.retired_at === null, `${patch.status} / ${del.status} · "${String(afterB?.name)}"`)
   }
 
+  // ── Block 8 — a captured place, and the track it carries ────────────────────
+  // 8.6 says the track is the evidence behind ONE polygon and never a record
+  // of where a person went. That is a claim about visibility, so it is checked
+  // the way every other visibility claim here is: from the other ranch.
+  {
+    const ring = rect()
+    const made = await api(A, '/api/places', {
+      name: `${PREFIX}ridden`, kind: 'pasture',
+      geometry: { type: 'Polygon', coordinates: [ring.map(p => [p.lng, p.lat])] },
+      capture: {
+        source: 'ridden', status: 'estimate', snapped: true, rejected: 2,
+        gaps: [{ seconds: 48 }],
+        track: [{ t: 1, lat: LAT, lng: LNG, a: 2.1 }, { t: 2, lat: LAT + 0.001, lng: LNG, a: 2.4 }],
+      },
+    })
+    const capturedId = String(((made.json.place ?? {}) as { id?: string }).id ?? '')
+    record('user A (owner)', '8: a ridden place saves with its geometry', made.status === 201 && !!capturedId, `${made.status}`)
+
+    const { data: prov } = await admin.from('places').select('geometry_provenance').eq('id', capturedId).maybeSingle()
+    const gp = (prov as { geometry_provenance: Record<string, unknown> } | null)?.geometry_provenance ?? {}
+    record('user A (owner)', '8.6: the track rides in provenance, with the grade that produced it — source, snapped, gaps, rejected',
+      gp.source === 'ridden' && gp.snapped === true && Array.isArray(gp.track) && (gp.track as unknown[]).length === 2 && gp.rejected_fixes === 2 && Array.isArray(gp.gaps),
+      `source ${String(gp.source)} · snapped ${String(gp.snapped)} · track ${Array.isArray(gp.track) ? (gp.track as unknown[]).length : 'ABSENT'} · rejected ${String(gp.rejected_fixes)}`)
+
+    // THE CLAIM THAT MATTERS. A track is a sequence of positions with times —
+    // the most sensitive thing this app has ever stored — so "ranch-scoped" is
+    // asserted, not assumed.
+    const Bc2 = await userClient('B')
+    const bSeesPlace = await Bc2.from('places').select('id, geometry_provenance').eq('id', capturedId)
+    record('user B (other ranch)', '8.6: the track is invisible to another ranch — not the place, not the provenance, not one fix',
+      (bSeesPlace.data ?? []).length === 0, `${(bSeesPlace.data ?? []).length} row(s) visible to B`)
+
+    // And it does not travel on the list read, which every picker hits.
+    const list = await api(A, '/api/places', undefined, 'GET')
+    const listed = ((list.json.places ?? []) as Record<string, unknown>[])
+    record('user A (owner)', '8.6: the track never travels on the places list — pickers read name and kind, not a ride',
+      listed.length > 0 && listed.every(pl => pl.geometry_provenance === undefined && pl.track === undefined),
+      `${listed.length} place(s), ${listed.filter(pl => pl.geometry_provenance !== undefined).length} carrying provenance`)
+
+    // A dropped point is the same kind of row (8.5).
+    const dropped = await api(A, '/api/places', {
+      name: `${PREFIX}dropped`, kind: 'stack',
+      geometry: { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] },
+      capture: { source: 'dropped', accuracyM: 3.2, track: [{ t: 1, lat: LAT, lng: LNG, a: 3.2 }] },
+    })
+    const dropId = String(((dropped.json.place ?? {}) as { id?: string }).id ?? '')
+    const { data: dprov } = await admin.from('places').select('kind, geometry, geometry_provenance').eq('id', dropId).maybeSingle()
+    const d = dprov as { kind: string; geometry: unknown; geometry_provenance: Record<string, unknown> } | null
+    record('user A (owner)', '8.5: a dropped point is the same kind of row as a ride — a polygon, with its accuracy recorded',
+      dropped.status === 201 && !!d?.geometry && d?.geometry_provenance?.source === 'dropped' && d?.geometry_provenance?.accuracy_m === 3.2 && d?.kind === 'stack',
+      `${dropped.status} · source ${String(d?.geometry_provenance?.source)} · ±${String(d?.geometry_provenance?.accuracy_m)} m · kind ${String(d?.kind)}`)
+
+    // A capture cannot plant a place on another ranch by naming one.
+    const crossParent = await api(A, '/api/places', {
+      name: `${PREFIX}crossparent`, kind: 'field', parent_id: b.placeId,
+      geometry: { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] },
+      capture: { source: 'ridden', track: [] },
+    })
+    const cpId = String(((crossParent.json.place ?? {}) as { id?: string }).id ?? '')
+    const { data: cp } = cpId ? await admin.from('places').select('ranch_id').eq('id', cpId).maybeSingle() : { data: null }
+    record('user A (owner)', '8: naming ranch B\'s place as a parent never lands the capture on ranch B',
+      cpId === '' || (cp as { ranch_id: string } | null)?.ranch_id === a.ranchId,
+      `landed on ${cpId === '' ? 'nothing' : (cp as { ranch_id: string } | null)?.ranch_id === a.ranchId ? 'A (correct)' : 'RANCH B'}`)
+  }
+
   // ── Block 7D.3 — delete means delete, and a referenced place is not deleted ──
   {
     // A place nothing points at: gone.
