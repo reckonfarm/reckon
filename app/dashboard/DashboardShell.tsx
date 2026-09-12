@@ -707,9 +707,22 @@ export async function DashboardShell({
                       </>
                     )}
 
-                    {/* 7. No news feed on the signed-in Today. The headlines hook stays on the
-                        public county page for the signed-out visitor. */}
-                    {!priv && <NewsHookCard fips={selectedCounty.fips} />}
+                    {/* 7. Headlines — LAST, below hay, on both surfaces (Block 7B.1).
+                        It was gated to the signed-out county page; on Today it now
+                        closes the page instead of being absent. News never appears
+                        above work: everything a ranch has to do today is settled by
+                        the time this renders, and this is the only section a person
+                        can skip entirely by not scrolling.
+
+                        RESERVED FLOOR, measured on the preview at 320 and 390 — the
+                        same discipline as the two Suspense boundaries above. The card
+                        fetches after mount and swaps a skeleton for three headlines;
+                        without a floor that swap is a layout shift. It is the last
+                        section, so nothing of the ranch's own moves under it — but a
+                        shift is still a shift, and Today's budget is under 0.1. */}
+                    <div className="min-h-[296px] min-[360px]:min-h-[272px]">
+                      <NewsHookCard fips={selectedCounty.fips} />
+                    </div>
                   </>
                 ) }),
                 ...(view === 'jobs'
