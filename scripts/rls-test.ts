@@ -865,10 +865,12 @@ async function placesChecks() {
   }
 
   // Retire: off the picker, still naming its history, and reversible.
+  // 7D.3 — the VERB CHANGED. DELETE used to mean retire because there was no
+  // reference check; now it deletes, and retire is PATCH { retired: true }.
   {
-    const del = await api(A, `/api/places/${createdId}`, undefined, 'DELETE')
+    const del = await api(A, `/api/places/${createdId}`, { retired: true }, 'PATCH')
     const after = await readPlace(createdId)
-    record('user A (owner)', 'DELETE retires — the row stays, with who retired it', del.status === 200 && after !== null && after.retired_at != null && after.retired_by === a.userId, `${del.status} · retired_at ${after?.retired_at ? 'set' : 'NULL'}`)
+    record('user A (owner)', 'PATCH { retired: true } retires — the row stays, with who retired it', del.status === 200 && after !== null && after.retired_at != null && after.retired_by === a.userId, `${del.status} · retired_at ${after?.retired_at ? 'set' : 'NULL'}`)
     const picker = await api(A, '/api/places', undefined, 'GET')
     const ids = ((picker.json.places ?? []) as { id: string }[]).map(p => p.id)
     record('user A (owner)', 'a retired place is gone from the logging picker', !ids.includes(createdId) && ids.includes(a.placeId), `${ids.length} live place(s)`)
@@ -889,7 +891,66 @@ async function placesChecks() {
     const patch = await api(A, `/api/places/${b.placeId}`, { name: `${PREFIX}stolen` }, 'PATCH')
     const del = await api(A, `/api/places/${b.placeId}`, undefined, 'DELETE')
     const afterB = await readPlace(b.placeId)
-    record('user A (owner)', 'PATCH and DELETE on ranch B\'s place → 404, untouched', patch.status === 404 && del.status === 404 && afterB!.name === beforeB!.name && afterB!.retired_at === null, `${patch.status} / ${del.status} · "${String(afterB!.name)}"`)
+    record('user A (owner)', 'PATCH and DELETE on ranch B\'s place → 404, untouched', patch.status === 404 && del.status === 404 && afterB !== null && afterB.name === beforeB!.name && afterB.retired_at === null, `${patch.status} / ${del.status} · "${String(afterB?.name)}"`)
+  }
+
+  // ── Block 7D.3 — delete means delete, and a referenced place is not deleted ──
+  {
+    // A place nothing points at: gone.
+    const made = await api(A, '/api/places', { name: `${PREFIX}deletable`, kind: 'field' })
+    const freeId = String(((made.json.place ?? {}) as { id?: string }).id ?? '')
+    const gone = await api(A, `/api/places/${freeId}`, undefined, 'DELETE')
+    const after = freeId ? await readPlace(freeId) : null
+    record('user A (owner)', '7D.3: an unreferenced place DELETEs outright — the row is gone', gone.status === 200 && gone.json.deleted === true && after === null, `${gone.status} · row ${after === null ? 'gone' : 'STILL THERE'}`)
+
+    // A place the ranch's own entries name: refused, counted, untouched.
+    const ref = await api(A, `/api/places/${a.placeId}`, undefined, 'DELETE')
+    const stillThere = await readPlace(a.placeId)
+    const refs = (ref.json.refs ?? {}) as { entries?: number; total?: number }
+    record('user A (owner)', '7D.3: a referenced place is NOT deleted — 409, counted, row untouched', ref.status === 409 && (refs.total ?? 0) > 0 && stillThere !== null, `${ref.status} · ${String(ref.json.message ?? '').slice(0, 60)}`)
+
+    // The count is the CALLER's ranch only. B's entries against B's place must
+    // never be counted for A, and A must not be told anything about them.
+    const bRef = await api(A, `/api/places/${b.placeId}`, undefined, 'DELETE')
+    record('user A (owner)', '7D.3: a cross-ranch delete says 404 and leaks no reference count', bRef.status === 404 && bRef.json.refs === undefined && bRef.json.message === undefined, `${bRef.status} · refs ${bRef.json.refs === undefined ? 'absent' : 'LEAKED'}`)
+  }
+
+  // ── Block 7D.1/7D.2 — deleting an entry, and the deletion record ─────────────
+  {
+    const probe = await admin.from('events').select('deleted_at').limit(1)
+    if (probe.error) {
+      record('(skipped)', '7D delete checks — migration 061 not applied', true, probe.error.message.slice(0, 70))
+    } else {
+      // A's own fresh entry, unseen by B: hard delete, no row left.
+      const own = await api(A, '/api/log', { type: 'rain', inches: 0.11, place_id: a.placeId })
+      const ownId = String(((own.json.event ?? {}) as { id?: string }).id ?? '')
+      const plan = await api(A, `/api/activity/${ownId}/delete`, undefined, 'GET')
+      const mode = ((plan.json.plan ?? {}) as { mode?: string }).mode
+      const killed = await api(A, `/api/activity/${ownId}/delete`, undefined, 'DELETE')
+      const { data: goneRow } = await admin.from('events').select('id').eq('id', ownId).maybeSingle()
+      record('user A (owner)', '7D.1: my own unseen entry hard-deletes — the row is gone, no tombstone', mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && goneRow === null, `plan ${mode} · ${killed.status} · row ${goneRow === null ? 'gone' : 'STILL THERE'}`)
+
+      // A cross-ranch delete reaches nothing and says nothing about the row.
+      const { data: bEvent } = await admin.from('events').select('id').eq('ranch_id', b.ranchId).is('deleted_at', null).limit(1).maybeSingle()
+      const bId = (bEvent as { id?: string } | null)?.id ?? ''
+      if (bId) {
+        const cross = await api(A, `/api/activity/${bId}/delete`, undefined, 'DELETE')
+        const crossPlan = await api(A, `/api/activity/${bId}/delete`, undefined, 'GET')
+        const { data: survived } = await admin.from('events').select('id, deleted_at').eq('id', bId).maybeSingle()
+        const row = survived as { deleted_at: string | null } | null
+        record('user A (owner)', '7D: a delete can never touch another ranch\'s row — 404, row untouched, nothing about it disclosed', cross.status === 404 && crossPlan.status === 404 && row !== null && row.deleted_at === null && crossPlan.json.plan === undefined, `${cross.status}/${crossPlan.status} · deleted_at ${row?.deleted_at ?? 'null'} · plan ${crossPlan.json.plan === undefined ? 'absent' : 'LEAKED'}`)
+      }
+
+      // The deletion record itself is ranch-scoped: A deletes one of its own
+      // and B can read nothing about it — not the row, not who deleted it.
+      const mine = await api(A, '/api/log', { type: 'rain', inches: 0.22, place_id: a.placeId })
+      const mineId = String(((mine.json.event ?? {}) as { id?: string }).id ?? '')
+      await admin.from('events').update({ superseded_by: null }).eq('id', mineId)   // no-op; keeps the row plain
+      await api(A, `/api/activity/${mineId}/delete`, undefined, 'DELETE')
+      const Bc = await userClient('B')
+      const bSees = await Bc.from('events').select('id, deleted_at, deleted_by').eq('id', mineId)
+      record('user B (other ranch)', '7D.2: a deletion record is invisible across ranches — no row, no who, no when', (bSees.data ?? []).length === 0, `${(bSees.data ?? []).length} row(s) visible to B`)
+    }
   }
 }
 
