@@ -54,9 +54,15 @@ const USERS = {
   C: { email: 'rls-test-c@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
   // D: a second member of ranch A (Block 4A) — the hand who must see the ranch's lots.
   D: { email: 'rls-test-d@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
+  // E (Block 7E): belongs to NO ranch and never joins one. C used to be the
+  // ranchless case, but C is created by the invitation checks and joins ranch A
+  // there — so a test that needs a ranchless person either has to run before C
+  // exists (it did, and crashed on a user that had not been made yet) or own
+  // its own. E owns its own, and cannot be made ranch-ful by reordering.
+  E: { email: 'rls-test-e@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
 }
 type Side = 'A' | 'B'
-type Who = Side | 'C' | 'D'
+type Who = Side | 'C' | 'D' | 'E'
 const OTHER: Record<Side, Side> = { A: 'B', B: 'A' }
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -85,7 +91,7 @@ async function teardown(label: string) {
   // Order respects FKs: events → devices → places → members → ranches → users.
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
   const ids = (users?.users ?? [])
-    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.C.email || u.email === USERS.D.email)
+    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.C.email || u.email === USERS.D.email || u.email === USERS.E.email)
     .map(u => u.id)
   let n = 0
   if (ids.length) {
@@ -623,6 +629,82 @@ async function ingestChecks() {
 //      the route uses the user-scoped client and no service role — so a
 //      cross-ranch PATCH must match zero rows and 404.
 // Needs migration 056 on BASE's database; skips (never fails) without it.
+// ── Block 7E — /api/log, the route that writes every manual entry ─────────────
+//
+// It used the cookie-only createClient() until 7E, so this suite could not
+// reach it: the one route that writes EVERY manual event in the app was the
+// one route none of these checks could see, and its cross-ranch behaviour was
+// asserted nowhere. sessionUser tries cookies first and Bearer second, so the
+// browser path is unchanged and this door is now open.
+//
+// RUNS BEFORE invitationChecks ON PURPOSE. C is ranchless until an invitation
+// joins it to A, and the ranchless branch is the state nobody has ever tested
+// — the route documents that a person with no ranch_members row still gets
+// their row, with ranch_id null. "Does not error" is not the claim worth
+// making about that. The claim is that the row is INVISIBLE TO EVERY RANCH.
+async function logRouteChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A')
+  // E is made here and joins no ranch, ever.
+  await admin.auth.admin.createUser({ email: USERS.E.email, password: USERS.E.password, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}E` } })
+  const C = await userClient('E')
+
+  // The suite can reach it at all — the whole point of 7E.
+  const mine = await api(A, '/api/log', { type: 'rain', inches: 0.31, place_id: a.placeId })
+  const mineId = String(((mine.json.event ?? {}) as { id?: string }).id ?? '')
+  record('user A (owner)', '7E: the isolation suite can reach /api/log at all — a Bearer token is accepted', mine.status === 201 && !!mineId, `${mine.status} · ${mineId ? 'event created' : 'NO EVENT — the route is still cookie-only'}`)
+
+  // The row lands on the writer's ranch, never on anyone's say-so.
+  const { data: row } = await admin.from('events').select('ranch_id, user_id').eq('id', mineId).maybeSingle()
+  const r = row as { ranch_id: string | null; user_id: string } | null
+  record('user A (owner)', '7E: the row is stamped with the writer\'s own ranch and the writer\'s own id', !!r && r.ranch_id === a.ranchId && r.user_id === a.userId, `ranch ${r?.ranch_id === a.ranchId ? 'A' : String(r?.ranch_id)} · user ${r?.user_id === a.userId ? 'A' : 'OTHER'}`)
+
+  // A cannot write onto B's ground by naming B's place.
+  const stolen = await api(A, '/api/log', { type: 'rain', inches: 0.44, place_id: b.placeId })
+  const stolenId = String(((stolen.json.event ?? {}) as { id?: string }).id ?? '')
+  const { data: srow } = stolenId ? await admin.from('events').select('ranch_id').eq('id', stolenId).maybeSingle() : { data: null }
+  const sr = srow as { ranch_id: string | null } | null
+  record('user A (owner)', '7E: naming ranch B\'s place does NOT put the entry on ranch B', sr === null || sr.ranch_id === a.ranchId, `landed on ${sr === null ? 'nothing' : sr.ranch_id === a.ranchId ? 'A (correct)' : 'RANCH B'}`)
+
+  // B cannot see it.
+  const Bc = await userClient('B')
+  const bSees = await Bc.from('events').select('id').eq('id', mineId)
+  record('user B (other ranch)', '7E: an entry written by A is invisible to B', (bSees.data ?? []).length === 0, `${(bSees.data ?? []).length} row(s) visible to B`)
+
+  // ── The ranchless branch — the state nobody has ever tested ─────────────────
+  {
+    // E's id comes from the signed-in client — it is not one of the two seeded
+    // ranches and has no Fixture row.
+    const { data: { user: cUser } } = await C.auth.getUser()
+    const { data: memberships } = await admin.from('ranch_members').select('ranch_id').eq('user_id', cUser?.id ?? '')
+    const ranchless = !!cUser && (memberships ?? []).length === 0
+    const wrote = await api(C, '/api/log', { type: 'rain', inches: 0.55 })
+
+    // THE ROUTE'S DOCUMENTED CLAIM WAS FALSE, and this is what found it. It
+    // said a ranchless write "still lands, owner-visible" — true under 034,
+    // whose INSERT policy was user_id = auth.uid(). 043 made membership the
+    // sole gate, so ranch_id NULL makes the policy's `in (…)` NULL, not TRUE,
+    // and the insert is refused. The READ policy has the same shape, so a
+    // landed row would have been invisible to its own writer too. The claim
+    // outlived its truth by nine migrations because nothing asked.
+    //
+    // So the assertion is the true behaviour, and the bar is higher than "does
+    // not error": the person must get an ACTIONABLE answer, never a 500
+    // carrying a policy message, and no row may exist anywhere afterwards.
+    record('user E (no ranch)', '7E: a ranchless person is told they have no ranch — 409 and a sentence they can act on, never a 500',
+      ranchless && wrote.status === 409 && wrote.json.code === 'no_ranch' && /not on a ranch/i.test(String(wrote.json.error)),
+      `${ranchless ? '' : 'E ALREADY HAS A RANCH — this proves nothing · '}${wrote.status} · ${String(wrote.json.error ?? '').slice(0, 60)}`)
+
+    const { count: strays } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', cUser?.id ?? '')
+    record('user E (no ranch)', '7E: and no row was written anywhere — not owner-visible, not orphaned, not at all',
+      (strays ?? 0) === 0, `${strays ?? 0} row(s) exist for E`)
+
+    const { count: nullRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).is('ranch_id', null)
+    record('user E (no ranch)', '7E: no ranchless event exists on this database at all — a row no ranch can see is a row nobody should hold',
+      (nullRanch ?? 0) === 0, `${nullRanch ?? 0} event(s) with ranch_id NULL`)
+  }
+}
+
 async function placesChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -982,6 +1064,7 @@ async function main() {
     await isolationChecks('A', await userClient('A'))
     await isolationChecks('B', await userClient('B'))
     await anonymousChecks()
+    await logRouteChecks()      // Block 7E — /api/log; BEFORE invitations, while C is still ranchless
     await ingestChecks()
     await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
     await lotsChecks()          // Block 4A — needs migration 050

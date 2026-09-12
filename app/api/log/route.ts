@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase-server'
+import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
@@ -14,16 +14,34 @@ import type { NextRequest } from 'next/server'
 // timed-out-but-landed write, a double-tap, a force-quit mid-save) is answered
 // 200 { event, duplicate: true } with the row that already exists — never a
 // second row. Without an id the server mints one (legacy callers).
-// Inserts ONE events row through the user-scoped SSR client so the 034
-// INSERT policy is exercised, not bypassed (same doctrine as the annotation
-// route). device_id null, dedup_key null, lat/lng null — a manual entry has
+// AUTH (Block 7E): sessionUser(req), like every other ledger-writing route.
+// It was the cookie-only createClient(), which the browser is happy with and
+// the isolation suite cannot reach — so the one route that writes EVERY manual
+// entry in the app was the one route 147 isolation checks could not see, and
+// its cross-ranch behaviour was asserted nowhere. sessionUser tries cookies
+// FIRST and Bearer second, so the browser path is byte-for-byte what it was;
+// nothing about the outbox changes. Inserts ONE events row through the
+// user-scoped client either way, so the 034 INSERT policy is exercised, not
+// bypassed (same doctrine as the annotation route). device_id null, dedup_key null, lat/lng null — a manual entry has
 // no emitter, no natural key, no fix. ranch_id comes from the person's own
-// ranch_members row (null if none: the row still lands, owner-visible), so
-// this route never repeats the alert-service omission. Returns the row.
+// ranch_members row.
+//
+// A RANCHLESS PERSON CANNOT RECORD, and this route now says so instead of
+// failing. The comment here used to claim "null if none: the row still lands,
+// owner-visible". That was true under 034, whose INSERT policy was
+// `user_id = auth.uid()`. 043 made membership the SOLE gate — the check is
+// `ranch_id in (select … from ranch_members …)`, and a NULL ranch_id makes
+// that NULL, which is not TRUE, so the insert is refused. The read policy has
+// the same shape, so even a landed row would have been invisible to its own
+// writer: "owner-visible" was false twice over.
+//
+// Nothing tested it, so the claim outlived its truth by nine migrations and
+// surfaced as a 500 the first time 7E's isolation checks asked. Returns the
+// row on success.
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase, user } = session
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') {
@@ -47,6 +65,15 @@ export async function POST(req: NextRequest) {
   }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
+  // Answered here, not by the database. Without this the person gets a 500
+  // carrying a row-level-security message, which tells them nothing they can
+  // act on and leaks the policy's shape to anyone who asks.
+  if (!ranch_id) {
+    return NextResponse.json({
+      error: 'You are not on a ranch yet, so there is nowhere to record this. Accept your invitation, or set up your ranch first.',
+      code: 'no_ranch',
+    }, { status: 409 })
+  }
 
   const id = typeof body.id === 'string' && UUID_RE.test(body.id) ? body.id.toLowerCase() : null
   if (body.id != null && !id) return NextResponse.json({ error: 'id must be a uuid' }, { status: 400 })
