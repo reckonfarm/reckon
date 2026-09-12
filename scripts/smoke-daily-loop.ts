@@ -978,16 +978,24 @@ async function main() {
     // A Scout's bale count is bales made — the hay ledger never reads it.
     {
       const EQ = /= (-?\d+) bales? on hand/
-      // WAIT for the equation, do not sample it. This navigated with
-      // domcontentloaded and read innerText on the next line, so an unstreamed
-      // page returned '' and the balance parsed as NaN — which is how a
-      // "voided entry moved the balance" red gets reported when the balance
-      // was simply not on screen yet. Five call sites shared the race.
+      // WAIT for the equation, do not sample it — and wait for it where it
+      // actually lives. 7.7 moved the equation inside the "Details"
+      // disclosure, so it is ATTACHED but never VISIBLE, and the default
+      // waitFor state (visible) burns its whole timeout and then reads
+      // nothing. Wait for attachment and read textContent, which does not
+      // care whether the <details> is open. A balance that still will not
+      // parse is reported with what was on the page, never as a bare NaN —
+      // NaN fails every comparison silently, which is how "a void moved the
+      // balance" gets printed when the balance was simply not there.
+      let hayEvidence = ''
       const onHandNow = async () => {
         await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="hay-equation"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-        const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-        return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+        const eq = page.locator('[data-audit="hay-equation"]').first()
+        await eq.waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+        const t = ((await eq.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+        const n = parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+        if (!Number.isFinite(n)) hayEvidence = `no balance on ${page.url().replace(BASE, '')} — equation "${t.slice(0, 90)}" · card ${await page.locator('[data-audit="hay-details"]').count()}`
+        return n
       }
       const hayBefore = await onHandNow()
       const jobId = randomUUID()
@@ -1015,7 +1023,7 @@ async function main() {
         const inRecord = page.locator(`[data-audit="activity-list"] li[data-id="${jobId}"] a`)
         const recText = (await inRecord.innerText().catch(() => '')).replace(/\s+/g, ' '), recHref = await inRecord.getAttribute('href').catch(() => null)
         const hayAfter = await onHandNow()
-        record('6J: the session is in the Activity record under the same id, opening its job — and the Scout\'s bale count never moved the hay balance', /Baling · 1 h/.test(recText) && /32 bales counted by hand/.test(recText) && recHref === `/jobs/${jobId}` && hayAfter === hayBefore, `"${recText.slice(0, 70)}" → ${recHref} · hay ${hayBefore} → ${hayAfter}`)
+        record('6J: the session is in the Activity record under the same id, opening its job — and the Scout\'s bale count never moved the hay balance', /Baling · 1 h/.test(recText) && /32 bales counted by hand/.test(recText) && recHref === `/jobs/${jobId}` && Number.isFinite(hayBefore) && hayAfter === hayBefore, `"${recText.slice(0, 70)}" → ${recHref} · hay ${hayBefore} → ${hayAfter}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
     }
 
@@ -1342,16 +1350,24 @@ async function main() {
     // the Ranch hub and Today's Activity tab, marked "voided", with the balance unmoved.
     {
       const EQ = /= (-?\d+) bales? on hand/
-      // WAIT for the equation, do not sample it. This navigated with
-      // domcontentloaded and read innerText on the next line, so an unstreamed
-      // page returned '' and the balance parsed as NaN — which is how a
-      // "voided entry moved the balance" red gets reported when the balance
-      // was simply not on screen yet. Five call sites shared the race.
+      // WAIT for the equation, do not sample it — and wait for it where it
+      // actually lives. 7.7 moved the equation inside the "Details"
+      // disclosure, so it is ATTACHED but never VISIBLE, and the default
+      // waitFor state (visible) burns its whole timeout and then reads
+      // nothing. Wait for attachment and read textContent, which does not
+      // care whether the <details> is open. A balance that still will not
+      // parse is reported with what was on the page, never as a bare NaN —
+      // NaN fails every comparison silently, which is how "a void moved the
+      // balance" gets printed when the balance was simply not there.
+      let hayEvidence = ''
       const onHandNow = async () => {
         await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="hay-equation"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-        const t = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-        return parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+        const eq = page.locator('[data-audit="hay-equation"]').first()
+        await eq.waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+        const t = ((await eq.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+        const n = parseInt((t.match(EQ) ?? ['', 'NaN'])[1], 10)
+        if (!Number.isFinite(n)) hayEvidence = `no balance on ${page.url().replace(BASE, '')} — equation "${t.slice(0, 90)}" · card ${await page.locator('[data-audit="hay-details"]').count()}`
+        return n
       }
       const before = await onHandNow()   // read BEFORE the feeding: feed 7 then void it must net to zero
       const { data: v0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 7, herd_lot_id: lotId, place_id: placeId } }).select('id').single()
@@ -1377,7 +1393,7 @@ async function main() {
         await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
         const today = (await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
         record('6B-2: the Ranch hub and Today\'s Activity tab keep the void, marked the same way — never hidden', !!hub && hub.marker === 'voided' && !!today && today.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'} · today ${today?.marker ?? 'MISSING'}`)
-        record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}`)
+        record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
     }
 
