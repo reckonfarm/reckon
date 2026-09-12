@@ -1036,11 +1036,24 @@ async function main() {
       // ever moves, this regex is what notices.
       const DAY = String.raw`[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{4}`
       const rowRe = (inches: string, who: string) => new RegExp(`${inches}" \u00b7 ${DAY} \u00b7 recorded by ${who}`)
-      record('7-3: every place has a row — the latest reading, its day, who recorded it; a place with no reading says so and never shows zero', rowRe('0\\.80', 'smoke-daily-loop-b').test(north) && rowRe('0\\.35', 'Smoke A').test(west) && /no rain recorded yet/.test(audit) && !/0\.00/.test(audit) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}" · audit "${audit.slice(0, 60)}"`)
+      // 7D.4 CHANGED WHAT BELONGS HERE. "Every place has a row" was the thing
+      // that made this section 35% of the page, two of five rows saying "no
+      // rain recorded yet". A place earns its row now by having a reading, a
+      // device, or a pin; the rest sit behind the picker. So the assertion
+      // splits: the places WITH readings still carry the full answer, and the
+      // place WITHOUT one is no longer on the list — it is in the picker,
+      // counted, reachable. What must never happen either way is a zero
+      // standing in for a missing reading, and that is still checked.
+      const picker = (await page.locator('[data-audit="weather-place-picker"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('7-3/7D.4: a place with a reading carries the latest one, its day and who recorded it', rowRe('0\\.80', 'smoke-daily-loop-b').test(north) && rowRe('0\\.35', 'Smoke A').test(west) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}"`)
+      record('7-3/7D.4: a place with no reading is off the list and in the picker — never a zero, never silently dropped', audit === '' && /\d+ other place/.test(picker) && !/0\.00/.test(section), `audit row "${audit.slice(0, 30)}" · picker "${picker.slice(0, 50)}"`)
       await page.locator(`[data-audit="rain-history-${northId}-summary"]`).click().catch(() => {})
       const hist = (await page.locator(`[data-audit="rain-history-${northId}"] [data-audit="rain-readings"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7-3: a row expands to its history — each reading with its day and who recorded it', /recorded by smoke-daily-loop-b/.test(hist) && /0\.80"/.test(hist), hist.slice(0, 80))
-      await page.locator(`[data-audit="rain-place-row"][data-place="${auditId}"] [data-audit="log-rain-here"]`).click()
+      // 7D.4: Log rain must be tapped on a LISTED place. The audit place has no
+      // reading, no device and no pin, so it is in the picker now — clicking a
+      // row that is deliberately not on the list is what crashed this run.
+      await page.locator(`[data-audit="rain-place-row"][data-place="${northId}"] [data-audit="log-rain-here"]`).click()
       await page.getByLabel('Where').waitFor({ timeout: 10_000 }).catch(() => {})
       // The sheet fetches /api/places when it opens, and a <select> cannot show
       // a pre-chosen value before that value's <option> exists. Reading
@@ -1048,10 +1061,10 @@ async function main() {
       // "" every time. Check 2F above already waits for the option; this one
       // did not. Measured: "" with 2 options loaded, then the right id once the
       // option attaches.
-      await page.getByLabel('Where').locator(`option[value="${auditId}"]`).waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
+      await page.getByLabel('Where').locator(`option[value="${northId}"]`).waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
       const wherePre = await page.getByLabel('Where').inputValue().catch(() => '')
       const rainField = await page.getByLabel('Rain').count()
-      record('7-3: Log rain on a row opens the record sheet on Rain with that place chosen', rainField >= 1 && wherePre === auditId, `Where=${wherePre.slice(0, 8)}… · rain field ${rainField}`)
+      record('7-3: Log rain on a row opens the record sheet on Rain with that place chosen', rainField >= 1 && wherePre === northId, `Where=${wherePre.slice(0, 8)}… · rain field ${rainField}`)
       await page.keyboard.press('Escape').catch(() => {})
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="county-drought"]').waitFor({ timeout: 30_000 }).catch(() => {})
