@@ -707,9 +707,31 @@ export async function DashboardShell({
                       </>
                     )}
 
-                    {/* 7. No news feed on the signed-in Today. The headlines hook stays on the
-                        public county page for the signed-out visitor. */}
-                    {!priv && <NewsHookCard fips={selectedCounty.fips} />}
+                    {/* 7. Headlines — LAST, below hay, on both surfaces (Block 7B.1).
+                        It was gated to the signed-out county page; on Today it now
+                        closes the page instead of being absent. News never appears
+                        above work: everything a ranch has to do today is settled by
+                        the time this renders, and this is the only section a person
+                        can skip entirely by not scrolling.
+
+                        RESERVED FLOOR, MEASURED on the preview: a settled
+                        three-headline card is 394px at 390 and 496px at 320 (it is
+                        taller on the narrow screen because the titles wrap further).
+                        The card fetches after mount and swaps a ~196px skeleton for
+                        that, and without the floor the box grows by 200-300px on
+                        arrival. The first pass at this reserved 272/296 — the
+                        skeleton's own height, which is exactly the guess that made
+                        Today's CLS 0.855 before 7.7, so it is measured here instead.
+
+                        Being last, its shift currently scores zero either way: there
+                        is nothing beneath it to move, and Today measures 0.016 at 390
+                        and 0.000 at 320 with the card in place. The floor is here so
+                        that stays true the day something is added below it. On a
+                        short-headline day the box is a little tall rather than a
+                        little jumpy, which is the right way round. */}
+                    <div className="min-h-[496px] min-[360px]:min-h-[394px]">
+                      <NewsHookCard fips={selectedCounty.fips} />
+                    </div>
                   </>
                 ) }),
                 ...(view === 'jobs'

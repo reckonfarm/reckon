@@ -4,138 +4,31 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card } from './ui/Card'
 import { Heading } from './ui/Heading'
 import { Badge } from './ui/Badge'
+import {
+  diversifyLead,
+  rankItems,
+  type Category,
+  type NewsItem,
+  type NewsResponse,
+} from '@/lib/news-rank'
+
+// The ranking pipeline lives in lib/news-rank.ts so /api/news can apply the SAME
+// order before it truncates (Block 7B.1). Re-exported here because this file was
+// its address for two blocks and NewsHookCard still reads it from the old one.
+export { diversifyLead, rankItems }
+export type { NewsItem, NewsResponse }
 
 // Markets news feed UI. Reads /api/news (region-aware: passes through ?fips when the
 // surface knows a county, else the route falls back to the geo header). Headline +
 // short snippet + link out only — never full text. Regional matches sort to top and
 // carry a "Near you" badge. On-brand loading/empty/error states — never a dead box.
 
-export interface NewsItem {
-  title: string
-  link: string
-  pubDate: string | null
-  source: string
-  sourceId: string
-  scope: 'national' | 'regional'
-  snippet: string
-  regional: boolean
-  ts: number
-}
 
-export interface NewsResponse {
-  items: NewsItem[]
-  region: string | null
-  error?: boolean
-  sources?: { id: string; name: string; ok: boolean; count: number }[]
-}
 
 type State =
   | { phase: 'loading' }
   | { phase: 'error' }
   | { phase: 'ready'; items: NewsItem[]; region: string | null }
-
-// ─── categorization + ranking (pure, client-side over the already-fetched items) ──
-// Each item is multi-tagged from its title+snippet alone (no new data source). Word-
-// boundary on both sides keeps short words precise — "cowboy"/"important"/"bulletin"
-// don't false-match cow/import/bull. Zero-match falls back to 'ranching' (the catch-
-// all) so nothing is ever unreachable behind a toggle.
-
-type Category = 'markets' | 'drought' | 'ranching'
-
-const CATEGORY_WORDS: Record<Category, string[]> = {
-  markets: [
-    'price', 'prices', 'sale', 'sales', 'market', 'markets', 'trade', 'trades',
-    'packer', 'packers', 'feedlot', 'feedlots', 'cattle on feed', 'futures', 'basis',
-    'export', 'exports', 'import', 'imports', 'tariff', 'tariffs', 'policy', 'usda',
-    'demand', 'supply', 'cutout', 'boxed beef',
-  ],
-  drought: [
-    'drought', 'forage', 'moisture', 'rain', 'rains', 'rainfall', 'precip',
-    'precipitation', 'conditions', 'grazing', 'pasture', 'pastures', 'range',
-    'rangeland', 'water', 'monsoon', 'hay',
-  ],
-  ranching: [
-    'herd', 'herds', 'cow', 'cows', 'calf', 'calves', 'heifer', 'heifers', 'bull',
-    'bulls', 'management', 'production', 'health', 'vaccine', 'vaccines', 'genetics',
-    'breeding', 'branding', 'weaning',
-  ],
-}
-
-const CATEGORY_RE: Record<Category, RegExp> = {
-  markets: new RegExp(`\\b(?:${CATEGORY_WORDS.markets.join('|')})\\b`, 'i'),
-  drought: new RegExp(`\\b(?:${CATEGORY_WORDS.drought.join('|')})\\b`, 'i'),
-  ranching: new RegExp(`\\b(?:${CATEGORY_WORDS.ranching.join('|')})\\b`, 'i'),
-}
-
-function categorize(item: NewsItem): Set<Category> {
-  const text = `${item.title} ${item.snippet}`
-  const cats = new Set<Category>()
-  if (CATEGORY_RE.markets.test(text)) cats.add('markets')
-  if (CATEGORY_RE.drought.test(text)) cats.add('drought')
-  if (CATEGORY_RE.ranching.test(text)) cats.add('ranching')
-  if (cats.size === 0) cats.add('ranching') // fallback catch-all
-  return cats
-}
-
-// Market/conditions news is "substantive"; human-interest profiles (which miss those
-// keywords) are not — this is the outer ranking key so profiles sink below them.
-function isSubstantive(cats: Set<Category>): boolean {
-  return cats.has('markets') || cats.has('drought')
-}
-
-interface RankedItem extends NewsItem {
-  categories: Set<Category>
-  substantive: boolean
-}
-
-// Within a tier: substantive (markets/drought) → recency. `regional` is NO LONGER a
-// sort key — it's the TIER PARTITION (local vs national) done in the render body.
-export function rankItems(items: NewsItem[]): RankedItem[] {
-  return items
-    .map(it => {
-      const categories = categorize(it)
-      return { ...it, categories, substantive: isSubstantive(categories) }
-    })
-    .sort((a, b) => {
-      if (a.substantive !== b.substantive) return a.substantive ? -1 : 1
-      return b.ts - a.ts
-    })
-}
-
-// Lead diversification: within the first LEAD_WINDOW local items, allow at most
-// LEAD_MAX_PER_SOURCE from any one source, so the lead isn't a wall of one outlet
-// (TSLN/Agweek batch-publish and dominate the freshest). Only the lead window is
-// reordered; everything past it stays in recency order. Items bumped from the lead
-// fall in right after it (still recency-ordered), so nothing is lost.
-const LEAD_WINDOW = 4
-const LEAD_MAX_PER_SOURCE = 2
-
-export function diversifyLead(items: RankedItem[]): RankedItem[] {
-  if (items.length <= 1) return items
-  const lead: RankedItem[] = []
-  const deferred: RankedItem[] = []
-  const rest: RankedItem[] = []
-  const counts = new Map<string, number>()
-  for (const it of items) {
-    if (lead.length >= LEAD_WINDOW) {
-      rest.push(it)
-      continue
-    }
-    const c = counts.get(it.sourceId) ?? 0
-    if (c < LEAD_MAX_PER_SOURCE) {
-      lead.push(it)
-      counts.set(it.sourceId, c + 1)
-    } else {
-      deferred.push(it)
-    }
-  }
-  // If too many were deferred to fill the lead (e.g. one dominant source), backfill
-  // from the deferred head so the lead window is never left short.
-  while (lead.length < LEAD_WINDOW && deferred.length > 0) {
-    lead.push(deferred.shift() as RankedItem)
-  }
-  return [...lead, ...deferred, ...rest]
-}
 
 const NO_ITEMS: NewsItem[] = []
 const LOCAL_PAGE = 4

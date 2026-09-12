@@ -33,6 +33,7 @@ import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
+import { FRESH_DAYS } from '../lib/barn-geo'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -331,9 +332,36 @@ async function main() {
       record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
-    // Where I sell pin (needs migration 046)
-    const pin = await page.request.patch('/api/operation-profile', { data: { sell_barn_slug: '1773' } })
+    // Where I sell pin (needs migration 046).
+    //
+    // The pin only resolves to scope 'pinned' — the only state that prints
+    // "Preferred sale barn — Miles City" — while that barn's newest MARS report
+    // is inside FRESH_DAYS. It is real USDA data on a real sale calendar, so a
+    // barn that has not sold in a fortnight legitimately stops being the
+    // reference, and the page correctly falls back to the nearest fresh one.
+    //
+    // This check therefore had a data dependency it never declared: it passed
+    // only on days Miles City happened to be fresh. It went red on 2026-09-12
+    // with a report dated 2026-09-01 — eleven days, one past the window — after
+    // passing on 2026-09-11 at exactly ten. That is the barn's sale calendar,
+    // not a regression, and a suite that reports it as a failure is crying wolf
+    // about USDA's schedule. Freshness is checked first and the check SKIPS when
+    // the pin cannot resolve, naming the report date so the reason is legible.
+    const PIN_SLUG = '1773'
+    const { data: pinRows } = await admin.from('mars_price_history')
+      .select('report_date').eq('slug_id', PIN_SLUG)
+      .order('report_date', { ascending: false }).limit(1)
+    const pinDate = (pinRows ?? [])[0]?.report_date as string | undefined
+    // FRESH_DAYS and this arithmetic are lib/barn-geo.ts's own — the constant
+    // is imported, and the age is midnight-anchored and floored exactly as
+    // ageDays() does there. A guard that re-derives the app's rule gets to be
+    // wrong in its own way: the first cut anchored at noon, came out a day
+    // short of the app on the very case it was written for, and let the check
+    // fail anyway.
+    const pinAge = pinDate ? Math.floor((Date.now() - Date.parse(`${pinDate}T00:00:00Z`)) / 86_400_000) : Infinity
+    const pin = await page.request.patch('/api/operation-profile', { data: { sell_barn_slug: PIN_SLUG } })
     if (pin.status() === 503 || pin.status() === 500) skip('A2: Where I sell pin', `PATCH ${pin.status()} — migration 046 not applied?`)
+    else if (pinAge > FRESH_DAYS) skip('A2: Preferred sale barn pin', `Miles City's newest report is ${pinDate ?? 'missing'} — ${Number.isFinite(pinAge) ? `${pinAge} days old` : 'no data'}, past the ${FRESH_DAYS}-day window, so the pin correctly does not resolve`)
     else {
       await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
       await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})

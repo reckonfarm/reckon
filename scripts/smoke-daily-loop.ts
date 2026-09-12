@@ -241,7 +241,13 @@ async function main() {
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
-    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).count() > 0
+    // WAIT for it, do not sample it. This counted the button the instant
+    // waitForURL resolved, with no settle after domcontentloaded, so it was a
+    // race that usually won — and lost once here, reporting a red on a button
+    // that three separate trials found present within 18 ms. A bounded wait is
+    // the same assertion ("the button is there") without the coin toss.
+    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).first()
+      .waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
     record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
@@ -277,13 +283,19 @@ async function main() {
     // any more: the drought reading and the program deadline moved to Weather with the
     // LFP card, so the check that required a conditions strip BELOW the ledgers was
     // asserting the shape this block deliberately removed.
+    //
+    // Block 7B.1 amends the tail of that order, not its principle. Headlines are
+    // back on Today — they were only ever hidden, gated to the signed-out county
+    // page — and they sit LAST, below the ledgers. "No news on Today" becomes
+    // "news below all of the work": still nothing above the ranch's own business,
+    // which is what 7.7 was protecting.
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
       const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
-      const headlines = await page.getByText('Headlines', { exact: true }).count()
-      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), no news feed signed in', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && activeTab === 'Hay' && headlines === 0, `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · active tab "${activeTab}" · Headlines ${headlines}`)
+      const yNews = await pos('[data-audit="news-hook"]')
+      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), headlines last (7B.1)', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && yTabs < yNews && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · news ${Math.round(yNews)} · active tab "${activeTab}"`)
       const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
@@ -594,7 +606,12 @@ async function main() {
       const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
       // The fixture has one live lot with a head count and one place; it has no devices and its hay
       // count IS a baseline, so on hand exists. No device number may render.
-      record('6A: the hub shows recent rows and only the numbers something stands behind (no devices → no device number)', recentRows === Math.min(5, eventsOnRanch ?? 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · numbers [${numbers.join(' | ')}]`)
+      // 7B.2: the hub opens on TWO rows, not five, with the rest behind an
+      // in-place expander — so the count asserted here is 2 (or however few
+      // the ranch has), and the expander must be offered when there are more.
+      const wantRows = Math.min(2, eventsOnRanch ?? 0)
+      const expander = await page.locator('[data-audit="ranch-recent-more"]').count()
+      record('6A/7B.2: the hub opens on two recent rows with the rest one tap away, and shows only the numbers something stands behind (no devices → no device number)', recentRows === wantRows && expander === ((eventsOnRanch ?? 0) > wantRows ? 1 : 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · expander ${expander} · numbers [${numbers.join(' | ')}]`)
       // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
@@ -1268,6 +1285,13 @@ async function main() {
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
         record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
         await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+        // 7B.2: the hub opens on two rows. Open it before reading — the invariant
+        // is about how a correction is marked WHEREVER it appears, so the whole
+        // list is the subject, not the first screenful. This reads more of the
+        // hub than the check ever did before, when it saw at most five rows.
+        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'center' })).catch(() => {})
+        await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
+        await page.waitForTimeout(600)
         const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
         record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -1341,6 +1365,192 @@ async function main() {
       for (let i = 0; i < 60 && afterHay !== beforeHay - 2; i++) { afterHay = await hayNumber(); firstAfter = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (afterHay !== beforeHay - 2) await page.waitForTimeout(500) }
       record('6D: without navigating, the hub\'s Hay number and its recent rows follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay - 2 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && /\/ranch$/.test(page.url().replace(/\?.*$/, '')), `hay ${beforeHay} → ${afterHay} · first row "${firstAfter.slice(0, 50)}" · ${page.url().replace(BASE, '')}`)
       if (prior6d) await page.setViewportSize(prior6d)
+    }
+
+    // ── Block 7B.2: the Ranch hub opens its recent rows in place ──────────
+    // Five rows and a navigation was the only way further down a list the page
+    // had already read. Two rows now, the rest revealed in place — and "in
+    // place" is the whole claim, so it is tested as one: no request, no URL
+    // change, the Sections list (and its Activity link) still on the page.
+    {
+      const prior7b = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      // Drop the SYNCED receipt the 6D check above deliberately leaves up. It is
+      // pinned to the bottom of the viewport for 90 s and it is the previous
+      // check's state, not this one's subject — the same clean-up 7.4 needed
+      // when a restored half-typed sheet sat on top of the FAB. Only synced
+      // entries go: anything genuinely unsynced is real work and stays.
+      await page.evaluate((k: string) => {
+        try {
+          const raw = localStorage.getItem(k)
+          if (!raw) return
+          const kept = (JSON.parse(raw) as { state: string }[]).filter(i => i.state !== 'synced')
+          localStorage.setItem(k, JSON.stringify(kept))
+        } catch { /* no outbox, nothing to clear */ }
+      }, 'dryline_outbox_v1')
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_500)
+      const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
+      // This page has a fixed overlay at BOTH ends. The save receipt is pinned
+      // to the bottom for 90 s (RecordSheetHost, fadeAfterMs 90_000) and the 6D
+      // check immediately above deliberately leaves one up; the site header is
+      // sticky at the top. Playwright's own auto-scroll put the button under
+      // the receipt, and scrolling it to `start` put it under the header — two
+      // crashed runs, one for each end. `center` is the clear band between
+      // them, which is where a person reading the list has it anyway.
+      //
+      // The click is also no longer allowed to take the run down with it. A
+      // 30 s actionability timeout inside a 25-minute suite should be one red
+      // line naming what intercepted the tap, not an exception that discards
+      // every check after it.
+      const tapMore = async (): Promise<string | null> => {
+        const btn = page.locator('[data-audit="ranch-recent-more"]')
+        try {
+          await btn.evaluate(el => el.scrollIntoView({ block: 'center' }))
+          await page.waitForTimeout(200)
+          await btn.click({ timeout: 15_000 })
+          return null
+        } catch (e) {
+          // Say WHAT was on top, not just that the click timed out. Playwright
+          // names the interceptor in its call log, and elementFromPoint at the
+          // button's own centre says it independently — a bare "Timeout 15000ms
+          // exceeded" sent me guessing at overlays twice.
+          const msg = (e instanceof Error ? e.message : String(e)).split('\n')
+          const intercept = msg.find(l => l.includes('intercepts pointer events'))?.trim()
+          const onTop = await btn.evaluate(el => {
+            const r = el.getBoundingClientRect()
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+            if (!top) return 'nothing (off-screen)'
+            const a = top.closest('[data-audit]')?.getAttribute('data-audit')
+            return `${top.tagName.toLowerCase()}${a ? `[${a}]` : ''}`
+          }).catch(() => 'unreadable')
+          return `${msg[0]} · on top: ${onTop}${intercept ? ` · ${intercept.slice(0, 120)}` : ''}`
+        }
+      }
+      const shown = await liCount()
+      const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
+      const promised = parseInt((label.match(/Show (\d+) more/) ?? ['', 'NaN'])[1], 10)
+      record('7B.2: the hub opens on two recent rows, and the expander says how many more there are',
+        shown === 2 && promised > 0,
+        `${shown} row(s) · "${label}"`)
+
+      // Count what the tap fetches. The rows are already on the page; an
+      // expander that goes back for them is a page load wearing a disclosure's
+      // clothes, and that is the thing being asserted.
+      //
+      // NOT every request counts, and the rule is about THIS page's data rather
+      // than a list of allowed paths. Revealing 26 rows puts 26 more <Link>s on
+      // screen and pushes the Sections list down, so Next prefetches whatever
+      // is near the viewport — measured, RSC requests for /ranch/activity/<id>
+      // (the rows' own detail pages) and /ranch/devices (a Sections link). Those
+      // are the framework preparing the NEXT tap, and they would happen on any
+      // page whose content grew.
+      //
+      // What must be zero is this page going back for its own content: a /ranch
+      // RSC refetch (which is also where a server action would land) or an API
+      // call. Two earlier versions of this check got the boundary wrong by
+      // naming paths — first "zero requests", then an allow-list of activity
+      // links — and each failed on a prefetch while proving nothing about the
+      // expander.
+      const fetched: string[] = []
+      let prefetches = 0
+      const countReq = (r: { url: () => string }) => {
+        const path = r.url().replace(BASE, '').split('?')[0]
+        const isOwnData = path === '/ranch' || path.startsWith('/api/')
+        if (isOwnData) fetched.push(path)
+        else prefetches++
+      }
+      page.on('request', countReq)
+      const urlBefore = page.url()
+      const tapErr = await tapMore()
+      await page.waitForTimeout(1_500)
+      page.off('request', countReq)
+      const opened = await liCount()
+      const sections = await page.locator('[data-audit="ranch-sections"]').count()
+      const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
+      record('7B.2: the rest open in place — the rows are never refetched, no navigation, the Sections list and its Activity link untouched',
+        !tapErr && opened === shown + promised && fetched.length === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
+        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${fetched.length} data request(s)${fetched.length ? ` [${fetched.slice(0, 3).join(', ')}]` : ''} · ${prefetches} link prefetch(es) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
+
+      const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
+      const closeErr = await tapMore()
+      await page.waitForTimeout(800)
+      record('7B.2: it closes again to two rows', !closeErr && (await liCount()) === 2 && /Show fewer/.test(collapsed),
+        closeErr ? `the expander could not be tapped: ${closeErr}` : `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
+      if (prior7b) await page.setViewportSize(prior7b)
+    }
+
+    // ── Block 7B.1: headlines last on Today, and only as expensive as shown ──
+    // The card was gated to the signed-out county page, and when it did render
+    // it pulled 147 items and 75,601 bytes to show three. Both are tested here:
+    // WHERE it sits (last — news never appears above work) and WHAT it costs.
+    for (const width of [390, 320]) {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width, height: 844 })
+      const seen: { url: string; bytes: number }[] = []
+      const onRes = async (res: { url(): string; body(): Promise<Buffer> }) => {
+        if (!res.url().includes('/api/news')) return
+        try { seen.push({ url: res.url().replace(BASE, ''), bytes: (await res.body()).length }) } catch { /* body gone */ }
+      }
+      page.on('response', onRes)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(9_000)
+
+      const order: string[] = await page.evaluate(`[...document.querySelectorAll('main [data-audit]')].map(e => e.getAttribute('data-audit'))`)
+      const hookAt = order.indexOf('news-hook')
+      // "Last" is asserted as an ABSENCE OF ANYTHING ELSE below, not against a
+      // list of section names: NeedsAttention and ProgramAlerts render nothing
+      // when there is nothing to say, so a hardcoded roster would be a check
+      // that passes because the names never appeared. Anything on Today that is
+      // not part of the news card itself must sort above it.
+      const below = order.slice(hookAt + 1).filter(a => a && !a.startsWith('news-'))
+      // And the ledger strip — hay — must be above it, positively.
+      const hayAt = order.findIndex(a => a === 'hay-details' || a === 'logged-row' || a === 'whole-record')
+      record(`7B.1 (${width}): headlines are on Today, last, below hay`,
+        hookAt >= 0 && below.length === 0 && hayAt >= 0 && hayAt < hookAt,
+        hookAt < 0 ? 'news-hook ABSENT from Today' : `position ${hookAt + 1} of ${order.length} · ledger at ${hayAt + 1} · below it: ${below.join(', ') || 'nothing'}`)
+
+      const first = seen.find(r => /\/api\/news/.test(r.url))
+      record(`7B.1 (${width}): it asks for the three it shows, not the whole river`,
+        !!first && /limit=3/.test(first.url) && first.bytes < 20_000,
+        first ? `${first.url} → ${first.bytes} B` : 'no /api/news request seen')
+
+      const rendered = await page.locator('[data-audit="news-list"] a').count()
+      const moreBtn = page.locator('[data-audit="news-more"]')
+      const hasMore = await moreBtn.count()
+      record(`7B.1 (${width}): three headlines render, and "More headlines" survives the smaller payload`,
+        rendered === 3 && hasMore === 1,
+        `${rendered} headline(s) · more button ${hasMore}`)
+
+      if (hasMore === 1) {
+        const urlBefore = page.url()
+        await moreBtn.click()
+        await page.waitForTimeout(5_000)
+        const expanded = await page.locator('[data-audit="news-list"] a').count()
+        const second = seen.filter(r => /limit=10/.test(r.url))
+        record(`7B.1 (${width}): expanding pays for ten, in place, once`,
+          expanded === 10 && second.length === 1 && page.url() === urlBefore,
+          `${rendered} → ${expanded} headline(s) · ${second[0]?.bytes ?? '—'} B · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'}`)
+      }
+      page.off('response', onRes)
+      if (prior) await page.setViewportSize(prior)
+    }
+
+    // ── Block 7B.1: a broken feed is never "no news" ───────────────────────
+    // The distinction the three states exist for. An error must read as a claim
+    // about the network; "No cattle-country headlines right now" is a claim
+    // about the world, and a failed fetch must never be allowed to make it.
+    {
+      await page.route('**/api/news**', r => r.abort())
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(6_000)
+      const err = await page.locator('[data-audit="news-error"]').count()
+      const empty = await page.locator('[data-audit="news-empty"]').count()
+      record('7B.1: with the feed unreachable the card says so — never "no headlines right now"',
+        err === 1 && empty === 0,
+        `error state ${err} · empty state ${empty}`)
+      await page.unroute('**/api/news**')
     }
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──

@@ -9,10 +9,12 @@ import { privateTitle } from '@/lib/private-title'
 import { ranchNumbers } from '@/lib/ranch-summary'
 import { listActivity, describeEvent, standingRows, chainWithin } from '@/lib/activity'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
+import RecentActivityList from './RecentActivityList'
 import { fmtDay, fmtTime, plural } from '@/lib/jobs/format'
 
 // ─── /ranch — the ranch hub (Block 6A) ────────────────────────────────────────
-// Five recent activity rows, then the five sections, each with ONE live number
+// Two recent activity rows (up to 20 more one tap away, in place — 7B.2), then
+// the five sections, each with ONE live number
 // where one exists: hay on hand (only with a counted baseline), head in lots
 // (only with a live lot), places, devices. No number → nothing rendered. On a
 // narrow screen this is a list, never a tab strip.
@@ -20,6 +22,9 @@ export const dynamic = 'force-dynamic'
 export const generateMetadata = () => privateTitle('Ranch')
 
 const fmtN = (n: number) => n.toLocaleString('en-US')
+
+// How deep the in-place expander goes. Past this, the Activity record.
+const HUB_ROWS = 20
 
 export default async function RanchPage() {
   const supabase = await createClient()
@@ -30,7 +35,15 @@ export default async function RanchPage() {
     ranchNumbers(supabase, user.id),
     listActivity(supabase, user.id, {}, null).catch(() => null),
   ])
-  const rows = recent ? standingRows(recent.rows).slice(0, 5) : []
+  // The hub shows two rows and the expander reveals the rest without a second
+  // request (Block 7B.2). Capped at HUB_ROWS: shipping every standing row the
+  // page had read took this document from 44 KB to 85 KB to render two of them,
+  // which is the wrong trade on one bar of 3G — the point of the expander was
+  // to make the hub cheaper to read, not the page dearer to load. Twenty is
+  // deep enough that opening it is worth the tap; the Activity link below
+  // carries anything older.
+  const standing = recent ? standingRows(recent.rows) : []
+  const rows = standing.slice(0, HUB_ROWS)
   const sections: { href: string; label: string; blurb: string; number: string | null }[] = [
     { href: '/ranch/activity', label: 'Activity', blurb: 'Everything recorded, by the day the work happened.', number: null },
     { href: '/ranch/cattle',   label: 'Cattle',   blurb: 'Your lots — head, purpose, last recorded work.', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },
@@ -52,10 +65,11 @@ export default async function RanchPage() {
             <Card className="mt-2 p-5"><p className="font-dm-sans text-[17px] text-ink">Nothing recorded on the ranch yet.</p></Card>
           ) : (
             <Card className="mt-2 p-0">
-              <ol className="divide-y divide-rule" data-audit="ranch-recent">
-                {/* Operational (6B): what stands, a correction marked, what it replaced one tap away. */}
-                {rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={recent!.names.person(r.user_id)} line={describeEvent(r, recent!.names)} when={`${fmtDay(r.ts)} ${fmtTime(r.ts)}`} marker={markerFor(r)} chain={chainWithin(recent!.rows, r, recent!.names)} />)}
-              </ol>
+              {/* Operational (6B): what stands, a correction marked, what it replaced one tap away. */}
+              <RecentActivityList
+                hasMore={standing.length > rows.length || !!recent?.nextCursor}
+                rows={rows.map(r => <ActivityRowItem key={r.id} id={r.id} who={recent!.names.person(r.user_id)} line={describeEvent(r, recent!.names)} when={`${fmtDay(r.ts)} ${fmtTime(r.ts)}`} marker={markerFor(r)} chain={chainWithin(recent!.rows, r, recent!.names)} />)}
+              />
             </Card>
           )}
         </section>
