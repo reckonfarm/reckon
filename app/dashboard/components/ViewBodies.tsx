@@ -947,7 +947,7 @@ export async function MarketsViewBody({
       )}
 
       {/* 5 — the other classes at the same barn. */}
-      <LocalAuctionCard result={localAuction} />
+      <LocalAuctionCard result={localAuction} lotClass={(lots.find(l => l.id === selectedLotId) ?? lots[0])?.class ?? null} />
 
       {/* 6 — price protection. One row is the answer; the calculator, per-lot
           floors, endorsements, premiums and basis sit behind one disclosure. */}

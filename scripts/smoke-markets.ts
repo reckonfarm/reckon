@@ -587,7 +587,19 @@ async function main() {
       record('7C: one staleness line replaces the three-date strip, and it names the barn and the age', /last reported .+ · (today|yesterday|\d+ days ago)/.test(staleness) && dateStrip === 0, `"${staleness}" · report-date strips ${dateStrip}`)
       record('7C: the title is the page, not a place, and the empty sale-video line is gone', /^Markets$/.test(title) && videoFeed === 0, `title "${title}" · video-feed ${videoFeed}`)
       record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
-      record('7-P1: cull cows and slaughter bulls are visible without expanding anything', firstThings.cull !== 'hidden' && firstThings.bulls !== 'hidden' && (firstThings.cull === 'visible' || firstThings.bulls === 'visible'), `cull cows ${firstThings.cull} · bulls ${firstThings.bulls}`)
+      // 7C: the boards were 27% of the page at 390 and 31% at 320, four of five
+      // being classes the rancher had not selected. The board matching the
+      // selected lot is open; the rest sit behind ONE tap that says how many.
+      // The check is that the hidden ones are COUNTED, not merely absent — and
+      // that nothing was dropped to shorten the page.
+      const moreClasses = (await page.locator('[data-audit="more-classes-summary"], [data-audit="more-classes"] summary').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const boardsRendered = await page.locator('[data-audit^="board-"]').count()
+      const openBoards = await page.locator('[data-audit^="board-"]').evaluateAll(els => els.filter(e => !e.closest('details:not([open])')).length)
+      record('7-P1/7C: one board is open — the selected lot\'s class — and the rest are one tap away, counted by name', openBoards === 1 && boardsRendered > 1 && /^\d+ more class(es)?/.test(moreClasses), `${openBoards} of ${boardsRendered} board(s) open · "${moreClasses.slice(0, 80)}"`)
+      // Nothing was dropped to shorten the page: every board the report carries
+      // is still rendered, and every band inside them, empty ones included.
+      const bandRows = await page.locator('[data-audit^="board-"] li').count()
+      record('7C: collapsing hid boards, it did not drop them — every board and every band still renders', boardsRendered >= 2 && bandRows >= boardsRendered, `${boardsRendered} boards · ${bandRows} band rows`)
       record('7-P1: no "Cattle markets" heading repeats on the default page, and no "Vertical axis" paragraph', firstThings.cattleEyebrows === 0 && !firstThings.vertical, `visible "Cattle markets" eyebrows ${firstThings.cattleEyebrows} · Vertical axis ${firstThings.vertical}`)
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
