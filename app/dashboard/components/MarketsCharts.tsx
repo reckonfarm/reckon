@@ -365,7 +365,6 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [showEvents, setShowEvents] = useState(false)    // Block 7: dated event markers live in Compare and settings, off by default
   const [salesView, setSalesView] = useState(false)      // Block 7: Chart | Sales — two views of one section
   const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and events, details) behind "Compare and settings"
-  const cornCompare = false   // 7C: the feeder overlay's toggle is gone; corn stands alone   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
   const [pickedKey, setPickedKey] = useState<string | null>(null)
@@ -638,21 +637,12 @@ export default function MarketsCharts(p: MarketsChartsProps) {
               at it. */}
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Corn · the feedlot&rsquo;s input cost</p>
           {(() => {
-            const feeder = cornCompare ? cornFeederList.flatMap(s => s.dots) : []
             const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100 }))
-            const all = [...feeder.map(d => d.t), ...cornDots.map(d => d.t)]
-            if (all.length === 0) return <Note>No observations to draw yet.</Note>
+            if (cornDots.length === 0) return <Note>No observations to draw yet.</Note>
+            const all = cornDots.map(d => d.t)
             const x0 = Math.min(...all) - 86_400_000 * 2, x1 = Math.max(...all) + 86_400_000 * 2
             return (
               <>
-                {cornCompare && (
-                  <>
-                    <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
-                    {feeder.length > 0
-                      ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
-                      : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
-                  </>
-                )}
                 <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · CBOT via Yahoo Finance · $/bu</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
