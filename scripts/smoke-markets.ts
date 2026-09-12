@@ -33,6 +33,7 @@ import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
+import { FRESH_DAYS } from '../lib/barn-geo'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -347,15 +348,20 @@ async function main() {
     // about USDA's schedule. Freshness is checked first and the check SKIPS when
     // the pin cannot resolve, naming the report date so the reason is legible.
     const PIN_SLUG = '1773'
-    const FRESH_DAYS = 10
     const { data: pinRows } = await admin.from('mars_price_history')
       .select('report_date').eq('slug_id', PIN_SLUG)
       .order('report_date', { ascending: false }).limit(1)
     const pinDate = (pinRows ?? [])[0]?.report_date as string | undefined
-    const pinAge = pinDate ? Math.floor((Date.now() - new Date(`${pinDate}T12:00:00Z`).getTime()) / 86_400_000) : Infinity
+    // FRESH_DAYS and this arithmetic are lib/barn-geo.ts's own — the constant
+    // is imported, and the age is midnight-anchored and floored exactly as
+    // ageDays() does there. A guard that re-derives the app's rule gets to be
+    // wrong in its own way: the first cut anchored at noon, came out a day
+    // short of the app on the very case it was written for, and let the check
+    // fail anyway.
+    const pinAge = pinDate ? Math.floor((Date.now() - Date.parse(`${pinDate}T00:00:00Z`)) / 86_400_000) : Infinity
     const pin = await page.request.patch('/api/operation-profile', { data: { sell_barn_slug: PIN_SLUG } })
     if (pin.status() === 503 || pin.status() === 500) skip('A2: Where I sell pin', `PATCH ${pin.status()} — migration 046 not applied?`)
-    else if (pinAge > FRESH_DAYS) skip('A2: Preferred sale barn pin', `Miles City's newest report is ${pinDate ?? 'missing'} — ${Number.isFinite(pinAge) ? `${pinAge} days` : 'no data'}, past the ${FRESH_DAYS}-day window, so the pin correctly does not resolve`)
+    else if (pinAge > FRESH_DAYS) skip('A2: Preferred sale barn pin', `Miles City's newest report is ${pinDate ?? 'missing'} — ${Number.isFinite(pinAge) ? `${pinAge} days old` : 'no data'}, past the ${FRESH_DAYS}-day window, so the pin correctly does not resolve`)
     else {
       await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
       await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
