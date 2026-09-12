@@ -1096,15 +1096,19 @@ async function main() {
       // Disclosure publishes the one honest signal itself — data-open on the
       // details — so read that, and keep a presence check so a chart that
       // disappears entirely is still caught.
+      // 7D.5 REMOVED THE DISCLOSURE. The history used to sit behind "View
+      // history" and this check drove it — closed it, opened it, watched the
+      // chart survive. It is always open now: measured, opening it cost +404px
+      // at 390 and +447px at 320 and ZERO requests, because the data is already
+      // resolved server-side and the panel is inert markup either way.
+      //
+      // So the assertion becomes the stronger one it was standing in for: the
+      // chart is THERE, on load, with no tap. The old version would have gone
+      // green on a page where the chart was behind a disclosure nobody opens.
       const rainHist = page.locator('[data-audit="rain-history"]')
-      if ((await rainHist.getAttribute('data-open')) === 'true') { await page.locator('[data-audit="rain-history-summary"]').click().catch(() => {}); await page.waitForTimeout(400) }
-      const rainClosed = await rainHist.getAttribute('data-open')
-      const chartsBefore = await page.locator('[data-audit="weather-estimate"] .recharts-wrapper').count()
-      await page.locator('[data-audit="rain-history-summary"]').click().catch(() => {})
-      await page.waitForTimeout(1_500)
-      const rainOpened = await rainHist.getAttribute('data-open')
-      const chartsAfter = await page.locator('[data-audit="weather-estimate"] .recharts-wrapper').count()
-      record('7-2: county rainfall reads as one answer — inches this year against station normal, county estimate or station gauge, through when — with the history behind View history', /^[\d.]+" this year · [\d.]+" (below|above) station normal$/.test(summary) && /^(County estimate|Station gauge) · through [A-Z][a-z]{2} \d{1,2}$/.test(summarySrc) && rainClosed === 'false' && rainOpened === 'true' && chartsBefore === 1 && chartsAfter === 1, `"${summary}" · "${summarySrc}" · history ${rainClosed} → ${rainOpened} · charts ${chartsBefore} → ${chartsAfter}`)
+      const stillADisclosure = await rainHist.evaluate(el => el.tagName.toLowerCase() === 'details').catch(() => false)
+      const chartsOnLoad = await page.locator('[data-audit="weather-estimate"] .recharts-wrapper').count()
+      record('7-2/7D.5: county rainfall reads as one answer, and the 30-year history is drawn on load — no tap, no disclosure', /^[\d.]+" this year · [\d.]+" (below|above) station normal$/.test(summary) && /^(County estimate|Station gauge) · through [A-Z][a-z]{2} \d{1,2}$/.test(summarySrc) && chartsOnLoad === 1 && !stillADisclosure, `"${summary}" · "${summarySrc}" · charts on load ${chartsOnLoad} · disclosure ${stillADisclosure}`)
       const droughtCard = page.locator('[data-audit="county-drought"]')
       const droughtText = (await droughtCard.innerText().catch(() => '')).replace(/\s+/g, ' ')
       // Same native-<details> fact as the rainfall history above: a closed
