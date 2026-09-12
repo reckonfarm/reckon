@@ -181,7 +181,7 @@ export async function countyMetadata({
   }
 }
 
-export type ShellRoute = 'county' | 'today' | 'markets' | 'weather'
+export type ShellRoute = 'county' | 'today' | 'markets' | 'weather' | 'programs'
 
 // ─── The shell (Block 6A) ─────────────────────────────────────────────────────
 // One component, four routes. 'county' is /dashboard?fips= — public information
@@ -220,7 +220,7 @@ export async function DashboardShell({
   const view: 'news' | 'jobs' | 'drought' | 'hay' | 'markets' =
     route === 'today' ? 'news'
       : route === 'markets' ? 'markets'
-        : route === 'weather' ? 'drought'
+        : route === 'weather' || route === 'programs' ? 'drought'
           : viewParam === 'jobs' || viewParam === 'activity' ? 'jobs'
             : viewParam === 'drought' ? 'drought'
               : viewParam === 'hay' && flagEnabled('marketplace') ? 'hay'
@@ -754,7 +754,8 @@ export async function DashboardShell({
                           forecastPromise={forecastPromise}
                           alertsPromise={alertsPromise}
                           titled={route === 'weather'}
-                          programs={route === 'weather' ? (
+                          only={route === 'programs' ? 'programs' : null}
+                          programs={route === 'weather' || route === 'programs' ? (
                             <>
                               <Suspense fallback={<LfpAlertSkeleton />}>
                                 <LfpCardAsync
