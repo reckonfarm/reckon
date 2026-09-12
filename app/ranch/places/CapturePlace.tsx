@@ -55,10 +55,32 @@ export default function CapturePlace() {
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [outcomeMsg, setOutcomeMsg] = useState<string | null>(null)
   const [offerDrop, setOfferDrop] = useState(false)
+  // 8: a ride is unsaved work, and Cancel sat one thumb-width from Save with
+  // nothing between them. PK lost a finished 3.68-acre ride to exactly that.
+  const [confirmCancel, setConfirmCancel] = useState(false)
 
   const usable = useMemo(() => cap.fixes.filter(f => !isOutlier(f)), [cap.fixes])
   const gaps = useMemo(() => gapsIn(usable), [usable])
   const latest = cap.fixes[cap.fixes.length - 1] ?? null
+  // Only for the discard warning — it should say what is about to be lost, and
+  // "about N acres" is the number a person recognises. Cheap: it runs only
+  // while a cancel is being confirmed.
+  const rideSoFar = useMemo(() => {
+    if (!confirmCancel || mode !== 'ride' || usable.length < 8) return null
+    const tied = rideBoundary(usable).boundary.acres
+    if (tied != null) return tied
+    const hand = closeByHand(usable)
+    return hand.ok ? hand.acres : null
+  }, [confirmCancel, mode, usable])
+
+  // Nothing recorded yet → leave immediately. Something recorded → ask, and
+  // say what is about to be lost in the ride's own terms. Same rule as 7.1's
+  // sign-out: unsynced work is never discarded without the word being tapped.
+  function leave() {
+    if (usable.length > 0) { setConfirmCancel(true); return }
+    void cap.stop(); setMode('choose')
+  }
+  function discard() { void cap.stop(); setConfirmCancel(false); setMode('choose') }
 
   async function beginDrop() { setMode('drop'); setOutcomeMsg(null); await cap.start() }
   async function beginRide() { setMode('ride'); setOutcomeMsg(null); await cap.start() }
@@ -118,6 +140,26 @@ export default function CapturePlace() {
       setSaveErr('That place could not be saved just now.'); setBusy(false)
     }
   }
+
+  const cancelGuard = confirmCancel ? (
+    <div className="mt-3 rounded-lg border p-3" style={{ borderColor: warning }} role="alert" data-audit="capture-discard-guard">
+      <p className="font-dm-sans text-[16px] font-semibold text-ink">
+        Throw away {usable.length} {usable.length === 1 ? 'fix' : 'fixes'}
+        {mode === 'ride' && rideSoFar != null ? ` and about ${fmtAcres(rideSoFar)} acres` : ''}?
+      </p>
+      <p className="mt-1 font-dm-sans text-[15px] leading-snug text-secondary-ink">
+        Nothing has been saved yet, and the ride cannot be got back.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={() => setConfirmCancel(false)} className="min-h-[48px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="capture-keep-going">
+          Keep recording
+        </button>
+        <button type="button" onClick={discard} className="min-h-[48px] rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="capture-discard-confirm">
+          Throw it away
+        </button>
+      </div>
+    </div>
+  ) : null
 
   // ── the live banner every active mode shares ────────────────────────────────
   const live = (
@@ -184,8 +226,9 @@ export default function CapturePlace() {
           <button type="button" disabled={!cap.settled} onClick={() => void takePoint()} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="capture-take-point">
             {cap.settled ? 'Drop it here' : `Waiting for ±${SETTLE_MAX_ACC_M} m…`}
           </button>
-          <button type="button" onClick={() => { void cap.stop(); setMode('choose') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-cancel">Cancel</button>
+          <button type="button" onClick={leave} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-cancel">Cancel</button>
         </div>
+        {cancelGuard}
         {outcomeMsg && <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="capture-outcome">{outcomeMsg}</p>}
       </Card>
     )
@@ -213,8 +256,9 @@ export default function CapturePlace() {
           <button type="button" disabled={!cap.settled} onClick={() => void finishRide(true)} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[17px] font-semibold disabled:opacity-50" style={{ color: warning, borderColor: warning }} data-audit="capture-finish-here">
             Finish here
           </button>
-          <button type="button" onClick={() => { void cap.stop(); setMode('choose') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-cancel">Cancel</button>
+          <button type="button" onClick={leave} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-cancel">Cancel</button>
         </div>
+        {cancelGuard}
         <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
           Finish here draws a straight line back to your start when the ground will not let you close — a creek, a cliff, the neighbour&rsquo;s fence. The place is labelled for it.
         </p>
