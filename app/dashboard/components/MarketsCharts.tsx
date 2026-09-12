@@ -7,7 +7,7 @@ import {
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { AuctionSeries, AuctionPoint, NationalPoint, CornPoint, CyclePoint, MarketEvent } from '@/lib/markets/series'
-import { reportUrl, THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
+import { THIN_HEAD_THRESHOLD, scopeLabel, thinEvidence } from '@/lib/market-scope'
 import ReportEvidence from '@/app/components/ReportEvidence'
 
 // ─── Markets charts (Block 2.5, Part B) ───────────────────────────────────────
@@ -364,9 +364,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [picked, setPicked] = useState<MarketEvent | null>(null)
   const [showEvents, setShowEvents] = useState(false)    // Block 7: dated event markers live in Compare and settings, off by default
   const [salesView, setSalesView] = useState(false)      // Block 7: Chart | Sales — two views of one section
-  const [changeOpen, setChangeOpen] = useState(false)     // Block 7: class · weight band · measure, behind "Change cattle"
   const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and events, details) behind "Compare and settings"
-  const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
   const [pickedKey, setPickedKey] = useState<string | null>(null)
@@ -439,22 +437,31 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     <div className="-mx-4 sm:mx-0">
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
       <p className={EYEBROW}>{mode === 'context' ? 'Broader context · chart' : 'Selected cattle'}</p>
-      {/* Block 7 (Part 1): the answer first — the latest reported price for the cattle in view, with its
-          date, barn, sample size and change — above every control. Controls live behind two disclosures:
-          "Change cattle" (class · weight band · measure) and "Compare and settings" (period · comparison). */}
+      {/* 7C: the chart's own subject and standing, above its one control.
+          "Change cattle" is gone — the lot select at the top of the page drives
+          class and weight band (6I) — so Compare and settings is the only
+          disclosure here, holding measure, period, comparison and events. */}
       {mode !== 'context' && (() => {
         const sorted = [...localPts].sort((a, b) => a.date.localeCompare(b.date))
         const latest = sorted[sorted.length - 1] ?? null, prev = sorted[sorted.length - 2] ?? null
         const town = p.localLabel.split(' — ').slice(-1)[0] ?? p.localLabel
+        // Block 7C — this WAS the page's headline: the class price at
+        // type-main-number, 1,700px above the rancher's own lot value. The lot
+        // value is the hero now, so this is the chart's SUBJECT line — what is
+        // plotted and where it stands — at ordinary weight. The class price
+        // also appears inside "How this is figured" as the reference the lot
+        // math starts from: available, not competing.
+        //
+        // Its barn / date / head / Report line is gone too. ReportedSale states
+        // that once, at the top, beside the number it backs.
         return (
           <div className="mt-2" data-audit="selected-cattle">
             {latest ? (
               <>
-                <p className="type-main-number text-ink" data-audit="selected-price">{fmtWithUnit(measureValue(latest.price, measure, bandSel, p.lot), unit)}</p>
-                <p className="mt-1 font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
-                <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="selected-evidence">
-                  {town} · {fmtDay(latest.date)} · {latest.head.toLocaleString('en-US')} head{latest.thin ? ' — limited sample' : ''}
-                  {' · '}<a href={reportUrl(latest.reportId)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2" data-audit="report-link">Report ↗</a>
+                <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
+                <p className="mt-0.5 font-dm-sans text-[17px] text-ink" data-audit="selected-price">
+                  {fmtWithUnit(measureValue(latest.price, measure, bandSel, p.lot), unit)}
+                  <span className="text-secondary-ink"> · {latest.head.toLocaleString('en-US')} head{latest.thin ? ', limited sample' : ''}</span>
                 </p>
                 <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="selected-change">
                   {prev
@@ -473,36 +480,25 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <ChipRow<ContextView> label="Context" value={ctx} onChange={v => { setCtx(v); setPickedKey(null) }} options={[{ value: 'corn', label: 'Corn' }, { value: 'cycle', label: 'Cattle cycle' }]} />
         ) : (
           <>
+            {/* 7C — "Change cattle ▾" is gone. Its Class and Weight band chips
+                duplicated the lot select now sitting at the top of the page:
+                since 6I the selected lot already drives the chart's class AND
+                weight band, so those chips were a second way to say the same
+                thing, in the opposite order, 1,400px away. Its Measure control
+                was NOT a duplicate, so it moved into Compare and settings
+                rather than going with them. One control, below the chart. */}
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" aria-expanded={changeOpen} onClick={() => setChangeOpen(v => !v)} data-audit="change-cattle"
-                className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-                {changeOpen ? 'Done ▴' : 'Change cattle ▾'}
-              </button>
               <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)} data-audit="compare-settings"
                 className="min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
                 {settingsOpen ? 'Done ▴' : 'Compare and settings ▾'}
               </button>
             </div>
-            {changeOpen && (
-              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="change-cattle-panel">
-                <div>
-                  <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Class</p>
-                  <ChipRow<'Steers' | 'Heifers'> label="Class" value={cls} onChange={setCls} options={[{ value: 'Steers', label: 'Steers' }, { value: 'Heifers', label: 'Heifers' }]} />
-                </div>
-                {bandsAvailable.length > 0 && (
-                  <div>
-                    <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Weight band</p>
-                    <ChipRow<string> label="Weight band" value={bandSel} onChange={setBand} options={bandsAvailable.map(b => ({ value: b, label: bandLabel(b) }))} />
-                  </div>
-                )}
+            {settingsOpen && (
+              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="compare-settings-panel">
                 <div>
                   <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Measure</p>
                   <ChipRow<Measure> label="Measure" value={measure} onChange={setMeasure} options={measureOptions} />
                 </div>
-              </div>
-            )}
-            {settingsOpen && (
-              <div className="space-y-3 rounded-lg border border-forest-green/10 bg-cream/60 p-3" data-audit="compare-settings-panel">
                 {/* Three independent controls — changing one never resets another. Seasonality only once a prior year exists. */}
                 <div>
                   <p className="mb-2 font-dm-sans text-[16px] font-semibold text-forest-green">Period</p>
@@ -633,27 +629,20 @@ export default function MarketsCharts(p: MarketsChartsProps) {
               class, band, barn and unit as the cattle card above. Corn stands alone by default; a
               person who wants the feeder panel beside it opens the comparison, and the two panels
               share one time axis with their own units. */}
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{cornCompare ? 'Corn and feeder cattle · two charts, one time axis' : 'Corn · the feedlot’s input cost'}</p>
-          <button type="button" aria-pressed={cornCompare} onClick={() => setCornCompare(v => !v)} data-audit="corn-compare"
-            className="mt-2 min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-            {cornCompare ? 'Hide feeder cattle ▴' : 'Compare with feeder cattle ▾'}
-          </button>
+          {/* 7C — "Compare with feeder cattle ▾" is gone. It was a comparison
+              inside a disclosure inside the last section of the page: two taps
+              deep, in context nobody who needed it had reached. Corn stands
+              alone, which is what it did by default anyway. The feeder series
+              is on the cattle chart above, where a rancher is actually looking
+              at it. */}
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Corn · the feedlot&rsquo;s input cost</p>
           {(() => {
-            const feeder = cornCompare ? cornFeederList.flatMap(s => s.dots) : []
             const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100 }))
-            const all = [...feeder.map(d => d.t), ...cornDots.map(d => d.t)]
-            if (all.length === 0) return <Note>No observations to draw yet.</Note>
+            if (cornDots.length === 0) return <Note>No observations to draw yet.</Note>
+            const all = cornDots.map(d => d.t)
             const x0 = Math.min(...all) - 86_400_000 * 2, x1 = Math.max(...all) + 86_400_000 * 2
             return (
               <>
-                {cornCompare && (
-                  <>
-                    <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">{cls} · {bandLabel(bandSel)} · {p.localLabel} · {unit}</p>
-                    {feeder.length > 0
-                      ? <ObservationChart seriesList={cornFeederList} {...chartProps} height={200} domain={[x0, x1]} />
-                      : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
-                  </>
-                )}
                 <p className="mt-2 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Corn · front-month settle · CBOT via Yahoo Finance · $/bu</p>
                 <div className="h-[160px] w-full">
                   <ResponsiveContainer width="100%" height="100%">

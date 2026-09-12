@@ -5,8 +5,7 @@ import type { LotValuation } from '@/lib/herd-estimate'
 import type { TrendData } from '@/lib/trend'
 import type { OutlookData, OutlookLot } from '@/lib/outlook'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import ReportEvidence from '@/app/components/ReportEvidence'
-import { matchLabel, scopeLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
+import { matchLabel, sensitivityLine, thinEvidence, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 
 // The HerdEstimate display — hero number (the one place boldness is spent: large Fraunces) +
 // a Now/Trend/Outlook Segmented toggle. Everything but the hero is quiet DM Sans / tabular.
@@ -68,9 +67,11 @@ export function LotCard({ l }: { l: LotValuation }) {
                 <MatchChip label={label!} />
                 {src!.cull && <span className="rounded-lg bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-900 border border-amber-200">Cull price — salvage, not breeding value</span>}
               </p>
-              <p className="mt-1 font-dm-sans text-[16px] text-ink">
-                {scopeLabel({ kind: 'nearby', town: src!.town.replace(/,\s*[A-Z]{2}$/, '') })} · <ReportEvidence barn={src!.barn_name} date={src!.report_date} head={src!.head_count} slug={src!.slug_id} />
-              </p>
+              {/* 7C: no barn, date, head or Report link here. This card renders
+                  inside "How this is figured" on Markets, where ReportedSale has
+                  already stated all four once, at the top, beside the number they
+                  back. A lot priced at a DIFFERENT barn is named by the hero's
+                  own-source line — the 6I exception lives there, not here. */}
               <p className="font-dm-sans text-[16px] text-ink">
                 {src!.mars_class ?? 'class'}{src!.exact_bracket ? ` · ${src!.matched.split(' / ').slice(-1)[0]}` : ' · class average, no exact bracket'} · {src!.head_count != null ? `${src!.head_count.toLocaleString('en-US')} head reported` : 'head count not reported'} ·{' '}
                 {l.thin
@@ -116,12 +117,22 @@ function DeltaCwt({ cwt }: { cwt: number }) {
 }
 
 
-export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
+export function PriceHistoryPanel({ trend, pageBarn = null }: { trend: TrendData | null; pageBarn?: string | null }) {
+  // 7C: `pageBarn` is the barn ReportedSale names at the top of the page. A row
+  // measured there no longer repeats it — the page has one barn and it is
+  // stated once. A row measured ANYWHERE ELSE still names its own, which is
+  // 6I's actual rule: not "always name the barn" but "never let a value pass
+  // for the page's barn when it isn't". Cutting the name unconditionally would
+  // have removed the exception along with the repetition.
+  const short = (b: string) => b.replace(/,.*$/, '')
+  const elsewhere = (b: string | null | undefined) => !!b && (!pageBarn || short(b) !== short(pageBarn))
   if (!trend) return <Stub line="Price history is temporarily unavailable — check back shortly." />
   return (
     <section className="space-y-4" data-audit="price-history" aria-labelledby="price-history-h">
-      {/* 6I: no barn in the heading — each line below names the barn it is measured at, so a
-          pinned sale barn never heads a list of another barn's values. */}
+      {/* 6I: no barn in the heading. A line names its barn only when that barn is
+          NOT the one ReportedSale named at the top — so a pinned sale barn never
+          heads a list of another barn's values, and the page's own barn is not
+          restated on every row. */}
       <h2 id="price-history-h" className={`${EYEBROW} !text-ink`}>Price history</h2>
       {/* THIS WEEK'S RANGE — one price is one price, never "$X–$X" */}
       {trend.spread.length > 0 && (
@@ -130,7 +141,7 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
           <div className="mt-1 space-y-1">
             {trend.spread.map((s, i) => (
               <p key={i} className="font-dm-sans text-[16px] text-ink" data-audit="spread-row">
-                {s.label} at {s.barn.replace(/,.*$/, '')}:{' '}
+                {s.label}{elsewhere(s.barn) ? ` at ${short(s.barn)}` : ''}:{' '}
                 {Math.round(s.min * 100) === Math.round(s.max * 100)
                   ? <><span className="tabular-price text-ink">${s.min.toFixed(2)}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported price</>
                   : <><span className="tabular-price text-ink">${s.min}–{s.max}</span>/{s.basis === 'cwt' ? 'cwt' : 'hd'} reported range</>}
@@ -153,7 +164,7 @@ export function PriceHistoryPanel({ trend }: { trend: TrendData | null }) {
           <div className="mt-1 space-y-1">
             {trend.priceDeltas.map((p, i) => (
               <p key={i} className="font-dm-sans text-[16px]" data-audit="delta-row">
-                <span className="text-ink">{p.label}{p.barn ? ` at ${p.barn.replace(/,.*$/, '')}` : ''}:</span>{' '}
+                <span className="text-ink">{p.label}{elsewhere(p.barn) ? ` at ${short(p.barn!)}` : ""}:</span>{' '}
                 {p.status === 'ready' && p.cwt != null ? (
                   <>
                     <DeltaCwt cwt={p.cwt} />/cwt <span className="text-secondary-ink">vs last sale ({fmtShort(p.sinceDate ?? null)})</span>

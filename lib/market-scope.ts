@@ -6,6 +6,8 @@
 // dollar figure is withheld, and the sensitivity line — exact arithmetic on a
 // lot's head and weight, nothing to be wrong about.
 
+import { FRESH_DAYS, ageDays } from './barn-geo'
+
 /** Below this many reported head, a reference is thin: show the range and say so, never a precise dollar figure. */
 export const THIN_HEAD_THRESHOLD = 20
 
@@ -34,6 +36,46 @@ export type Scope =
   | { kind: 'reference'; town: string; miles: number }   // beyond the discovery radius: town WITH state + straight-line miles
   | { kind: 'regional'; region: string }
   | { kind: 'national' }
+
+// ─── How old is this reference? (Block 7C) ────────────────────────────────────
+//
+// Markets used to open with a three-date strip — "Latest reports: Local Sep 10
+// · National Aug 31 · LRP Sep 11" — three dates for three different sections,
+// none of them beside the number they date. It is replaced by ONE statement,
+// in the reported-sale block under the hero, about the reference the page's
+// own figures are built from.
+//
+// The window is not a new number. FRESH_DAYS and ageDays are lib/barn-geo's,
+// the same rule that decides whether a barn resolves as a reference at all —
+// so the page cannot say "fresh" about a barn the resolver has already ruled
+// stale, or the reverse. Importing beats restating: a second copy of a rule is
+// a second thing to be wrong.
+
+export interface SaleAge {
+  /** "Billings last reported Sep 10 · 2 days ago" — past the window it says so. */
+  line: string
+  /** Past FRESH_DAYS. The hero's price carries a short marker when this is true. */
+  stale: boolean
+  days: number
+}
+
+export function saleAge(barnTown: string, reportDate: string, nowMs: number = Date.now()): SaleAge {
+  const days = ageDays(reportDate, nowMs)
+  const when = Number.isFinite(days)
+    ? days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`
+    : 'date unknown'
+  const stale = days > FRESH_DAYS
+  const d = new Date(`${reportDate}T00:00:00`)
+  const on = Number.isNaN(d.getTime()) ? reportDate : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return {
+    days,
+    stale,
+    line: `${barnTown} last reported ${on} · ${when}${stale ? `, past the ${FRESH_DAYS}-day window` : ''}`,
+  }
+}
+
+/** The short marker beside a price whose reference is past the window. */
+export const STALE_MARKER = 'stale reference'
 
 /** Block 2.6I — the public USDA AMS MyMarketNews page for a report slug (the latest issue of that report). */
 export const reportUrl = (slug: string) => `https://mymarketnews.ams.usda.gov/viewReport/${encodeURIComponent(slug)}`

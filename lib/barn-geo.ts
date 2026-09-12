@@ -99,7 +99,17 @@ export interface ResolveResult {
 
 type RankResult = Pick<ResolveResult, 'tier' | 'local' | 'nearest_comp' | 'ranked' | 'stale' | 'summary'>
 
-function ageDays(reportDate: string, nowMs: number): number {
+/**
+ * Whole days between a report date and now, midnight-anchored and floored.
+ *
+ * EXPORTED (Block 7C) because more than the ranker needs it: the reported-sale
+ * block on Markets states how old the reference is, and it must use the app's
+ * own arithmetic rather than a copy. The A2 suite guard learned that the hard
+ * way — it re-derived this with a noon anchor, came out a day short of the
+ * ranker on the very case it was written for, and let the check fail anyway.
+ * One function, one answer to "how old is this".
+ */
+export function ageDays(reportDate: string, nowMs: number = Date.now()): number {
   const t = Date.parse(`${reportDate}T00:00:00Z`)
   return Number.isNaN(t) ? Infinity : Math.floor((nowMs - t) / 86_400_000)
 }

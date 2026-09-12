@@ -93,7 +93,9 @@ async function openChartControls(page: Page) {
   // Broader context (the corn / cycle chart) sits behind a disclosure — open it so its Context radios exist.
   const bc = page.locator('[data-audit="broader-context-more"]').first()
   if (await bc.count() && (await bc.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="broader-context-more-summary"]').first().click()
-  for (const a of ['change-cattle', 'compare-settings']) {
+  // 7C: "Change cattle" is gone — the lot select at the top of the page drives
+  // class and weight band. Compare and settings is the chart's only disclosure.
+  for (const a of ['compare-settings']) {
     const b = page.locator(`[data-audit="${a}"]`).first()
     if (await b.count() && (await b.getAttribute('aria-expanded')) !== 'true') await b.click()
   }
@@ -150,7 +152,27 @@ async function main() {
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
-    record('A5: culls listed as slaughter prices, not breeding value', /(Cull cows|Slaughter bulls) · slaughter prices, not breeding value/i.test(body) && /(Breaker|Boner|Lean|Cull cows|Slaughter bulls)/i.test(body))
+    // 7C: read this from the DOM, not from visible page text. The cull and
+    // slaughter boards now sit behind "N more classes" unless one of them is
+    // the selected lot's class, and innerText returns nothing for a closed
+    // <details> — so a body-text match would report the label MISSING when it
+    // is present and correct, which is the worst kind of red.
+    //
+    // The rule it protects is that the label never separates from the number it
+    // qualifies. That is asserted directly: every cull/slaughter board carries
+    // the phrase in its own heading, open or closed, and the priced rows live
+    // in that same board.
+    {
+      const cullBoards = await page.locator('[data-audit="board-cull-cows"], [data-audit="board-slaughter-bulls"]').evaluateAll(els => els.map(e => ({
+        audit: e.getAttribute('data-audit'),
+        heading: (e.querySelector('p')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        rows: e.querySelectorAll('li').length,
+      })))
+      const labelled = cullBoards.filter(b => /slaughter prices, not breeding value/i.test(b.heading) && b.rows > 0)
+      record('A5: culls listed as slaughter prices, not breeding value — the label in the same board as the rows, open or collapsed',
+        cullBoards.length > 0 && labelled.length === cullBoards.length,
+        cullBoards.map(b => `${b.audit}: ${b.rows} row(s) "${b.heading.slice(0, 54)}"`).join(' | ') || 'no cull or slaughter board on this report')
+    }
     record('B3: history card renders, points only', /Selected cattle/i.test(body) && /Points are reported sales/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
@@ -165,7 +187,11 @@ async function main() {
     // "what changed" stays, because it compares like with like.
     record('7.2: no aggregate herd-value change line anywhere', !/Your comparison over time/i.test(body), (body.match(/.{0,50}comparison over time.{0,50}/i) ?? ['absent'])[0])
     record('7.2: no ranch-total dollar gain "since" a date', !/[▲▼]\s*\$[\d,]+\s+since/.test(body), (body.match(/[▲▼]\s*\$[\d,]+\s+since[^·]{0,30}/) ?? ['absent'])[0])
-    record('7.2: per-lot what-changed survives, naming its barn', /WHAT CHANGED FOR MY CATTLE/i.test(body) && /\/cwt at /i.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
+    // 7C: the section is "What changed" (merged with the since-you-last-checked
+    // lines) and a row names its barn ONLY when that barn is not the page's, so
+    // "/cwt at " is no longer the right proof. What must survive is the per-lot
+    // line itself — like compared with like, one lot at a time.
+    record('7.2/7C: per-lot what-changed survives, one labeled market-reference line per lot', /WHAT CHANGED/i.test(body) && /Market reference: /.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
     record('7.3: no carried-forward control anywhere on Markets', (await page.getByRole('button', { name: /carried-forward/i }).count()) === 0)
     record('7.3: the chart says points only, in one state', /Points are reported sales\. Nothing is drawn between them/.test((await stepCopy.innerText()).replace(/\s+/g, ' ')) && !/Dashed steps/.test(await stepCopy.innerText()), (await stepCopy.innerText()).replace(/\s+/g, ' ').slice(0, 80))
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
@@ -201,12 +227,18 @@ async function main() {
       await page.getByRole('radio', { name: '12 mo', exact: true }).click()
       const natStill = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
       const title12 = (await page.locator('[data-audit="chart-title"]').first().innerText()).trim()
-      await page.getByRole('radio', { name: 'Heifers', exact: true }).click()
-      const natAfterClass = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
-      const periodAfterClass = await page.getByRole('radio', { name: '12 mo', exact: true }).getAttribute('aria-checked')
+      // 7C: CLASS IS NO LONGER A CHART CONTROL. The Steers/Heifers chips went
+      // with "Change cattle" — the lot select at the top of the page drives the
+      // chart's class and weight band (6I). The independence rule is unchanged
+      // and still worth checking; the third control is now Measure, which moved
+      // into Compare and settings rather than being cut with the chips.
+      await page.getByRole('radio', { name: '$/head', exact: true }).click()
+      const natAfterMeasure = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
+      const periodAfterMeasure = await page.getByRole('radio', { name: '12 mo', exact: true }).getAttribute('aria-checked')
+      const classChips = await page.getByRole('radio', { name: 'Heifers', exact: true }).count()
       const legend = await page.locator('[data-audit="dot-legend"]').first().innerText().catch(() => '')
-      record('6B: period · comparison · class are independent — National survives a period change, both survive a class change; the legend names open dots', natStill === 'true' && natAfterClass === 'true' && periodAfterClass === 'true' && /national/i.test(title12) && /Each dot is a reported sale; open dots have fewer than 20 head/.test(legend), `title "${title12}" · legend "${legend}"`)
-      await page.getByRole('radio', { name: 'Steers', exact: true }).click()
+      record('6B/7C: period · comparison · measure are independent — National survives a period change, both survive a measure change; class is the lot select\'s, not a chart chip; the legend names open dots', natStill === 'true' && natAfterMeasure === 'true' && periodAfterMeasure === 'true' && classChips === 0 && /national/i.test(title12) && /Each dot is a reported sale; open dots have fewer than 20 head/.test(legend), `title "${title12}" · class chips ${classChips} · legend "${legend}"`)
+      await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
       await page.getByRole('radio', { name: 'Local', exact: true }).click()
       await page.getByRole('radio', { name: 'This year', exact: true }).click()
     }
@@ -272,9 +304,17 @@ async function main() {
     // ── Block 2.6I — every price-bearing component links to its report ──
     {
       const linkIn = async (sel: string) => page.locator(`${sel} [data-audit="report-link"]`).count()
-      const auctionLinks = await linkIn('[data-audit="auction-card"]'), herdLinks = await linkIn('[data-audit="herd-value-card"]')
-      record('2.6I: the auction card links to its report', auctionLinks >= 1, `${auctionLinks} link(s)`)
-      record('2.6I: the herd value card links to each barn it priced at', herdLinks >= 1, `${herdLinks} link(s)`)
+      // 7C CHANGED THIS INVARIANT. 2.6I said every price-bearing component links
+      // to its report, which produced seven links to one report and six copies
+      // of one evidence line. The rule is now: the page states its evidence
+      // ONCE, in the reported-sale block, and that block carries the link. A
+      // picked sale is a DIFFERENT sale and still carries its own — that part
+      // of 2.6I is untouched and checked below.
+      const saleLinks = await linkIn('[data-audit="reported-sale"]')
+      const pageLinks = await page.locator('[data-audit="report-link"]').count()
+      const evidenceLines = await page.locator('[data-audit="report-evidence"]').count()
+      record('2.6I/7C: the reported-sale block links to its report', saleLinks === 1, `${saleLinks} link(s) in the block`)
+      record('2.6I/7C: the page states that report ONCE — one link on load, no repeated evidence line', pageLinks === 1 && evidenceLines === 0, `${pageLinks} report link(s) page-wide · ${evidenceLines} repeated evidence line(s)`)
       await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"] [data-audit="point"]').first().focus(); await page.keyboard.press('Enter')
       const sheetLinks = await linkIn('[data-audit="point-sheet"]')
       record('2.6I: a picked point links to its report', sheetLinks >= 1, `${sheetLinks} link(s)`)
@@ -373,7 +413,7 @@ async function main() {
     //    15 px text floor inside the Markets cards, a full-width chart, a tappable point,
     //    a tappable event marker — measured, not inferred from CSS. ──
     const MEASURE = `(function(width){
-      var cards = Array.from(document.querySelectorAll('[data-audit="history-card"],[data-audit="auction-card"],[data-audit="herd-value-card"],[data-audit="since-card"],[data-audit="sell-pin"]'));
+      var cards = Array.from(document.querySelectorAll('[data-audit="history-card"],[data-audit="auction-card"],[data-audit="herd-value-card"],[data-audit="reported-sale"],[data-audit="what-changed"],[data-audit="sell-pin"]'));
       var overflowX = document.documentElement.scrollWidth - document.documentElement.clientWidth;
       var small = []; var tiny = [];
       cards.forEach(function(card){
@@ -450,24 +490,36 @@ async function main() {
     await page.getByText('Every $1/cwt').first().waitFor({ timeout: 30_000 }).catch(() => {})
     const herd = await text(page)
     record('A4: the Markets lot card carries the sensitivity line', /Every \$1\/cwt move is \$1,650 on this lot/.test(herd))
-    record('A2: the Markets lot card scope is the barn', /(Local report|Preferred sale barn) — /.test(herd) && !/County auction/.test(herd))
-    record('2.6I: the Markets lot card links to its report', (await page.locator('[data-audit="report-link"]').count()) >= 1)
+    // 7C: the scope is stated in the reported-sale block ("… · ~95 mi · Local
+    // report · Report ↗"), not as a "Local report — Billings" label on the lot
+    // card. Still the barn, still never a county.
+    record('A2: the Markets page states its scope as the barn, never a county', /(Local report|Preferred sale barn|Regional reference)/.test(herd) && !/County auction/.test(herd))
+    record('2.6I/7C: exactly one report link on the default page', (await page.locator('[data-audit="report-link"]').count()) === 1)
     // ── Block 6B — headline and basis rules, as rendered ──
     {
-      const rows = await page.locator('[data-audit="comparison-row"]').count()
+      // 7C: one lot at a time. The per-lot ROWS are gone — the hero is the
+      // selected lot and the select switches it — so the basis rule is checked
+      // by selecting the heifer lot and reading the hero, not by finding its row.
+      const { data: heiferForBasis } = await admin.from('herd_lots').select('id').eq('created_by', userId).eq('name', 'Replacement heifers').maybeSingle()
+      await page.goto(`/markets?fips=${HOME_FIPS}&lot=${heiferForBasis?.id}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="lot-value"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      const heroText = (await page.locator('[data-audit="herd-value-card"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       const basis = await page.locator('[data-audit="basis-line"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      const heiferRow = (await page.locator('[data-audit="comparison-row"]').filter({ hasText: 'Replacement heifers' }).innerText().catch(() => '')).replace(/\s+/g, ' ')
-      const heiferPriced = !/Not priced|not priced/i.test(heiferRow) && /\$/.test(heiferRow)
-      record('6B: the replacement-heifer lot states its basis — a feeder heifer reference, not a breeding value', rows >= 2 && (heiferPriced ? basis.some(b => /Feeder heifer reference — not a breeding value/.test(b)) : /Not priced/i.test(heiferRow)), `rows ${rows} · basis [${basis.join(' | ')}] · heifer row "${heiferRow.slice(0, 90)}"`)
+      const heiferPriced = /\$/.test(heroText) && !/Not priced|not priced/i.test(heroText)
+      record('6B: the replacement-heifer lot states its basis — a feeder heifer reference, not a breeding value', heiferPriced ? basis.some(b => /Feeder heifer reference — not a breeding value/.test(b)) : /Not priced/i.test(heroText), `basis [${basis.join(' | ')}] · hero "${heroText.slice(0, 90)}"`)
+      // No summed total exists in this layout at all. The no-gross SENTENCE
+      // appears only when a total would have been dishonest, so it is checked
+      // conditionally — printing a reason when the lots would have qualified
+      // would itself be the lie.
       const gross = await page.locator('[data-audit="gross-total"]').count()
       const noGross = (await page.locator('[data-audit="no-gross"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      const refSales = await page.locator('[data-audit="reference-sale"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      record('6B: no gross total unless every lot clears 20 head and shares purpose and basis — and every row names its reference sale', gross === 0 && /^No gross total: /.test(noGross) && refSales.length >= 1 && refSales.every(r => /^Reference sale: /.test(r)), `gross ${gross} · "${noGross}" · [${refSales.join(' | ')}]`)
-      const eyebrow = (await page.locator('[data-audit="herd-value-card"] p').first().innerText().catch(() => '')).trim()
-      record('6B: the headline reads Market comparisons for N lots, never Herd value', /^Market comparisons for \d+ lots?$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
-      await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})   // Block 7: receipts sit behind Sale detail
+      record('6B/7C: no gross total anywhere, and the no-gross note states a reason when it appears', gross === 0 && (noGross === '' || /^No gross total: .+\.$/.test(noGross)), `gross ${gross} · "${noGross}"`)
+      const eyebrow = (await page.locator('[data-audit="your-cattle"] h2').first().innerText().catch(() => '')).trim()
+      record('6B/7C: the section reads "Your cattle", never "Herd value"', /^your cattle$/i.test(eyebrow) && !/Herd value/i.test(await text(page)), `"${eyebrow}"`)
+      // 7C: receipts are no longer behind "Sale detail" — they are open in the
+      // reported-sale block. No click needed, and none is made.
       const receipts = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head (across .+ class(es)?|on the .+ report), /.test(receipts), `"${receipts.slice(0, 100)}"`)
+      record('6B: the receipts header reconciles its scope before the number', /^Receipts: [\d,]+ head (across .+ class(es)?|on the .+ report)/.test(receipts), `"${receipts.slice(0, 100)}"`)
 
       // ── Block 6 (6I): one selection context — lot, chart, heading, source and receipts agree ──
       const { data: heiferLot } = await admin.from('herd_lots').select('id').eq('created_by', userId).eq('name', 'Replacement heifers').maybeSingle()
@@ -480,20 +532,30 @@ async function main() {
       const marketLines = await page.locator('[data-audit="changed-market"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const editLines = await page.locator('[data-audit="changed-edit"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       record('6I: what changed is two labeled lines — the market reference, and the lot\'s own edit — each with its own date', marketLines.length > 0 && marketLines.every(t => /^Market reference: /.test(t)) && editLines.every(t => /^Your lot changed: .*edited /.test(t)), `${marketLines.length} market lines · ${editLines.length} edit lines · "${(editLines[0] ?? marketLines[0] ?? '').slice(0, 80)}"`)
-      const thinRows = page.locator('[data-audit="comparison-row"]').filter({ hasText: 'limited sample' })
-      const thinN = await thinRows.count()
-      if (thinN === 0) skip('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', 'no lot priced off a thin sample this week')
+      // 7C: the thin rule now applies to the HERO — one lot in view, so the
+      // "about $Nk" headline and its exact arithmetic are the selected lot's.
+      const thinN = await page.locator('[data-audit="thin-about"]').count()
+      if (thinN === 0) skip('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', 'the selected lot is not priced off a thin sample this week')
       else {
-        const abouts = await thinRows.locator('[data-audit="thin-about"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-        const exacts = await thinRows.locator('[data-audit="thin-exact"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
-        record('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', abouts.length === thinN && abouts.every(t => /^about \$[\d,]+k?$/.test(t)) && exacts.length === thinN && exacts.every(t => /\$[\d,]+ = [\d,]+ head ×/.test(t)), `${abouts.join(' | ')} · ${(exacts[0] ?? '').slice(0, 90)}`)
+        const about = (await page.locator('[data-audit="thin-about"]').first().innerText().catch(() => '')).trim()
+        const exact = (await page.locator('[data-audit="thin-exact"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        record('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', /^about \$[\d,]+k?$/.test(about) && /\$[\d,]+ = [\d,]+ head ×/.test(exact), `"${about}" · "${exact.slice(0, 90)}"`)
       }
       const phHeading = (await page.locator('#price-history-h').innerText().catch(() => '')).trim()
       const spreadRows = await page.locator('[data-audit="spread-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const deltaRows = await page.locator('[data-audit="delta-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const phLines = [...spreadRows, ...deltaRows]
-      record('6I: Price history carries no barn in its heading — every range and movement names the barn it is measured at', /^price history$/i.test(phHeading) && phLines.length > 0 && phLines.every(t => / at [A-Z][^:]+:/.test(t)), `heading "${phHeading}" · ${phLines.length} lines · "${(phLines[0] ?? '').slice(0, 70)}"`)
-      if ((await page.locator('[data-audit="sale-detail"]').first().getAttribute('data-open').catch(() => 'false')) !== 'true') await page.locator('[data-audit="sale-detail-summary"]').first().click().catch(() => {})
+      // 7C INVERTS THE ASSERTION, not the rule. 6I required every row to name
+      // its barn so a pinned barn never headed another barn's values. With the
+      // page's barn stated once at the top, repeating it on every row was the
+      // repetition this block set out to cut — so a row measured at the PAGE's
+      // barn must now be silent about it, and a row measured elsewhere must
+      // still say so. The exception is what 6I was protecting; the restatement
+      // was not.
+      const pageBarnName = (await page.locator('[data-audit="reported-sale-barn"]').first().innerText().catch(() => '')).split('·')[0].trim()
+      const namesPageBarn = phLines.filter(t => pageBarnName && t.includes(pageBarnName.replace(/,.*$/, '')))
+      record('6I/7C: Price history carries no barn in its heading, and no row restates the page\'s own barn', /^price history$/i.test(phHeading) && phLines.length > 0 && namesPageBarn.length === 0, `heading "${phHeading}" · page barn "${pageBarnName}" · ${phLines.length} lines, ${namesPageBarn.length} restating it · "${(phLines[0] ?? '').slice(0, 70)}"`)
+      // 7C: no "Sale detail" disclosure to open — receipts are in the open.
       const rc = (await page.locator('[data-audit="receipts-scope"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
       const headline = rc.match(/^Receipts: ([\d,]+) head (across|on the) /)
       const parts = [...rc.matchAll(/: ([\d,]+) head/g)].map(m => parseInt(m[1].replace(/,/g, ''), 10)).slice(1)
@@ -504,37 +566,60 @@ async function main() {
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="broader-context-more"]').waitFor({ timeout: 45_000 }).catch(() => {})
       await openChartControls(page)
-      await page.locator('[data-audit="corn-compare"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      // 7C: "Compare with feeder cattle" is gone — a comparison inside a
+      // disclosure inside the last section, two taps deep. Corn draws corn
+      // alone, which is all it ever did by default, and the assertion is now
+      // simply that: one cattle chart on the page, corn in its own units, and
+      // no control left offering to overlay them.
       const cattleTitles = () => page.locator('[data-audit="chart-title"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^(Steers|Heifers) · /.test(t)))
-      const before7 = await cattleTitles()
+      const cattle7 = await cattleTitles()
       const contextCard = page.locator('[data-audit="history-card"]').nth(1)
-      const cornTitlesBefore = await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()
-      await page.locator('[data-audit="corn-compare"]').click()
-      await page.waitForTimeout(800)
-      const after7 = await cattleTitles()
-      const cornTitlesAfter = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
-      record('7-2: one cattle chart on the page by default — the corn view draws corn alone; "Compare with feeder cattle" opens a second aligned panel with its own unit', before7.length === 1 && cornTitlesBefore.length === 1 && /\$\/bu$/.test(cornTitlesBefore[0].trim()) && after7.length === 2 && cornTitlesAfter.length === 2 && /\$\/cwt$|\$\/head$|per head$/.test(cornTitlesAfter[0]) && /\$\/bu$/.test(cornTitlesAfter[1]), `default cattle titles ${before7.length} · corn card titles ${cornTitlesBefore.join(' | ')} → after opening: ${cornTitlesAfter.join(' | ')}`)
-      await page.locator('[data-audit="corn-compare"]').click().catch(() => {})
+      const cornTitles = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
+      const overlayControl = await page.locator('[data-audit="corn-compare"]').count()
+      record('7-2/7C: one cattle chart on the page, corn drawn alone in its own units, and no overlay control left', cattle7.length === 1 && cornTitles.length === 1 && /\$\/bu$/.test(cornTitles[0]) && overlayControl === 0, `cattle titles ${cattle7.length} · corn titles ${cornTitles.join(' | ')} · overlay control ${overlayControl}`)
 
       // ── Block 7 (Part 1): done-when, as rendered — on the DEFAULT page: the disclosures this run opened are
       // remembered per browser (by design), so forget them first and measure what a first visit sees.
       await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('dryline_disclosure_')) localStorage.removeItem(k) })
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="selected-price"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="lot-value"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
       await page.locator('[data-audit="history-card"]').first().locator('[data-audit="chart"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const yOf = async (sel: string) => { const b = await page.locator(sel).first().boundingBox().catch(() => null); return b ? Math.round(b.y + Number(await page.evaluate('window.scrollY'))) : -1 }
-      const priceText = (await page.locator('[data-audit="selected-price"]').first().innerText().catch(() => '')).trim()
-      const priceY = await yOf('[data-audit="selected-price"]'), chartY = await yOf('[data-audit="history-card"] [data-audit="chart"]')
+      // 7C: the first number on Markets is the LOT'S VALUE, not the class price.
+      // 7-P1 asserted the class price led the page; that was the thing this
+      // block set out to change, so the check now names the number that leads.
+      const priceText = (await page.locator('[data-audit="lot-value"]').first().innerText().catch(() => '')).trim()
+      const priceY = await yOf('[data-audit="lot-value"]'), chartY = await yOf('[data-audit="history-card"] [data-audit="chart"]')
+      const saleY = await yOf('[data-audit="reported-sale"]')
+      const staleness = (await page.locator('[data-audit="sale-age"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const dateStrip = await page.locator('[data-audit="markets-report-dates"]').count()
+      const videoFeed = await page.locator('[data-audit="video-feed"]').count()
+      const title = (await page.locator('[data-audit="markets-title"]').first().innerText().catch(() => '')).trim()
       // visible controls, in document order, with whether each precedes the price (no named inner functions: esbuild's keepNames breaks page.evaluate)
-      const controlRows = await page.locator('main [role="radiogroup"], main [role="radio"], main select').evaluateAll(els => els.map(e => ({ y: Math.round(e.getBoundingClientRect().top + window.scrollY), label: e.getAttribute('aria-label') ?? e.tagName.toLowerCase(), group: e.getAttribute('role') === 'radiogroup', visible: e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'), beforePrice: !!document.querySelector('main [data-audit="selected-price"]') && (e.compareDocumentPosition(document.querySelector('main [data-audit="selected-price"]')!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 })))
+      const controlRows = await page.locator('main [role="radiogroup"], main [role="radio"], main select').evaluateAll(els => els.map(e => ({ y: Math.round(e.getBoundingClientRect().top + window.scrollY), label: e.getAttribute('aria-label') ?? e.tagName.toLowerCase(), group: e.getAttribute('role') === 'radiogroup', visible: e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'), beforePrice: !!document.querySelector('main [data-audit="lot-value"]') && (e.compareDocumentPosition(document.querySelector('main [data-audit="lot-value"]')!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 })))
       const firstControlBefore = controlRows.some(c => c.visible && c.beforePrice)
       const groupsAboveChart = controlRows.filter(c => c.group && c.visible && chartY > 0 && c.y < chartY).map(c => c.label)
       const cattleEyebrows = (await page.locator('main p').evaluateAll(els => els.filter(e => (e.textContent ?? '').trim() === 'Cattle markets' && e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])')).length))
       const boardState = async (sel: string) => { const n = await page.locator(sel).count(); if (n === 0) return 'absent'; return (await page.locator(sel).first().evaluate(e => e.getBoundingClientRect().height > 0 && !e.closest('details:not([open])'))) ? 'visible' : 'hidden' }
       const firstThings = { priceText, priceY, chartY, firstControlBefore, groupsAboveChart, cattleEyebrows, cull: await boardState('[data-audit="board-cull-cows"]'), bulls: await boardState('[data-audit="board-slaughter-bulls"]'), vertical: /Vertical axis/.test(await text(page)) }
-      record('7-P1: the latest price is the first thing on Markets — above every control and above the chart', /^\$[\d,.]+/.test(firstThings.priceText) && firstThings.priceY > 0 && firstThings.chartY > firstThings.priceY && !firstThings.firstControlBefore, `"${firstThings.priceText}" at y=${firstThings.priceY} · chart y=${firstThings.chartY} · a control before it: ${firstThings.firstControlBefore}`)
+      record('7-P1/7C: the LOT\'S value is the first thing on Markets — above every control and above the chart', /^(\$[\d,]+|about \$[\d,]+k?)$/.test(firstThings.priceText) && firstThings.priceY > 0 && firstThings.chartY > firstThings.priceY && !firstThings.firstControlBefore, `"${firstThings.priceText}" at y=${firstThings.priceY} · chart y=${firstThings.chartY} · a control before it: ${firstThings.firstControlBefore}`)
+      record('7C: the reported sale sits directly under the hero, above the chart', saleY > priceY && chartY > saleY, `hero y=${priceY} · reported sale y=${saleY} · chart y=${chartY}`)
+      record('7C: one staleness line replaces the three-date strip, and it names the barn and the age', /last reported .+ · (today|yesterday|\d+ days ago)/.test(staleness) && dateStrip === 0, `"${staleness}" · report-date strips ${dateStrip}`)
+      record('7C: the title is the page, not a place, and the empty sale-video line is gone', /^Markets$/.test(title) && videoFeed === 0, `title "${title}" · video-feed ${videoFeed}`)
       record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
-      record('7-P1: cull cows and slaughter bulls are visible without expanding anything', firstThings.cull !== 'hidden' && firstThings.bulls !== 'hidden' && (firstThings.cull === 'visible' || firstThings.bulls === 'visible'), `cull cows ${firstThings.cull} · bulls ${firstThings.bulls}`)
+      // 7C: the boards were 27% of the page at 390 and 31% at 320, four of five
+      // being classes the rancher had not selected. The board matching the
+      // selected lot is open; the rest sit behind ONE tap that says how many.
+      // The check is that the hidden ones are COUNTED, not merely absent — and
+      // that nothing was dropped to shorten the page.
+      const moreClasses = (await page.locator('[data-audit="more-classes-summary"], [data-audit="more-classes"] summary').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const boardsRendered = await page.locator('[data-audit^="board-"]').count()
+      const openBoards = await page.locator('[data-audit^="board-"]').evaluateAll(els => els.filter(e => !e.closest('details:not([open])')).length)
+      record('7-P1/7C: one board is open — the selected lot\'s class — and the rest are one tap away, counted by name', openBoards === 1 && boardsRendered > 1 && /^\d+ more class(es)?/.test(moreClasses), `${openBoards} of ${boardsRendered} board(s) open · "${moreClasses.slice(0, 80)}"`)
+      // Nothing was dropped to shorten the page: every board the report carries
+      // is still rendered, and every band inside them, empty ones included.
+      const bandRows = await page.locator('[data-audit^="board-"] li').count()
+      record('7C: collapsing hid boards, it did not drop them — every board and every band still renders', boardsRendered >= 2 && bandRows >= boardsRendered, `${boardsRendered} boards · ${bandRows} band rows`)
       record('7-P1: no "Cattle markets" heading repeats on the default page, and no "Vertical axis" paragraph', firstThings.cattleEyebrows === 0 && !firstThings.vertical, `visible "Cattle markets" eyebrows ${firstThings.cattleEyebrows} · Vertical axis ${firstThings.vertical}`)
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })

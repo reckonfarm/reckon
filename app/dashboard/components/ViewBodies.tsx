@@ -23,7 +23,7 @@ import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { PriceHistoryPanel, PriceProtectionPanel } from './HerdEstimatePanel'
-import MarketComparisons, { type ReportDate } from './MarketComparisons'
+import MarketComparisons from './MarketComparisons'
 import type { MapListing } from '@/app/hay/map/HayMapClient'
 import LfpEstimateNote from '@/app/components/LfpEstimateNote'
 import { Card } from '@/app/components/ui/Card'
@@ -42,6 +42,8 @@ import HayMapLoader from './HayMapLoader'
 import DashboardAccordion from './DashboardAccordion'
 import LrpMarketsCard from './LrpMarketsCard'
 import LocalAuctionCard from './LocalAuctionCard'
+import ReportedSale from './ReportedSale'
+import { saleAge } from '@/lib/market-scope'
 import NationalBeefCard from './NationalBeefCard'
 import MarketReadShell from './MarketReadShell'
 import Disclosure from '@/app/components/ui/Disclosure'
@@ -869,58 +871,86 @@ export async function MarketsViewBody({
   nationalBeef = nationalRes
   if (chips) [corn, moisture, crop, cycle] = chips
   const hasHerd = anchor != null
-  const reportDates: ReportDate[] = [
-    ...(localAuction.status === 'ok' ? [{ label: 'Local', date: localAuction.saleDate }] : []),
-    ...(nationalBeef.status === 'ok' ? (() => { const w = nationalBeef.fedSteer?.weekEnding ?? nationalBeef.feeder500?.weekEnding ?? nationalBeef.feeder700?.weekEnding; return w ? [{ label: 'National', date: w }] : [] })() : []),
-    ...(lrpResult.status === 'ok' ? [{ label: 'LRP', date: lrpResult.lrp.effective_date }] : []),
-  ]
+
+  const area = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name
+  const localSlug = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null
+  const refStale = localAuction.status === 'ok' ? saleAge(area, localAuction.saleDate).stale : false
 
   return (
     <>
-      {/* Block 6B — the personal work first, the macro read last. Title with the latest
-          report dates → what changed for my cattle → the comparisons (one qualified row
-          per lot; a gross total only when honest) and the selected lot → the chart for the
-          same lot → the local board → references → price protection → market context. */}
-      {/* Block 7 (Part 1): the answer first. Title → the selected cattle's latest price and its chart
-          (above every control) → what changed since the last visit → my cattle → the rest. */}
-      {(() => { const area = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name; return (
-        <div>
-          {titled ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</h1> : <p className="type-page-heading text-ink" data-audit="markets-title">Markets · {area}</p>}
-          {reportDates.length > 0 && (
-            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="markets-report-dates">
-              Latest reports: {reportDates.map((r, i) => <span key={r.label}>{i > 0 && ' · '}{r.label} {new Date(`${r.date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>)}
-            </p>
-          )}
-        </div>
-      ) })()}
-      <Suspense fallback={null}>
-        <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
-      </Suspense>
-      {homeFips && (
-        <Suspense fallback={null}>
-          <MarketsSince localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} />
-        </Suspense>
-      )}
+      {/* ── Block 7C — the page reads top to bottom, and nothing is said twice ──
+          1 Your cattle · 2 Reported sale · 3 Price history · 4 What changed ·
+          5 Other cattle markets · 6 Price protection · 7 Broader context ·
+          8 Preferred sale barn.
+
+          The order inverts what was here. Markets used to open with the class
+          price and put this rancher's own money three screens down; now the
+          ledger's answer leads and the market facts support it. The title lost
+          "· Billings" (ReportedSale names the barn, and "Markets · Billings"
+          read as a place rather than a page) and the three-date strip is gone —
+          each section carries its own as-of, and the one that dates the page's
+          figures is the staleness line in the reported-sale block. */}
+      {titled
+        ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets</h1>
+        : <p className="type-page-heading text-ink" data-audit="markets-title">Markets</p>}
+
+      {/* 1 — the answer. One lot, the select beneath it, no summed total. */}
       {anchor && (
         <MarketComparisons
           estimate={anchor.estimate}
           lots={lots}
           trend={anchor.trend}
           selectedLotId={selectedLotId}
-          area={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name}
-          localSlug={(resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null}
-          reports={reportDates}
-          heading={false}
+          area={area}
+          localSlug={localSlug}
+          part="cattle"
+          stale={refStale}
         />
       )}
-      {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
-      {anchor && <PriceHistoryPanel trend={anchor.trend} />}
-      {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
-      <LocalAuctionCard result={localAuction} volume={anchor?.trend?.volume ?? null} />
-      {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
-      {/* Block 7 (Part 1, 6/8): one "LRP references" row is the answer — the selected lot's reference
-          floor (else the LRP headline), a stale date never hidden — and the calculator, per-lot floors,
-          endorsements, premiums and basis sit behind one disclosure. */}
+
+      {/* 2 — the evidence, once, directly under the number it backs. */}
+      <ReportedSale result={localAuction} volume={anchor?.trend?.volume ?? null} />
+
+      {/* 3 — price history: the chart, its selection strip, and the spread and
+          movement rows that belong to the same question. */}
+      <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
+        <Suspense fallback={null}>
+          <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
+        </Suspense>
+        {anchor && <PriceHistoryPanel trend={anchor.trend} pageBarn={localAuction.status === 'ok' ? localAuction.barnName : null} />}
+      </section>
+
+      {/* 4 — what changed: the snapshot lines and the per-lot movement, merged.
+          Both answered "what moved since I last looked" 200px apart. */}
+      {(homeFips || anchor) && (
+        <section aria-labelledby="what-changed-h" data-audit="what-changed">
+          <h2 id="what-changed-h" className={`${EYEBROW} !text-ink`}>What changed</h2>
+          <Card shadow="none" className="mt-2 px-5 py-4">
+            {homeFips && (
+              <Suspense fallback={null}>
+                <MarketsSince localSlug={localSlug} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} embedded />
+              </Suspense>
+            )}
+            {anchor && (
+              <MarketComparisons
+                estimate={anchor.estimate}
+                lots={lots}
+                trend={anchor.trend}
+                selectedLotId={selectedLotId}
+                area={area}
+                localSlug={localSlug}
+                part="changed"
+              />
+            )}
+          </Card>
+        </section>
+      )}
+
+      {/* 5 — the other classes at the same barn. */}
+      <LocalAuctionCard result={localAuction} lotClass={(lots.find(l => l.id === selectedLotId) ?? lots[0])?.class ?? null} />
+
+      {/* 6 — price protection. One row is the answer; the calculator, per-lot
+          floors, endorsements, premiums and basis sit behind one disclosure. */}
       <section className="space-y-3" aria-labelledby="price-protection-h" data-audit="price-protection">
         <h2 id="price-protection-h" className={`${EYEBROW} !text-ink`}>Price protection</h2>
         {(() => {
@@ -941,8 +971,10 @@ export async function MarketsViewBody({
           </div>
         </Disclosure>
       </section>
-      {/* Block 7 (Part 1, 7/8): one "National markets and feed costs" row, with national beef, corn,
-          the cattle cycle and the market read behind one disclosure. Last, never first. */}
+
+      {/* 7 — broader context, last. The empty "No sale-video feed connected."
+          line is gone: an empty state for a feature that does not exist, that
+          nothing links to and nothing can connect. */}
       <section className="space-y-3" aria-labelledby="broader-context-h" data-audit="broader-context">
         <h2 id="broader-context-h" className={`${EYEBROW} !text-ink`}>Broader context</h2>
         {(() => {
@@ -961,10 +993,13 @@ export async function MarketsViewBody({
             <Suspense fallback={null}>
               <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
             </Suspense>
-            <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="video-feed">No sale-video feed connected.</p>
           </div>
         </Disclosure>
       </section>
+
+      {/* 8 — the setting, at the bottom with the other settings, not above the
+          data it configures. */}
+      {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
     </>
   )
 }
