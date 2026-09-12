@@ -2,7 +2,6 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
 import { resolveRanchId } from '@/lib/ranch-membership'
-import { hasEventDeletion } from '@/lib/schema-capability'
 
 // ─── Deleting an entry (Block 7D.1 / 7D.2) ────────────────────────────────────
 //
@@ -33,12 +32,7 @@ import { hasEventDeletion } from '@/lib/schema-capability'
 // the hard-delete test is not expressible as a policy: "unseen by anyone else"
 // is a comparison against every OTHER member's ranch_members.last_seen_at.
 
-// 'unavailable' is the honest third answer while 061 has not been run. The
-// record path WRITES deleted_at, so it cannot be the fallback for a database
-// that has no such column — there is nowhere to write the record. Offering a
-// delete that would either error or destroy a row without leaving the record
-// would be worse than saying not yet, so the sheet says not yet.
-export type DeleteMode = 'hard' | 'record' | 'unavailable'
+export type DeleteMode = 'hard' | 'record'
 
 export interface DeletePlan {
   mode: DeleteMode
@@ -75,9 +69,6 @@ const COLS = 'id, user_id, ranch_id, type, ts, ingested_at, payload, supersedes_
 export async function planDelete(supabase: SupabaseClient, userId: string, id: string): Promise<{ ok: true; plan: DeletePlan } | { ok: false; status: number; error: string }> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return { ok: false, status: 404, error: 'No ranch' }
-  if (!(await hasEventDeletion(supabase))) {
-    return { ok: true, plan: { mode: 'unavailable', reason: 'deleting is not switched on for this ranch yet', label: 'This entry', ts: '' } }
-  }
   const { data, error } = await supabase.from('events').select(COLS).eq('id', id).maybeSingle()
   if (error || !data) return { ok: false, status: 404, error: 'That entry is not on your ranch' }
   const row = data as unknown as EventRow
@@ -159,7 +150,6 @@ export async function deleteEvent(supabase: SupabaseClient, userId: string, id: 
   const planned = await planDelete(supabase, userId, id)
   if (!planned.ok) return planned
   const { mode, label } = planned.plan
-  if (mode === 'unavailable') return { ok: false, status: 503, error: 'Deleting is not switched on for this ranch yet' }
   const db = createServiceClient()
 
   if (mode === 'hard') {

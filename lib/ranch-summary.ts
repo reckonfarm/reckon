@@ -1,10 +1,9 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { ledgerFilters } from '@/lib/ledger-effective'
+import { effective } from '@/lib/ledger-effective'
 import { getRanchLots } from '@/lib/herd-lots'
 import { getHayLedger } from '@/lib/hay/queries'
 import { ranchYearStart } from '@/lib/jobs/format'
-import { hasEventDeletion } from './schema-capability'
 
 // ─── The Ranch hub's live numbers and the lots' last work (Block 6A) ──────────
 // Every number here exists only when something stands behind it: hay on hand
@@ -46,7 +45,6 @@ export interface LastWork { ts: string; bales: number | null; what: string | nul
 export async function lastWorkByLot(supabase: SupabaseClient, lotIds: string[]): Promise<Record<string, LastWork>> {
   if (lotIds.length === 0) return {}
   // 7D: skip the deleted filter on a database without 061 (temporary).
-  const { effective } = ledgerFilters(await hasEventDeletion(supabase))
   const { data } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', ['hay_fed', 'cattle_worked']).eq('payload->>source', 'manual'))
     .in('payload->>herd_lot_id', lotIds).order('ts', { ascending: false }).limit(400)
   const out: Record<string, LastWork> = {}

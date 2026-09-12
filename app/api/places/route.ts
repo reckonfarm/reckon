@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
-import { hasPlacePin, hasEventDeletion } from '@/lib/schema-capability'
 import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
+import { live } from '@/lib/ledger-effective'
 
 // Places — the named spots on the outfit (031).
 //
@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
   // same shape lib/places/rows.ts uses for `acres`): ask for live places, and if
   // `retired_at` does not exist, ask again without the filter. Every place is
   // live on such a database, so the unfiltered answer is the correct one.
-  const live = await supabase.from('places').select('id, name, kind').is('retired_at', null).order('name', { ascending: true })
-  const { data, error } = live.error
+  const livePlaces = await supabase.from('places').select('id, name, kind').is('retired_at', null).order('name', { ascending: true })
+  const { data, error } = livePlaces.error
     ? await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
-    : live
+    : livePlaces
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // 8B.4 — the picker is what you reach for while standing somewhere, so it is
@@ -59,10 +59,7 @@ export async function GET(req: NextRequest) {
   // list is not.
   const places = (data ?? []) as { id: string; name: string; kind: string }[]
   try {
-    const canDel = await hasEventDeletion(supabase)
-    let q = supabase.from('events').select('ts, payload').eq('payload->>source', 'manual')
-    if (canDel) q = q.is('deleted_at', null)
-    const { data: recent } = await q.order('ts', { ascending: false }).limit(400)
+    const { data: recent } = await live(supabase.from('events').select('ts, payload')).eq('payload->>source', 'manual').order('ts', { ascending: false }).limit(400)
     const lastUsed = new Map<string, string>()
     for (const r of (recent ?? []) as { ts: string; payload: Record<string, unknown> }[]) {
       for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) {
@@ -163,9 +160,8 @@ export async function POST(req: NextRequest) {
   // 7D.4 — a ranch's FIRST place is pinned to Weather as it is created.
   // Without this a new ranch draws its first pasture, opens Weather and finds
   // nothing, because nothing has been recorded there yet: an empty Weather on
-  // day one reads as broken. Only the first, and only when the column exists;
-  // on a database without 062 the key is simply not set.
-  if (ranch_id && await hasPlacePin(supabase)) {
+  // day one reads as broken. Only the first.
+  if (ranch_id) {
     const { count } = await supabase.from('places').select('id', { count: 'exact', head: true }).eq('ranch_id', ranch_id)
     if ((count ?? 0) === 0) row.pinned_at = new Date().toISOString()
   }

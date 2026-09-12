@@ -18,39 +18,16 @@ interface Filterable<T> { is(column: string, value: null): T }
 // as news; a deleted row counts for nothing anywhere and appears on no
 // surface, the record included. Every filter below therefore starts from
 // `live`, so a new reader cannot pick the wrong one and show a deleted entry.
-//
-// `on` is the 061 capability (lib/schema-capability.ts). False means the column
-// does not exist yet, so there is nothing to filter and every entry is live —
-// which is exactly true of a database where nothing can have been deleted.
-// TEMPORARY: when 061 is applied, drop the argument and the branch with it.
-export function live<T extends Filterable<T>>(q: T, on = true): T {
-  return on ? q.is('deleted_at', null) : q
+export function live<T extends Filterable<T>>(q: T): T {
+  return q.is('deleted_at', null)
 }
 
-export function effective<T extends Filterable<T>>(q: T, on = true): T {
-  return live(q, on).is('superseded_by', null).is('voided_at', null)
+export function effective<T extends Filterable<T>>(q: T): T {
+  return live(q).is('superseded_by', null).is('voided_at', null)
 }
 
 // The read used for "what is news": a superseded original is no longer news
 // (its correction is), but a void IS news — someone reversed an entry.
-export function notSuperseded<T extends Filterable<T>>(q: T, on = true): T {
-  return live(q, on).is('superseded_by', null)
-}
-
-/**
- * The three filters, bound to one capability answer.
- *
- * Call sites destructure this and their query expressions are unchanged:
- *
- *   const { effective } = ledgerFilters(await hasEventDeletion(supabase))
- *
- * TEMPORARY, with lib/schema-capability.ts. When 061 is applied, delete this
- * and let the plain exports stand — every call site keeps compiling.
- */
-export function ledgerFilters(on: boolean) {
-  return {
-    live: <T extends Filterable<T>>(q: T): T => live(q, on),
-    effective: <T extends Filterable<T>>(q: T): T => effective(q, on),
-    notSuperseded: <T extends Filterable<T>>(q: T): T => notSuperseded(q, on),
-  }
+export function notSuperseded<T extends Filterable<T>>(q: T): T {
+  return live(q).is('superseded_by', null)
 }

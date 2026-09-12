@@ -1,6 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasEventDeletion, hasPlacePin } from '@/lib/schema-capability'
+import { live } from '@/lib/ledger-effective'
 
 // ─── Which places earn a row on Weather (Block 7D.4) ──────────────────────────
 //
@@ -50,17 +50,9 @@ export async function weatherPlaces(
   supabase: SupabaseClient,
   placeIdsWithReadings: Set<string>,
 ): Promise<WeatherPlaces> {
-  const canPin = await hasPlacePin(supabase)
-  const cols = canPin ? 'id, name, pinned_at' : 'id, name'
-  const { data } = await supabase.from('places').select(cols).is('retired_at', null).order('name')
+  const { data } = await supabase.from('places').select('id, name, pinned_at').is('retired_at', null).order('name')
   const places = ((data ?? []) as unknown as PlaceRow[])
   if (places.length === 0) return { listed: [], rest: [] }
-
-  // Without 062 there is no pin to read, so nothing can be filtered by one and
-  // every place lists — exactly what Weather does today.
-  if (!canPin) {
-    return { listed: places.map(p => ({ id: p.id, name: p.name, pinned: false, because: 'pin' as const })), rest: [] }
-  }
 
   const { data: devs } = await supabase.from('devices').select('place_id').not('place_id', 'is', null)
   const withDevice = new Set(((devs ?? []) as { place_id: string }[]).map(d => d.place_id))
@@ -88,15 +80,12 @@ export async function weatherPlaces(
 
 /** Most events naming it, across the four untyped payload keys. */
 async function busiestPlace(supabase: SupabaseClient, places: PlaceRow[]): Promise<PlaceRow | null> {
-  const canDel = await hasEventDeletion(supabase)
   const KEYS = ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id'] as const
   let best: { place: PlaceRow; n: number } | null = null
   for (const p of places) {
     let n = 0
     for (const k of KEYS) {
-      let q = supabase.from('events').select('id', { count: 'exact', head: true }).eq(`payload->>${k}`, p.id)
-      if (canDel) q = q.is('deleted_at', null)
-      const { count } = await q
+      const { count } = await live(supabase.from('events').select('id', { count: 'exact', head: true })).eq(`payload->>${k}`, p.id)
       n += count ?? 0
     }
     if (!best || n > best.n) best = { place: p, n }
