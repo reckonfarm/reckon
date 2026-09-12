@@ -164,6 +164,7 @@ export default async function ActivityFeed() {
   const { data, error } = await supabase
     .from('events')
     .select('id, type, ts, payload, schema_version, devices(name, places(name))')
+    .is('deleted_at', null)   // 7D: a deleted entry appears on no surface
     .order('ts', { ascending: false })
     .limit(FEED_CAP)
 

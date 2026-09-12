@@ -13,12 +13,21 @@
 
 interface Filterable<T> { is(column: string, value: null): T }
 
+// Block 7D — DELETED IS A THIRD STATE, and it outranks the other two. A
+// superseded row still counts through its correction and a void still counts
+// as news; a deleted row counts for nothing anywhere and appears on no
+// surface, the record included. Every filter below therefore starts from
+// `live`, so a new reader cannot pick the wrong one and show a deleted entry.
+export function live<T extends Filterable<T>>(q: T): T {
+  return q.is('deleted_at', null)
+}
+
 export function effective<T extends Filterable<T>>(q: T): T {
-  return q.is('superseded_by', null).is('voided_at', null)
+  return live(q).is('superseded_by', null).is('voided_at', null)
 }
 
 // The read used for "what is news": a superseded original is no longer news
 // (its correction is), but a void IS news — someone reversed an entry.
 export function notSuperseded<T extends Filterable<T>>(q: T): T {
-  return q.is('superseded_by', null)
+  return live(q).is('superseded_by', null)
 }

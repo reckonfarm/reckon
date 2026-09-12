@@ -50,6 +50,7 @@ export async function resolveMapCentre(
     const { data } = await supabase
       .from('events')
       .select('lat, lng')
+      .is('deleted_at', null)   // 7D: a deleted entry does not steer the map
       .not('lat', 'is', null)
       .not('lng', 'is', null)
       .order('ts', { ascending: false })

@@ -6,6 +6,7 @@ import { getRanchLotsIncludingRetired } from './herd-lots'
 import { lotLabel, type Lot } from './herd'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './manual-log'
 import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
+import { live } from './ledger-effective'
 
 // ─── The activity record (Block 5A) ───────────────────────────────────────────
 // Everything a person recorded on the ranch, findable by stable id forever.
@@ -161,7 +162,10 @@ export async function placeEntryCounts(supabase: SupabaseClient, placeId: string
 export async function listActivity(supabase: SupabaseClient, userId: string, filters: ActivityFilters, cursor?: string | null): Promise<ActivityPage | null> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return null
-  let q = supabase.from('events').select(ACTIVITY_COLS)
+  // 7D: the record shows what stands and what was crossed out, but never what
+  // was DELETED — that is the point of deleting it. `live` is the only filter
+  // the record applies; superseded and voided rows still belong here.
+  let q = live(supabase.from('events').select(ACTIVITY_COLS))
     .eq('ranch_id', ranchId).in('type', [...ACTIVITY_TYPES])
     .order('ts', { ascending: false }).order('id', { ascending: false }).limit(PAGE_SIZE + 1)
   if (filters.actor) q = q.eq('user_id', filters.actor)
@@ -204,7 +208,9 @@ export async function getEvent(supabase: SupabaseClient, userId: string, id: str
   const { data } = await supabase.from('events').select(`${ACTIVITY_COLS}, ranch_id`).eq('id', id).maybeSingle()
   if (!data) return null
   const row = data as ActivityRow & { ranch_id: string }
-  const hop = async (nextId: string | null | undefined) => nextId ? ((await supabase.from('events').select(ACTIVITY_COLS).eq('id', nextId).maybeSingle()).data as ActivityRow | null) : null
+  // A deleted link in a chain is not shown either — the chain walk stops where
+  // the visible record stops.
+  const hop = async (nextId: string | null | undefined) => nextId ? ((await live(supabase.from('events').select(ACTIVITY_COLS)).eq('id', nextId).maybeSingle()).data as ActivityRow | null) : null
   const corrects: ActivityRow[] = []
   for (let cur: ActivityRow | null = await hop(row.supersedes_event_id); cur && corrects.length < CHAIN_MAX; cur = await hop(cur.supersedes_event_id)) corrects.push(cur)
   const correctedBy: ActivityRow[] = []
