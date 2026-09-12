@@ -915,7 +915,7 @@ export async function MarketsViewBody({
         />
       )}
       {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
-      {anchor && <PriceHistoryPanel trend={anchor.trend} />}
+      {anchor && <PriceHistoryPanel trend={anchor.trend} pageBarn={localAuction.status === 'ok' ? localAuction.barnName : null} />}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
       <ReportedSale result={localAuction} volume={anchor?.trend?.volume ?? null} />
       <LocalAuctionCard result={localAuction} />
