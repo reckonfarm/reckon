@@ -1,34 +1,27 @@
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LocalAuctionResult, BandRead, CullRead } from '@/lib/local-auction-service'
-import type { VolumeRow } from '@/lib/trend'
 import { marketDelta } from '@/lib/market-direction'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { isThin, scopeLabel, thinEvidence } from '@/lib/market-scope'
-import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from '@/lib/barn-geo'
-import ReportEvidence from '@/app/components/ReportEvidence'
-import Disclosure from '@/app/components/ui/Disclosure'
+import { isThin, thinEvidence } from '@/lib/market-scope'
 
-// ─── Nearby auction reference (Block 2.5, Part A) ─────────────────────────────
-// Every figure here is an AUCTION result with its scope named — the barn, never
-// the county the person happens to live in. Every line carries its evidence:
-// head reported, sale date, class, and the MARS report id. A band backed by
-// fewer than THIN_HEAD_THRESHOLD head shows its reported range and the thin
-// label, never a cents-precise figure. Cull cows and bulls are kept distinct
-// by grade and never blended with feeders; a slaughter-bull price is a
-// salvage figure and is labeled so.
+// ─── Other cattle markets — the boards (Block 2.5 Part A, reduced in 7C) ──────
+// The classes a rancher opens the page to check: feeder steers, feeder
+// heifers, feeder bulls, cull cows, slaughter bulls. A band backed by fewer
+// than THIN_HEAD_THRESHOLD head shows its reported range and the thin label,
+// never a cents-precise figure. Cull cows and bulls are kept distinct by grade
+// and never blended with feeders; a slaughter-bull price is a salvage figure
+// and is labeled so.
+//
+// The barn, the sale date, the receipts, the scope fallback and the Report
+// link left this file in 7C — they are ReportedSale's now, stated once under
+// the hero instead of a seventh time down here.
 
-function fmtDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 function bandLabel(band: string): string {
   const lo = parseInt(band, 10)
   return `${lo}–${lo + 99} lb`
 }
 const fmtInt = (n: number) => n.toLocaleString('en-US')
-const shortTown = (town: string) => town.replace(/,\s*[A-Z]{2}$/, '')
-// The one no-local sentence, shared by the no-coverage state and the regional-reference state.
-const NO_LOCAL_LINE = `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} of the county center`
 
 
 // One band line (A5): class and weight left, price and unit right, the sample beneath
@@ -82,130 +75,68 @@ function CullLine({ c, kind }: { c: CullRead; kind: 'cows' | 'bulls' }) {
   )
 }
 
-export default function LocalAuctionCard({ result, volume = null }: { result: LocalAuctionResult; volume?: VolumeRow[] | null }) {
+export default function LocalAuctionCard({ result }: { result: LocalAuctionResult }) {
+  // Block 7C — THE BOARDS, and nothing else. The barn, the sale date, the
+  // receipts, the scope fallback and the Report link all moved up into
+  // ReportedSale, which states them once directly under the hero. This card
+  // used to restate the barn in its own title and carry a "Sale detail ▾"
+  // disclosure holding a seventh copy of the same evidence — with the feeder
+  // bulls board hidden inside it, for no reason anyone could name.
+  //
+  // So the disclosure is gone and feeder bulls joins the other four boards in
+  // the open. Small-sample and slaughter-not-breeding labels stay on their own
+  // rows, where they always were: those qualify a number and travel with it.
+  if (result.status !== 'ok') return null   // ReportedSale carries the honest states
+
+  const otherClasses = result.classes.filter(c => c.bands.length > 0 && c.label !== 'Heifers')
+  const heifers = result.classes.filter(c => c.bands.length > 0 && c.label === 'Heifers')
+
   return (
     <Card shadow="soft" className="p-4 sm:p-6" data-audit="auction-card">
-      {/* Block 7 (Part 1, 5/8): the classes a rancher opened the page to check stay visible —
-          feeder steers and heifers, cull cows, slaughter bulls — compact rows. Receipts, the
-          fallback scope, the report evidence and the other classes sit behind "Sale detail".
-          Small-sample and slaughter-not-breeding labels never go behind it. */}
       <div className="mb-3">
         <p className={EYEBROW}>Other cattle markets</p>
         <Heading level={3} visual={5} className="mt-1">Other cattle markets · $/cwt</Heading>
       </div>
 
-      {result.status === 'data_unavailable' && (
-        <p className="font-dm-sans text-[16px] text-ink">Auction data temporarily unavailable — check back shortly.</p>
+      {result.bands.length > 0 && (
+        <div data-audit="board-feeder-steers">
+          <p className={EYEBROW}>Feeder steers · $/cwt</p>
+          <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+            {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
+          </ul>
+        </div>
       )}
-      {result.status === 'no_coverage' && (
-        <p className="font-dm-sans text-[16px] text-ink">{NO_LOCAL_LINE} — Montana barns today, expanding.</p>
+      {heifers.map(c => (
+        <div key={c.label} className="mt-4" data-audit="board-heifers">
+          <p className={EYEBROW}>Feeder heifers · $/cwt</p>
+          <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+            {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls="Heifers" b={b} />)}
+          </ul>
+        </div>
+      ))}
+      {otherClasses.map(c => (
+        <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
+          <p className={EYEBROW}>{c.label} · $/cwt</p>
+          <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+            {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />)}
+          </ul>
+        </div>
+      ))}
+      {result.cullCows.length > 0 && (
+        <div className="mt-4" data-audit="board-cull-cows">
+          <p className={EYEBROW}>Cull cows · slaughter prices, not breeding value · $/cwt</p>
+          <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+            {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" />)}
+          </ul>
+        </div>
       )}
-      {result.status === 'no_recent_sale' && (
-        <p className="font-dm-sans text-[16px] text-ink">
-          No recent sale reported at {result.barnName} ({result.town}) — last sale {fmtDate(result.lastSale)}. Montana barns run lighter summer schedules.
-        </p>
-      )}
-
-      {result.status === 'ok' && (
-        <>
-          {/* Block 2.6A — beyond the discovery radius the card says so FIRST, then offers
-              the barn as a regional reference with its state and straight-line miles. */}
-          {result.beyondHaul && !result.pinned && (
-            <p className="mb-2 font-dm-sans text-[16px] text-ink">{NO_LOCAL_LINE}.</p>
-          )}
-          {/* Scope — the barn, never a county. */}
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">
-            {scopeLabel(
-              result.pinned ? { kind: 'pinned', town: shortTown(result.town) }
-              : result.beyondHaul ? { kind: 'reference', town: result.town, miles: result.miles }
-              : { kind: 'nearby', town: shortTown(result.town) },
-            )}
-          </p>
-          <Disclosure title="Sale detail" audit="sale-detail" remember="sale-detail" className="mt-3"
-            summary={<>{fmtDate(result.saleDate)}{result.receipts != null ? ` · ${fmtInt(result.receipts)} head` : ''} · ~{result.miles} mi · receipts, scope and report</>}>
-          <p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="scope-fallback">
-            {result.beyondHaul && !result.pinned ? 'Scope: Regional reference · falls back to National reference' : 'Scope: Local report · falls back to Regional reference, then National reference'}
-          </p>
-          <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
-            <ReportEvidence barn={result.barnName} date={result.saleDate} head={result.receipts} slug={result.slugId} /> · ~{result.miles} mi ({DISTANCE_BASIS})
-          </p>
-          {/* Receipts (Block 6B, commit 3): the scope before the number — which classes the
-              total spans — and the per-class split with its week-ago / year-ago when the
-              report carries it. No unexplained total. */}
-          {result.receipts != null && (
-            <div className="mt-2 rounded-lg bg-forest-green/[0.04] px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="receipts-scope">
-              {/* 6I: the headline binds to what it counts. With every report's receipts in hand the
-                  total spans them and names them; with one report's figure it names that report —
-                  never "295 across feeder and slaughter" above a breakdown that sums to 797. */}
-              {(() => {
-                const known = (volume ?? []).filter(v => v.receipts != null)
-                const sum = known.reduce((s, v) => s + (v.receipts ?? 0), 0)
-                const names = known.map(v => v.commodity.toLowerCase())
-                const across = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
-                return known.length > 0
-                  ? <p><span className="font-semibold">Receipts:</span> {sum.toLocaleString('en-US')} head across {across} {known.length > 1 ? 'classes' : 'class'}, {fmtDate(result.saleDate)}</p>
-                  : <p><span className="font-semibold">Receipts:</span> {result.receipts!.toLocaleString('en-US')} head on the {(result.receiptsCommodity ?? 'reported').toLowerCase()} report, {fmtDate(result.saleDate)}
-                      {result.receiptsWeekAgo != null && <span className="text-secondary-ink"> · {result.receiptsWeekAgo.toLocaleString('en-US')} a week earlier</span>}</p>
-              })()}
-              {volume && volume.length > 0 && (
-                <ul className="mt-1 space-y-0.5 text-secondary-ink">
-                  {volume.map(v => (
-                    <li key={v.commodity}>
-                      {v.commodity}: <span className="tabular-price text-ink">{v.receipts != null ? v.receipts.toLocaleString('en-US') : '—'}</span> head
-                      {v.weekAgo != null && v.receipts != null && <> · {v.receipts - v.weekAgo >= 0 ? '▲ up' : '▼ down'} {Math.abs(v.receipts - v.weekAgo).toLocaleString('en-US')} vs last week</>}
-                      {v.yearAgo != null && <> · {v.yearAgo.toLocaleString('en-US')} a year ago</>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {result.classes.filter(c => c.bands.length > 0 && c.label !== 'Heifers').map(c => (
-            <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
-              <p className={EYEBROW}>{c.label} · $/cwt</p>
-              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label} b={b} />)}
-              </ul>
-            </div>
-          ))}
-          </Disclosure>
-
-          {result.bands.length > 0 && (
-            <div className="mt-4" data-audit="board-feeder-steers">
-              <p className={EYEBROW}>Feeder steers · $/cwt</p>
-              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {result.bands.map(b => <BandLine key={`steers-${b.band}`} cls="Steers" b={b} />)}
-              </ul>
-            </div>
-          )}
-          {result.classes.filter(c => c.bands.length > 0 && c.label === 'Heifers').map(c => (
-            <div key={c.label} className="mt-4" data-audit={`board-${c.label.toLowerCase().replace(/\s+/g, '-')}`}>
-              <p className={EYEBROW}>Feeder heifers · $/cwt</p>
-              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {c.bands.map(b => <BandLine key={`${c.label}-${b.band}`} cls={c.label === 'Heifers' ? 'Heifers' : c.label} b={b} />)}
-              </ul>
-            </div>
-          ))}
-
-          {result.cullCows.length > 0 && (
-            <div className="mt-4" data-audit="board-cull-cows">
-              <p className={EYEBROW}>Cull cows · slaughter prices, not breeding value · $/cwt</p>
-              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {result.cullCows.map(c => <CullLine key={`cow-${c.grade}`} c={c} kind="cows" />)}
-              </ul>
-            </div>
-          )}
-          {result.slaughterBulls.length > 0 && (
-            <div className="mt-4" data-audit="board-slaughter-bulls">
-              <p className={EYEBROW}>Slaughter bulls · slaughter prices, not breeding value · $/cwt</p>
-              <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
-                {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" />)}
-              </ul>
-            </div>
-          )}
-          {/* Receipts live in the header block above (commit 3) — no second, unexplained total. */}
-        </>
+      {result.slaughterBulls.length > 0 && (
+        <div className="mt-4" data-audit="board-slaughter-bulls">
+          <p className={EYEBROW}>Slaughter bulls · slaughter prices, not breeding value · $/cwt</p>
+          <ul className="mt-1 divide-y divide-forest-green/[0.08] border-t border-forest-green/[0.08]">
+            {result.slaughterBulls.map(c => <CullLine key={`bull-${c.grade}`} c={c} kind="bulls" />)}
+          </ul>
+        </div>
       )}
     </Card>
   )

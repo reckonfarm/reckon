@@ -42,6 +42,7 @@ import HayMapLoader from './HayMapLoader'
 import DashboardAccordion from './DashboardAccordion'
 import LrpMarketsCard from './LrpMarketsCard'
 import LocalAuctionCard from './LocalAuctionCard'
+import ReportedSale from './ReportedSale'
 import NationalBeefCard from './NationalBeefCard'
 import MarketReadShell from './MarketReadShell'
 import Disclosure from '@/app/components/ui/Disclosure'
@@ -916,7 +917,8 @@ export async function MarketsViewBody({
       {/* Price history for the selected comparable (was 'Trend'); receipts moved to the board. */}
       {anchor && <PriceHistoryPanel trend={anchor.trend} />}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
-      <LocalAuctionCard result={localAuction} volume={anchor?.trend?.volume ?? null} />
+      <ReportedSale result={localAuction} volume={anchor?.trend?.volume ?? null} />
+      <LocalAuctionCard result={localAuction} />
       {/* Price protection · LRP references (was 'Outlook'): the per-lot reference floors, then the LRP card. */}
       {/* Block 7 (Part 1, 6/8): one "LRP references" row is the answer — the selected lot's reference
           floor (else the LRP headline), a stale date never hidden — and the calculator, per-lot floors,
