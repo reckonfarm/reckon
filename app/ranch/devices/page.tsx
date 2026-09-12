@@ -7,6 +7,7 @@ import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import RecordHere from '../places/RecordHere'
+import DeleteDevice from './DeleteDevice'
 
 // ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
 // Empty: says you can record work now, and what will appear here. Populated:
@@ -103,6 +104,8 @@ export default async function DevicesPage() {
                         <dt>Raw voltage</dt><dd className="text-ink">Not reported</dd>
                       </dl>
                     </details>
+                    <DeleteDevice id={d.id} name={d.name} />
+
                   </Card>
                 </li>
               )
