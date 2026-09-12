@@ -1433,19 +1433,27 @@ async function main() {
       // expander that goes back for them is a page load wearing a disclosure's
       // clothes, and that is the thing being asserted.
       //
-      // NOT every request counts. Revealing 26 rows puts 26 more <Link>s on
-      // screen and Next prefetches the ones near the viewport — measured, 12
-      // RSC requests to /ranch/activity/<id>, the rows' own destinations. That
-      // is the framework preparing the next tap, not this tap fetching its
-      // content. What must be zero is a refetch of THIS page's data: the /ranch
-      // RSC payload, or any API call. A blanket "zero requests" was simply the
-      // wrong claim, and it failed on prefetches while proving nothing.
+      // NOT every request counts, and the rule is about THIS page's data rather
+      // than a list of allowed paths. Revealing 26 rows puts 26 more <Link>s on
+      // screen and pushes the Sections list down, so Next prefetches whatever
+      // is near the viewport — measured, RSC requests for /ranch/activity/<id>
+      // (the rows' own detail pages) and /ranch/devices (a Sections link). Those
+      // are the framework preparing the NEXT tap, and they would happen on any
+      // page whose content grew.
+      //
+      // What must be zero is this page going back for its own content: a /ranch
+      // RSC refetch (which is also where a server action would land) or an API
+      // call. Two earlier versions of this check got the boundary wrong by
+      // naming paths — first "zero requests", then an allow-list of activity
+      // links — and each failed on a prefetch while proving nothing about the
+      // expander.
       const fetched: string[] = []
       let prefetches = 0
       const countReq = (r: { url: () => string }) => {
         const path = r.url().replace(BASE, '').split('?')[0]
-        if (/^\/ranch\/activity\/[0-9a-f-]+$/.test(path)) { prefetches++; return }
-        fetched.push(path)
+        const isOwnData = path === '/ranch' || path.startsWith('/api/')
+        if (isOwnData) fetched.push(path)
+        else prefetches++
       }
       page.on('request', countReq)
       const urlBefore = page.url()
