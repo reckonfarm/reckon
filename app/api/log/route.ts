@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase-server'
+import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
@@ -14,16 +14,22 @@ import type { NextRequest } from 'next/server'
 // timed-out-but-landed write, a double-tap, a force-quit mid-save) is answered
 // 200 { event, duplicate: true } with the row that already exists — never a
 // second row. Without an id the server mints one (legacy callers).
-// Inserts ONE events row through the user-scoped SSR client so the 034
-// INSERT policy is exercised, not bypassed (same doctrine as the annotation
-// route). device_id null, dedup_key null, lat/lng null — a manual entry has
+// AUTH (Block 7E): sessionUser(req), like every other ledger-writing route.
+// It was the cookie-only createClient(), which the browser is happy with and
+// the isolation suite cannot reach — so the one route that writes EVERY manual
+// entry in the app was the one route 147 isolation checks could not see, and
+// its cross-ranch behaviour was asserted nowhere. sessionUser tries cookies
+// FIRST and Bearer second, so the browser path is byte-for-byte what it was;
+// nothing about the outbox changes. Inserts ONE events row through the
+// user-scoped client either way, so the 034 INSERT policy is exercised, not
+// bypassed (same doctrine as the annotation route). device_id null, dedup_key null, lat/lng null — a manual entry has
 // no emitter, no natural key, no fix. ranch_id comes from the person's own
 // ranch_members row (null if none: the row still lands, owner-visible), so
 // this route never repeats the alert-service omission. Returns the row.
 export async function POST(req: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const session = await sessionUser(req)
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  const { supabase, user } = session
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') {
