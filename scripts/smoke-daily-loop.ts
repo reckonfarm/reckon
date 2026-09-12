@@ -241,7 +241,13 @@ async function main() {
     await page.goto('/home', { waitUntil: 'domcontentloaded' })
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const homeUrl = page.url().replace(BASE, '')
-    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).count() > 0
+    // WAIT for it, do not sample it. This counted the button the instant
+    // waitForURL resolved, with no settle after domcontentloaded, so it was a
+    // race that usually won — and lost once here, reporting a red on a button
+    // that three separate trials found present within 18 ms. A bounded wait is
+    // the same assertion ("the button is there") without the coin toss.
+    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).first()
+      .waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
     record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
