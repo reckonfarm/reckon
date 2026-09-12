@@ -84,13 +84,34 @@ happened.
 
 ---
 
-## The record sheet
+## The record sheet — measured 2026-09-12, and nothing proposed
 
-Not measured here — it opens over another screen and the audit tooling reaches
-it only mid-flow. **I have not proposed cuts to it because I have not measured
-it**, and 7.5 explicitly ruled against adding a More expander to the five
-forms. If you want it in scope, I will measure it properly first rather than
-guess from source.
+Driven open the way the daily loop reaches it (the FAB is `md:hidden`, so the
+VISIBLE entry point, not the first match), then measured from the Save button
+outward rather than from a guessed wrapper. The first attempt measured
+`document.body` — 844px, zero fields, identical for every type — because the
+selector matched nothing and fell through.
+
+| form | 390px | 320px | fields | controls | words |
+|---|---|---|---|---|---|
+| Rain | 362px | 418px | 2 | 7 | 31 |
+| Hay fed | 516px | 572px | 3 | 9 | 46 |
+| Cattle moved | 619px | 675px | 4 | 9 | 84 |
+
+**Nothing proposed.** Two fields for rain, three for a feeding, four for a
+move. There is no expander to add that would not cost a tap on the surface PK
+touches most, and 7.5 already ruled against exactly that. Collapsing anything
+here would be cutting for the sake of having cut something.
+
+**Save is above the fold at both widths** — y=767 of 844 at 390, y=788 at 320.
+That is the 7.5 requirement still holding, verified rather than assumed.
+
+**One thing to watch, not to fix now.** Cattle moved at 320 puts Save at 788
+with **56px of margin**. The walkthrough measured "Save hidden by the
+keyboard" as a real failure mode, and 56px is the thinnest margin any form
+has. It is fine today. It would stop being fine if that form gained a field or
+a line of copy, so this is the number to check the next time anyone touches
+it.
 
 ---
 
