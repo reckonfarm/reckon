@@ -54,9 +54,15 @@ const USERS = {
   C: { email: 'rls-test-c@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
   // D: a second member of ranch A (Block 4A) — the hand who must see the ranch's lots.
   D: { email: 'rls-test-d@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
+  // E (Block 7E): belongs to NO ranch and never joins one. C used to be the
+  // ranchless case, but C is created by the invitation checks and joins ranch A
+  // there — so a test that needs a ranchless person either has to run before C
+  // exists (it did, and crashed on a user that had not been made yet) or own
+  // its own. E owns its own, and cannot be made ranch-ful by reordering.
+  E: { email: 'rls-test-e@dryline.farm', password: `${PREFIX}${randomBytes(12).toString('hex')}` },
 }
 type Side = 'A' | 'B'
-type Who = Side | 'C' | 'D'
+type Who = Side | 'C' | 'D' | 'E'
 const OTHER: Record<Side, Side> = { A: 'B', B: 'A' }
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -85,7 +91,7 @@ async function teardown(label: string) {
   // Order respects FKs: events → devices → places → members → ranches → users.
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
   const ids = (users?.users ?? [])
-    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.C.email || u.email === USERS.D.email)
+    .filter(u => u.email === USERS.A.email || u.email === USERS.B.email || u.email === USERS.C.email || u.email === USERS.D.email || u.email === USERS.E.email)
     .map(u => u.id)
   let n = 0
   if (ids.length) {
@@ -639,7 +645,9 @@ async function ingestChecks() {
 async function logRouteChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
-  const C = await userClient('C')
+  // E is made here and joins no ranch, ever.
+  await admin.auth.admin.createUser({ email: USERS.E.email, password: USERS.E.password, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}E` } })
+  const C = await userClient('E')
 
   // The suite can reach it at all — the whole point of 7E.
   const mine = await api(A, '/api/log', { type: 'rain', inches: 0.31, place_id: a.placeId })
@@ -665,28 +673,28 @@ async function logRouteChecks() {
 
   // ── The ranchless branch — the state nobody has ever tested ─────────────────
   {
-    // C's id comes from the signed-in client, not a fixture field — C is not
-    // one of the two seeded ranches and has no Fixture row.
+    // E's id comes from the signed-in client — it is not one of the two seeded
+    // ranches and has no Fixture row.
     const { data: { user: cUser } } = await C.auth.getUser()
     const { data: memberships } = await admin.from('ranch_members').select('ranch_id').eq('user_id', cUser?.id ?? '')
     const ranchless = !!cUser && (memberships ?? []).length === 0
     const wrote = await api(C, '/api/log', { type: 'rain', inches: 0.55 })
     const cid = String(((wrote.json.event ?? {}) as { id?: string }).id ?? '')
-    record('user C (no ranch)', '7E: a person with no ranch can still record — the write SUCCEEDS', ranchless && wrote.status === 201 && !!cid, `${ranchless ? '' : 'C ALREADY HAS A RANCH — this proves nothing · '}${wrote.status}${cid ? '' : ' · no event'}`)
+    record('user E (no ranch)', '7E: a person with no ranch can still record — the write SUCCEEDS', ranchless && wrote.status === 201 && !!cid, `${ranchless ? '' : 'E ALREADY HAS A RANCH — this proves nothing · '}${wrote.status}${cid ? '' : ' · no event'}`)
 
     const { data: crow } = cid ? await admin.from('events').select('ranch_id, user_id').eq('id', cid).maybeSingle() : { data: null }
     const cr = crow as { ranch_id: string | null; user_id: string } | null
-    record('user C (no ranch)', '7E: the ranchless entry is stored with ranch_id NULL, owned by its writer', !!cr && cr.ranch_id === null, `ranch_id ${cr ? String(cr.ranch_id) : 'NO ROW'}`)
+    record('user E (no ranch)', '7E: the ranchless entry is stored with ranch_id NULL, owned by its writer', !!cr && cr.ranch_id === null, `ranch_id ${cr ? String(cr.ranch_id) : 'NO ROW'}`)
 
     // The claim worth making: no ranch can see it. Not A, not B.
     const aSees = await A.from('events').select('id').eq('id', cid)
     const bSees2 = await Bc.from('events').select('id').eq('id', cid)
-    record('user C (no ranch)', '7E: the ranchless entry is invisible to EVERY ranch — not A, not B', !!cid && (aSees.data ?? []).length === 0 && (bSees2.data ?? []).length === 0, `A sees ${(aSees.data ?? []).length} · B sees ${(bSees2.data ?? []).length}`)
+    record('user E (no ranch)', '7E: the ranchless entry is invisible to EVERY ranch — not A, not B', !!cid && (aSees.data ?? []).length === 0 && (bSees2.data ?? []).length === 0, `A sees ${(aSees.data ?? []).length} · B sees ${(bSees2.data ?? []).length}`)
 
     // And its writer can still read their own — a row nobody can see would be
     // a row nobody should have been allowed to write.
     const cSees = await C.from('events').select('id').eq('id', cid)
-    record('user C (no ranch)', '7E: but its own writer can read it back — not a write into the void', (cSees.data ?? []).length === 1, `${(cSees.data ?? []).length} row(s) visible to C`)
+    record('user E (no ranch)', '7E: but its own writer can read it back — not a write into the void', (cSees.data ?? []).length === 1, `${(cSees.data ?? []).length} row(s) visible to C`)
   }
 }
 
