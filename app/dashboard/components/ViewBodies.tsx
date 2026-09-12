@@ -220,7 +220,7 @@ export type LfpFetchOutcome = { ok: true; result: LfpEligibilityResult | null } 
 // degrade states are unchanged inside.
 
 export async function WeatherViewBody({
-  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, alertsPromise = null, titled = false,
+  selectedCounty, latest, nationalMap, user, lfpPromise, precipPromise, forecastPromise = null, alertsPromise = null, titled = false, programs = null,
 }: {
   selectedCounty: CountyRow
   latest: DroughtReading | null
@@ -231,6 +231,7 @@ export async function WeatherViewBody({
   forecastPromise?: Promise<LocalForecast | null> | null   // Block 6B — the forecast leads the Weather destination
   alertsPromise?: Promise<ActiveAlert[] | null> | null      // Block 7 — an active warning, when present, comes first
   titled?: boolean                                         // Block 6B — the private /weather route owns its h1
+  programs?: React.ReactNode                               // Block 7.8 — LFP status + program deadlines, moved off Today
 }) {
   const db = createServiceClient()
   let history: DroughtReading[]                     = []
@@ -571,6 +572,23 @@ export async function WeatherViewBody({
 
 
         </>
+      )}
+
+      {/* ── PROGRAMS (Block 7.8) ────────────────────────────────────────────
+          Moved here from Today, not rewritten: the same LFP card with the same
+          honesty rules, the same deadline cards, the same LRP wording. None of
+          it is something the ranch DOES today — it is what Washington has
+          decided about this county — so it belongs with the weather that
+          caused it, one tap from the drought reading it depends on.
+
+          It sits last so the 7-2 order above it (warning · forecast · rain on
+          my places · county rainfall · drought · map) is untouched. Every
+          deadline names its own program (ProgramStatusRow, DeadlineCountdownCard). */}
+      {programs && (
+        <section aria-labelledby="wx-programs-h" data-audit="weather-programs" className="space-y-3">
+          <h2 id="wx-programs-h" className={`${EYEBROW} !text-ink`}>Programs</h2>
+          {programs}
+        </section>
       )}
     </>
   )

@@ -68,7 +68,7 @@ async function main() {
       await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
       await page.locator('header').getByText(EMAIL).waitFor({ state: 'attached', timeout: 45000 })
       await page.goto('/dashboard?fips=30069&view=markets', { waitUntil: 'domcontentloaded' })
-      await page.getByText(/carried-forward steps/).waitFor({ timeout: 45000 }).catch(() => {})
+      await page.getByText(/Points are reported sales/).waitFor({ timeout: 45000 }).catch(() => {})
       await page.waitForTimeout(1500)
       const m = await measure(page, width)
       console.log(`\n=== ${width}px ===`)

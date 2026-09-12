@@ -125,11 +125,29 @@ export function newEventId(): string {
 
 export function getOutbox(): OutboxItem[] { return read() }
 
+/**
+ * Work the sync loop will retry. 'failed' is deliberately NOT here: a
+ * permanently rejected entry must not keep waking the retry timer.
+ */
 export function pendingCount(): number {
   return read().filter(i => i.state === 'local' || i.state === 'queued').length
 }
 
-export function hasUnsynced(): boolean { return pendingCount() > 0 }
+/**
+ * Work that has NOT reached the ranch — including 'failed'.
+ *
+ * These two counts were one function until Block 7, and the difference is the
+ * whole reason an entry could be lost without a word: a server-rejected entry
+ * is not retryable, so it is correctly absent from pendingCount() — but it is
+ * absolutely still the operator's unsynced work, and clearPrivateState() will
+ * delete it. Anything that asks "is there work here I would destroy?" must ask
+ * THIS one.
+ */
+export function unsyncedCount(): number {
+  return read().filter(i => i.state !== 'synced').length
+}
+
+export function hasUnsynced(): boolean { return unsyncedCount() > 0 }
 
 /**
  * Save an entry on the phone. Returns the item in state 'local'. THROWS if the

@@ -40,6 +40,9 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
+import NeedsAttention from './components/NeedsAttention'
+import ProgramAlerts from './components/ProgramAlerts'
+import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/program-alerts'
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
@@ -278,6 +281,7 @@ export async function DashboardShell({
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let latest: DroughtReading | null                 = null
+  let priorReading: DroughtReading | null           = null   // Block 7.9 — the week before, for the change alert
 
   // Rainfall (ACIS) is held as a PROMISE and resolved behind a <Suspense> boundary in
   // the chrome (RainfallPanelAsync below) so it NEVER blocks the page's server render —
@@ -340,8 +344,10 @@ export async function DashboardShell({
         .select('week_date, d0, d1, d2, d3, d4')
         .eq('county_id', selectedCounty.id)
         .order('week_date', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        // Block 7.9 — TWO readings, not one. The change alert needs the week
+        // before to know whether anything changed at all; one extra row on an
+        // indexed read, no extra round trip.
+        .limit(2),
       getUpcomingDeadlines(selectedCounty.fips, crops),
       // The operation's county for the orientation line. When it's the county in
       // view the row is already here; only a DIFFERENT home county costs a read
@@ -353,7 +359,9 @@ export async function DashboardShell({
         return (data as HomeCounty | null) ?? null
       }).catch(() => null),
     ])
-    latest = latestRow as DroughtReading | null
+    const readings = (latestRow ?? []) as DroughtReading[]
+    latest = readings[0] ?? null
+    priorReading = readings[1] ?? null
     deadlineResult = deadlineRes
     homeCounty = home
   }
@@ -372,6 +380,35 @@ export async function DashboardShell({
         .then(result => ({ ok: true as const, result }))
         .catch(() => ({ ok: false as const }))
     : Promise.resolve({ ok: false as const })
+
+  // ── Change-only program alerts (Block 7.9) ────────────────────────────────
+  // Computed only for Today, only for a signed-in member. Everything standing
+  // lives in Weather → Programs; this is strictly what CHANGED. The prior LFP
+  // tier comes from lfp_eligibility_snapshots (018) — the audited weekly
+  // engine output — rather than a second expensive USDM recomputation.
+  let programAlerts: ProgramAlert[] = []
+  if (priv && route === 'today' && selectedCounty && user) {
+    try {
+      const { data: tiers } = await db
+        .from('lfp_eligibility_snapshots')
+        .select('week_date, max_tier')
+        .eq('county_id', selectedCounty.id)
+        .order('week_date', { ascending: false })
+        .limit(2)
+      const t = (tiers ?? []) as { week_date: string; max_tier: number }[]
+      const all = buildProgramAlerts({
+        fips: selectedCounty.fips,
+        countyName: selectedCounty.name,
+        latest,
+        prior: priorReading,
+        lfpTier: t[0]?.max_tier ?? null,
+        priorLfpTier: t[1]?.max_tier ?? null,
+        deadlines: deadlineResult,
+      })
+      const seen = await readDismissals(supabase, user.id)
+      programAlerts = all.filter(a => !seen.has(a.key))
+    } catch { programAlerts = [] }
+  }
 
   // Prior-year LFP (same forage period, year − 1) for the card's eligibility-math
   // comparison. Started here, awaited only inside LfpCardAsync once the current
@@ -567,6 +604,10 @@ export async function DashboardShell({
                         Same self-gating components; every card that has nothing to say renders nothing. */}
                     {priv && route === 'today' && (
                       <>
+                        {/* 2. Live job — conditional behaviour untouched; it renders
+                            nothing unless a machine is working. Nothing is reserved for
+                            it, because reserving space for a card that is usually absent
+                            would put a permanent hole at the top of Today. */}
                         <Suspense fallback={null}>
                           <LiveJobCard />
                         </Suspense>
@@ -576,19 +617,27 @@ export async function DashboardShell({
                       </>
                     )}
 
-                    {/* 2. Needs attention. LFP loud only (triggered / pending-OBBBA / building a
-                        D2 streak / data unavailable); a deadline card only when loud (≤45 days,
-                        newly published, or unavailable); the quiet row is the quiet home for both. */}
-                    <Suspense fallback={<LfpAlertSkeleton />}>
-                      <LfpCardAsync
-                        dataPromise={lfpPromise}
-                        priorYearPromise={priorYearPromise}
-                        countyName={selectedCounty.name}
-                        fips={selectedCounty.fips}
-                      />
-                    </Suspense>
-                    {isDeadlineLoud(deadlineResult) && (
-                      <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                    {/* 2. Needs attention. Block 7.7/7.8: the LFP card, the drought
+                        designation and the deadline cards are NOT on Today any more —
+                        they live in Weather → Programs, because none of them is
+                        something the ranch does today. They still lead the PUBLIC county
+                        page, which is a drought-and-program tool and the signed-out
+                        funnel depends on them; this block only ever reached county and
+                        today, so `route !== 'today'` leaves the public page untouched. */}
+                    {route !== 'today' && (
+                      <>
+                        <Suspense fallback={<LfpAlertSkeleton />}>
+                          <LfpCardAsync
+                            dataPromise={lfpPromise}
+                            priorYearPromise={priorYearPromise}
+                            countyName={selectedCounty.name}
+                            fips={selectedCounty.fips}
+                          />
+                        </Suspense>
+                        {isDeadlineLoud(deadlineResult) && (
+                          <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                        )}
+                      </>
                     )}
                     {/* "Check device" — only when a device has a known cadence and missed it (Block 6A). */}
                     {priv && route === 'today' && (
@@ -605,12 +654,30 @@ export async function DashboardShell({
 
                     {priv && route === 'today' && (
                       <>
-                        {/* 3. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new. */}
-                        <Suspense fallback={null}>
+                        {/* 3. Changed — program news only when something actually
+                            changed, dismissible per person and per change. */}
+                        <ProgramAlerts alerts={programAlerts} />
+                        {/* 4. Needs attention — only real state, nothing when there is none. */}
+                        <NeedsAttention />
+                        {/* 4. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new.
+
+                            Block 7.7 — RESERVED HEIGHT, not `fallback={null}`. These two
+                            stream in, and an empty fallback meant the Repeat-feeding
+                            button climbed the page as each one landed: measured CLS 0.855
+                            on Today at 320px. A thumb already travelling toward "Record 13
+                            bales now" can arrive somewhere else.
+
+                            The floors are MEASURED, not guessed: a populated
+                            since-you-checked card renders 397px at 390 and 378 at 320, and
+                            the repeat card 232 and 253. A floor cannot be exact for both a
+                            populated and a quiet state, so it is set for the populated one
+                            — the state a working ranch is in most mornings, and the only
+                            state where the button below it is worth mis-tapping. */}
+                        <Suspense fallback={<div className="min-h-[360px]" aria-hidden />}>
                           <SinceYouWereHere />
                         </Suspense>
-                        {/* 4. Quick record — repeat last (Block 2B), then Log it. */}
-                        <Suspense fallback={null}>
+                        {/* 5. Quick record — repeat last (Block 2B), then Log it. */}
+                        <Suspense fallback={<div className="min-h-[248px]" aria-hidden />}>
                           <RepeatLastFeeding />
                         </Suspense>
                         <LogIt sheet={false} />
@@ -665,6 +732,21 @@ export async function DashboardShell({
                           forecastPromise={forecastPromise}
                           alertsPromise={alertsPromise}
                           titled={route === 'weather'}
+                          programs={route === 'weather' ? (
+                            <>
+                              <Suspense fallback={<LfpAlertSkeleton />}>
+                                <LfpCardAsync
+                                  dataPromise={lfpPromise}
+                                  priorYearPromise={priorYearPromise}
+                                  countyName={selectedCounty.name}
+                                  fips={selectedCounty.fips}
+                                />
+                              </Suspense>
+                              {isDeadlineLoud(deadlineResult)
+                                ? <DeadlineCountdownCard result={deadlineResult} countyName={selectedCounty.name} />
+                                : <DeadlineQuietRow countyName={selectedCounty.name} quietDeadline={deadlineResult} />}
+                            </>
+                          ) : null}
                         />
                       </Suspense>
                     ) }
@@ -697,16 +779,14 @@ export async function DashboardShell({
           {/* Today's strips (Block 6A): conditions (weather only), then programs — LFP as one
               quiet line with its details one tap away. One column on a phone, below the
               record; a right column on desktop (the shell is 1,160 px wide there). */}
-          {priv && route === 'today' && (
-            <aside className="space-y-4 pb-16 lg:pb-0" data-audit="today-strips" aria-label="Conditions and programs">
-              {/* Today keeps the two-line preview only (Block 6B); the 7-day carousel lives on Weather. */}
-              <ConditionsStrip reading={latest} fips={selectedCounty.fips} />
-              <DeadlineQuietRow
-                countyName={selectedCounty.name}
-                quietDeadline={isDeadlineLoud(deadlineResult) ? null : deadlineResult}
-              />
-            </aside>
-          )}
+          {/* Block 7.7/7.8 — the Today strips are GONE. This aside still carried
+              the drought chip (ConditionsStrip) and the program deadline row
+              (DeadlineQuietRow) after the LFP card had already moved, which is
+              two of the three things the order takes off Today. Both live in
+              Weather now: the drought reading in the county-drought card, the
+              deadline in Weather → Programs, where it names its program. It
+              was also the last big late-arriving block on the page and half of
+              the remaining layout shift. */}
           </>
         )}
       </main>

@@ -45,10 +45,10 @@ function agencyOf(cropOrProgram: string): string | null {
 function deUnderscore(s: string): string {
   return s.replace(/_/g, ' ')
 }
-function typeLabel(s: string): string {
+export function typeLabel(s: string): string {
   return TYPE_LABELS[s] ?? deUnderscore(s)
 }
-function cropLabel(s: string): string {
+export function cropLabel(s: string): string {
   return CROP_LABELS[s] ?? deUnderscore(s)
 }
 
