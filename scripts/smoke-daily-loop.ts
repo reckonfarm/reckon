@@ -1429,10 +1429,24 @@ async function main() {
         shown === 2 && promised > 0,
         `${shown} row(s) · "${label}"`)
 
-      // Count every request the tap causes. The rows are already on the page;
-      // an expander that fetches is a page load wearing a disclosure's clothes.
-      let during = 0
-      const countReq = () => { during++ }
+      // Count what the tap fetches. The rows are already on the page; an
+      // expander that goes back for them is a page load wearing a disclosure's
+      // clothes, and that is the thing being asserted.
+      //
+      // NOT every request counts. Revealing 26 rows puts 26 more <Link>s on
+      // screen and Next prefetches the ones near the viewport — measured, 12
+      // RSC requests to /ranch/activity/<id>, the rows' own destinations. That
+      // is the framework preparing the next tap, not this tap fetching its
+      // content. What must be zero is a refetch of THIS page's data: the /ranch
+      // RSC payload, or any API call. A blanket "zero requests" was simply the
+      // wrong claim, and it failed on prefetches while proving nothing.
+      const fetched: string[] = []
+      let prefetches = 0
+      const countReq = (r: { url: () => string }) => {
+        const path = r.url().replace(BASE, '').split('?')[0]
+        if (/^\/ranch\/activity\/[0-9a-f-]+$/.test(path)) { prefetches++; return }
+        fetched.push(path)
+      }
       page.on('request', countReq)
       const urlBefore = page.url()
       const tapErr = await tapMore()
@@ -1441,9 +1455,9 @@ async function main() {
       const opened = await liCount()
       const sections = await page.locator('[data-audit="ranch-sections"]').count()
       const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
-      record('7B.2: the rest open in place — no request, no navigation, the Sections list and its Activity link untouched',
-        !tapErr && opened === shown + promised && during === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
-        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${during} request(s) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
+      record('7B.2: the rest open in place — the rows are never refetched, no navigation, the Sections list and its Activity link untouched',
+        !tapErr && opened === shown + promised && fetched.length === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
+        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${fetched.length} data request(s)${fetched.length ? ` [${fetched.slice(0, 3).join(', ')}]` : ''} · ${prefetches} link prefetch(es) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
 
       const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
       const closeErr = await tapMore()
