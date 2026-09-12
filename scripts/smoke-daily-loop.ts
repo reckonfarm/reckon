@@ -1283,6 +1283,7 @@ async function main() {
         // is about how a correction is marked WHEREVER it appears, so the whole
         // list is the subject, not the first screenful. This reads more of the
         // hub than the check ever did before, when it saw at most five rows.
+        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'start' })).catch(() => {})
         await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
         await page.waitForTimeout(600)
         const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
@@ -1371,6 +1372,19 @@ async function main() {
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_500)
       const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
+      // The save receipt is pinned to the BOTTOM of the viewport for 90 s
+      // (RecordSheetHost, fadeAfterMs 90_000) and the 6D check immediately
+      // above deliberately leaves one on screen. Playwright's auto-scroll drops
+      // the expander into exactly that band and the click is intercepted — the
+      // same shape as the leftover record sheet that ate the FAB in 7.4. Put
+      // the button at the TOP of the viewport first, which is also what a
+      // person does, and Playwright then clicks it where it already is.
+      const tapMore = async () => {
+        const btn = page.locator('[data-audit="ranch-recent-more"]')
+        await btn.evaluate(el => el.scrollIntoView({ block: 'start' }))
+        await page.waitForTimeout(200)
+        await btn.click()
+      }
       const shown = await liCount()
       const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
       const promised = parseInt((label.match(/Show (\d+) more/) ?? ['', 'NaN'])[1], 10)
@@ -1384,7 +1398,7 @@ async function main() {
       const countReq = () => { during++ }
       page.on('request', countReq)
       const urlBefore = page.url()
-      await page.locator('[data-audit="ranch-recent-more"]').click()
+      await tapMore()
       await page.waitForTimeout(1_500)
       page.off('request', countReq)
       const opened = await liCount()
@@ -1395,7 +1409,7 @@ async function main() {
         `${shown} → ${opened} row(s) (promised ${promised}) · ${during} request(s) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
 
       const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
-      await page.locator('[data-audit="ranch-recent-more"]').click()
+      await tapMore()
       await page.waitForTimeout(800)
       record('7B.2: it closes again to two rows', (await liCount()) === 2 && /Show fewer/.test(collapsed),
         `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
