@@ -55,10 +55,16 @@ export default async function MarketsSince({ localSlug, pinned, reference = fals
   if (lrp) lines.push(isNew(lrp.created_at) ? `New LRP coverage prices — effective ${day(lrp.effective_date)}` : `LRP coverage prices unchanged since ${day(lrp.effective_date)}`)
   if (lines.length === 0) return <LastSeenPing surface="markets" />
 
+  // The label travels with the lines in BOTH modes. Merging this into "What
+  // changed" first dropped it, and the B7 check caught that: the section then
+  // said what moved but never that these particular lines are ARRIVALS — a new
+  // report landing — rather than prices moving. Two different kinds of news
+  // under one heading need the distinction, and it is one quiet line.
   const body = (
     <>
       <LastSeenPing surface="markets" />
-      <ul className={embedded ? 'space-y-1.5' : 'mt-2 space-y-1.5'} data-audit="since-lines">
+      <p className={EYEBROW}>{seen ? 'Since you last checked' : 'Since yesterday'}</p>
+      <ul className="mt-2 space-y-1.5" data-audit="since-lines">
         {lines.map(l => <li key={l} className="font-dm-sans text-[16px] leading-snug text-forest-green">{l}</li>)}
       </ul>
     </>
@@ -68,7 +74,6 @@ export default async function MarketsSince({ localSlug, pinned, reference = fals
   return (
     <Card shadow="soft" className="p-4 sm:p-5" data-audit="since-card">
       {body}
-      <p className={EYEBROW}>{seen ? 'Since you last checked' : 'Since yesterday'}</p>
     </Card>
   )
 }
