@@ -8,6 +8,7 @@ import {
   isRegionalSourceForState,
   type NewsSource,
 } from '@/lib/news-sources'
+import { type NewsItem } from '@/lib/news-rank'
 
 // GET /api/news — on-request, region-aware ag-news aggregator.
 //
@@ -31,17 +32,6 @@ const SNIPPET_MAX = 200
 const UA =
   'Mozilla/5.0 (compatible; DrylineBot/1.0; +https://dryline.farm) AppleWebKit/537.36'
 
-export interface NewsItem {
-  title: string
-  link: string
-  pubDate: string | null // ISO 8601, or null if unparseable
-  source: string
-  sourceId: string
-  scope: 'national' | 'regional'
-  snippet: string
-  regional: boolean // matched the visitor's region → render "Near you"
-  ts: number // epoch ms for sort; 0 when pubDate is unknown
-}
 
 export interface SourceStatus {
   id: string
