@@ -167,7 +167,11 @@ async function main() {
     // "what changed" stays, because it compares like with like.
     record('7.2: no aggregate herd-value change line anywhere', !/Your comparison over time/i.test(body), (body.match(/.{0,50}comparison over time.{0,50}/i) ?? ['absent'])[0])
     record('7.2: no ranch-total dollar gain "since" a date', !/[▲▼]\s*\$[\d,]+\s+since/.test(body), (body.match(/[▲▼]\s*\$[\d,]+\s+since[^·]{0,30}/) ?? ['absent'])[0])
-    record('7.2: per-lot what-changed survives, naming its barn', /WHAT CHANGED FOR MY CATTLE/i.test(body) && /\/cwt at /i.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
+    // 7C: the section is "What changed" (merged with the since-you-last-checked
+    // lines) and a row names its barn ONLY when that barn is not the page's, so
+    // "/cwt at " is no longer the right proof. What must survive is the per-lot
+    // line itself — like compared with like, one lot at a time.
+    record('7.2/7C: per-lot what-changed survives, one labeled market-reference line per lot', /WHAT CHANGED/i.test(body) && /Market reference: /.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
     record('7.3: no carried-forward control anywhere on Markets', (await page.getByRole('button', { name: /carried-forward/i }).count()) === 0)
     record('7.3: the chart says points only, in one state', /Points are reported sales\. Nothing is drawn between them/.test((await stepCopy.innerText()).replace(/\s+/g, ' ')) && !/Dashed steps/.test(await stepCopy.innerText()), (await stepCopy.innerText()).replace(/\s+/g, ' ').slice(0, 80))
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))
@@ -203,12 +207,18 @@ async function main() {
       await page.getByRole('radio', { name: '12 mo', exact: true }).click()
       const natStill = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
       const title12 = (await page.locator('[data-audit="chart-title"]').first().innerText()).trim()
-      await page.getByRole('radio', { name: 'Heifers', exact: true }).click()
-      const natAfterClass = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
-      const periodAfterClass = await page.getByRole('radio', { name: '12 mo', exact: true }).getAttribute('aria-checked')
+      // 7C: CLASS IS NO LONGER A CHART CONTROL. The Steers/Heifers chips went
+      // with "Change cattle" — the lot select at the top of the page drives the
+      // chart's class and weight band (6I). The independence rule is unchanged
+      // and still worth checking; the third control is now Measure, which moved
+      // into Compare and settings rather than being cut with the chips.
+      await page.getByRole('radio', { name: '$/head', exact: true }).click()
+      const natAfterMeasure = await page.getByRole('radio', { name: 'National', exact: true }).getAttribute('aria-checked')
+      const periodAfterMeasure = await page.getByRole('radio', { name: '12 mo', exact: true }).getAttribute('aria-checked')
+      const classChips = await page.getByRole('radio', { name: 'Heifers', exact: true }).count()
       const legend = await page.locator('[data-audit="dot-legend"]').first().innerText().catch(() => '')
-      record('6B: period · comparison · class are independent — National survives a period change, both survive a class change; the legend names open dots', natStill === 'true' && natAfterClass === 'true' && periodAfterClass === 'true' && /national/i.test(title12) && /Each dot is a reported sale; open dots have fewer than 20 head/.test(legend), `title "${title12}" · legend "${legend}"`)
-      await page.getByRole('radio', { name: 'Steers', exact: true }).click()
+      record('6B/7C: period · comparison · measure are independent — National survives a period change, both survive a measure change; class is the lot select\'s, not a chart chip; the legend names open dots', natStill === 'true' && natAfterMeasure === 'true' && periodAfterMeasure === 'true' && classChips === 0 && /national/i.test(title12) && /Each dot is a reported sale; open dots have fewer than 20 head/.test(legend), `title "${title12}" · class chips ${classChips} · legend "${legend}"`)
+      await page.getByRole('radio', { name: '$/cwt', exact: true }).click()
       await page.getByRole('radio', { name: 'Local', exact: true }).click()
       await page.getByRole('radio', { name: 'This year', exact: true }).click()
     }
