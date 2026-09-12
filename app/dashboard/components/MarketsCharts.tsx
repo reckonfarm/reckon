@@ -365,7 +365,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
   const [showEvents, setShowEvents] = useState(false)    // Block 7: dated event markers live in Compare and settings, off by default
   const [salesView, setSalesView] = useState(false)      // Block 7: Chart | Sales — two views of one section
   const [settingsOpen, setSettingsOpen] = useState(false) // Block 7: period · comparison (and events, details) behind "Compare and settings"
-  const [cornCompare, setCornCompare] = useState(false)   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
+  const cornCompare = false   // 7C: the feeder overlay's toggle is gone; corn stands alone   // Block 7 (2): the feeder panel beside corn only when deliberately opened — one cattle chart on the page by default
   // The picked point is remembered by (series, date) so it survives a measure
   // change: the panel always re-reads the live dot in the current unit.
   const [pickedKey, setPickedKey] = useState<string | null>(null)
@@ -630,11 +630,13 @@ export default function MarketsCharts(p: MarketsChartsProps) {
               class, band, barn and unit as the cattle card above. Corn stands alone by default; a
               person who wants the feeder panel beside it opens the comparison, and the two panels
               share one time axis with their own units. */}
-          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{cornCompare ? 'Corn and feeder cattle · two charts, one time axis' : 'Corn · the feedlot’s input cost'}</p>
-          <button type="button" aria-pressed={cornCompare} onClick={() => setCornCompare(v => !v)} data-audit="corn-compare"
-            className="mt-2 min-h-[48px] rounded-lg border border-forest-green/25 px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5">
-            {cornCompare ? 'Hide feeder cattle ▴' : 'Compare with feeder cattle ▾'}
-          </button>
+          {/* 7C — "Compare with feeder cattle ▾" is gone. It was a comparison
+              inside a disclosure inside the last section of the page: two taps
+              deep, in context nobody who needed it had reached. Corn stands
+              alone, which is what it did by default anyway. The feeder series
+              is on the cattle chart above, where a rancher is actually looking
+              at it. */}
+          <p className="font-dm-sans text-[16px] font-semibold text-forest-green">Corn · the feedlot&rsquo;s input cost</p>
           {(() => {
             const feeder = cornCompare ? cornFeederList.flatMap(s => s.dots) : []
             const cornDots = p.corn.map(c => ({ t: ms(c.date), v: c.settle / 100 }))
