@@ -17,9 +17,11 @@ import { useState, type ReactNode } from 'react'
 //
 // The button NAMES ITS COUNT ("Show 12 more"), because a person deciding
 // whether to tap on one bar of signal deserves to know whether that is three
-// rows or thirty. `hasMore` says the ledger continues past this page, so the
-// expanded state never implies it is showing everything — Activity, still in
-// the Sections list below, is where the rest lives.
+// rows or thirty. `hasMore` says the record continues past what is here —
+// either because the hub capped the list at HUB_ROWS or because the ledger has
+// a further page — so the expanded state never implies it is showing
+// everything. Activity, still in the Sections list below, is where the rest
+// lives.
 
 export default function RecentActivityList({
   rows,
