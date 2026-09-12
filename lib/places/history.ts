@@ -3,7 +3,8 @@ import { fmtDay, fmtTime, dayKey, todayKey, plural } from '@/lib/jobs/format'
 import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import { placeEntryCounts } from '@/lib/activity'
-import { effective } from '@/lib/ledger-effective'
+import { ledgerFilters } from '@/lib/ledger-effective'
+import { hasEventDeletion } from '../schema-capability'
 
 // ─── A place's practical memory (Block 2F) ────────────────────────────────────
 // "When did we last…" at one place, answered from the ledger: the most recent
@@ -52,6 +53,8 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
     if (!place) return empty
 
     // Manual lines that name this place (as where, or as the move's endpoints).
+    // 7D: skip the deleted filter on a database without 061 (temporary).
+    const { effective } = ledgerFilters(await hasEventDeletion(supabase))
     const [here, from, to, devices, herd] = await Promise.all([
       // Block 5B: the "last …" answers are what currently STANDS (through the chain).
       effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('payload->>source', 'manual').eq('payload->>place_id', placeId)).order('ts', { ascending: false }).limit(400),

@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
 import { getRanch } from '@/lib/ranch-membership'
 import { ringFromGeoJSON, type LatLng } from '@/lib/places/geo'
+import { hasEventDeletion } from '../schema-capability'
 
 // ─── Where the map opens ──────────────────────────────────────────────────────
 //
@@ -47,10 +48,11 @@ export async function resolveMapCentre(
 
   // 2 — the last positioned thing that happened here.
   try {
-    const { data } = await supabase
-      .from('events')
-      .select('lat, lng')
-      .is('deleted_at', null)   // 7D: a deleted entry does not steer the map
+    // 7D: a deleted entry does not steer the map. Skipped without 061.
+    const canDel = await hasEventDeletion(supabase)
+    let q = supabase.from('events').select('lat, lng')
+    if (canDel) q = q.is('deleted_at', null)
+    const { data } = await q
       .not('lat', 'is', null)
       .not('lng', 'is', null)
       .order('ts', { ascending: false })

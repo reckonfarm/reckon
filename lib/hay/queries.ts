@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { dayKey } from '@/lib/jobs/format'
-import { effective } from '@/lib/ledger-effective'
+import { ledgerFilters } from '@/lib/ledger-effective'
+import { hasEventDeletion } from '../schema-capability'
 
 // ─── Hay ledger — the operator's own hay lines, added up honestly ─────────────
 //
@@ -163,6 +164,8 @@ export async function getHayLedger(
   try {
     // Block 5B: through the correction chain — a superseded line does not count,
     // its replacement does; a void counts for nothing. Never applied twice.
+    // 7D: skip the deleted filter on a database without 061 (temporary).
+    const { effective } = ledgerFilters(await hasEventDeletion(supabase))
     let q = effective(supabase
       .from('events')
       .select('id, type, ts, payload')

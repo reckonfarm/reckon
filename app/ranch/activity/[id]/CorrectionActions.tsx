@@ -73,7 +73,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   // 7D: what deleting THIS entry would do, asked before the sheet can say it.
   // Loaded when the sheet opens, never guessed on the client — the answer
   // depends on whether another member has read the ledger since it landed.
-  const [plan, setPlan] = useState<{ state: 'loading' } | { state: 'failed' } | { state: 'ready'; mode: 'hard' | 'record'; reason: string | null; label: string }>({ state: 'loading' })
+  const [plan, setPlan] = useState<{ state: 'loading' } | { state: 'failed' } | { state: 'ready'; mode: 'hard' | 'record' | 'unavailable'; reason: string | null; label: string }>({ state: 'loading' })
   const [draft, setDraft] = useState<Draft>(() => fromOriginal(event))
   const [options, setOptions] = useState<Options>({ state: 'loading' })
   const [busy, setBusy] = useState(false)
@@ -92,7 +92,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     // depend on it either way — DELETE re-plans on the server.
     fetch(`/api/activity/${event.id}/delete`)
       .then(r => (r.ok ? r.json() : null))
-      .then((j: { plan?: { mode: 'hard' | 'record'; reason: string | null; label: string } } | null) => {
+      .then((j: { plan?: { mode: 'hard' | 'record' | 'unavailable'; reason: string | null; label: string } } | null) => {
         if (cancelled) return
         setPlan(j?.plan ? { state: 'ready', ...j.plan } : { state: 'failed' })
       })
@@ -220,6 +220,12 @@ export default function CorrectionActions({ event }: { event: Editable }) {
           </p>
         )}
 
+        {ready?.mode === 'unavailable' && (
+          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="unavailable">
+            Deleting isn&rsquo;t switched on for this ranch yet. Correct or void the entry instead —
+            both are available now.
+          </p>
+        )}
         {ready?.mode === 'hard' && (
           <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="hard">
             It will be gone, and every total recalculated without it. Nothing is kept.
@@ -235,7 +241,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
         {error && <p className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} role="alert" data-audit="delete-error">{error}</p>}
 
         <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" disabled={busy || !ready} onClick={() => void remove()}
+          <button type="button" disabled={busy || !ready || ready.mode === 'unavailable'} onClick={() => void remove()}
             className="inline-flex min-h-[52px] items-center rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
             style={{ backgroundColor: warning }} data-audit="delete-confirm">
             {busy ? 'Deleting…' : 'Delete it'}

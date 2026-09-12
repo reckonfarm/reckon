@@ -1,5 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { hasEventDeletion } from '@/lib/schema-capability'
 
 // ─── What still points at a place (Block 7D.3) ────────────────────────────────
 //
@@ -35,11 +36,14 @@ export interface PlaceRefs {
  * happened to belong to someone else, and no count can leak across ranches.
  */
 export async function placeReferences(supabase: SupabaseClient, placeId: string): Promise<PlaceRefs> {
+  // A deleted entry does not hold a place hostage — but on a database without
+  // 061 there are no deleted entries, so the filter is skipped rather than
+  // erroring (lib/schema-capability.ts).
+  const canDel = await hasEventDeletion(supabase)
   const entryCounts = await Promise.all(PLACE_KEYS.map(async k => {
-    const { count } = await supabase.from('events')
-      .select('id', { count: 'exact', head: true })
-      .is('deleted_at', null)          // a deleted entry does not hold a place hostage
-      .eq(`payload->>${k}`, placeId)
+    let q = supabase.from('events').select('id', { count: 'exact', head: true })
+    if (canDel) q = q.is('deleted_at', null)
+    const { count } = await q.eq(`payload->>${k}`, placeId)
     return count ?? 0
   }))
   const [{ count: devices }, { count: children }] = await Promise.all([
