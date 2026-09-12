@@ -56,12 +56,15 @@ scrollY`, not a reading of the source.
 *(y-values above 5,735 sit inside a closed `<details>` — laid out and clipped,
 which is native behaviour, not a bug.)*
 
-### The fourteen controls
+### The thirteen controls
 
 Share · Change cattle ▾ · Compare and settings ▾ · Chart / Sales (6) · lot
 select · How this is figured ▾ · preferred-barn select · Sale detail ▾ ·
 Calculator and endorsements ▾ · LRP term select · National markets and feed
 costs ▾ · Corn / Cattle cycle · Compare with feeder cattle ▾.
+
+Thirteen groups, counting each paired toggle (Chart/Sales, Corn/Cattle cycle)
+as the one control it is; fifteen individually clickable things.
 
 ### Measured repetition
 
@@ -177,14 +180,18 @@ names its own, and only those rows do.
 | `video-feed` ("No sale-video feed connected.") | An empty state for a feature that does not exist. Nothing links to it, nothing can connect it. |
 | *Compare and settings ▾* as a top-of-page control | It is a settings drawer sitting above the data. Move to the bottom with the preferred-barn select. |
 
-**Controls: 14 → 8.** Surviving: lot select · Chart / Sales · *How this is
-figured ▾* · *Calculator and endorsements ▾* · *National markets and feed costs
-▾* · Corn / Cattle cycle · preferred-barn select · Share. Cut or moved: *Change
-cattle ▾* (replaced by the lot select, which does the same thing 1,400px lower),
-*Compare and settings ▾* (to the bottom), *Sale detail ▾* (becomes the evidence
-block), *Compare with feeder cattle ▾* (a comparison inside a disclosure inside
-the last section — two taps deep in context nobody reached), LRP term select
-(stays, but inside its disclosure).
+**Controls: 13 → 9.**
+
+Surviving (9): Share · Chart / Sales · lot select · *How this is figured ▾* ·
+preferred-barn select · *Calculator and endorsements ▾* · LRP term select ·
+*National markets and feed costs ▾* · Corn / Cattle cycle.
+
+Cut or moved (4): *Change cattle ▾* — replaced by the lot select, which does the
+same thing 1,400px lower. *Compare and settings ▾* — moved to the bottom; it is
+a settings drawer sitting above the data. *Sale detail ▾* — becomes the
+reported-sale block, unhidden. *Compare with feeder cattle ▾* — a comparison
+inside a disclosure inside the last section, two taps deep in context nobody
+reached.
 
 ## 6. What a rancher sees before any tap
 
