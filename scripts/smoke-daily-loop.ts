@@ -1343,6 +1343,120 @@ async function main() {
       if (prior6d) await page.setViewportSize(prior6d)
     }
 
+    // ── Block 7B.2: the Ranch hub opens its recent rows in place ──────────
+    // Five rows and a navigation was the only way further down a list the page
+    // had already read. Two rows now, the rest revealed in place — and "in
+    // place" is the whole claim, so it is tested as one: no request, no URL
+    // change, the Sections list (and its Activity link) still on the page.
+    {
+      const prior7b = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_500)
+      const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
+      const shown = await liCount()
+      const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
+      const promised = parseInt((label.match(/Show (\d+) more/) ?? ['', 'NaN'])[1], 10)
+      record('7B.2: the hub opens on two recent rows, and the expander says how many more there are',
+        shown === 2 && promised > 0,
+        `${shown} row(s) · "${label}"`)
+
+      // Count every request the tap causes. The rows are already on the page;
+      // an expander that fetches is a page load wearing a disclosure's clothes.
+      let during = 0
+      const countReq = () => { during++ }
+      page.on('request', countReq)
+      const urlBefore = page.url()
+      await page.locator('[data-audit="ranch-recent-more"]').click()
+      await page.waitForTimeout(1_500)
+      page.off('request', countReq)
+      const opened = await liCount()
+      const sections = await page.locator('[data-audit="ranch-sections"]').count()
+      const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
+      record('7B.2: the rest open in place — no request, no navigation, the Sections list and its Activity link untouched',
+        opened === shown + promised && during === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
+        `${shown} → ${opened} row(s) (promised ${promised}) · ${during} request(s) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
+
+      const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
+      await page.locator('[data-audit="ranch-recent-more"]').click()
+      await page.waitForTimeout(800)
+      record('7B.2: it closes again to two rows', (await liCount()) === 2 && /Show fewer/.test(collapsed),
+        `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
+      if (prior7b) await page.setViewportSize(prior7b)
+    }
+
+    // ── Block 7B.1: headlines last on Today, and only as expensive as shown ──
+    // The card was gated to the signed-out county page, and when it did render
+    // it pulled 147 items and 75,601 bytes to show three. Both are tested here:
+    // WHERE it sits (last — news never appears above work) and WHAT it costs.
+    for (const width of [390, 320]) {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width, height: 844 })
+      const seen: { url: string; bytes: number }[] = []
+      const onRes = async (res: { url(): string; body(): Promise<Buffer> }) => {
+        if (!res.url().includes('/api/news')) return
+        try { seen.push({ url: res.url().replace(BASE, ''), bytes: (await res.body()).length }) } catch { /* body gone */ }
+      }
+      page.on('response', onRes)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(9_000)
+
+      const order: string[] = await page.evaluate(`[...document.querySelectorAll('main [data-audit]')].map(e => e.getAttribute('data-audit'))`)
+      const hookAt = order.indexOf('news-hook')
+      // "Last" is asserted as an ABSENCE OF ANYTHING ELSE below, not against a
+      // list of section names: NeedsAttention and ProgramAlerts render nothing
+      // when there is nothing to say, so a hardcoded roster would be a check
+      // that passes because the names never appeared. Anything on Today that is
+      // not part of the news card itself must sort above it.
+      const below = order.slice(hookAt + 1).filter(a => a && !a.startsWith('news-'))
+      // And the ledger strip — hay — must be above it, positively.
+      const hayAt = order.findIndex(a => a === 'hay-details' || a === 'logged-row' || a === 'whole-record')
+      record(`7B.1 (${width}): headlines are on Today, last, below hay`,
+        hookAt >= 0 && below.length === 0 && hayAt >= 0 && hayAt < hookAt,
+        hookAt < 0 ? 'news-hook ABSENT from Today' : `position ${hookAt + 1} of ${order.length} · ledger at ${hayAt + 1} · below it: ${below.join(', ') || 'nothing'}`)
+
+      const first = seen.find(r => /\/api\/news/.test(r.url))
+      record(`7B.1 (${width}): it asks for the three it shows, not the whole river`,
+        !!first && /limit=3/.test(first.url) && first.bytes < 20_000,
+        first ? `${first.url} → ${first.bytes} B` : 'no /api/news request seen')
+
+      const rendered = await page.locator('[data-audit="news-list"] a').count()
+      const moreBtn = page.locator('[data-audit="news-more"]')
+      const hasMore = await moreBtn.count()
+      record(`7B.1 (${width}): three headlines render, and "More headlines" survives the smaller payload`,
+        rendered === 3 && hasMore === 1,
+        `${rendered} headline(s) · more button ${hasMore}`)
+
+      if (hasMore === 1) {
+        const urlBefore = page.url()
+        await moreBtn.click()
+        await page.waitForTimeout(5_000)
+        const expanded = await page.locator('[data-audit="news-list"] a').count()
+        const second = seen.filter(r => /limit=10/.test(r.url))
+        record(`7B.1 (${width}): expanding pays for ten, in place, once`,
+          expanded === 10 && second.length === 1 && page.url() === urlBefore,
+          `${rendered} → ${expanded} headline(s) · ${second[0]?.bytes ?? '—'} B · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'}`)
+      }
+      page.off('response', onRes)
+      if (prior) await page.setViewportSize(prior)
+    }
+
+    // ── Block 7B.1: a broken feed is never "no news" ───────────────────────
+    // The distinction the three states exist for. An error must read as a claim
+    // about the network; "No cattle-country headlines right now" is a claim
+    // about the world, and a failed fetch must never be allowed to make it.
+    {
+      await page.route('**/api/news**', r => r.abort())
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(6_000)
+      const err = await page.locator('[data-audit="news-error"]').count()
+      const empty = await page.locator('[data-audit="news-empty"]').count()
+      record('7B.1: with the feed unreachable the card says so — never "no headlines right now"',
+        err === 1 && empty === 0,
+        `error state ${err} · empty state ${empty}`)
+      await page.unroute('**/api/news**')
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
