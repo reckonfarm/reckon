@@ -331,9 +331,31 @@ async function main() {
       record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
-    // Where I sell pin (needs migration 046)
-    const pin = await page.request.patch('/api/operation-profile', { data: { sell_barn_slug: '1773' } })
+    // Where I sell pin (needs migration 046).
+    //
+    // The pin only resolves to scope 'pinned' — the only state that prints
+    // "Preferred sale barn — Miles City" — while that barn's newest MARS report
+    // is inside FRESH_DAYS. It is real USDA data on a real sale calendar, so a
+    // barn that has not sold in a fortnight legitimately stops being the
+    // reference, and the page correctly falls back to the nearest fresh one.
+    //
+    // This check therefore had a data dependency it never declared: it passed
+    // only on days Miles City happened to be fresh. It went red on 2026-09-12
+    // with a report dated 2026-09-01 — eleven days, one past the window — after
+    // passing on 2026-09-11 at exactly ten. That is the barn's sale calendar,
+    // not a regression, and a suite that reports it as a failure is crying wolf
+    // about USDA's schedule. Freshness is checked first and the check SKIPS when
+    // the pin cannot resolve, naming the report date so the reason is legible.
+    const PIN_SLUG = '1773'
+    const FRESH_DAYS = 10
+    const { data: pinRows } = await admin.from('mars_price_history')
+      .select('report_date').eq('slug_id', PIN_SLUG)
+      .order('report_date', { ascending: false }).limit(1)
+    const pinDate = (pinRows ?? [])[0]?.report_date as string | undefined
+    const pinAge = pinDate ? Math.floor((Date.now() - new Date(`${pinDate}T12:00:00Z`).getTime()) / 86_400_000) : Infinity
+    const pin = await page.request.patch('/api/operation-profile', { data: { sell_barn_slug: PIN_SLUG } })
     if (pin.status() === 503 || pin.status() === 500) skip('A2: Where I sell pin', `PATCH ${pin.status()} — migration 046 not applied?`)
+    else if (pinAge > FRESH_DAYS) skip('A2: Preferred sale barn pin', `Miles City's newest report is ${pinDate ?? 'missing'} — ${Number.isFinite(pinAge) ? `${pinAge} days` : 'no data'}, past the ${FRESH_DAYS}-day window, so the pin correctly does not resolve`)
     else {
       await page.goto(`/dashboard?fips=${HOME_FIPS}&view=markets`, { waitUntil: 'domcontentloaded' })
       await page.getByText('Auction reference', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {})
