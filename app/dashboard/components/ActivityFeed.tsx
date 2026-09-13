@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
-import { hasEventDeletion } from '@/lib/schema-capability'
+import { live } from '@/lib/ledger-effective'
 
 // ─── Activity — the merged ledger feed, v0 (S3) ────────────────────────────────
 // PARKED 2026-08-09 (jobs-forward): no longer rendered — the Jobs view
@@ -162,13 +162,10 @@ export default async function ActivityFeed() {
     )
   }
 
-  // 7D: a deleted entry appears on no surface. Skipped without 061.
-  const canDel = await hasEventDeletion(supabase)
-  let feedQ = supabase
+  // 7D: a deleted entry appears on no surface.
+  const { data, error } = await live(supabase
     .from('events')
-    .select('id, type, ts, payload, schema_version, devices(name, places(name))')
-  if (canDel) feedQ = feedQ.is('deleted_at', null)
-  const { data, error } = await feedQ
+    .select('id, type, ts, payload, schema_version, devices(name, places(name))'))
     .order('ts', { ascending: false })
     .limit(FEED_CAP)
 

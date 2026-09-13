@@ -11,7 +11,8 @@
 // receive after the filter: the superseded line gone, its replacement present,
 // a void gone. Cutoffs are ranch days (America/Denver), never UTC.
 
-import { summarizeHay, type HayEntry } from '../lib/hay/queries'
+import { sinceCount, summarizeHay, type HayEntry } from '../lib/hay/queries'
+import { LATE_DAYS, addDays, daysBetween, planToTurnout, worstStretch } from '../lib/hay/plan'
 
 let failures = 0
 function check(name: string, pass: boolean, detail: string) {
@@ -79,6 +80,137 @@ const fedSince = (entries: HayEntry[]) => summarizeHay(entries, NOW).onHand!.fed
   check('two counts: the later count is the baseline; the Aug 25 feeding sits before it → 34', onHand(two) === 34 && summarizeHay(two, NOW).onHand!.baseline.asOf === '2026-09-01', `on hand ${onHand(two)}, baseline ${summarizeHay(two, NOW).onHand!.baseline.asOf}`)
   const movedPast = [two[0], fed('ac', '2026-09-02T18:00:00Z', 6), two[2], two[3]]   // the Aug 25 feeding corrected to Sep 2 — now after the later count
   check('a correction that moves a feeding past the intervening count draws on that count → 28', onHand(movedPast) === 28, `on hand ${onHand(movedPast)}`)
+}
+
+{
+  // ── Block 9: the window is the count, not the calendar ──────────────────────
+  // A winter operation, read on Jan 5. The count is a November one; the
+  // feeding runs straight through the New Year. Every hay call site used to
+  // floor the read at January 1, which kept the November count anchoring the
+  // arithmetic while the November and December feeding it was supposed to be
+  // reduced by disappeared. This is that ledger, both ways.
+  const JAN5 = new Date('2027-01-05T18:00:00Z').getTime()
+  const nov = count('c', '2026-11-15', '2026-11-15T18:00:00Z', 400)
+  const winter = ['2026-11-20', '2026-11-27', '2026-12-04', '2026-12-11', '2026-12-18', '2026-12-25', '2026-12-30'].map(d => fed(d, `${d}T18:00:00Z`, 14))
+  const january = ['2027-01-02', '2027-01-04'].map(d => fed(d, `${d}T18:00:00Z`, 5))
+  const whole = summarizeHay(sinceCount([nov, ...winter, ...january], '2026-11-15'), JAN5)
+  const jan1Floored = summarizeHay([nov, ...january], JAN5)   // what the old floor handed it
+  check('the window is the count: a November count reads its own winter — 400 − 108 = 292 on hand, 9 feeding days',
+    whole.onHand!.bales === 292 && whole.fed!.days === 9,
+    `on hand ${whole.onHand!.bales} · fed ${whole.fed!.bales} on ${whole.fed!.days} days`)
+  check('and the run-out date survives New Year — the 7-day gate is not re-armed by the calendar',
+    !!whole.runOut.date, `runOut ${whole.runOut.date ?? whole.runOut.withheld}`)
+  check('the January-1 floor is what wrong looks like: 98 bales of Nov–Dec feeding gone, on hand overstated, the date withheld',
+    jan1Floored.onHand!.bales === 390 && jan1Floored.runOut.withheld === 'thin_feeding',
+    `on hand ${jan1Floored.onHand!.bales} (overstated by ${jan1Floored.onHand!.bales - whole.onHand!.bales}) · runOut ${jan1Floored.runOut.date ?? jan1Floored.runOut.withheld}`)
+
+  // The cut itself: everything before the count goes, the count never does —
+  // including a count logged for a day earlier than its own timestamp.
+  const older = count('old', '2026-10-01', '2026-10-01T18:00:00Z', 900)
+  const before = fed('pre', '2026-11-01T18:00:00Z', 20)
+  const cut = sinceCount([older, before, nov, ...january], '2026-11-15')
+  check('the cut keeps every count and drops only work recorded before the anchor',
+    cut.length === 4 && cut.filter(e => e.type === 'hay_inventory').length === 2 && !cut.some(e => e.id === 'pre'),
+    `${cut.length} of 5 kept · counts ${cut.filter(e => e.type === 'hay_inventory').length} · pre-count feeding dropped ${!cut.some(e => e.id === 'pre')}`)
+  check('with no count at all there is nothing to anchor to, and nothing is cut',
+    sinceCount([before, ...january], null).length === 3, `${sinceCount([before, ...january], null).length} of 3 kept`)
+
+  // The cut is a RANCH-day comparison, the same one the on-hand arithmetic
+  // uses — so a feeding the equation counts is never dropped by the read.
+  const lateOnCountDay = fed('late', '2026-11-16T05:30:00Z', 9)   // 10:30 PM MST Nov 15 — the count day on the ranch
+  const withLate = sinceCount([nov, lateOnCountDay], '2026-11-15')
+  check('a feeding at 10:30 PM on the count day is kept by the read and counted by the equation — they cannot disagree',
+    withLate.length === 2 && summarizeHay(withLate, JAN5).onHand!.bales === 391,
+    `kept ${withLate.length} of 2 · on hand ${summarizeHay(withLate, JAN5).onHand!.bales}`)
+}
+
+{
+  // ── Block 9: will the hay reach grass? ──────────────────────────────────────
+  // A winter that has actually been fed. Counted 900 on Nov 1; fed heavily
+  // through a cold snap in December, lighter either side. Read on Jan 5, with
+  // turnout on May 15 — 130 days out.
+  const JAN5 = new Date('2027-01-05T18:00:00Z').getTime()
+  const c = count('c', '2026-11-01', '2026-11-01T18:00:00Z', 900)
+  const day = (d: string, n: number) => fed(d, `${d}T18:00:00Z`, n)
+  const feeds: HayEntry[] = []
+  // Nov: 6/day. Dec 10–23: 14/day, the cold snap. Rest of Dec + Jan: 6/day.
+  for (let i = 0; i < 65; i++) {
+    const d = addDays('2026-11-02', i)
+    if (d > '2027-01-05') break
+    feeds.push(day(d, d >= '2026-12-10' && d <= '2026-12-23' ? 14 : 6))
+  }
+  const ledger = [c, ...feeds]
+
+  const worst = worstStretch(ledger, JAN5)!
+  check('the worst stretch is the cold snap, not the average — 14 bales/day across Dec 10–23',
+    worst.full && worst.balesPerDay === 14 && worst.from === '2026-12-10' && worst.to === '2026-12-23',
+    `${worst.balesPerDay} bales/day over ${worst.days} days · ${worst.from}–${worst.to} · full ${worst.full}`)
+
+  const onHand = summarizeHay(ledger, JAN5).onHand!
+  const plan = planToTurnout({ turnout: '2027-05-15', onHand, entries: ledger }, JAN5)
+  if (plan.withheld) { check('the plan answers', false, `withheld ${plan.withheld}`) }
+  else {
+    // 65 fed days: 51 quiet-ish at 6 (306) + 14 cold at 14 (196) = 502 fed.
+    check('planning at the worst stretch, not the recent rate — the pair share one rate and one on-hand',
+      plan.rate.balesPerDay === 14 && plan.expected.days === daysBetween('2027-01-05', '2027-05-15') && plan.onHand === onHand.bales,
+      `rate ${plan.rate.balesPerDay} · ${plan.expected.days} days · on hand ${plan.onHand}`)
+    check('the late date is exactly three weeks past the one he set',
+      daysBetween(plan.expected.date, plan.late.date) === LATE_DAYS && plan.late.date === '2027-06-05',
+      `${plan.expected.date} → ${plan.late.date} (${daysBetween(plan.expected.date, plan.late.date)} days)`)
+    // The 6C rule: every printed figure is the figure the arithmetic used.
+    const e = plan.expected, l = plan.late
+    check('needed − on hand IS the short number, on both dates — the envelope check comes out the same',
+      (e.reaches ? e.spare === plan.onHand - e.needed : e.short === e.needed - plan.onHand) &&
+      (l.reaches ? l.spare === plan.onHand - l.needed : l.short === l.needed - plan.onHand),
+      `expected ${e.needed} needed vs ${plan.onHand} → ${e.reaches ? `+${e.spare}` : `-${e.short}`} · late ${l.needed} → ${l.reaches ? `+${l.spare}` : `-${l.short}`}`)
+    check('short on both dates, and the run-short day is stated only where it means something',
+      !e.reaches && !l.reaches && !!e.runShort && e.runShort === l.runShort,
+      `expected short ${e.short} by ${e.runShort} · late short ${l.short} by ${l.runShort}`)
+    check('the later date is the harder one — three weeks costs exactly three weeks of feed',
+      l.needed - e.needed === LATE_DAYS * plan.rate.balesPerDay && l.short > e.short,
+      `${e.needed} → ${l.needed} (+${l.needed - e.needed}) · short ${e.short} → ${l.short}`)
+    check('a full winter is not thin — no caveat when the feeding stands on more than the gate',
+      !plan.thin && plan.feedDays === 65, `${plan.feedDays} feeding days · thin ${plan.thin}`)
+  }
+
+  // The reaches case: the same winter against a stack that covers it.
+  const big = summarizeHay([count('c2', '2026-11-01', '2026-11-01T18:00:00Z', 4000), ...feeds], JAN5).onHand!
+  const rich = planToTurnout({ turnout: '2027-05-15', onHand: big, entries: [count('c2', '2026-11-01', '2026-11-01T18:00:00Z', 4000), ...feeds] }, JAN5)
+  check('when the stack covers it, it says so with the margin and names no run-short day',
+    !rich.withheld && rich.expected.reaches && rich.expected.runShort === null && rich.expected.spare === rich.onHand - rich.expected.needed,
+    rich.withheld ? `withheld ${rich.withheld}` : `${rich.onHand} on hand vs ${rich.expected.needed} needed → ${rich.expected.spare} to spare`)
+}
+
+{
+  // ── Block 9: not enough winter yet says so, and never claims a worst case ───
+  const NOV8 = new Date('2026-11-08T18:00:00Z').getTime()
+  const c = count('c', '2026-11-01', '2026-11-01T18:00:00Z', 300)
+  const five = ['2026-11-02', '2026-11-03', '2026-11-05', '2026-11-06', '2026-11-08'].map(d => fed(d, `${d}T18:00:00Z`, 8))
+  const short = worstStretch([c, ...five], NOV8)!
+  check('a ledger shorter than fourteen days reports full:false — there is no worst fourteen days in it',
+    !short.full && short.days === 8 && short.bales === 40, `${short.bales} bales over ${short.days} days · full ${short.full}`)
+
+  const onHand = summarizeHay([c, ...five], NOV8).onHand!
+  const plan = planToTurnout({ turnout: '2027-05-15', onHand, entries: [c, ...five] }, NOV8)
+  check('and the answer still appears, before the run-out date is allowed to — flagged thin, with the count of days',
+    !plan.withheld && plan.thin && plan.feedDays === 5 && !plan.rate.full,
+    plan.withheld ? `withheld ${plan.withheld}` : `${plan.feedDays} feeding days · thin ${plan.thin} · rate full ${plan.rate.full}`)
+  check('while the run-out DATE keeps its seven-day gate — the two answers do not move together',
+    summarizeHay([c, ...five], NOV8).runOut.withheld === 'thin_feeding',
+    `runOut ${summarizeHay([c, ...five], NOV8).runOut.date ?? summarizeHay([c, ...five], NOV8).runOut.withheld}`)
+}
+
+{
+  // ── Block 9: what it refuses, and why ───────────────────────────────────────
+  const NOW9 = new Date('2026-11-08T18:00:00Z').getTime()
+  const c = count('c', '2026-11-01', '2026-11-01T18:00:00Z', 300)
+  const f = fed('f', '2026-11-02T18:00:00Z', 8)
+  const w = (o: Parameters<typeof planToTurnout>[0]) => { const r = planToTurnout(o, NOW9); return r.withheld ?? 'answered' }
+  const onHand = summarizeHay([c, f], NOW9).onHand!
+  check('no turnout date → it asks for the one thing only he can answer', w({ turnout: null, onHand, entries: [c, f] }) === 'no_turnout', w({ turnout: null, onHand, entries: [c, f] }))
+  check('a turnout already past → it asks for the next one, never plans backwards', w({ turnout: '2026-05-15', onHand, entries: [c, f] }) === 'turnout_past', w({ turnout: '2026-05-15', onHand, entries: [c, f] }))
+  check('no counted baseline → no on hand to compare against, and it says which', w({ turnout: '2027-05-15', onHand: null, entries: [c, f] }) === 'no_baseline', w({ turnout: '2027-05-15', onHand: null, entries: [c, f] }))
+  check('nothing fed → no rate of his own, so no number is invented', w({ turnout: '2027-05-15', onHand, entries: [c] }) === 'no_feeding', w({ turnout: '2027-05-15', onHand, entries: [c] }))
 }
 
 console.log(failures === 0 ? '\nhay-ledger-harness: all checks pass' : `\nhay-ledger-harness: ${failures} FAILED`)

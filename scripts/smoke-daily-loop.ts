@@ -1606,6 +1606,157 @@ async function main() {
       await page.unroute('**/api/news**')
     }
 
+    // ── Block 9: hay to turnout — the runway gets an end ───────────────────
+    // The card already said how long the stack lasts. This says whether that
+    // reaches grass, at his own heaviest fourteen days, on two dates: turnout
+    // as he expects it and turnout three weeks late.
+    //
+    // Read with textContent, never innerText: the standing rule. And every
+    // figure on screen must survive the envelope check — needed minus on hand
+    // IS the short number, or the surface is lying quietly.
+    {
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="hay-to-turnout"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+
+      // Nothing set: it asks for the one thing only he can answer, and never
+      // guesses one from the FSA grazing period.
+      const withheld = await text('[data-audit="turnout-withheld"]')
+      const reason = await page.locator('[data-audit="turnout-withheld"]').first().getAttribute('data-reason').catch(() => null)
+      record('9: with no turnout date the card asks for one and answers nothing — never a guessed date',
+        reason === 'no_turnout' && /go back to grass/i.test(withheld) && (await page.locator('[data-audit="turnout-expected"]').count()) === 0,
+        `reason ${reason ?? 'NONE'} · "${withheld.slice(0, 70)}"`)
+
+      // Set one through the UI, the way he would.
+      const year = new Date().getUTCFullYear() + 1
+      const turnout = `${year}-05-15`
+      await page.locator('[data-audit="turnout-open"]').first().click()
+      await page.locator('[data-audit="turnout-input"]').fill(turnout)
+      await page.locator('[data-audit="turnout-save"]').click()
+      await page.locator('[data-audit="turnout-expected"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+
+      const expected = await text('[data-audit="turnout-expected"]')
+      const late = await text('[data-audit="turnout-late"]')
+      const rate = await text('[data-audit="turnout-rate"]')
+      const nums = (t: string) => {
+        const m = t.match(/([\d,]+) needed · ([\d,]+) on hand — (?:reaches it with ([\d,]+) bales? to spare|([\d,]+) bales? short)/)
+        return m ? { needed: Number(m[1].replace(/,/g, '')), onHand: Number(m[2].replace(/,/g, '')), spare: m[3] ? Number(m[3].replace(/,/g, '')) : null, short: m[4] ? Number(m[4].replace(/,/g, '')) : null } : null
+      }
+      const e = nums(expected), l = nums(late)
+      const adds = (x: ReturnType<typeof nums>) => !!x && (x.spare !== null ? x.onHand - x.needed === x.spare : x.needed - x.onHand === x.short)
+
+      record('9: the pair answers on two dates — turnout as set, and three weeks late — both against the same on-hand',
+        /May 15/.test(expected) && /Three weeks late/.test(late) && /Jun 5/.test(late) && !!e && !!l && e.onHand === l.onHand,
+        `expected "${expected.slice(0, 80)}" · late "${late.slice(0, 80)}"`)
+      record('9: every figure survives the envelope check — needed minus on hand IS the short number, on both dates',
+        adds(e) && adds(l), e && l ? `expected ${e.needed}−${e.onHand}=${e.spare ?? e.short} · late ${l.needed}−${l.onHand}=${l.spare ?? l.short}` : 'no figures parsed')
+      record('9: the later date is the harder one — three weeks costs feed, never less',
+        !!e && !!l && l.needed > e.needed, e && l ? `${e.needed} → ${l.needed}` : 'no figures parsed')
+      record('9: the rate names where it came from, and says plainly when it is not yet a worst case',
+        /bales\/day/.test(rate) && (/heaviest 14 days so far, \w+ \d+–\w+ \d+/.test(rate) || /not yet a full 14 days, so it is not a worst case/.test(rate)),
+        `"${rate.slice(0, 110)}"`)
+
+      // Under the seven-day gate the answer still shows and says how thin it
+      // is, while the run-out DATE stays behind its gate — PK's ruling that
+      // the two answers do not move together.
+      const thin = await page.locator('[data-audit="turnout-thin"]').count()
+      const thinText = thin ? await text('[data-audit="turnout-thin"]') : ''
+      record('9: a thin ledger still gets the answer, carrying the count of feeding days behind it',
+        thin === 0 || /days? of feeding so far/.test(thinText),
+        thin ? `"${thinText.slice(0, 60)}"` : 'not thin on this ranch')
+
+      // It survives a reload — the date is on the ranch, not in the browser.
+      await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="turnout-expected"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      const again = await text('[data-audit="turnout-expected"]')
+      record('9: the turnout date is stored on the ranch — it is still there on the next load',
+        /May 15/.test(again) && again === expected, `"${again.slice(0, 80)}"`)
+    }
+
+    // ── Block 10: preg check at the chute, driven end to end ────────────────
+    // The first screen in the app whose save MOVES ANOTHER TABLE. So this does
+    // not stop at "the entry appeared": it taps the working out one animal at
+    // a time the way PK will, then reads the head counts back off the Cattle
+    // page and checks the ledger actually moved them.
+    //
+    // Tally mode is the default and the one being driven, because it is the
+    // one that will be used at a chute. A mis-tap and an Undo are part of the
+    // path, not an edge case.
+    {
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      const headOf = async (id: string) => {
+        const { data } = await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()
+        return (data as { head_count?: number } | null)?.head_count ?? null
+      }
+      const before = await headOf(lotId)
+
+      await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="preg-check"], [data-audit="preg-pick-lot"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+
+      // One lot on this ranch, so it opens straight on the working.
+      if (await page.locator('[data-audit="preg-lot-choice"]').count() > 0) {
+        await page.locator('[data-audit="preg-lot-choice"]').first().click()
+      }
+      const source = await text('[data-audit="preg-source"]')
+      record('10: the chute screen opens on the bunch, naming it and its head count',
+        new RegExp(`${LOT_NAME}`).test(source) && /\d+ head/.test(source), `"${source.slice(0, 60)}"`)
+
+      // Tally: 9 bred, 3 open — with a mis-tap and an Undo in the middle.
+      const mode = await page.locator('[data-audit="preg-check"]').first().getAttribute('data-mode')
+      for (let i = 0; i < 9; i++) await page.locator('[data-audit="preg-tap-bred"]').click()
+      await page.locator('[data-audit="preg-tap-open"]').click()
+      await page.locator('[data-audit="preg-tap-open"]').click()
+      await page.locator('[data-audit="preg-tap-open"]').click()
+      await page.locator('[data-audit="preg-tap-bred"]').click()          // the mis-tap
+      const undoLabel = await text('[data-audit="preg-undo"]')
+      await page.locator('[data-audit="preg-undo"]').click()              // take it back
+      const counted = await text('[data-audit="preg-counted-value"]')
+      const bredV = await text('[data-audit="preg-bred-value"]')
+      const openV = await text('[data-audit="preg-open-value"]')
+      record('10: tapping builds the count, and Undo names what it takes back and takes back exactly that',
+        mode === 'tally' && /bred/i.test(undoLabel) && counted === '12' && bredV === '9' && openV === '3',
+        `mode ${mode} · undo "${undoLabel}" · ${counted} counted · ${bredV} bred · ${openV} open`)
+
+      const equation = await text('[data-audit="preg-equation"]')
+      const reconciles = await page.locator('[data-audit="preg-equation"]').first().getAttribute('data-reconciles')
+      record('10: the arithmetic is on screen and adds up before Record it is ever pressed',
+        reconciles === 'true' && /9 bred \+ 3 open = 12 counted/.test(equation), `"${equation.slice(0, 70)}"`)
+
+      // The chute count disagrees with the stored 60 — it must say so and NOT block.
+      const disc = await text('[data-audit="preg-discrepancy"]')
+      const saveDisabled = await page.locator('[data-audit="preg-save"]').isDisabled()
+      record('10: a chute count that disagrees with the stored number is stated, not refused',
+        /said 60/.test(disc) && /Going with the 12 you counted/.test(disc) && !saveDisabled,
+        `"${disc.slice(0, 80)}" · save ${saveDisabled ? 'DISABLED' : 'enabled'}`)
+
+      const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
+      await page.locator('[data-audit="preg-dest-name"]').fill(destName)
+      await page.locator('[data-audit="preg-save"]').click()
+      await watchStates(page, 'Synced to ranch', 30_000, 'Preg check')
+
+      // THE LEDGER MOVED THE CATTLE, or this screen is a lie.
+      const after = await headOf(lotId)
+      const { data: madeRows } = await admin.from('herd_lots').select('id, head_count, class, ranch_id').eq('name', destName)
+      const made = ((madeRows ?? []) as { id: string; head_count: number; class: string; ranch_id: string }[])[0] ?? null
+      record('10: the working moved the head counts — the source ends at what stayed, the opens are a real bunch on this ranch',
+        before === 60 && after === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
+        `${LOT_NAME} ${before} → ${after} · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
+
+      // And it is in the record, in one line, like everything else.
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-day"], [data-audit="ranch-section"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      const record10 = ((await page.locator('body').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      record('10: the working is in the Activity record, naming what was counted and where they went',
+        new RegExp(`Preg check[^.]*12 counted`).test(record10) && record10.includes(destName),
+        `${/Preg check/.test(record10) ? 'row present' : 'NO ROW'} · names the group ${record10.includes(destName)}`)
+
+      // Cleanup: the smoke ranch is torn down wholesale, but the destination
+      // lot is created by the FUNCTION, not the fixture, so it is named here
+      // to keep teardown's promise that nothing SMOKE-* survives.
+      if (made) await admin.from('herd_lots').delete().eq('id', made.id)
+      await admin.from('herd_lots').update({ head_count: 60 }).eq('id', lotId)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

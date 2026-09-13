@@ -50,7 +50,7 @@ export async function consequenceFor(
         if (type === 'bales_stacked') lines.push(`${bales(n)} stacked${at}`)
         if (type === 'hay_inventory') lines.push(`${bales(n)} on hand as of ${ranchDay(String(payload.as_of ?? ''))}`)
 
-        const ledger = await getHayLedger(supabase, { since: ranchYearStart() })
+        const ledger = await getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() })
         const { onHand, fed, runOut } = ledger.summary
         if (onHand) {
           // 6C: the complete equation, the same one the Hay panel states, ranch-scoped.
