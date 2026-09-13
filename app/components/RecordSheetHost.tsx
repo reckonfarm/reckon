@@ -7,6 +7,7 @@ import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
 import { setRecordAvailable } from '@/lib/record-sheet-state'
+import RecordFab from './RecordFab'
 import { takeDiscardedNotice } from '@/lib/private-state'
 import { warning } from '@/lib/brand-colors'
 
@@ -101,6 +102,7 @@ export default function RecordSheetHost() {
       <DiscardedOnSwitch />
       <LogIt launcher={false} />
       <GlobalSaveStatus />
+      <RecordFab />
     </>
   )
 }

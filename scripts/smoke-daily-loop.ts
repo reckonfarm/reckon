@@ -185,7 +185,7 @@ const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 6
 // Record on desktop (where this suite runs by default), the bar's on a phone.
 // One helper, so no check has to know which.
 function recordControl(page: Page) {
-  return page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first()
+  return page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first()
 }
 
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
@@ -403,7 +403,7 @@ async function main() {
       // is md:hidden, the header's Record is hidden on the narrow layout. Pick
       // by VISIBILITY, not DOM order: .first() on the pair silently chose the
       // hidden one and every assertion after it read a sheet that never opened.
-      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click()
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
       // An empty number can never save as 0 — it is refused in the form now,
@@ -805,7 +805,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
       await page.waitForTimeout(500)
-      const fab = page.locator('[data-audit="record-action"]')
+      const fab = page.locator('[data-audit="record-fab"]')
       const box = await fab.boundingBox().catch(() => null)
       const vp = page.viewportSize()!
       const inside = !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height
@@ -869,29 +869,18 @@ async function main() {
       const bar = page.locator('[data-audit="bottom-bar"]')
       await bar.waitFor({ timeout: 15_000 }).catch(() => {})
       const tabs = await page.locator('[data-audit="bottom-bar"] a').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      const rec = page.locator('[data-audit="record-action"]')
+      // Block 12 (12.1): the pill is back. Four destinations in the bar and
+      // nothing else; Record floats above it, clear of it, under the 11.4 rule
+      // that the overlap check enforces on every screen.
+      const rec = page.locator('[data-audit="record-fab"]')
+      await rec.waitFor({ timeout: 15_000 }).catch(() => {})
       const recCount = await rec.count()
-      const oldFab = await page.locator('[data-audit="record-fab"]').count()
-      record('6A/11.4: four labeled destinations and Record, all in the bar — and no floating pill left anywhere',
-        tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && oldFab === 0,
-        `tabs [${tabs.join(', ')}] · Record in bar ${recCount} · floating pill ${oldFab}`)
-
-      // 11.4 follow-on: the FAB lived inside the host that mounts only for a
-      // signed-in person, so signing out hid it for free. The bar is in the
-      // root layout and renders for everyone, so Record must be gated on a
-      // sheet actually existing — a button that does nothing is the same
-      // defect class as a button you cannot reach.
-      const anon = await ctx.browser()!.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
-      try {
-        const anonPage = await anon.newPage()
-        await anonPage.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await anonPage.waitForTimeout(2_500)
-        const anonBar = await anonPage.locator('[data-audit="bottom-bar"]').count()
-        const anonRecord = await anonPage.locator('[data-audit="record-action"]').count()
-        record('11.4: a signed-out visitor is not offered Record — the bar is there, the tap that would do nothing is not',
-          anonBar === 1 && anonRecord === 0, `bar ${anonBar} · Record offered ${anonRecord}`)
-        await anonPage.close()
-      } finally { await anon.close() }
+      const inBar = await page.locator('[data-audit="bottom-bar"] [data-audit="record-action"]').count()
+      const fabBox = await rec.boundingBox().catch(() => null)
+      const barBox = await bar.boundingBox().catch(() => null)
+      record('6A/12.1: four labeled destinations in the bar, and Record is the pill above it — clear of the bar, and not in it',
+        tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && inBar === 0 && !!fabBox && !!barBox && fabBox.y + fabBox.height <= barBox.y,
+        `tabs [${tabs.join(', ')}] · pill ${recCount} · in bar ${inBar} · pill bottom ${fabBox ? Math.round(fabBox.y + fabBox.height) : 'none'} · bar top ${barBox ? Math.round(barBox.y) : 'none'}`)
 
       await rec.click()
       await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
@@ -2050,8 +2039,8 @@ async function main() {
         const pad = parseFloat(getComputedStyle(document.body).paddingBottom || '0')
         return { bar: bar ? Math.round(bar.getBoundingClientRect().height) : 0, pad: Math.round(pad) }
       })
-      record(`11.4 (${width}): the page reserves the bar's own height, so nothing ends underneath it`,
-        room.bar > 0 && room.pad >= room.bar, `bar ${room.bar}px · body padding ${room.pad}px`)
+      record(`11.4/12.1 (${width}): the page reserves the bar AND the pill zone above it, so nothing ends underneath either`,
+        room.bar > 0 && room.pad >= room.bar + 56, `bar ${room.bar}px · body padding ${room.pad}px (needs ≥ bar + 56)`)
 
       if (prior) await page.setViewportSize(prior)
     }
@@ -2065,9 +2054,9 @@ async function main() {
       const inBar = await page.locator('[data-audit="record-action"]').count()
       const fab = await page.locator('[data-audit="record-fab"]').count()
       const launcher = await page.locator('[data-audit="finish-draft"]').count()
-      record('11.5: Today offers Record once — in the bar, with no pill and no second button beside it',
-        inBar === 1 && fab === 0 && launcher === 0,
-        `bar ${inBar} · pill ${fab} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
+      record('11.5/12.1: Today offers Record once — the pill, with nothing in the bar and no second button on the page',
+        fab === 1 && inBar === 0 && launcher === 0,
+        `pill ${fab} · in bar ${inBar} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
       if (prior) await page.setViewportSize(prior)
     }
 
@@ -2103,7 +2092,7 @@ async function main() {
       // unsynced, and it says what each button does to them.
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
       await page.context().setOffline(true)
-      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click().catch(() => {})
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click().catch(() => {})
       await page.locator('[data-audit="tile-hay_fed"]').first().click().catch(() => {})
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})
