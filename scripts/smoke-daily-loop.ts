@@ -669,7 +669,8 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
-      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /count · not a stock movement/i.test(t)).catch(() => false)   // the eyebrow is uppercased by CSS
+      // Block 12 (12.2): the picker reads Work · Count · Ground; Count hay sits under Count and keeps its hint.
+      const countApart = (await page.locator('[data-audit="picker-group-count"]').count()) === 1 && (await page.locator('[data-audit="picker-group-work"]').count()) === 1 && (await page.locator('[data-audit="picker-group-ground"]').count()) === 1
       await page.locator('[data-audit="tile-hay_fed"]').click()
       await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
@@ -679,7 +680,7 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A: the sheet offers verbs with Count apart; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+      record('6A/12.2: the sheet offers Work · Count · Ground, Count hay under Count; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     }
 
     // ── Block 6A (9): the copy queue, as rendered ──
@@ -1443,7 +1444,7 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         const pl = (await readRows('[data-audit="place-activity"]')).find(r => r.id === voidId)
         const plOrig = (await readRows('[data-audit="place-activity"]')).filter(r => r.id === v0.id)
-        record('6B-2: the voided feeding stands on the place timeline — marked voided, greyed, what it voided one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /voided/.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
+        record('6B-2/12.5: the removed feeding stands on the place timeline — marked removed, greyed, what it removed one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /removed/i.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
         // 12.8: the hub no longer lists rows; the record keeps the void in view.
         await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
         await page.locator(`li[data-id="${voidId}"]`).first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
