@@ -436,7 +436,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
     // chart takes the width; from sm it sits in the stack like every other card.
     <div className="-mx-4 sm:mx-0">
     <Card shadow="soft" className="p-3 sm:p-6" data-audit="history-card">
-      <p className={EYEBROW}>{mode === 'context' ? 'Broader context · chart' : 'Selected cattle'}</p>
+      <p className={EYEBROW}>{mode === 'context' ? 'Beyond your barn · chart' : 'Selected cattle'}</p>
       {/* 7C: the chart's own subject and standing, above its one control.
           "Change cattle" is gone — the lot select at the top of the page drives
           class and weight band (6I) — so Compare and settings is the only

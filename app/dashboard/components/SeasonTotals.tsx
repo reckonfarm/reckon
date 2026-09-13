@@ -113,7 +113,7 @@ export default async function SeasonTotals({ heading = true }: { heading?: boole
     <Card shadow="none" className="px-5 py-4">
       {heading && (
         <p className={EYEBROW}>
-          This season
+          Cut and baled this season
         </p>
       )}
       <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>

@@ -191,7 +191,7 @@ async function main() {
     // lines) and a row names its barn ONLY when that barn is not the page's, so
     // "/cwt at " is no longer the right proof. What must survive is the per-lot
     // line itself — like compared with like, one lot at a time.
-    record('7.2/7C: per-lot what-changed survives, one labeled market-reference line per lot', /WHAT CHANGED/i.test(body) && /Market reference: /.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
+    record('7.2/7C/12.10: per-lot what-changed survives under "Changes since you checked", one labeled market-reference line per lot', /CHANGES SINCE YOU CHECKED/i.test(body) && /Market reference: /.test(body), (body.match(/Market reference:[^·]{0,60}/) ?? [''])[0])
     record('7.3: no carried-forward control anywhere on Markets', (await page.getByRole('button', { name: /carried-forward/i }).count()) === 0)
     record('7.3: the chart says points only, in one state', /Points are reported sales\. Nothing is drawn between them/.test((await stepCopy.innerText()).replace(/\s+/g, ' ')) && !/Dashed steps/.test(await stepCopy.innerText()), (await stepCopy.innerText()).replace(/\s+/g, ' ').slice(0, 80))
     record('B4: honest framing on a short spine', /History begins .*no prior year to compare yet/.test(body) || /Prior year in gray/.test(body))

@@ -134,7 +134,7 @@ export default function LrpMarketsCard({ result }: { result: LrpResult }) {
   return (
     <Card shadow="soft" className="p-4 sm:p-6">
       <div className="mb-3">
-        <p className={EYEBROW}>Cattle markets</p>
+        <p className={EYEBROW}>Price protection (LRP)</p>
         <Heading level={3} visual={5} className="mt-1">Livestock Risk Protection</Heading>
       </div>
 

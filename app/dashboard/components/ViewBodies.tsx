@@ -976,7 +976,7 @@ export async function MarketsViewBody({
           Both answered "what moved since I last looked" 200px apart. */}
       {(homeFips || anchor) && (
         <section aria-labelledby="what-changed-h" data-audit="what-changed">
-          <h2 id="what-changed-h" className={`${EYEBROW} !text-ink`}>What changed</h2>
+          <h2 id="what-changed-h" className={`${EYEBROW} !text-ink`}>Changes since you checked</h2>
           <Card shadow="none" className="mt-2 px-5 py-4">
             {homeFips && (
               <Suspense fallback={null}>
@@ -1028,7 +1028,7 @@ export async function MarketsViewBody({
           line is gone: an empty state for a feature that does not exist, that
           nothing links to and nothing can connect. */}
       <section className="space-y-3" aria-labelledby="broader-context-h" data-audit="broader-context">
-        <h2 id="broader-context-h" className={`${EYEBROW} !text-ink`}>Broader context</h2>
+        <h2 id="broader-context-h" className={`${EYEBROW} !text-ink`}>Beyond your barn</h2>
         {(() => {
           const fed = nationalBeef.status === 'ok' ? nationalBeef.fedSteer : null
           const cornOk = corn.status === 'ok' ? corn : null

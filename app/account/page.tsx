@@ -38,7 +38,7 @@ export default async function AccountPage() {
         <p className="mt-1 break-words font-dm-sans text-[16px] text-secondary-ink" data-audit="account-email">{user.email}</p>
 
         <section className="mt-6" aria-labelledby="acct-identity">
-          <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>Identity</h2>
+          <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>You</h2>
           <ProfileForm />
         </section>
 
