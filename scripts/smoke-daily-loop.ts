@@ -179,8 +179,17 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
 }
 const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 60))).join(' → ')}]`
 
+// Block 11 (11.5): Today's full-width "Record work" button is gone — the bar
+// carries Record on every screen, so a second one on Today was the same action
+// twice. Which control is on screen now depends on the width: the header's
+// Record on desktop (where this suite runs by default), the bar's on a phone.
+// One helper, so no check has to know which.
+function recordControl(page: Page) {
+  return page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first()
+}
+
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
-  await page.getByRole('button', { name: /^Record work/ }).click()
+  await recordControl(page).click()
   await page.getByRole('button', { name: /^Feed hay/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
@@ -246,10 +255,12 @@ async function main() {
     // race that usually won — and lost once here, reporting a red on a button
     // that three separate trials found present within 18 ms. A bounded wait is
     // the same assertion ("the button is there") without the coin toss.
-    const hasLogIt = await page.getByRole('button', { name: /^Record work/ }).first()
-      .waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+    const hasRecord = await recordControl(page).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     // Block 6A: /home lands on /today (the county is public context, not part of the home URL); the private stack is there.
-    record('/home renders the home county Today stack', homeUrl.startsWith('/today') && hasLogIt, `${homeUrl} · Log it button: ${hasLogIt}`)
+    // Block 11 (11.5): the assertion is unchanged in substance — a signed-in
+    // person landing on Today can record something. It just no longer insists
+    // that the control be a full-width button ON Today.
+    record('/home renders the home county Today stack, with Record reachable', homeUrl.startsWith('/today') && hasRecord, `${homeUrl} · Record reachable: ${hasRecord}`)
     // Phase A1 — measured from the painted page, signed in: no text under 14 px, no pair under
     // 4.5:1, navigation / answers at 7:1 — main and header both.
     for (const root of ['main', 'header'] as const) {
@@ -292,10 +303,14 @@ async function main() {
     {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yLog = await pos('button:has-text("Record work")'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
+      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       const yNews = await pos('[data-audit="news-hook"]')
-      record('7.7: Today order — since you checked · repeat last · Log it · hay (open on Hay), headlines last (7B.1)', ySince < yRepeat && yRepeat < yLog && yLog < yTabs && yTabs < yNews && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · log ${Math.round(yLog)} · ledgers ${Math.round(yTabs)} · news ${Math.round(yNews)} · active tab "${activeTab}"`)
+      // Block 11 (11.5): "Log it" is no longer a step in this order — Record
+      // is in the bar (or the header), reachable from anywhere, and is not
+      // something Today has to make room for. The order 7.7 was protecting is
+      // otherwise intact, and headlines are still last.
+      record('7.7: Today order — since you checked · repeat last · hay (open on Hay), headlines last (7B.1)', ySince < yRepeat && yRepeat < yTabs && yTabs < yNews && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · ledgers ${Math.round(yTabs)} · news ${Math.round(yNews)} · active tab "${activeTab}"`)
       const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
@@ -354,14 +369,17 @@ async function main() {
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 
     // ── half-typed sheet survives a reload ──
-    await page.getByRole('button', { name: /^Record work/ }).click()
+    await recordControl(page).click()
     await page.getByRole('button', { name: /^Feed hay/ }).click()
     await page.getByLabel('Hay fed').fill('7')
     await page.reload({ waitUntil: 'domcontentloaded' })
-    const btn = await page.getByRole('button', { name: /^Record work/ }).innerText().catch(() => '')
-    await page.getByRole('button', { name: /^Record work/ }).click()
+    // Block 11 (11.5): the "finish your unsaved entry" wording moved onto the
+    // one control Today kept — a way back to work already started, which is
+    // the thing the bar cannot say.
+    const btn = ((await page.locator('[data-audit="finish-draft"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+    await page.locator('[data-audit="finish-draft"]').first().click()
     const restored = await page.getByLabel('Hay fed').inputValue().catch(() => '')
-    record('half-typed sheet survives a reload', /finish/.test(btn) && restored === '7', `button "${btn}" · bales "${restored}"`)
+    record('half-typed sheet survives a reload, and Today offers a way back to it', /finish/i.test(btn) && restored === '7', `draft control "${btn}" · bales "${restored}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
 
     // ── 7.4 + 7.5: what a form says before it saves ────────────────────────
@@ -468,11 +486,11 @@ async function main() {
     await pageB.goto('/home', { waitUntil: 'domcontentloaded' })
     await pageB.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const urlB = pageB.url().replace(BASE, '')
-    const logItB = await pageB.getByRole('button', { name: /^Record work/ }).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+    const logItB = await recordControl(pageB).waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     record('no home county: /home lands on the ledger with Log it', !/fips=/.test(urlB) && logItB, `${urlB} · Log it: ${logItB}`)
     const beforeB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
     // Block 4A — the hand sees the ranch's lots: the Fed-to control is there, with the lot.
-    await pageB.getByRole('button', { name: /^Record work/ }).click()
+    await recordControl(pageB).click()
     await pageB.getByRole('button', { name: /^Feed hay/ }).click()
     const fedTo = pageB.locator('[data-audit="fed-to"]')   // Block 6A: the loaded control (the field's space is reserved while lots load)
     const fedToShown = await fedTo.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
@@ -647,7 +665,7 @@ async function main() {
     // ── Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding ──
     {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: /^Record work/ }).click()
+      await recordControl(page).click()
       const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
       const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /count · not a stock movement/i.test(t)).catch(() => false)   // the eyebrow is uppercased by CSS
       await page.locator('[data-audit="tile-hay_fed"]').click()
@@ -898,7 +916,7 @@ async function main() {
       const head0 = await headBefore()
       // cattle work naming the lot
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: /^Record work/ }).first().click()
+      await recordControl(page).click()
       await page.getByRole('button', { name: /^Record cattle work/ }).click()
       await page.getByLabel('Worked').fill('12')
       await page.getByLabel('What').fill('pregged')
@@ -916,7 +934,7 @@ async function main() {
       record('6G: the lot card\'s last recorded work is the cattle work', /pregged 12 head/.test(lastWork), lastWork.slice(0, 100))
       // a move naming the lot — recorded, and the head count untouched
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: /^Record work/ }).first().click()
+      await recordControl(page).click()
       await page.getByRole('button', { name: /^Move cattle/ }).click()
       await page.getByLabel('Moved').fill('5')
       await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
