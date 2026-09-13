@@ -34,6 +34,17 @@ export default async function CattlePage() {
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
           What you&rsquo;re running, by lot. Values and comparisons are on <Link href="/markets" className="font-semibold text-brand underline underline-offset-2">Markets</Link>.
         </p>
+        {/* Block 10: the working is reachable from where a person would look
+            for it — under Cattle, not as a seventh row on the hub for
+            something done a few days a year. At the chute PK opens
+            /ranch/preg-check directly. */}
+        {lots.length > 0 && (
+          <Link href="/ranch/preg-check" data-audit="cattle-preg-check"
+            className="mt-4 inline-flex min-h-[56px] w-full items-center justify-between rounded-xl border border-control-border bg-surface px-5 font-dm-sans text-[18px] font-semibold text-ink hover:bg-forest-green/[0.03]">
+            <span>Preg check</span>
+            <span className="font-normal text-secondary-ink">Count them through</span>
+          </Link>
+        )}
         <HerdForm initialLots={lots} lastWork={lastWork} purposeSupported={purposeSupported} />
       </main>
     </>
