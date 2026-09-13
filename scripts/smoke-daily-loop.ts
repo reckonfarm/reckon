@@ -286,9 +286,13 @@ async function main() {
     await logFeed(page, 4)
     const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
     record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
-    const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
-    record('2C: the answer — recorded, remaining from the count, no invented runway',
-      /4 bales recorded/.test(strip1) && /200 counted [^+]+ \+ 0 added \u2212 4 fed = 196 bales on hand/.test(strip1) && !/feeding day/.test(strip1), strip1.slice(0, 140))   // 6C: the complete equation
+    // Block 11 (11.12): the receipt leads with the balance and keeps the
+    // arithmetic one tap away, so this reads textContent — a closed <details>
+    // is the shape under test. "N bales recorded" no longer restates the label.
+    const strip1 = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+    const balance1 = ((await page.locator('[data-audit="receipt-balance"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+    record('2C: the answer — recorded, the balance leads, the count\'s arithmetic behind a tap, no invented runway',
+      /Fed 4 bales/.test(strip1) && balance1 === '196 bales on hand' && /200 counted [^+]+ \+ 0 added \u2212 4 fed = 196 bales on hand/.test(strip1) && !/feeding day/.test(strip1), `balance "${balance1}" · ${strip1.slice(0, 120)}`)
     // Block 7.7 — Today is a work screen. The order is live job · needs attention ·
     // since you checked · repeat feeding · hay, and the conditions strip is NOT on it
     // any more: the drought reading and the program deadline moved to Weather with the
@@ -1008,7 +1012,8 @@ async function main() {
         await logFeed(page, 1)
         await watchStates(page, 'Synced to ranch', 20_000, 'Fed 1 bale')
         let strip = ''
-        for (let i = 0; i < 32 && !/bales? on hand/.test(strip); i++) { strip = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip)) await page.waitForTimeout(250) }
+        // textContent, not innerText: the equation sits behind "How that adds up" (11.12).
+        for (let i = 0; i < 32 && !/bales? on hand/.test(strip); i++) { strip = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip)) await page.waitForTimeout(250) }
         const EQ = /(\d+) counted [^+]+ \+ (\d+) added \u2212 (\d+) fed = (-?\d+) bales? on hand/
         const m = strip.match(EQ)
         const nums = m ? m.slice(1, 5).map(Number) : null
@@ -1485,8 +1490,8 @@ async function main() {
       await logFeed(page, 2)
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
-      for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /2 bales recorded/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
       for (let i = 0; i < 60 && afterHay !== beforeHay - 2; i++) { afterHay = await hayNumber(); firstAfter = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (afterHay !== beforeHay - 2) await page.waitForTimeout(500) }
       record('6D: without navigating, the hub\'s Hay number and its recent rows follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay - 2 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && /\/ranch$/.test(page.url().replace(/\?.*$/, '')), `hay ${beforeHay} → ${afterHay} · first row "${firstAfter.slice(0, 50)}" · ${page.url().replace(BASE, '')}`)
@@ -1776,12 +1781,20 @@ async function main() {
       // was right and the check was wrong, which is the failure mode the
       // post-Block-10 suite audit exists for. The screen emits data-lot for
       // exactly this reason.
-      const choices = await page.locator('[data-audit="preg-lot-choice"]').count()
+      let choices = await page.locator('[data-audit="preg-lot-choice"]').count()
+      if (choices === 0 && !(await text('[data-audit="preg-source"]')).startsWith(LOT_NAME) && (await page.locator('[data-audit="preg-change-lot"]').count()) > 0) {
+        // Opened on a different bunch — take the path a person would.
+        await page.locator('[data-audit="preg-change-lot"]').click()
+        choices = await page.locator('[data-audit="preg-lot-choice"]').count()
+      }
       if (choices > 0) await page.locator(`[data-audit="preg-lot-choice"][data-lot="${lotId}"]`).click()
       const source = await text('[data-audit="preg-source"]')
+      // Evidence either way: what the database holds live vs what the page offered.
+      const { data: liveLots } = await admin.from('herd_lots').select('name, head_count').eq('ranch_id', ranchId).is('retired_at', null)
+      const liveNames = ((liveLots ?? []) as { name: string; head_count: number }[]).map(l => `${l.name} ${l.head_count}`).join(', ')
       record('10: the chute screen opens on the bunch it was asked for, naming it and its head count',
         new RegExp(`${LOT_NAME}`).test(source) && new RegExp(`${before} head`).test(source),
-        `${choices} bunch(es) offered · "${source.slice(0, 60)}"`)
+        `${choices} bunch(es) offered · "${source.slice(0, 60)}" · live in db: [${liveNames}]`)
 
       // Tally: 9 bred, 3 open — with a mis-tap and an Undo in the middle.
       const mode = await page.locator('[data-audit="preg-check"]').first().getAttribute('data-mode')
@@ -1923,18 +1936,23 @@ async function main() {
 
       // The offline promise is NOT a receipt and must be untouched by all of
       // the above: unsynced work still crosses a reload.
+      // There is no service worker, so a reload with the network OFF cannot
+      // load the page at all (the first run of this died on exactly that:
+      // net::ERR_INTERNET_DISCONNECTED). The thing under test is the outbox,
+      // not the shell — so block only the upload. The page loads, the entry
+      // cannot leave the phone, and it must still be there afterward.
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
-      await ctx.setOffline(true)
+      await page.route('**/api/log', r => r.abort())
       await logFeed(page, 1)
       await page.waitForTimeout(1_500)
       await page.reload({ waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(2_500)
-      const pending = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const pending = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       const stillQueued = (await outbox(page)).some(i => i.state === 'local' || i.state === 'queued')
       record('11.1: unsynced work still crosses a reload — a warning is not a receipt',
         stillQueued && /Saved on this phone|Waiting to sync/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
-      await ctx.setOffline(false)
+      await page.unroute('**/api/log')
       await page.waitForTimeout(4_000)
     }
 
