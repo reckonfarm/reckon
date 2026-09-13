@@ -16,6 +16,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const { expected_updated_at, ...fields } = body as Record<string, unknown>
   const expected = typeof expected_updated_at === 'string' && expected_updated_at ? expected_updated_at : null
   const r = await updateLot(s.supabase, id, fields, expected)
+  return r.ok ? NextResponse.json({ lot: r.lot }) : NextResponse.json({ error: r.error, code: r.status === 409 ? 'stale' : undefined, changed_by: r.changed_by ?? undefined, changed_at: r.changed_at ?? undefined }, { status: r.status })
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -23,9 +24,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!s) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   const { id } = await ctx.params
   // Block 12 (12.4): DELETE puts the bunch in the trash. Retire is a different
-  // act — out of the pickers, still on the ranch — and stays on PATCH. Before
-  // 065 the only thing DELETE could honestly do was retire; it still does.
-  // Block 12 (12.4): DELETE is the trash; retire stays on PATCH.
+  // act — out of the pickers, still on the ranch — and lives at POST …/retire.
   const t = await trashRow(s.supabase, s.user.id, 'herd_lots', id)
   if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status })
   return NextResponse.json({ deleted: true, trashed: true })
