@@ -6,6 +6,7 @@ import { navigateTo } from '@/lib/standalone-nav'
 import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
 import { warning } from '@/lib/brand-colors'
+import { forgetSynced } from '@/lib/outbox'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
 // From an event that currently stands. A correction is a crossed-out number on
@@ -134,6 +135,10 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       const res = await fetch(`/api/activity/${event.id}/delete`, { method: 'DELETE' })
       const json = await res.json().catch(() => ({})) as { mode?: string; error?: string }
       if (!res.ok) { setError(json.error ?? 'That entry could not be deleted just now'); setBusy(false); return }
+      // Block 11 (P0): the receipt for a deleted entry is a lie the moment the
+      // delete lands — it quotes a balance that no longer holds and offers to
+      // open a row that is gone. It goes with the entry.
+      forgetSynced(event.id)
       // Gone from here either way, so there is nothing to return to.
       router.push('/ranch/activity')
       router.refresh()
@@ -155,6 +160,9 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       const res = await fetch(`/api/activity/${event.id}/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({})) as { event?: { id: string }; error?: string }
       if (!res.ok || !json.event) { setError(json.error ?? `Could not save (${res.status})`); setBusy(false); return }
+      // Same for a correction or a void: the old receipt describes an entry
+      // that no longer stands, and the new one supersedes it.
+      forgetSynced(event.id)
       navigateTo(router, `/ranch/activity/${json.event.id}?saved=1`)
     } catch {
       setError('No connection — the entry is unchanged. Try again when you have signal.'); setBusy(false)
@@ -190,9 +198,17 @@ export default function CorrectionActions({ event }: { event: Editable }) {
 
   if (mode === 'idle') {
     return (
+      /* Block 11 (11.13): TWO ACTIONS, NOT THREE. 7D's own ruling was that
+         "void" does not survive as a user-facing word, and Delete has since
+         taken over the job it was doing — its record path keeps the entry in
+         the ledger with a note of who removed it and when, which is what a
+         person meant by voiding. Three buttons made a rancher choose between
+         two words for the same intention.
+         The MECHANISM stays: 054 voids already on the ledger still render as
+         "Voided:" on every timeline and still count for nothing, and the route
+         still answers. Only the word is gone from the screen. */
       <div className="mt-5 flex flex-wrap gap-3" data-audit="correction-actions">
         <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Correct this entry</button>
-        <button type="button" onClick={() => setMode('void')} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="void-entry">Void this entry</button>
         <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">Delete this entry</button>
       </div>
     )

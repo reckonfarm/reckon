@@ -10,6 +10,8 @@ import ProfileForm from './ProfileForm'
 import RanchNameCard from './RanchNameCard'
 import RanchPeopleCard from './RanchPeopleCard'
 import SignOutButton from './SignOutButton'
+import FeedbackWidget from '@/app/components/FeedbackWidget'
+import ShareButton from '@/app/components/ShareButton'
 
 // ─── /account (Block 6A) ──────────────────────────────────────────────────────
 // Behind the header's Account button: identity · ranch settings · crew and
@@ -27,10 +29,13 @@ export default async function AccountPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
-        <p className={EYEBROW}>Account</p>
-        {/* Block 7.10 — an address long enough to be a real one must wrap inside
-            the card rather than widen the page on a 320px phone. */}
-        <h1 className="mt-1 type-page-heading break-words text-ink">{user.email}</h1>
+        <p className={EYEBROW}>Signed in</p>
+        {/* Block 11 (11.14) — the heading was the raw address, and a real one
+            wraps to two lines at 390px before the page has said anything. The
+            page is called Account; the address is a fact ABOUT the account and
+            belongs under it, at a size that can wrap without shouting. */}
+        <h1 className="mt-1 type-page-heading text-ink">Account</h1>
+        <p className="mt-1 break-words font-dm-sans text-[16px] text-secondary-ink" data-audit="account-email">{user.email}</p>
 
         <section className="mt-6" aria-labelledby="acct-identity">
           <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>Identity</h2>
@@ -72,6 +77,27 @@ export default async function AccountPage() {
                 this says so, because a button that moved without a word is a button
                 a person concludes was taken away. */}
             <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink" data-audit="help-feedback">Telling us something is off: the <span className="font-semibold">Feedback</span> button sits in the corner of every page except Today, this one included.</p>
+          </Card>
+        </section>
+
+        {/* Block 11 (11.4) — the feedback pill floated over content on every
+            screen. It lives here now, in the flow, where it covers nothing. */}
+        {/* Block 11 (11.8) — Share left the identity bar, which repeated on
+            four surfaces. A signed-in person shares from here; the public
+            county page keeps its own, because that is the funnel. */}
+        <section className="mt-6" aria-labelledby="acct-share">
+          <h2 id="acct-share" className={`${EYEBROW} !text-ink`}>Share Dryline</h2>
+          <Card className="px-5 py-4">
+            <p className="font-dm-sans text-[16px] text-ink">Send a neighbour the county view — drought, the FSA estimate, and what the barns are paying.</p>
+            <div className="mt-3"><ShareButton surface="dashboard" /></div>
+          </Card>
+        </section>
+
+        <section className="mt-6" aria-labelledby="acct-feedback">
+          <h2 id="acct-feedback" className={`${EYEBROW} !text-ink`}>Feedback</h2>
+          <Card className="px-5 py-4">
+            <p className="font-dm-sans text-[16px] text-ink">Tell me what is wrong with this thing, or what is missing. It comes straight to me.</p>
+            <div className="mt-3"><FeedbackWidget /></div>
           </Card>
         </section>
 

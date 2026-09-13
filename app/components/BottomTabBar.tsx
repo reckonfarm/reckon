@@ -2,14 +2,29 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useRecordAvailable, useRecordSheetOpen } from '@/lib/record-sheet-state'
+import { openLogIt } from '@/app/dashboard/components/LogIt'
 
-// ─── Bottom tab bar (Block 6A) ────────────────────────────────────────────────
-// Four labeled destinations — Today · Ranch · Markets · Weather — and nothing
-// else. Record is an action, not a tab: it is the FAB above this bar
-// (RecordFab), hidden while a sheet is open. Devices live inside Ranch; the
-// account lives behind the header's Account button; Messages under Account →
-// Crew. Mobile only (md:hidden); the header carries the same four on desktop.
-// pb-safe keeps the bar clear of the home indicator.
+// ─── Bottom tab bar (Block 6A; Record joined it in Block 11) ──────────────────
+// Four labeled destinations — Today · Ranch · Markets · Weather — and Record.
+// Devices live inside Ranch; the account lives behind the header's Account
+// button; Messages under Account → Crew. Mobile only (md:hidden); the header
+// carries the same four on desktop. pb-safe keeps the bar clear of the home
+// indicator.
+//
+// BLOCK 11 (11.4): RECORD MOVED IN HERE AND THE FLOATING PILL IS GONE.
+// It was a FAB above this bar, and the audit found it sitting on top of real
+// controls on four screens — including "Drop a place here" on Places, which is
+// that screen's whole purpose. A primary action you cannot reach because
+// something is parked over it is the same defect as Delete under a stuck
+// receipt, and it does not get fixed one screen at a time.
+//
+// So the rule is now structural rather than per-screen: THE BAR IS THE ONLY
+// FIXED INTERACTIVE THING ON A PHONE, and every page reserves room for it, so
+// nothing can be underneath anything. Record is still an ACTION and not a
+// destination — it opens the sheet, takes no active state, and is drawn as a
+// filled button rather than a tab — but it lives where the thumb already is
+// instead of hovering over the page.
 
 interface Tab { href: string; label: string; match: (p: string) => boolean; icon: (active: boolean) => React.ReactNode }
 
@@ -34,9 +49,14 @@ const TABS: Tab[] = [
   },
 ]
 
+const RECORD_HIDDEN_ON = ['/signin', '/auth', '/invite', '/terms', '/privacy']
+
 export default function BottomTabBar() {
   const pathname = usePathname()
+  const sheetOpen = useRecordSheetOpen()
+  const recordAvailable = useRecordAvailable()
   if (pathname.startsWith('/signin') || pathname.startsWith('/auth')) return null
+  const showRecord = recordAvailable && !sheetOpen && pathname !== '/' && !RECORD_HIDDEN_ON.some(p => pathname.startsWith(p))
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe" aria-label="Primary" data-audit="bottom-bar">
       <div className="flex items-stretch">
@@ -54,6 +74,18 @@ export default function BottomTabBar() {
             </Link>
           )
         })}
+        {showRecord && (
+          <button
+            type="button"
+            onClick={() => openLogIt({ type: null })}
+            aria-label="Record work"
+            data-audit="record-action"
+            className="flex flex-1 basis-0 flex-col items-center justify-center gap-1 py-2 font-dm-sans text-[14px] font-semibold text-cream min-h-[56px] bg-forest-green"
+          >
+            <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+            Record
+          </button>
+        )}
       </div>
     </nav>
   )

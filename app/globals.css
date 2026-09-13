@@ -139,3 +139,25 @@
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+/* ── Nothing lives under the bottom bar (Block 11, 11.4) ─────────────────────────
+   The bar is fixed, and until now nothing reserved room for it, so on a phone the
+   last thing on any page could end up beneath it — the audit found "Drop a place
+   here" on Places, the primary action of that screen, under a floating control.
+   PK's ruling: fix the class, not the instances. No floating element may sit over
+   an interactive control on any screen.
+
+   The structural half of that rule is here, once, for every page there will ever
+   be: the document reserves the bar's height plus the home indicator. The other
+   half is that the bar is now the ONLY fixed interactive thing on a phone — the
+   Record FAB moved into it and the feedback pill moved to Account — so there is
+   nothing else left that could cover anything. The bar's min-height is 56px
+   but it PAINTS at 64 (icon + label + padding + border), and the overlap
+   check found the last control on four screens under those 8px — the check
+   measured the painted box, this reserve had assumed the CSS one. 72 clears
+   the painted bar with margin; the check asserts padding ≥ the measured bar. */
+@media (max-width: 767px) {
+  body {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}

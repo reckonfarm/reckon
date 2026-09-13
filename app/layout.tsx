@@ -3,7 +3,6 @@ import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
 import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
-import FeedbackWidget from '@/app/components/FeedbackWidget'
 import RecordSheetHost from '@/app/components/RecordSheetHost'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
@@ -82,7 +81,6 @@ export default function RootLayout({
         <RecordSheetHost />
         <SiteFooter />
         <BottomTabBar />
-        <FeedbackWidget />
         <Analytics />
         <SpeedInsights />
       </body>

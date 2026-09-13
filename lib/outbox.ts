@@ -189,6 +189,29 @@ export function clearOutbox(): void {
 }
 
 /** Discard a failed entry (the person chose not to fix it). */
+/**
+ * Block 11 (P0): a receipt is transient, and an entry that has been corrected,
+ * voided or deleted has no receipt at all.
+ *
+ * The outbox is the record of what this PHONE did, so a synced entry stayed in
+ * it forever and the strip kept quoting a balance from before the correction —
+ * on the audit, a receipt reading "= 239 bales on hand" sat three inches above
+ * a hay card reading 253, and offered "Open this entry" for a row that had been
+ * deleted. Two balances on one screen, and the wrong one was the louder.
+ *
+ * Called by whatever changes an entry's standing. Matches on the server id and
+ * on the client-minted id, because the two are the same value for anything
+ * this phone recorded and different for anything it did not. Only SYNCED items
+ * are forgotten: unsynced work is the offline promise and is never dropped
+ * behind a person's back.
+ */
+export function forgetSynced(eventId: string): void {
+  if (!eventId) return
+  const before = read()
+  const after = before.filter(i => !(i.state === 'synced' && (i.serverId === eventId || i.id === eventId)))
+  if (after.length !== before.length) { try { write(after) } catch { /* keep what is there */ } }
+}
+
 export function discard(id: string): void {
   try { write(read().filter(i => i.id !== id)) } catch { /* keep */ }
 }

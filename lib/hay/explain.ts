@@ -15,6 +15,10 @@ import type { OnHand } from './queries'
 
 export interface OnHandExplanation {
   equation: string          // "200 counted Tue, Sep 8, 2026 + 5 added − 12 fed = 193 bales on hand"
+  /** Block 11 (11.12): the ANSWER on its own — "193 bales on hand". The
+   *  equation is how it was reached and belongs one tap away; this is the
+   *  number a man wants off a receipt at the feed ground. */
+  balance: string
   scope: string             // "across the ranch since that count — not any one stack's balance"
   shortfall: string | null  // when on hand reads below zero: more fed than the count allows
 }
@@ -26,6 +30,7 @@ export function explainOnHand(o: OnHand): OnHandExplanation {
   const equation = `${b.bales.toLocaleString()} counted ${ranchDay(b.asOf)} + ${o.stackedSince.bales.toLocaleString()} added − ${o.fedSince.bales.toLocaleString()} fed = ${plural(o.bales, 'bale')} on hand`
   return {
     equation,
+    balance: `${plural(o.bales, 'bale')} on hand`,
     scope: 'across the ranch since that count — not any one stack’s balance',
     shortfall: o.bales < 0 ? `more fed than your ${ranchDay(b.asOf)} count allows; recount when you can` : null,
   }

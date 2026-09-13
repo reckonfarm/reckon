@@ -98,10 +98,13 @@ export default function FeedbackWidget() {
   const canSend = (!!sentiment || message.trim().length > 0) && status === 'idle'
 
   return (
-    // z-40 keeps it under the z-50 bottom nav. Mobile bottom offset clears the
-    // 56px tab bar + safe-area; on md+ there is no bottom bar, so sit at the edge.
-    // Block 6A: the Record FAB owns the bottom-right corner on a phone; feedback sits bottom-left there.
-    <div className="fixed left-3 z-40 bottom-[calc(56px+env(safe-area-inset-bottom)+0.75rem)] md:left-auto md:right-4 md:bottom-4 font-dm-sans">
+    // Block 11 (11.4): NOT FIXED ON A PHONE. It floated bottom-left and covered
+    // real content on every screen; PK's ruling is that no floating element may
+    // sit over an interactive control, and the cheapest way to keep a promise
+    // like that is to have fewer floating elements. On a phone it now renders
+    // in the flow wherever it is mounted — Account — and it keeps its corner
+    // only on md+, where there is no bottom bar and nothing beneath it.
+    <div className="z-40 font-dm-sans md:fixed md:right-4 md:bottom-4">
       {!open ? (
         <button
           onClick={() => setOpen(true)}

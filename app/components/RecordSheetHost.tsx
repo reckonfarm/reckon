@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
+import { setRecordAvailable } from '@/lib/record-sheet-state'
 import { takeDiscardedNotice } from '@/lib/private-state'
 import { warning } from '@/lib/brand-colors'
-import RecordFab from './RecordFab'
 
 // ─── The record sheet, mounted once for a signed-in person (Block 6A) ─────────
 // Any surface opens it with openLogIt(): the FAB, the header's Record, a place
@@ -63,10 +63,22 @@ function DiscardedOnSwitch() {
 
 function GlobalSaveStatus() {
   const launcher = useLauncherMounted()
+  const pathname = usePathname()
   if (launcher) return null
+  // Block 11 (P0): keyed by pathname, so leaving a page ends its receipt. The
+  // strip is fixed above the bottom nav, and on the audit it landed ON TOP of
+  // Correct / Void / Delete on an entry page and swallowed the taps — two
+  // Deletes did nothing until the receipt was scrolled out of the viewport,
+  // from which the only reasonable conclusion is that Delete is broken.
+  //
+  // pointer-events stay off the whole layer now. Nothing inside a transient
+  // receipt is worth a tap that a real control underneath might have wanted:
+  // its link is a convenience, and Undo / Try again / Sync now all belong to
+  // states that are NOT this one (the strip renders those inline on Today,
+  // where it is in the flow and cannot cover anything).
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }} data-audit="global-save-status">
-      <div className="pointer-events-auto mx-auto max-w-2xl pr-32 md:pr-0"><SaveStatus fadeAfterMs={90_000} /></div>
+    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status">
+      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
     </div>
   )
 }
@@ -79,6 +91,9 @@ export default function RecordSheetHost() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => setSignedIn(!!session?.user))
     return () => subscription.unsubscribe()
   }, [])
+  // Block 11 (11.4): the bar's Record item lives in the root layout and would
+  // otherwise offer a tap with no sheet behind it to a signed-out visitor.
+  useEffect(() => { setRecordAvailable(signedIn); return () => setRecordAvailable(false) }, [signedIn])
   if (!signedIn) return null
   return (
     <>
@@ -86,7 +101,6 @@ export default function RecordSheetHost() {
       <DiscardedOnSwitch />
       <LogIt launcher={false} />
       <GlobalSaveStatus />
-      <RecordFab />
     </>
   )
 }

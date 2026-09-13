@@ -458,11 +458,14 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <div className="mt-2" data-audit="selected-cattle">
             {latest ? (
               <>
-                <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}</p>
-                <p className="mt-0.5 font-dm-sans text-[17px] text-ink" data-audit="selected-price">
-                  {fmtWithUnit(measureValue(latest.price, measure, bandSel, p.lot), unit)}
-                  <span className="text-secondary-ink"> · {latest.head.toLocaleString('en-US')} head{latest.thin ? ', limited sample' : ''}</span>
-                </p>
+                {/* Block 11 (11.10): THE PRICE IS GONE FROM HERE. 7C ruled it
+                    into "How this is figured", where it now reads "Class
+                    reference · … — the reported price this lot's value starts
+                    from" — but it was only ADDED there, never removed here, so
+                    the same figure stood in three places on one page. What is
+                    left is the chart's subject: a chart has to say what it
+                    plots, and that is all this line does now. */}
+                <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="selected-subject">{cls} · {bandLabel(bandSel)}<span className="font-normal text-secondary-ink"> · {latest.head.toLocaleString('en-US')} head{latest.thin ? ', limited sample' : ''}</span></p>
                 <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="selected-change">
                   {prev
                     ? (() => { const d = Math.round((latest.price - prev.price) * 100) / 100; return d === 0 ? <>No change since {fmtDay(prev.date)}</> : <><span aria-hidden>{d > 0 ? '▲' : '▼'}</span> {d > 0 ? 'Up' : 'Down'} ${Math.abs(d).toFixed(2)}/cwt since {fmtDay(prev.date)}{latest.thin || prev.thin ? ' · one side a limited sample' : ''}</> })()

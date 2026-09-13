@@ -44,20 +44,26 @@ export default async function RanchPage() {
   // carries anything older.
   const standing = recent ? standingRows(recent.rows) : []
   const rows = standing.slice(0, HUB_ROWS)
-  const sections: { href: string; label: string; blurb: string; number: string | null }[] = [
-    { href: '/ranch/activity', label: 'Activity', blurb: 'Everything recorded, by the day the work happened.', number: null },
-    { href: '/ranch/cattle',   label: 'Cattle',   blurb: 'Your lots — head, purpose, last recorded work.', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },
-    { href: '/ranch/hay',      label: 'Hay',      blurb: 'Bales on hand, fed, and stacked.', number: numbers.hayOnHand != null ? `${plural(numbers.hayOnHand, 'bale')} on hand` : null },
-    { href: '/ranch/work',     label: 'Work',     blurb: 'Cutting and baling recorded by connected machines.', number: numbers.workSessions != null ? plural(numbers.workSessions, 'session') : null },
-    { href: '/ranch/places',   label: 'Places',   blurb: 'Where things happen — pastures, stacks, tanks.', number: numbers.places != null ? plural(numbers.places, 'place') : null },
-    { href: '/ranch/devices',  label: 'Devices',  blurb: 'Connected machines and loggers.', number: numbers.devices != null ? plural(numbers.devices, 'device') : null },
+  // Block 11 (11.9): the explanatory line under each section is gone. "Hay —
+  // bales on hand, fed and stacked" told a rancher nothing he did not know
+  // from the word Hay, and it cost a line on every row of the one screen that
+  // exists to be scanned. The NUMBER stays: that is the part he came for.
+  const sections: { href: string; label: string; number: string | null }[] = [
+    { href: '/ranch/activity', label: 'Activity', number: null },
+    { href: '/ranch/cattle',   label: 'Cattle', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null },
+    { href: '/ranch/hay',      label: 'Hay', number: numbers.hayOnHand != null ? `${plural(numbers.hayOnHand, 'bale')} on hand` : null },
+    { href: '/ranch/work',     label: 'Work', number: numbers.workSessions != null ? plural(numbers.workSessions, 'session') : null },
+    { href: '/ranch/places',   label: 'Places', number: numbers.places != null ? plural(numbers.places, 'place') : null },
+    { href: '/ranch/devices',  label: 'Devices', number: numbers.devices != null ? plural(numbers.devices, 'device') : null },
   ]
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
-        <p className={EYEBROW}>Ranch</p>
-        <h1 className="mt-1 type-page-heading text-ink">{ranch?.name ?? 'Your ranch'}</h1>
+        {/* Block 11 (11.7) — the ranch's name was here three times: in the
+            header, in this eyebrow's stead, and as the heading. The header
+            carries it on every page; this page is Ranch. Once is enough. */}
+        <h1 className="type-page-heading text-ink">Ranch</h1>
 
         <section className="mt-4" aria-labelledby="ranch-recent">
           <h2 id="ranch-recent" className={`${EYEBROW} !text-ink`}>Recent activity</h2>
@@ -83,7 +89,6 @@ export default async function RanchPage() {
                   <Link href={s.href} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="ranch-section">
                     <span className="min-w-0">
                       <span className="block font-dm-sans text-[17px] font-semibold text-ink">{s.label}</span>
-                      <span className="block font-dm-sans text-[15px] text-secondary-ink">{s.blurb}</span>
                     </span>
                     <span className="shrink-0 text-right font-dm-sans text-[16px] tabular-nums text-ink">
                       {s.number && <span data-audit="section-number">{s.number}</span>}

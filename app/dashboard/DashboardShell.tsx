@@ -513,7 +513,16 @@ export async function DashboardShell({
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               {/* Semantic h1 (the page's only heading — public county pages are the SEO
                   surface) at the compact text-lg size; !important beats the level-1 scale. */}
-              {priv && ranchName ? (
+              {/* Block 11 (11.8): THE OUTFIT IS NAMED ON TODAY, ONCE. This block
+                  — the ranch's name, "Operation · Petroleum County, MT", and
+                  Share — rendered identically on Today, Weather, Markets and
+                  Programs, above three pages that already own an h1 of their
+                  own ("Weather · …", "Markets", "Programs · …"). A man who has
+                  just tapped Weather does not need to be told whose ranch it
+                  is; the header says so on every page in the app already.
+                  Signed out is untouched: the county page's only heading is
+                  here, and so is the Share that the public funnel runs on. */}
+              {priv && ranchName && route !== 'today' ? null : priv && ranchName ? (
                 // A named outfit is the subject (flow, commit 2); the secondary
                 // line is the OPERATION's county — the home county, the one the
                 // landing and the bottom anchor resolve to — not whichever county
@@ -539,12 +548,18 @@ export async function DashboardShell({
                 </Heading>
               )}
               <div className="flex items-center gap-2">
-                <ShareButton
-                  fips={selectedCounty.fips}
-                  countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
-                  droughtLabel={shareDrought.level != null ? shareDrought.label : null}
-                  surface="dashboard"
-                />
+                {/* Block 11 (11.8): Share moves to Account for a signed-in
+                    person. It stays here signed out, because a public county
+                    page has no Account to move it to and the sharing funnel
+                    is the whole point of that page. */}
+                {!user && (
+                  <ShareButton
+                    fips={selectedCounty.fips}
+                    countyLabel={`${selectedCounty.name}, ${selectedCounty.state}`}
+                    droughtLabel={shareDrought.level != null ? shareDrought.label : null}
+                    surface="dashboard"
+                  />
+                )}
                 {/* Set Home and Watch left this bar for the Weather view, beside
                     the county selector, where changing counties already lives
                     (layout, commit 2): signed in, the bar is the operation + Share.

@@ -46,16 +46,20 @@ export async function consequenceFor(
       case 'hay_inventory': {
         const n = num(type === 'bales_stacked' ? 'count' : 'bales')
         if (n == null) return { lines }
-        if (type === 'hay_fed') lines.push(`${bales(n)} recorded${at}`)
-        if (type === 'bales_stacked') lines.push(`${bales(n)} stacked${at}`)
-        if (type === 'hay_inventory') lines.push(`${bales(n)} on hand as of ${ranchDay(String(payload.as_of ?? ''))}`)
-
+        // Block 11 (11.12): the receipt was six lines, and the first restated
+        // what its own label already said. THE BALANCE LEADS now — the number
+        // the entry changed — and the arithmetic behind it follows, one tap
+        // away in the receipt's own detail. Nothing is removed; the order is
+        // what a man reads at a feed ground with cold hands.
         const ledger = await getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() })
         const { onHand, fed, runOut } = ledger.summary
         if (onHand) {
           // 6C: the complete equation, the same one the Hay panel states, ranch-scoped.
           const x = explainOnHand(onHand)
+          lines.push(x.balance)
           lines.push(x.shortfall ? `${x.equation} — ${x.shortfall}` : `${x.equation}, ${x.scope}`)
+        } else if (type === 'hay_inventory') {
+          lines.push(`${bales(n)} on hand as of ${ranchDay(String(payload.as_of ?? ''))}`)
         } else if (fed) {
           lines.push(`${fed.bales.toLocaleString()} bales fed over ${plural(fed.days, 'day')} this season — no stack count yet, so no "remaining"`)
         }

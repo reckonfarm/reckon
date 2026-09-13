@@ -79,13 +79,15 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
       sub: `across the ranch · since your ${ranchDay(b.asOf)} count`,
     })
   }
-  if (stacked) {
-    stats.push({ value: stacked.bales.toLocaleString(), label: 'stacked', sub: `from ${entriesWord(stacked.entries)}` })
-  }
-  if (fed) {
-    stats.push({ value: fed.bales.toLocaleString(), label: 'fed', sub: `${entriesWord(fed.entries)} · ${plural(fed.days, 'day')}` })
-  }
-  if (stats.length === 0 && !burnRate) return <LedgerPanel tab="hay" empty />
+  // Block 11 (11.11): ON HAND LEADS ALONE. Stacked and fed are season totals —
+  // true, provenanced, and not what a man checks in the morning. Three numbers
+  // across the top of the card meant the one that decides whether he buys hay
+  // competed with two that do not change from one day to the next. They keep
+  // every digit of their provenance, one tap away under Details.
+  const season: string[] = []
+  if (stacked) season.push(`${stacked.bales.toLocaleString()} stacked from ${entriesWord(stacked.entries)}`)
+  if (fed) season.push(`${fed.bales.toLocaleString()} fed · ${entriesWord(fed.entries)} · ${plural(fed.days, 'day')}`)
+  if (stats.length === 0 && season.length === 0 && !burnRate) return <LedgerPanel tab="hay" empty />
 
   let rateLine: string | null = null
   if (runOut.date) {
@@ -126,7 +128,7 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           the honest provenance of the number and is never removed — but a
           rancher glancing at Today wants "265 bales, counted Aug 10", not a
           sentence of bookkeeping every morning. */}
-      {(equation || rateLine || range) && (
+      {(equation || rateLine || range || season.length > 0) && (
         <Disclosure
           title="Details"
           audit="hay-details"
@@ -135,6 +137,9 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
         >
           {equation && (
             <p className="font-dm-sans text-[16px] text-ink" data-audit="hay-equation">{equation.line}{equation.note ? ` ${equation.note}` : ''}</p>
+          )}
+          {season.length > 0 && (
+            <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="hay-season">{season.join(' · ')}</p>
           )}
           {rateLine && (
             <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
