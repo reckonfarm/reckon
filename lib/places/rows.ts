@@ -4,7 +4,7 @@ import { effective } from '@/lib/ledger-effective'
 import { MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { placeRing } from '@/lib/places/anchor'
 import type { LatLng } from '@/lib/places/geo'
-import { hasTrash, liveOnly } from '../trash'
+import { liveOnly } from '../trash'
 
 // ─── The places list's rows (Block 6A · shapes in slice 1) ────────────────────
 // name · type · last recorded work · last recorded rain — the last two only
@@ -75,7 +75,7 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
 // migration runs; nothing else on the page changes.
 async function selectPlaces(supabase: SupabaseClient) {
   type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null; retired_at: string | null }
-  const full = await liveOnly(supabase.from('places').select('id, name, kind, geometry, acres, retired_at'), await hasTrash(supabase)).order('name', { ascending: true })
+  const full = await liveOnly(supabase.from('places').select('id, name, kind, geometry, acres, retired_at')).order('name', { ascending: true })
   if (!full.error) return (full.data ?? []) as Row[]
   const legacy = await supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true })
   return ((legacy.data ?? []) as Omit<Row, 'acres' | 'retired_at'>[]).map(r => ({ ...r, acres: null, retired_at: null }))

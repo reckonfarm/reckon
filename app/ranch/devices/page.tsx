@@ -8,7 +8,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import RecordHere from '../places/RecordHere'
 import DeleteDevice from './DeleteDevice'
-import { hasTrash, liveOnly } from '@/lib/trash'
+import { liveOnly } from '@/lib/trash'
 import RowActions from '@/app/components/RowActions'
 
 // ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
@@ -58,7 +58,7 @@ export default async function DevicesPage() {
   // Block 12 (12.4): a device in the trash is not on this list.
   const { data, error } = await liveOnly(supabase
     .from('devices')
-    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)'), await hasTrash(supabase))
+    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)'))
     .order('name', { ascending: true })
   const devices = (data ?? []) as unknown as DeviceRow[]
   return (

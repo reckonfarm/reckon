@@ -20,12 +20,6 @@ import { resolveRanchId } from '@/lib/ranch-membership'
 // written with the service role, membership already proven. Same doctrine as
 // lib/deletion.ts.
 //
-// TEMPORARY CAPABILITY PROBE, the 7D pattern: migrations are run by hand and a
-// deploy can reach production before its SQL does. Without 065 the column is
-// absent, so the trash is not available and the routes fall back to what they
-// did before — a hard delete for places and devices, retire for lots — rather
-// than 42703 on every tap. WHEN 065 IS APPLIED, delete hasTrash() and the
-// fallbacks; readers then filter deleted_at unconditionally.
 
 export const TRASH_TABLES = ['events', 'places', 'herd_lots', 'devices'] as const
 export type TrashTable = (typeof TRASH_TABLES)[number]
@@ -34,20 +28,12 @@ export const isTrashTable = (v: unknown): v is TrashTable => typeof v === 'strin
 /** Days a row stays in the trash before purge_trash() removes it. Matches 065's default. */
 export const TRASH_DAYS = 7
 
-let trashKnown: boolean | null = null
-/** True when 065 has been applied — places.deleted_at exists. Probed once per process. */
-export async function hasTrash(supabase: SupabaseClient): Promise<boolean> {
-  if (trashKnown !== null) return trashKnown
-  try {
-    const { error } = await supabase.from('places').select('deleted_at').limit(1)
-    trashKnown = !error
-  } catch { trashKnown = false }
-  return trashKnown
-}
-
-/** Appends the live filter when the column exists. Readers call this, not `.is()` directly, until 065 is applied. */
-export function liveOnly<T extends { is(column: string, value: null): T }>(q: T, on: boolean): T {
-  return on ? q.is('deleted_at', null) : q
+/** Block 12: 065 is applied. The live filter is unconditional; the pre-065
+ *  probe (hasTrash) is gone — it memoised a `false` per serverless process and
+ *  kept reporting "not switched on" for the life of that instance after PK had
+ *  run the migration. A probe that can be stale is worse than no probe. */
+export function liveOnly<T extends { is(column: string, value: null): T }>(q: T): T {
+  return q.is('deleted_at', null)
 }
 
 export type TrashResult = { ok: true } | { ok: false; status: 404 | 500 | 503; error: string }
@@ -57,7 +43,6 @@ export type TrashResult = { ok: true } | { ok: false; status: 404 | 500 | 503; e
  * gate), then sets deleted_at / deleted_by with the service role.
  */
 export async function trashRow(supabase: SupabaseClient, userId: string, table: TrashTable, id: string): Promise<TrashResult> {
-  if (!(await hasTrash(supabase))) return { ok: false, status: 503, error: 'The trash is not switched on for this ranch yet.' }
   const { data } = await supabase.from(table).select('id').eq('id', id).maybeSingle()
   if (!data) return { ok: false, status: 404, error: 'That is not on your ranch.' }
   const { error } = await createServiceClient().from(table)
@@ -73,7 +58,6 @@ export async function trashRow(supabase: SupabaseClient, userId: string, table: 
  * included (read policies are membership, not liveness).
  */
 export async function restoreRow(supabase: SupabaseClient, userId: string, table: TrashTable, id: string): Promise<TrashResult> {
-  if (!(await hasTrash(supabase))) return { ok: false, status: 503, error: 'The trash is not switched on for this ranch yet.' }
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return { ok: false, status: 404, error: 'No ranch' }
   const { data } = await supabase.from(table).select('id, ranch_id').eq('id', id).maybeSingle()
@@ -103,7 +87,6 @@ const dayKeyUTC = (ms: number) => new Date(ms).toISOString().slice(0, 10)
  * deleting is a ranch act, not a private one.
  */
 export async function listTrash(supabase: SupabaseClient): Promise<TrashItem[]> {
-  if (!(await hasTrash(supabase))) return []
   const out: TrashItem[] = []
   const gone = (deletedAt: string) => dayKeyUTC(Date.parse(deletedAt) + TRASH_DAYS * 86_400_000)
   try {

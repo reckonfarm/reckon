@@ -6,7 +6,7 @@ import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
 import { live } from '@/lib/ledger-effective'
-import { hasTrash, liveOnly } from '@/lib/trash'
+import { liveOnly } from '@/lib/trash'
 
 // Places — the named spots on the outfit (031).
 //
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   // same shape lib/places/rows.ts uses for `acres`): ask for live places, and if
   // `retired_at` does not exist, ask again without the filter. Every place is
   // live on such a database, so the unfiltered answer is the correct one.
-  const livePlaces = await liveOnly(supabase.from('places').select('id, name, kind').is('retired_at', null), await hasTrash(supabase)).order('name', { ascending: true })
+  const livePlaces = await liveOnly(supabase.from('places').select('id, name, kind').is('retired_at', null)).order('name', { ascending: true })
   const { data, error } = livePlaces.error
     ? await supabase.from('places').select('id, name, kind').order('name', { ascending: true })
     : livePlaces

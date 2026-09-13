@@ -5,7 +5,7 @@ import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeader'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { Card } from '@/app/components/ui/Card'
-import { hasTrash, listTrash, TRASH_DAYS } from '@/lib/trash'
+import { listTrash, TRASH_DAYS } from '@/lib/trash'
 import TrashList from './TrashList'
 
 // ─── /account/trash (Block 12, 12.4) ──────────────────────────────────────────
@@ -20,8 +20,7 @@ export default async function TrashPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/account/trash')
-  const on = await hasTrash(supabase)
-  const items = on ? await listTrash(supabase) : []
+  const items = await listTrash(supabase)
 
   return (
     <>
@@ -34,9 +33,7 @@ export default async function TrashPage() {
         </p>
 
         <Card className="mt-4 p-0">
-          {!on ? (
-            <p className="px-4 py-5 font-dm-sans text-[17px] text-ink" data-audit="trash-off">The trash is not switched on for this ranch yet.</p>
-          ) : items.length === 0 ? (
+          {items.length === 0 ? (
             <p className="px-4 py-5 font-dm-sans text-[17px] text-ink" data-audit="trash-empty">Nothing in the trash.</p>
           ) : (
             <TrashList items={items} />

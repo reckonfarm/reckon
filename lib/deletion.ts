@@ -2,7 +2,6 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
 import { resolveRanchId } from '@/lib/ranch-membership'
-import { hasTrash } from '@/lib/trash'
 
 // ─── Deleting an entry (Block 7D.1 / 7D.2) ────────────────────────────────────
 //
@@ -158,12 +157,7 @@ export async function deleteEvent(supabase: SupabaseClient, userId: string, id: 
     // kept its test (own, unseen, no chain) because that is what decides whether
     // the RECORD must keep a note — but the row itself goes to the trash like
     // everything else, restorable for TRASH_DAYS, removed by purge_trash().
-    if (await hasTrash(supabase)) {
-      const { error } = await db.from('events').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', id).is('deleted_at', null)
-      if (!error) return { ok: true, mode: 'hard', label }
-      return { ok: false, status: 500, error: 'That entry could not be deleted just now' }
-    }
-    const { error } = await db.from('events').delete().eq('id', id)
+    const { error } = await db.from('events').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', id).is('deleted_at', null)
     if (!error) return { ok: true, mode: 'hard', label }
     // The FK backstop. Nothing above should reach it, but if it does the
     // person gets the honest outcome rather than a database code: fall through

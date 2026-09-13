@@ -55,7 +55,6 @@ import { signHayPhotosForRows } from '@/lib/hay-photos'
 import SellBarnPicker from './SellBarnPicker'
 import MarketsHistory from './MarketsHistory'
 import MarketsSince from './MarketsSince'
-import { hasTrash } from '@/lib/trash'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -388,10 +387,8 @@ export async function WeatherViewBody({
           // Block 12 (12.4): trashed rows are not on the map. A plain ternary
           // rather than liveOnly(): the generic against this client's full
           // Database type is "excessively deep" for the checker.
-          (await hasTrash(sb)) ? sb.from('places').select('id, name, kind, geometry').is('retired_at', null).is('deleted_at', null).order('name', { ascending: true })
-                               : sb.from('places').select('id, name, kind, geometry').is('retired_at', null).order('name', { ascending: true }),
-          (await hasTrash(sb)) ? sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null).is('deleted_at', null)
-                               : sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null),
+          sb.from('places').select('id, name, kind, geometry').is('retired_at', null).is('deleted_at', null).order('name', { ascending: true }),
+          sb.from('devices').select('id, name, battery_pct, last_seen, place_id').not('place_id', 'is', null).is('deleted_at', null),
         ])
         ownGround = {
           places:  (placesRes.data ?? []) as OwnPlace[],
