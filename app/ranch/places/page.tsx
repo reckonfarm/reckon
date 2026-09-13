@@ -47,6 +47,13 @@ export default async function PlacesPage() {
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>Ranch · Places</p>
         <h1 className="mt-1 type-page-heading text-ink">Places</h1>
+        {/* Block 12 (12.7): Devices fold under Ground — a device is AT a place and
+            has no life of its own — so the way to them is from here, not from
+            the hub. The 6J rule: every surface reachable from where a person
+            would look, not just reachable by URL. */}
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
+          Where things happen. Connected machines and loggers are under <Link href="/ranch/devices" className="font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices</Link>.
+        </p>
 
         {drawn.length > 0 && (
           <div className="mt-4" data-audit="places-map">
