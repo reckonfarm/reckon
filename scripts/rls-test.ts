@@ -414,10 +414,18 @@ async function lotsChecks() {
     record('member D (hand)', 'same-lot edit with a stale updated_at → 409, the other edit stands', stale.status === 409 && still?.name === `${a.lotName}-renamed-by-A` && still?.head_count === 41, `${stale.status} ${String(stale.json.code ?? stale.json.error ?? '')} · "${still?.name}" ${still?.head_count}`)
     const fresh = await api(D, `/api/herd/lots/${a.lotId}`, { class: 'steers', name: `${a.lotName}-then-by-D`, head_count: 42, avg_weight: 550, weight_unit: 'lb', expected_updated_at: still?.updated_at ?? null }, 'PATCH')
     record('member D (hand)', 'the same edit with the CURRENT updated_at → 200 and the owner reads it', fresh.status === 200 && (await lotsOf(A, a.ranchId)).lots?.find(l => l.id === a.lotId)?.name === `${a.lotName}-then-by-D`, `${fresh.status}`)
-    const gone = await api(A, `/api/herd/lots/${lot2?.id ?? ''}`, {}, 'DELETE')
+    // Block 12 (12.4): Archive and Delete are two acts with two doors. Retire is
+    // POST …/retire — out of the pickers, row kept, name still resolving.
+    // DELETE is the trash — row kept with deleted_at, out of every live read.
+    const gone = await api(A, `/api/herd/lots/${lot2?.id ?? ''}/retire`, {}, 'POST')
     const live = (await lotsOf(A, a.ranchId)).lots ?? []
-    const { data: retired } = await admin.from('herd_lots').select('retired_at').eq('id', lot2?.id ?? '').maybeSingle()
-    record('user A (owner)', 'retires a lot: gone from the live list, row kept with retired_at', gone.status === 200 && live.length === 1 && !!retired?.retired_at, `${gone.status} · live ${live.length} · retired_at ${retired?.retired_at ? 'set' : 'NULL'}`)
+    const { data: retired } = await admin.from('herd_lots').select('retired_at, deleted_at').eq('id', lot2?.id ?? '').maybeSingle()
+    record('user A (owner)', '12.4: retiring a lot (POST …/retire) — gone from the live list, row kept with retired_at, not in the trash', gone.status === 200 && live.length === 1 && !!(retired as { retired_at?: string | null } | null)?.retired_at && !(retired as { deleted_at?: string | null } | null)?.deleted_at, `${gone.status} · live ${live.length} · retired_at ${(retired as { retired_at?: string | null } | null)?.retired_at ? 'set' : 'NULL'}`)
+    const trashed = await api(A, `/api/herd/lots/${lot2?.id ?? ''}`, {}, 'DELETE')
+    const { data: inTrash } = await admin.from('herd_lots').select('deleted_at').eq('id', lot2?.id ?? '').maybeSingle()
+    const trashList = await api(A, '/api/trash', null, 'GET')
+    const listed = ((trashList.json.items ?? []) as { id: string }[]).some(i => i.id === lot2?.id)
+    record('user A (owner)', '12.4: deleting a lot (DELETE) — row kept with deleted_at, and listed in the ranch\'s trash', trashed.status === 200 && (trashed.json as { trashed?: boolean }).trashed === true && !!(inTrash as { deleted_at?: string | null } | null)?.deleted_at && listed, `${trashed.status} · deleted_at ${(inTrash as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · in /api/trash ${listed}`)
   }
   {
     const { data, error } = await B.from('herd_lots').update({ head_count: 1 }).eq('ranch_id', a.ranchId).select('id')
@@ -1337,8 +1345,11 @@ async function placesChecks() {
     const made = await api(A, '/api/places', { name: `${PREFIX}deletable`, kind: 'field' })
     const freeId = String(((made.json.place ?? {}) as { id?: string }).id ?? '')
     const gone = await api(A, `/api/places/${freeId}`, undefined, 'DELETE')
-    const after = freeId ? await readPlace(freeId) : null
-    record('user A (owner)', '7D.3: an unreferenced place DELETEs outright — the row is gone', gone.status === 200 && gone.json.deleted === true && after === null, `${gone.status} · row ${after === null ? 'gone' : 'STILL THERE'}`)
+    const { data: trashedPlace } = await admin.from('places').select('deleted_at').eq('id', freeId).maybeSingle()
+    const { data: livePlace } = await admin.from('places').select('id').eq('id', freeId).is('deleted_at', null)
+    const placeTrash = await api(A, '/api/trash', null, 'GET')
+    const placeListed = ((placeTrash.json.items ?? []) as { id: string }[]).some(i => i.id === freeId)
+    record('user A (owner)', '7D.3/12.4: an unreferenced place DELETEs to the trash — row kept with deleted_at, out of every live read, listed in the trash', gone.status === 200 && gone.json.deleted === true && !!(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at && (livePlace ?? []).length === 0 && placeListed, `${gone.status} · deleted_at ${(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · live reads ${(livePlace ?? []).length} · in trash ${placeListed}`)
 
     // A place the ranch's own entries name: refused, counted, untouched.
     const ref = await api(A, `/api/places/${a.placeId}`, undefined, 'DELETE')
@@ -1378,8 +1389,9 @@ async function placesChecks() {
       const plan = await api(A, `/api/activity/${ownId}/delete`, undefined, 'GET')
       const mode = ((plan.json.plan ?? {}) as { mode?: string }).mode
       const killed = await api(A, `/api/activity/${ownId}/delete`, undefined, 'DELETE')
-      const { data: goneRow } = await admin.from('events').select('id').eq('id', ownId).maybeSingle()
-      record('user A (owner)', '7D.1: my own unseen entry hard-deletes — the row is gone, no tombstone', !!ownId && mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && goneRow === null, `${ownId ? `plan ${mode} · ${killed.status} · row ${goneRow === null ? 'gone' : 'STILL THERE'}` : 'FIXTURE NOT CREATED — the check proved nothing'}`)
+      const { data: goneRow } = await admin.from('events').select('id, deleted_at').eq('id', ownId).maybeSingle()
+      const liveView = await A.from('events').select('id').eq('id', ownId).is('deleted_at', null)
+      record('user A (owner)', '7D.1/12.4: my own unseen entry deletes by the hard path — no record note — and the row waits in the trash, out of every live read', !!ownId && mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && !!(goneRow as { deleted_at?: string | null } | null)?.deleted_at && (liveView.data ?? []).length === 0, `${ownId ? `plan ${mode} · ${killed.status} · deleted_at ${(goneRow as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · live reads ${(liveView.data ?? []).length}` : 'FIXTURE NOT CREATED — the check proved nothing'}`)
 
       // A cross-ranch delete reaches nothing and says nothing about the row.
       const { data: bEvent } = await admin.from('events').select('id').eq('ranch_id', b.ranchId).is('deleted_at', null).limit(1).maybeSingle()
