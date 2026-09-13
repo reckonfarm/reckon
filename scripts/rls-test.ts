@@ -705,6 +705,82 @@ async function logRouteChecks() {
   }
 }
 
+// ── Block 9 — /api/ranch/turnout, the date the hay is planned against ─────────
+//
+// A turnout date is an ordinary events row (no migration; events.type is text
+// by design). That means it inherits 043's membership gate for free — and
+// "inherits it for free" is exactly the kind of claim that has to be PROVEN
+// rather than reasoned about, because the cost of being wrong is one ranch
+// reading another ranch's plans.
+//
+// On sessionUser, so this suite can reach it with a Bearer token — the 7E
+// rule. Three things are asserted: the write lands on the writer's own ranch;
+// the other ranch cannot see it through the API or through the table; and
+// changing it supersedes rather than accumulates, so the planning surface
+// cannot be handed two live answers.
+async function turnoutChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A')
+  const B = await userClient('B')
+
+  const year = new Date().getUTCFullYear() + 1
+  const first = `${year}-05-15`, second = `${year}-05-22`
+
+  const set = await api(A, '/api/ranch/turnout', { date: first })
+  const setId = String((((set.json.upcoming ?? {}) as { id?: string }).id) ?? '')
+  record('user A (owner)', '9: the isolation suite can reach /api/ranch/turnout — a Bearer token is accepted and a date is stored',
+    set.status === 200 && !!setId, `${set.status} · ${setId ? 'stored' : `NO ROW — ${String(set.json.error ?? '').slice(0, 60)}`}`)
+  if (!setId) return
+
+  const { data: row } = await admin.from('events').select('ranch_id, user_id, type').eq('id', setId).maybeSingle()
+  const r = row as { ranch_id: string | null; user_id: string; type: string } | null
+  record('user A (owner)', '9: the turnout lands on the writer\'s own ranch, under its own type — never on the record as work',
+    !!r && r.ranch_id === a.ranchId && r.user_id === a.userId && r.type === 'turnout',
+    `ranch ${r?.ranch_id === a.ranchId ? 'A' : String(r?.ranch_id)} · user ${r?.user_id === a.userId ? 'A' : 'OTHER'} · type ${r?.type}`)
+
+  // B cannot read it — through the API, and through the table underneath it.
+  const bApi = await api(B, '/api/ranch/turnout', null, 'GET')
+  const bUpcoming = (bApi.json.upcoming ?? null) as { date?: string } | null
+  record('user B (other ranch)', '9: ranch A\'s turnout date does not appear in ranch B\'s answer',
+    bApi.status === 200 && (bUpcoming === null || bUpcoming.date !== first),
+    `${bApi.status} · B sees ${bUpcoming?.date ?? 'nothing'}`)
+  const bSees = await B.from('events').select('id').eq('id', setId)
+  record('user B (other ranch)', '9: and not through the table either — membership is the only gate there is',
+    (bSees.data ?? []).length === 0, `${(bSees.data ?? []).length} row(s) visible to B`)
+
+  // B setting their own must not touch A's.
+  const bSet = await api(B, '/api/ranch/turnout', { date: `${year}-04-30` })
+  const bId = String((((bSet.json.upcoming ?? {}) as { id?: string }).id) ?? '')
+  const { data: bRow } = bId ? await admin.from('events').select('ranch_id').eq('id', bId).maybeSingle() : { data: null }
+  const { data: aStill } = await admin.from('events').select('payload, superseded_by').eq('id', setId).maybeSingle()
+  const aPayload = ((aStill as { payload?: Record<string, unknown> } | null)?.payload ?? {}) as { date?: string }
+  record('user B (other ranch)', '9: B setting their own turnout lands on B and leaves A\'s date exactly where it was',
+    (bRow as { ranch_id?: string } | null)?.ranch_id === b.ranchId && aPayload.date === first && !(aStill as { superseded_by?: string } | null)?.superseded_by,
+    `B landed on ${(bRow as { ranch_id?: string } | null)?.ranch_id === b.ranchId ? 'B' : 'ELSEWHERE'} · A still ${aPayload.date ?? 'GONE'}`)
+
+  // Changing it supersedes rather than accumulates: exactly one live turnout.
+  const changed = await api(A, '/api/ranch/turnout', { date: second })
+  const { data: old } = await admin.from('events').select('superseded_by').eq('id', setId).maybeSingle()
+  const live = await A.from('events').select('id, payload').eq('type', 'turnout').is('superseded_by', null).is('voided_at', null).is('deleted_at', null)
+  const liveDates = ((live.data ?? []) as { payload: { date?: string } }[]).map(x => x.payload?.date)
+  record('user A (owner)', '9: changing the date supersedes the old one — the planning surface is never handed two live answers',
+    changed.status === 200 && !!(old as { superseded_by?: string } | null)?.superseded_by && liveDates.length === 1 && liveDates[0] === second,
+    `${changed.status} · old superseded ${!!(old as { superseded_by?: string } | null)?.superseded_by} · live [${liveDates.join(', ')}]`)
+
+  // A date in the past is a typo, not a plan — and a fat-fingered year is the
+  // one mistake that would make every planning number absurd in silence.
+  const past = await api(A, '/api/ranch/turnout', { date: '2020-05-15' })
+  const farOut = await api(A, '/api/ranch/turnout', { date: `${year + 5}-05-15` })
+  const junk = await api(A, '/api/ranch/turnout', { date: 'next spring' })
+  record('user A (owner)', '9: a past date, a year five out and a phrase are all refused with a sentence — never stored, never a 500',
+    past.status === 400 && farOut.status === 400 && junk.status === 400 &&
+    [past, farOut, junk].every(x => typeof x.json.error === 'string' && String(x.json.error).length > 10),
+    `past ${past.status} · far ${farOut.status} · junk ${junk.status}`)
+
+  const anon = await fetch(`${BASE}/api/ranch/turnout`, { headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} })
+  record('anonymous', '9: a signed-out reader is turned away from the turnout date', anon.status === 401, `${anon.status}`)
+}
+
 async function placesChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1136,6 +1212,7 @@ async function main() {
     await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
     await correctionChecks()    // Block 5B — needs migration 054 (skips without it)
     await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
+    await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')
