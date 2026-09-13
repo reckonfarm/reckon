@@ -718,6 +718,127 @@ async function logRouteChecks() {
 // the other ranch cannot see it through the API or through the table; and
 // changing it supersedes rather than accumulates, so the planning surface
 // cannot be handed two live answers.
+// ── Block 10 — the group action, where a preg check moves head counts ─────────
+//
+// This is the first thing in the app whose write CHANGES ANOTHER TABLE. Every
+// other ledger entry is an insert; a group action moves a source lot's count
+// and creates or increments a destination in the same breath. Two failures
+// would matter more than anything these suites have caught: a working on one
+// ranch touching another ranch's cattle, and a retry decrementing twice.
+//
+// Both are asserted here against the real 063 function. Its guarantees are in
+// SQL, not in the route — SECURITY INVOKER, so another ranch's lot is not
+// rejected, it does not exist to the function — and RLS is therefore the thing
+// under test, not a code path that could be edited around.
+async function groupActionChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A')
+
+  const headOf = async (id: string) => {
+    const { data } = await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()
+    return (data as { head_count?: number } | null)?.head_count ?? null
+  }
+  const aBefore = await headOf(a.lotId)
+  const bBefore = await headOf(b.lotId)
+  if (aBefore == null || bBefore == null) { record('(skipped)', '10: group-action checks — the seeded lots are gone', true, 'nothing to work'); return }
+
+  // Capability, not existence: a working the function cannot possibly apply.
+  // 404 proves 063 is deployed AND looked for the lot; 503 is the route saying
+  // the function is not there at all, which is a different morning's problem.
+  const probeId = randomUUID()
+  const probe = await api(A, '/api/log', {
+    id: probeId, type: 'group_action', action: 'preg_check',
+    source_lot_id: '00000000-0000-0000-0000-0000000000fe',
+    expected_head: null, counted: 1, stay: 1, results: [],
+  })
+  if (probe.status === 503) { record('(skipped)', '10: group-action checks — migration 063 not applied', true, String(probe.json.error ?? '').slice(0, 70)); return }
+  record('user A (owner)', '10: a working against a bunch that does not exist is refused by name, never a database error',
+    probe.status === 404 && /not on your ranch/i.test(String(probe.json.error)), `${probe.status} · ${String(probe.json.error ?? '').slice(0, 60)}`)
+
+  // ── A cannot move B's cattle. The whole reason this suite exists. ───────────
+  const steal = await api(A, '/api/log', {
+    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    source_lot_id: b.lotId, expected_head: bBefore, counted: bBefore, stay: 0,
+    results: [{ lot_id: null, name: 'STOLEN', head: bBefore }],
+  })
+  const bAfterSteal = await headOf(b.lotId)
+  record('user A (owner)', '10: a preg check can never move another ranch\'s bunch — refused, and B\'s head count untouched',
+    steal.status === 404 && bAfterSteal === bBefore,
+    `${steal.status} · B was ${bBefore}, is ${bAfterSteal}`)
+  const { count: stolenLots } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'STOLEN')
+  record('user A (owner)', '10: and no group was created anywhere by the attempt', (stolenLots ?? 0) === 0, `${stolenLots ?? 0} lot(s) named STOLEN`)
+
+  // ── The real working, and the chute count beating the stored number ────────
+  const counted = aBefore + 2, open = 4, stay = counted - open
+  const workingId = randomUUID()
+  const body = {
+    id: workingId, type: 'group_action', action: 'preg_check',
+    source_lot_id: a.lotId, expected_head: aBefore, counted, stay,
+    results: [{ lot_id: null, name: 'RLS-TEST opens', head: open }],
+  }
+  const done = await api(A, '/api/log', body)
+  const aAfter = await headOf(a.lotId)
+  const { data: madeRows } = await admin.from('herd_lots').select('id, ranch_id, head_count, class').eq('name', 'RLS-TEST opens')
+  const made = ((madeRows ?? []) as { id: string; ranch_id: string; head_count: number; class: string }[])[0] ?? null
+  record('user A (owner)', '10: the working lands, the source ends at what STAYED (the chute count, not stored minus movers), and the new group carries the rest',
+    done.status === 201 && aAfter === stay && !!made && made.head_count === open && made.ranch_id === a.ranchId && made.class === 'old_cows',
+    `${done.status} · source ${aBefore} → ${aAfter} (stay ${stay}) · new group ${made ? `${made.head_count} head on ${made.ranch_id === a.ranchId ? 'A' : 'ELSEWHERE'}, ${made.class}` : 'MISSING'}`)
+
+  const { data: ev } = await admin.from('events').select('ranch_id, type, payload').eq('id', workingId).maybeSingle()
+  const evRow = ev as { ranch_id: string; type: string; payload: Record<string, unknown> } | null
+  record('user A (owner)', '10: both numbers are on the record — what was counted, and what the bunch said before',
+    !!evRow && evRow.type === 'group_action' && evRow.ranch_id === a.ranchId
+      && evRow.payload.counted === counted && evRow.payload.source_head_before === aBefore,
+    evRow ? `counted ${String(evRow.payload.counted)} · said ${String(evRow.payload.source_head_before)}` : 'NO EVENT')
+
+  // ── A RETRY MUST NEVER DECREMENT TWICE. The outbox resends on any transient
+  // failure, so this is not a theoretical case — it is the normal one on a
+  // bad signal.
+  const retry = await api(A, '/api/log', body)
+  const aAfterRetry = await headOf(a.lotId)
+  const { count: madeTwice } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST opens')
+  const { count: eventsForId } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', workingId)
+  record('user A (owner)', '10: the same working sent twice moves nothing the second time — one event, one group, the count where it was',
+    retry.status === 200 && retry.json.duplicate === true && aAfterRetry === stay && (madeTwice ?? 0) === 1 && (eventsForId ?? 0) === 1,
+    `${retry.status} duplicate=${retry.json.duplicate} · source ${aAfterRetry} (was ${stay}) · groups ${madeTwice ?? 0} · events ${eventsForId ?? 0}`)
+
+  // ── The rules are in the database, so a caller that skips the screen still
+  // meets them. These bodies would pass any client-side check that was only
+  // in the browser.
+  const nowHead = aAfterRetry ?? stay
+  const badSum = await api(A, '/api/log', {
+    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    source_lot_id: a.lotId, expected_head: nowHead, counted: 100, stay: 90,
+    results: [{ lot_id: null, name: 'RLS-TEST badsum', head: 5 }],
+  })
+  const stale = await api(A, '/api/log', {
+    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    source_lot_id: a.lotId, expected_head: (nowHead) + 999, counted: 1, stay: 1, results: [],
+  })
+  const aUnmoved = await headOf(a.lotId)
+  record('user A (owner)', '10: numbers that do not add up are refused, in those words, and nothing moves',
+    badSum.status === 400 && /do not add up/i.test(String(badSum.json.error)) && aUnmoved === nowHead,
+    `${badSum.status} · "${String(badSum.json.error ?? '').slice(0, 60)}" · source ${aUnmoved}`)
+  record('user A (owner)', '10: a count someone else has already changed is refused rather than clobbered',
+    stale.status === 409 && aUnmoved === nowHead,
+    `${stale.status} · "${String(stale.json.error ?? '').slice(0, 70)}"`)
+
+  // ── B sees none of it: not the working, not the group it made. ─────────────
+  const Bc = await userClient('B')
+  const bSeesEvent = await Bc.from('events').select('id').eq('id', workingId)
+  const bSeesLot = made ? await Bc.from('herd_lots').select('id').eq('id', made.id) : { data: [] }
+  record('user B (other ranch)', '10: the working and the group it created are both invisible to the other ranch',
+    (bSeesEvent.data ?? []).length === 0 && (bSeesLot.data ?? []).length === 0,
+    `event ${(bSeesEvent.data ?? []).length} · group ${(bSeesLot.data ?? []).length}`)
+
+  const anon = await fetch(`${BASE}/api/log`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {}) },
+    body: JSON.stringify({ id: randomUUID(), type: 'group_action', action: 'preg_check', source_lot_id: a.lotId, expected_head: null, counted: 1, stay: 1, results: [] }),
+  })
+  record('anonymous', '10: a signed-out caller cannot record a working', anon.status === 401, `${anon.status}`)
+}
+
 async function turnoutChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1213,6 +1334,7 @@ async function main() {
     await correctionChecks()    // Block 5B — needs migration 054 (skips without it)
     await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
     await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
+    await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')
