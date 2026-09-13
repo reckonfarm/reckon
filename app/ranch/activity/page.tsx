@@ -91,6 +91,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>The record</p>
         <h1 className="mt-1 type-page-heading text-ink">{heading}</h1>
+        {/* Block 12 (12.7): Work left the Ranch hub — machine work is the record's
+            own. The 6J reachability rule: it must be reachable from where a
+            person would look, and a person looking for what the baler did looks
+            here. The 12.7 check found this link missing on the first run. */}
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
+          <Link href="/ranch/activity?source=machine" className="font-semibold text-brand underline underline-offset-2" data-audit="activity-machines-link">Machine sessions</Link> — cutting and baling as the connected machines recorded them.
+        </p>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Everything recorded on the ranch, newest first, by the day the work happened. Tap a line for the exact entry.</p>
 
         {failed ? (

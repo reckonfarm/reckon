@@ -1073,7 +1073,7 @@ async function main() {
         const type = await d('type'), state = await d('state'), machine = await d('machine'), origin = await d('origin'), qty = await d('quantity'), when = await d('when')
         const stockRule = await page.locator('[data-audit="stock-rule"]').count()
         void row
-        record('6J: Ranch lists Work as a section with its session count, and the Work page answers type, time, machine, origin, quantity and state — with the stock rule stated', /Work/.test(workSection) && /1 session/.test(workSection) && type === 'Baling' && state === 'ended' && /Machine: baler/.test(machine) && /^Origin: /.test(origin) && /32 bales counted by hand/.test(qty) && /\d – \d|\d –|–/.test(when) && stockRule === 1, `section "${workSection.slice(0, 60)}" · ${type} · ${state} · ${machine} · ${origin} · ${qty} · ${when} · stock rule ${stockRule}`)
+        record('6J/12.7: the Work page answers type, time, machine, origin, quantity and state — with the stock rule stated', /Work/.test(workSection) && type === 'Baling' && state === 'ended' && /Machine: baler/.test(machine) && /^Origin: /.test(origin) && /32 bales counted by hand/.test(qty) && /\d – \d|\d –|–/.test(when) && stockRule === 1, `section "${workSection.slice(0, 60)}" · ${type} · ${state} · ${machine} · ${origin} · ${qty} · ${when} · stock rule ${stockRule}`)
         await page.goto('/ranch/work?kind=cutting', { waitUntil: 'domcontentloaded' })
         const cuttingEmpty = await page.locator('[data-audit="work-empty"]').count(), cuttingRows = await page.locator('[data-audit="work-row"]').count()
         await page.goto('/ranch/work?kind=baling', { waitUntil: 'domcontentloaded' })
@@ -1504,7 +1504,7 @@ async function main() {
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       const devLink = await page.locator('[data-audit="places-devices-link"]').count()
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      const machinesFilter = await page.locator('a[href*="machines"], [data-audit="activity-filter"]').filter({ hasText: /Machines/i }).count()
+      const machinesFilter = await page.locator('[data-audit="activity-machines-link"]').count()
       record('12.7: what left the hub is still reachable from where a person would look — Devices from Ground, machine work from the record, every old route answering',
         routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
     }

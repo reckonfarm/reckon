@@ -64,8 +64,12 @@ export default async function RanchPage() {
 
   // Anything landed since the person last checked — the 6H cursor. A late
   // sync is news the day it arrives, whatever day the work was.
-  const lastSeen = (member.data as { last_seen_at?: string | null } | null)?.last_seen_at ?? null
-  const unseen = lastSeen ? standing.filter(r => (r.ingested_at ?? r.ts) > lastSeen && r.user_id !== user.id).length : 0
+  // No cursor yet (Reviewed never pressed) means the same thing it means on
+  // Today's "Recorded since you checked": the last 24 hours. The first run of
+  // the 12.8 check found this reading 0 for a hand's fresh entries because the
+  // owner had no cursor — a null cursor is not "nothing is new".
+  const lastSeen = (member.data as { last_seen_at?: string | null } | null)?.last_seen_at ?? new Date(Date.now() - 24 * 3_600_000).toISOString()
+  const unseen = standing.filter(r => (r.ingested_at ?? r.ts) > lastSeen && r.user_id !== user.id).length
 
   // The last thing recorded at all, for a quiet day.
   const last = standing[0] ?? null
