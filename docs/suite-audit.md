@@ -162,3 +162,30 @@ R8 first (it protects every later run), then R5 (so the harnesses cannot go dark
 during the sweep), then R1 (the list, ruled on, then the deletions), then R3 and
 R4 together suite by suite, then R7 as the last pass. Each step is one commit
 per suite, three green runs before the next.
+
+## Ruled 2026-09-13 — approved, in the order proposed, with two conditions
+
+**Order:** R8 → R5 → R1's list → R3 + R4 suite by suite → R7.
+
+**Condition 1 — the deletion ledger.** For every check R1 deletes, this document
+(section below, filled as the pass runs) states the guarantee it was standing in
+for and either names the check that now covers it or says plainly that nothing
+does. A deleted check is the one kind of mistake here PK would never notice; if
+the count of real guarantees goes down, it is written here, not inferred from a
+smaller number.
+
+**Condition 2 — the shape principle.** Isolation has 1 instance in 160 checks;
+the browser suites have 18. That is not a discipline problem, it is a shape
+problem: reading rows and ids makes a bad check hard to write, reading page text
+makes it easy. Where a browser check can be restated as a database assertion,
+prefer that over fixing it in place. The R3/R4 sweeps apply this first: a check
+that reads text to learn a fact the database holds is moved to the database.
+
+## The deletion ledger (R1) — filled as the pass runs
+
+| deleted check | guarantee it stood for | now covered by | or: nothing does |
+|---|---|---|---|
+| *(none yet)* | | | |
+
+**Real guarantees before the pass:** to be counted on the first R1 pass.
+**After:** to be stated alongside.
