@@ -18,7 +18,7 @@ produced the other eighteen. Every rule below is about the browser suites.
 
 ## The instances, grouped by what actually went wrong
 
-Nineteen, not fourteen: the seven PK counted, the five I logged in commit
+Twenty, not fourteen: the seven PK counted, the five I logged in commit
 messages (8–12), the two already written as rules (13–14), and five from Blocks
 11–12 that nobody numbered but that belong here.
 
@@ -43,6 +43,7 @@ messages (8–12), the two already written as rules (13–14), and five from Blo
 | 17 | 6A/7B.2 hub, 6J section, 6B/6B-2 Today tab, 4A | (various) | measured surfaces PK ruled out of existence in 11.5 / 12.7 / 12.13 — six checks, one cause |
 | 18 | three receipt checks | "the equation is on the receipt" | asserted the six-line shape 11.12 ruled away |
 | 19 | the moving preview | (all of them) | pushed to the branch a suite was running against; the build changed under it |
+| 20 | the R8 runner itself | "the new build is live" | hashed a public page's chunk URLs; content-hashed chunks do not change when that page's code did not — refused to run against a build GitHub showed deployed |
 
 ## The rules
 
@@ -115,11 +116,20 @@ malformed 405 as "missing". **How to apply:** the `detail` string of every
 could not be created says `FIXTURE NOT CREATED — the check proved nothing`
 rather than recording either colour.
 
-### R8 — A suite runs against a frozen build, and says which *(#19)*
+### R8 — A suite runs against a frozen build, and says which — and "which" is the deployment record, not a fingerprint *(#19, 20)*
 
-**How to apply:** the runner records the commit and the build fingerprint it
-started against; no push to that branch until it reports; the results line
-names the head. A run whose build changed under it is void, not "mostly fine".
+**How to apply:** the runner asks GitHub for the Vercel deployment status of the
+exact SHA (`gh api repos/…/commits/<sha>/status`) and refuses to start unless it
+is `success`; it prints the SHA and the deployment id in its first line; no push
+to that branch until it reports. A run whose build changed under it is void, not
+"mostly fine".
+
+**Why not a content fingerprint (#20):** the first R8 runner hashed the chunk
+URLs a public page loads and waited for the hash to change. Next content-hashes
+chunks, so a build that touched nothing that page loads produces the *same*
+hash — the probe reported "stale" for 25 minutes on a build GitHub showed as
+deployed, and the suites did not run. A build's identity is the deployment,
+never a proxy for it.
 
 ## What the pass would do — for PK to rule on
 
