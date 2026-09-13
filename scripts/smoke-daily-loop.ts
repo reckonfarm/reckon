@@ -2074,6 +2074,99 @@ async function main() {
       }
     }
 
+    // ── Block 12: the pill's groups, the gesture, the dropdowns, the copy, the trash ──
+    {
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+
+      // 12.2 — the pill reads as what am I recording: Work · Count · Ground.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="record-fab"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.locator('[data-audit="record-fab"]').click().catch(() => {})
+      await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const groups = await Promise.all(['work', 'count', 'ground'].map(g => text(`[data-audit="picker-group-${g}"]`)))
+      const workTiles = await page.locator('[data-audit="record-picker"] [data-audit^="tile-"]:not([data-audit^="tile-place-"]):not([data-audit="tile-preg-check"])').count()
+      const groundLinks = await page.locator('[data-audit^="tile-place-"]').count()
+      const preg = await page.locator('[data-audit="tile-preg-check"]').count()
+      record('12.2: the pill opens Work · Count · Ground — six workings, Preg check under Count, three ways to mark ground',
+        groups.join('|') === 'Work|Count|Ground' && workTiles === 6 && preg === 1 && groundLinks === 3,
+        `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
+      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+
+      // 12.11 — every dropdown looks like one: a chevron beside every select.
+      let bare = 0, total = 0
+      for (const screen of ['/ranch/activity', '/ranch/preg-check', '/markets']) {
+        await page.goto(screen, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(1_200)
+        const r = await page.evaluate(() => {
+          const sels = [...document.querySelectorAll('select')]
+          const bareOnes = sels.filter(s => !(s.parentElement && s.parentElement.querySelector('svg') && getComputedStyle(s).appearance === 'none'))
+          return { total: sels.length, bare: bareOnes.length }
+        })
+        total += r.total; bare += r.bare
+      }
+      record('12.11: every select on Activity, Preg check and Markets draws its own chevron — none is bare platform text',
+        total > 0 && bare === 0, `${total} select(s) · ${bare} bare`)
+
+      // 12.12 — Add a place says what it makes and what happens next.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      const addCopy = (await page.locator('a[href="/ranch/places#capture"]').first().textContent().catch(() => '') ?? '').replace(/\s+/g, ' ')
+      record('12.12: "Add a place" says what it makes and what follows — a named spot, then work can be recorded there',
+        /Name a spot on your map/.test(addCopy) && /can be recorded there/.test(addCopy), `"${addCopy.slice(0, 120)}"`)
+
+      // 12.3 — hold a row: Open · Edit · Delete, and Edit lands IN the form.
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const row = page.locator('[data-audit="row-actions"]').first()
+      await row.waitFor({ timeout: 15_000 }).catch(() => {})
+      const box = await row.boundingBox().catch(() => null)
+      let sheetSeen = 0, editLanded = false
+      if (box) {
+        await page.mouse.move(box.x + 40, box.y + box.height / 2)
+        await page.mouse.down()
+        await page.waitForTimeout(750)
+        await page.mouse.up()
+        sheetSeen = await page.locator('[data-audit="row-actions-sheet"]').count()
+        if (sheetSeen) {
+          await page.locator('[data-audit="row-action-edit"]').click().catch(() => {})
+          await page.waitForURL(/\/ranch\/activity\/[0-9a-f-]{36}#correct/, { timeout: 15_000 }).catch(() => {})
+          await page.locator('[data-audit="correction-save"], [data-audit="correction-reason"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+          editLanded = (await page.locator('[data-audit="correction-reason"]').count()) > 0
+        }
+      }
+      record('12.3: holding a row offers Open · Edit · Delete, and Edit lands in the correction form — not on the page',
+        sheetSeen === 1 && editLanded, `sheet ${sheetSeen} · form open ${editLanded}`)
+
+      // 12.4 — delete a place → it is in the trash → Restore → it is back.
+      // Skips, saying so, until 065 is applied.
+      await page.goto('/account/trash', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="trash-off"], [data-audit="trash-empty"], [data-audit="trash-list"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+      if ((await page.locator('[data-audit="trash-off"]').count()) > 0) {
+        skip('12.4: a deleted place waits in the trash and Restore brings it back', 'migration 065 not applied on this database')
+      } else {
+        const { data: tp } = await admin.from('places').insert({ ranch_id: ranchId, user_id: userId, name: `${PREFIX} Trash test`, kind: 'field' }).select('id').single()
+        if (!tp) skip('12.4: a deleted place waits in the trash and Restore brings it back', 'could not seed a place')
+        else {
+          const del = await page.request.delete(`/api/places/${tp.id}`)
+          const dj = await del.json().catch(() => ({})) as { trashed?: boolean }
+          await page.goto('/account/trash', { waitUntil: 'domcontentloaded' })
+          await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).waitFor({ timeout: 15_000 }).catch(() => {})
+          const listed = await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).count()
+          const rowText = await text(`[data-audit="trash-row"][data-id="${tp.id}"]`)
+          await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"] [data-audit="trash-restore"]`).click().catch(() => {})
+          await page.waitForTimeout(2_000)
+          const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+          const restored = !!back && (back as { deleted_at: string | null }).deleted_at === null
+          record('12.4: a deleted place waits in the trash — named, dated, with the day it goes for good — and Restore brings it back',
+            del.ok() && dj.trashed === true && listed === 1 && /gone for good/.test(rowText) && restored,
+            `${del.status()} trashed=${dj.trashed} · listed ${listed} · "${rowText.slice(0, 70)}" · restored ${restored}`)
+          await admin.from('places').delete().eq('id', tp.id)
+        }
+      }
+      if (prior) await page.setViewportSize(prior)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

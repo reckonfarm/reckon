@@ -839,6 +839,46 @@ async function groupActionChecks() {
   record('anonymous', '10: a signed-out caller cannot record a working', anon.status === 401, `${anon.status}`)
 }
 
+// ── Block 12 (12.4) — the trash is ranch-scoped, restore included ─────────────
+// A trashed row is still a row; restore is an UPDATE through the service role
+// after the caller's own client has proved the row exists to them. The thing
+// worth proving is the other direction: a member of ranch B, handed the id of
+// a place ranch A deleted, gets nothing — not a restore, not a 500, not a
+// hint that the row exists. Skips, saying so, until 065 is applied.
+async function trashChecks() {
+  const a = fx.A!
+  const A = await userClient('A')
+  const B = await userClient('B')
+
+  const probe = await api(A, '/api/trash', null, 'GET')
+  if (probe.status !== 200) { record('(skipped)', '12.4: trash checks — /api/trash not answering', true, `${probe.status}`); return }
+
+  const { data: tp } = await admin.from('places').insert({ ranch_id: a.ranchId, user_id: a.userId, name: `${PREFIX}A trash place`, kind: 'field' }).select('id').single()
+  if (!tp) { record('(skipped)', '12.4: trash checks — could not seed a place', true, ''); return }
+  const del = await api(A, `/api/places/${tp.id}`, null, 'DELETE')
+  if (del.status === 503 || (del.json as { trashed?: boolean }).trashed !== true) {
+    await admin.from('places').delete().eq('id', tp.id)
+    record('(skipped)', '12.4: trash checks — migration 065 not applied', true, `${del.status} · ${String(del.json.error ?? 'hard-deleted, no trash')}`)
+    return
+  }
+
+  const bList = await api(B, '/api/trash', null, 'GET')
+  const bSees = ((bList.json.items ?? []) as { id: string }[]).some(i => i.id === tp.id)
+  record('user B (other ranch)', '12.4: ranch A\'s trash does not appear in ranch B\'s', bList.status === 200 && !bSees, `${bList.status} · B sees A's row ${bSees}`)
+
+  const steal = await api(B, '/api/trash', { table: 'places', id: tp.id })
+  const { data: after } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+  const stillTrashed = !!(after as { deleted_at: string | null } | null)?.deleted_at
+  record('user B (other ranch)', '12.4: B cannot restore A\'s deleted place — refused as not-in-your-trash, and the row stays where A put it',
+    steal.status === 404 && stillTrashed, `${steal.status} · still in trash ${stillTrashed}`)
+
+  const mine = await api(A, '/api/trash', { table: 'places', id: tp.id })
+  const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+  record('user A (owner)', '12.4: A restores it with one call, and it is live again', mine.status === 200 && (back as { deleted_at: string | null } | null)?.deleted_at === null, `${mine.status}`)
+
+  await admin.from('places').delete().eq('id', tp.id)
+}
+
 async function turnoutChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1335,6 +1375,7 @@ async function main() {
     await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
     await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
+    await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')
