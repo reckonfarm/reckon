@@ -31,6 +31,14 @@ import { MIN_FEED_DAYS, type HayEntry, type OnHand } from './queries'
 //    days of feeding so far — this will sharpen" beats a blank screen in
 //    November when the decision is whether to buy hay. `thin` says which.
 //
+// OPEN GAP, deliberately not built (PK, Block 9): EVERY NUMBER HERE IS BALES,
+// NEVER TONS. The ledger counts bales and nothing anywhere records what one
+// weighs, so "1,422 short" cannot become "$X to cover" — and the next question
+// after a shortfall is always what it costs. Closing it is real work, not a
+// constant: bale weight varies by cutting, by crop and by baler, so it belongs
+// to the bale itself or to the stack, not to the ranch. Get the bales right
+// first. Nothing in this module may quietly imply a weight in the meantime.
+//
 // Pure, so scripts/hay-ledger-harness.ts locks every number without a database.
 
 /** The window a "sustained" rate is measured over. Matches BURN_WINDOW_DAYS. */
