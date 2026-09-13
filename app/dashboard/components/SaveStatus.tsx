@@ -36,6 +36,17 @@ function Dot({ state }: { state: OutboxState }) {
 // RecordSheetHost's SyncRefresh, once, on every page (Block 6D).
 export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { itemId?: string; fadeAfterMs?: number } = {}) {
   const items = useOutbox()
+  // Block 11 (P0): A SYNCED RECEIPT IS TRANSIENT AND BELONGS TO THIS VIEW.
+  // The outbox lives in localStorage because unsynced work must survive a
+  // reload — that is the whole offline promise. A receipt must not: on the
+  // audit it survived navigation AND a full reload, still describing a
+  // feeding that had since been deleted. So a synced entry is shown only if
+  // it synced while THIS view was open. The component is keyed by pathname
+  // where it is mounted globally, so a navigation remounts it and a reload
+  // obviously does. Unsynced entries are untouched by this and still cross
+  // reloads, because "you have work that has not reached the ranch" is not a
+  // receipt, it is a warning.
+  const [viewOpenedAt] = useState(() => Date.now())
   const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
   const shown = item?.state ?? null
   const [now, setNow] = useState(0)
@@ -52,7 +63,9 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
   const held = item && item.undoable && item.holdUntil && now > 0 && item.holdUntil > now && item.state === 'local' ? item : null
 
   if (!item || !shown) return null
-  // A synced entry older than a few minutes has said its piece.
+  // Synced before this view existed → it is history, not a receipt.
+  if (item.state === 'synced' && (!item.syncedAt || item.syncedAt < viewOpenedAt)) return null
+  // And even within a view, a receipt has said its piece after a while.
   if (item.state === 'synced' && item.syncedAt && now > 0 && now - item.syncedAt > fadeAfterMs) return null
 
   const waiting = items.filter(i => i.state === 'local' || i.state === 'queued').length

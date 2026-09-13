@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
@@ -63,10 +63,22 @@ function DiscardedOnSwitch() {
 
 function GlobalSaveStatus() {
   const launcher = useLauncherMounted()
+  const pathname = usePathname()
   if (launcher) return null
+  // Block 11 (P0): keyed by pathname, so leaving a page ends its receipt. The
+  // strip is fixed above the bottom nav, and on the audit it landed ON TOP of
+  // Correct / Void / Delete on an entry page and swallowed the taps — two
+  // Deletes did nothing until the receipt was scrolled out of the viewport,
+  // from which the only reasonable conclusion is that Delete is broken.
+  //
+  // pointer-events stay off the whole layer now. Nothing inside a transient
+  // receipt is worth a tap that a real control underneath might have wanted:
+  // its link is a convenience, and Undo / Try again / Sync now all belong to
+  // states that are NOT this one (the strip renders those inline on Today,
+  // where it is in the flow and cannot cover anything).
   return (
     <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }} data-audit="global-save-status">
-      <div className="pointer-events-auto mx-auto max-w-2xl pr-32 md:pr-0"><SaveStatus fadeAfterMs={90_000} /></div>
+      <div className="mx-auto max-w-2xl pr-32 md:pr-0"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
     </div>
   )
 }

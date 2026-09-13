@@ -6,6 +6,7 @@ import { navigateTo } from '@/lib/standalone-nav'
 import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
 import { warning } from '@/lib/brand-colors'
+import { forgetSynced } from '@/lib/outbox'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
 // From an event that currently stands. A correction is a crossed-out number on
@@ -134,6 +135,10 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       const res = await fetch(`/api/activity/${event.id}/delete`, { method: 'DELETE' })
       const json = await res.json().catch(() => ({})) as { mode?: string; error?: string }
       if (!res.ok) { setError(json.error ?? 'That entry could not be deleted just now'); setBusy(false); return }
+      // Block 11 (P0): the receipt for a deleted entry is a lie the moment the
+      // delete lands — it quotes a balance that no longer holds and offers to
+      // open a row that is gone. It goes with the entry.
+      forgetSynced(event.id)
       // Gone from here either way, so there is nothing to return to.
       router.push('/ranch/activity')
       router.refresh()
@@ -155,6 +160,9 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       const res = await fetch(`/api/activity/${event.id}/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json().catch(() => ({})) as { event?: { id: string }; error?: string }
       if (!res.ok || !json.event) { setError(json.error ?? `Could not save (${res.status})`); setBusy(false); return }
+      // Same for a correction or a void: the old receipt describes an entry
+      // that no longer stands, and the new one supersedes it.
+      forgetSynced(event.id)
       navigateTo(router, `/ranch/activity/${json.event.id}?saved=1`)
     } catch {
       setError('No connection — the entry is unchanged. Try again when you have signal.'); setBusy(false)

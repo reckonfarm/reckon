@@ -1772,6 +1772,99 @@ async function main() {
       if (before != null) await admin.from('herd_lots').update({ head_count: before }).eq('id', lotId)
     }
 
+    // ── Block 11 (P0): the save receipt is transient UI ─────────────────────
+    // The audit found it surviving navigation AND a full reload, still quoting
+    // "= 239 bales on hand" three inches above a hay card reading 253, still
+    // offering to open an entry that had been deleted — and, on an entry page,
+    // rendering ON TOP of Correct / Void / Delete and swallowing the taps. Two
+    // Deletes did nothing until it was scrolled out of the viewport, from
+    // which the only reasonable conclusion is that Delete is broken.
+    //
+    // One check per failure, and one for what must NOT change: unsynced work
+    // still crosses a reload, because that is the offline promise and not a
+    // receipt.
+    {
+      const strip = () => page.locator('[role="status"]').filter({ hasText: 'Synced to ranch' })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      await logFeed(page, 2)
+      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+      const showedAtAll = await strip().count()
+
+      // 11.1 — it must not survive a reload.
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2_500)
+      const afterReload = await strip().count()
+      record('11.1: a save receipt does not survive a reload — it belongs to the view it was earned in',
+        showedAtAll > 0 && afterReload === 0, `shown ${showedAtAll} · after reload ${afterReload}`)
+
+      // 11.1 — nor a navigation away and back.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      await logFeed(page, 2)
+      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+      await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2_500)
+      const onOtherPage = await strip().count()
+      record('11.1: nor a navigation — leaving the page ends its receipt',
+        onOtherPage === 0, `${onOtherPage} receipt(s) on the next page`)
+
+      // 11.2 — and it dies with its entry. Record, then delete it, and the
+      // receipt must not outlive the row it describes.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      await logFeed(page, 5)
+      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 5 bales')
+      const ob = await outbox(page)
+      const doomed = ob.find(i => (i.body as { bales?: number }).bales === 5)
+      const doomedId = doomed?.id ?? ''
+      if (!doomedId) {
+        record('11.2: a receipt dies with its entry — never a balance for a row that is gone', false, 'could not find the entry to delete')
+      } else {
+        await page.goto(`/ranch/activity/${doomedId}`, { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="delete-entry"], [data-audit="delete-confirm"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        // 11.3 — the confirm must be reachable WITHOUT scrolling the receipt
+        // away: nothing transient may sit over a real control.
+        const opener = page.locator('[data-audit="delete-entry"]').first()
+        let intercepted = false
+        if (await opener.count() > 0) {
+          await opener.click({ timeout: 5_000 }).catch(() => { intercepted = true })
+        }
+        const confirm = page.locator('[data-audit="delete-confirm"]').first()
+        await confirm.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
+        const reachable = await confirm.isVisible().catch(() => false)
+        record('11.3: nothing transient sits over Delete — the confirm is reachable without scrolling a receipt out of the way',
+          !intercepted && reachable, `click ${intercepted ? 'INTERCEPTED' : 'landed'} · confirm ${reachable ? 'visible' : 'NOT REACHABLE'}`)
+        if (reachable) {
+          await confirm.click().catch(() => {})
+          await page.waitForURL(/\/ranch\/activity(\?|$)/, { timeout: 20_000 }).catch(() => {})
+          await page.waitForTimeout(1_500)
+          const receiptsLeft = await strip().count()
+          const { count: rows } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', doomedId).is('deleted_at', null)
+          record('11.2: a receipt dies with its entry — never a balance for a row that is gone',
+            receiptsLeft === 0 && (rows ?? 0) === 0, `${receiptsLeft} receipt(s) · ${rows ?? 0} live row(s)`)
+        } else {
+          record('11.2: a receipt dies with its entry — never a balance for a row that is gone', false, 'could not reach the confirm')
+        }
+      }
+
+      // The offline promise is NOT a receipt and must be untouched by all of
+      // the above: unsynced work still crosses a reload.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      await ctx.setOffline(true)
+      await logFeed(page, 1)
+      await page.waitForTimeout(1_500)
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2_500)
+      const pending = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const stillQueued = (await outbox(page)).some(i => i.state === 'local' || i.state === 'queued')
+      record('11.1: unsynced work still crosses a reload — a warning is not a receipt',
+        stillQueued && /Saved on this phone|Waiting to sync/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
+      await ctx.setOffline(false)
+      await page.waitForTimeout(4_000)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
