@@ -57,6 +57,11 @@ export interface ActiveAlert {
   urgency: string | null
   onset: string | null
   expires: string | null
+  /** When the HAZARD ends. NWS's `expires` is when this bulletin expires and is
+   *  reissued, which can be hours earlier — the audit saw "until Sep 13, 3:00
+   *  PM" above prose saying "until September 14 at 12:00AM". This is the one
+   *  a person means by "until". Null when NWS does not give it. */
+  ends: string | null
   description: string | null
   instruction: string | null
   senderName: string | null
@@ -69,7 +74,7 @@ export async function getActiveAlerts(lat: number, lon: number): Promise<ActiveA
     const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
     return (json.features ?? []).map(f => {
       const p = f.properties ?? {}
-      return { id: String(f.id ?? p.id ?? ''), event: str(p.event) ?? 'Weather alert', headline: str(p.headline), severity: str(p.severity), urgency: str(p.urgency), onset: str(p.onset), expires: str(p.expires), description: str(p.description), instruction: str(p.instruction), senderName: str(p.senderName) }
+      return { id: String(f.id ?? p.id ?? ''), event: str(p.event) ?? 'Weather alert', headline: str(p.headline), severity: str(p.severity), urgency: str(p.urgency), onset: str(p.onset), expires: str(p.expires), ends: str(p.ends), description: str(p.description), instruction: str(p.instruction), senderName: str(p.senderName) }
     }).filter(a => a.id)
   } catch { return null }
 }
