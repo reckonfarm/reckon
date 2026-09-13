@@ -126,7 +126,7 @@ export default function LfpAlertCard({
   const body = (
     <>
       <div className="mb-3">
-        <p className={EYEBROW}>Drought / LFP</p>
+        <p className={EYEBROW}>LFP payments</p>
         <Heading level={3} visual={5} className="mt-1">LFP status</Heading>
       </div>
 

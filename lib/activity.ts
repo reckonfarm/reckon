@@ -98,6 +98,23 @@ export function chainWithin(rows: ActivityRow[], head: ActivityRow, names: Names
 }
 
 // ── One line for one event, the same words everywhere ─────────────────────────
+// ─── Block 12 (12.9): an alert must say what it is alerting ───────────────────
+// PK's ruling: "an alert with no title should never render the bare word
+// 'Alert'. If the payload can't say what it is, the alert doesn't show." The
+// LFP alert never had a title — lib/alert-service writes kind / county / tier
+// / payments — so every one of them read as the bare word in the record for
+// weeks. The sentence is built from the payload here; a payload this cannot
+// name returns null and listActivity leaves the row out.
+export function alertLine(p: Record<string, unknown>): string | null {
+  const title = str(p.title)
+  if (title) return title
+  if (p.kind === 'lfp_drought_alert' && typeof p.county_name === 'string' && typeof p.tier === 'number') {
+    const payments = typeof p.payments === 'number' ? p.payments : null
+    return `LFP alert — ${p.county_name} County at Tier ${p.tier}${payments != null ? ` · ${payments} payment${payments === 1 ? '' : 's'}` : ''}`
+  }
+  return null
+}
+
 export function describeEvent(r: ActivityRow, names: Names): string {
   const line = describeBody(r, names)
   return r.voided_at ? `Removed: ${line}` : line   // 12.5: 'void' is not a word a person reads
@@ -126,7 +143,7 @@ function describeBody(r: ActivityRow, names: Names): string {
         .filter((x): x is string => x !== null).join(', ')
       return `${label}${counted == null ? '' : ` · ${counted.toLocaleString()} counted`}${from ? ` from ${from}` : ''}${moved ? ` · ${moved}` : ' · none moved'}`
     }
-    case 'alert': return str(p.title) ?? 'Alert'
+    case 'alert': return alertLine(p) ?? 'Alert'   // never reached for a row listActivity dropped — see alertLine
     default: return (isManualEventType(r.type) ? MANUAL_EVENT_LABELS[r.type] : r.type) + suffix
   }
 }
@@ -198,7 +215,8 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
     if (cts && cid) q = q.or(`ts.lt.${cts},and(ts.eq.${cts},id.lt.${cid})`)
   }
   const { data } = await q
-  const all = (data ?? []) as ActivityRow[]
+  // 12.9: an alert that cannot say what it is does not show — see alertLine.
+  const all = ((data ?? []) as ActivityRow[]).filter(r => r.type !== 'alert' || alertLine(r.payload) !== null)
   const rows = all.slice(0, PAGE_SIZE)
   const last = rows[rows.length - 1]
   const nextCursor = all.length > PAGE_SIZE && last ? `${last.ts}|${last.id}` : null

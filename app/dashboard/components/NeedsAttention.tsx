@@ -31,7 +31,7 @@ export default function NeedsAttention() {
   const failed = items.filter(i => i.state === 'failed')
   return (
     <section aria-labelledby="needs-attention-h" data-audit="needs-attention">
-      <h2 id="needs-attention-h" className={`${EYEBROW} !text-ink`}>Needs attention</h2>
+      <h2 id="needs-attention-h" className={`${EYEBROW} !text-ink`}>{n === 1 ? '1 entry has not reached the ranch' : `${n} entries have not reached the ranch`}</h2>
       <Card className="mt-2 p-4 sm:p-5">
         <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="needs-attention-count">
           {n} {n === 1 ? 'entry has' : 'entries have'} not reached the ranch yet.

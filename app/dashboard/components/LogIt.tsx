@@ -519,7 +519,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
         case 'hay_inventory': body.bales = num; body.as_of = asOf || todayKey(); body.place_id = placeId; break
       }
-      if (!Number.isFinite(num) && type !== 'rain') { setError('Enter a number'); return }
+      if (!Number.isFinite(num) && type !== 'rain') { setError('Enter the number first'); return }
 
       // Block 2A: the entry is saved ON THIS PHONE first, under an id minted
       // here and now; the outbox uploads it (and retries with the same id).

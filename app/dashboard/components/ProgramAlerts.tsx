@@ -34,7 +34,7 @@ export default function ProgramAlerts({ alerts }: { alerts: ProgramAlert[] }) {
 
   return (
     <section aria-labelledby="program-alerts-h" data-audit="program-alerts">
-      <h2 id="program-alerts-h" className={`${EYEBROW} !text-ink`}>Changed</h2>
+      <h2 id="program-alerts-h" className={`${EYEBROW} !text-ink`}>Program changes</h2>
       <div className="mt-2 space-y-3">
         {live.map(a => (
           <Card key={a.key} className="p-4 sm:p-5" data-audit={`program-alert-${a.kind}`}>

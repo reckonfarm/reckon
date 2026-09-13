@@ -15,12 +15,12 @@ export default async function DeviceAttention() {
   if (rows.length === 0) return null
   return (
     <Card shadow="soft" className="p-4 sm:p-5" data-audit="needs-attention-devices">
-      <p className={EYEBROW}>Needs attention</p>
+      <p className={EYEBROW}>A device has gone quiet</p>
       <ul className="mt-2 divide-y divide-rule">
         {rows.map(d => (
           <li key={d.id} className="flex min-h-[56px] items-center justify-between gap-3 py-2">
             <span className="font-dm-sans text-[17px] text-ink">
-              <span className="font-semibold">Check device</span> · {d.name}
+              <span className="font-semibold">{d.name}</span> has not reported
               <span className="block text-[15px] text-secondary-ink">{d.lastSeen ? `Last collected ${fmtDay(d.lastSeen)} ${fmtTime(d.lastSeen)}` : 'Never collected'} · expected every {Math.round(d.expectedEveryMs / 3_600_000)} h</span>
             </span>
             <Link href={`/ranch/devices#${d.id}`} className="inline-flex min-h-[48px] shrink-0 items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">Open</Link>
