@@ -148,8 +148,7 @@
    an interactive control on any screen.
 
    The structural half of that rule is here, once, for every page there will ever
-   be: the document reserves the bar's height plus the home indicator. The other
-   the bar is fixed, and until now nothing reserved room for it. The bar's
+   be: the document reserves room under the last thing on the page. The bar's
    min-height is 56px but it PAINTS at 64 (icon + label + padding + border) —
    the overlap check found the last control on four screens under those 8px,
    measuring the painted box where this reserve had assumed the CSS one.
