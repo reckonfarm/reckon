@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
+import { setRecordAvailable } from '@/lib/record-sheet-state'
 import { takeDiscardedNotice } from '@/lib/private-state'
 import { warning } from '@/lib/brand-colors'
 
@@ -90,6 +91,9 @@ export default function RecordSheetHost() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => setSignedIn(!!session?.user))
     return () => subscription.unsubscribe()
   }, [])
+  // Block 11 (11.4): the bar's Record item lives in the root layout and would
+  // otherwise offer a tap with no sheet behind it to a signed-out visitor.
+  useEffect(() => { setRecordAvailable(signedIn); return () => setRecordAvailable(false) }, [signedIn])
   if (!signedIn) return null
   return (
     <>

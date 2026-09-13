@@ -854,6 +854,23 @@ async function main() {
         tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && oldFab === 0,
         `tabs [${tabs.join(', ')}] · Record in bar ${recCount} · floating pill ${oldFab}`)
 
+      // 11.4 follow-on: the FAB lived inside the host that mounts only for a
+      // signed-in person, so signing out hid it for free. The bar is in the
+      // root layout and renders for everyone, so Record must be gated on a
+      // sheet actually existing — a button that does nothing is the same
+      // defect class as a button you cannot reach.
+      const anon = await ctx.browser()!.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const anonPage = await anon.newPage()
+        await anonPage.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await anonPage.waitForTimeout(2_500)
+        const anonBar = await anonPage.locator('[data-audit="bottom-bar"]').count()
+        const anonRecord = await anonPage.locator('[data-audit="record-action"]').count()
+        record('11.4: a signed-out visitor is not offered Record — the bar is there, the tap that would do nothing is not',
+          anonBar === 1 && anonRecord === 0, `bar ${anonBar} · Record offered ${anonRecord}`)
+        await anonPage.close()
+      } finally { await anon.close() }
+
       await rec.click()
       await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
       const openDialogs = await page.getByRole('dialog').count()

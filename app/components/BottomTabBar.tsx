@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useRecordSheetOpen } from '@/lib/record-sheet-state'
+import { useRecordAvailable, useRecordSheetOpen } from '@/lib/record-sheet-state'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 
 // ─── Bottom tab bar (Block 6A; Record joined it in Block 11) ──────────────────
@@ -54,8 +54,9 @@ const RECORD_HIDDEN_ON = ['/signin', '/auth', '/invite', '/terms', '/privacy']
 export default function BottomTabBar() {
   const pathname = usePathname()
   const sheetOpen = useRecordSheetOpen()
+  const recordAvailable = useRecordAvailable()
   if (pathname.startsWith('/signin') || pathname.startsWith('/auth')) return null
-  const showRecord = !sheetOpen && pathname !== '/' && !RECORD_HIDDEN_ON.some(p => pathname.startsWith(p))
+  const showRecord = recordAvailable && !sheetOpen && pathname !== '/' && !RECORD_HIDDEN_ON.some(p => pathname.startsWith(p))
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-forest-green/10 pb-safe" aria-label="Primary" data-audit="bottom-bar">
       <div className="flex items-stretch">
