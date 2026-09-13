@@ -77,7 +77,7 @@ export default async function RanchPage() {
   const tiles: { href: string; label: string; number: string | null; audit: string }[] = [
     { href: '/ranch/cattle', label: 'Cattle', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null, audit: 'cattle' },
     { href: '/ranch/places', label: 'Ground', number: numbers.places != null ? plural(numbers.places, 'place') + (numbers.devices != null ? ` · ${plural(numbers.devices, 'device')}` : '') : null, audit: 'ground' },
-    { href: '/ranch/activity', label: 'The record', number: todays.length > 0 ? `${plural(todays.length, 'entry')} today` : null, audit: 'record' },
+    { href: '/ranch/activity', label: 'The record', number: todays.length > 0 ? `${todays.length} ${todays.length === 1 ? 'entry' : 'entries'} today` : null, audit: 'record' },
   ]
 
   return (
@@ -110,7 +110,7 @@ export default async function RanchPage() {
             )}
             {unseen > 0 && (
               <div className="flex items-center justify-between gap-3 border-t border-rule px-4 py-3" data-audit="ranch-since">
-                <p className="font-dm-sans text-[16px] text-ink">{plural(unseen, 'entry')} since you last checked.</p>
+                <p className="font-dm-sans text-[16px] text-ink">{unseen} {unseen === 1 ? 'entry' : 'entries'} since you last checked.</p>
                 {/* 6H: Reviewed is an action, never a page load. */}
                 <ReviewedButton count={unseen} />
               </div>

@@ -198,7 +198,8 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   }
 
   async function removeLot(id: string) {
-    if (await write(`/api/herd/lots/${id}`, 'DELETE') && editing === id) setEditing(null)
+    // Block 12 (12.4): Archive retires — its own route. DELETE on the lot is the trash now.
+    if (await write(`/api/herd/lots/${id}/retire`, 'POST') && editing === id) setEditing(null)
   }
 
   function addWindow() {

@@ -6,7 +6,7 @@ import { trashRow } from '@/lib/trash'
 
 // ─── /api/herd/lots/[id] (Block 4B) ────────────────────────────────────────────
 //   PATCH  { ...fields, expected_updated_at } → { lot }   409 when the row moved since expected_updated_at
-//   DELETE → { lot }                                      retires the lot (never deletes: the ledger keeps its name)
+//   DELETE → { deleted, trashed }                         the trash (Block 12, 12.4); retire is POST …/retire
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const s = await sessionUser(req)
   if (!s) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })

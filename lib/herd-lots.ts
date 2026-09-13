@@ -125,10 +125,6 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   // What the count says now, so a change is a change and an unchanged count writes nothing.
   const { data: now } = await supabase.from('herd_lots').select('head_count').eq('id', id).eq('ranch_id', who.ranchId).maybeSingle()
   const before = (now as { head_count?: number } | null)?.head_count ?? null
-  if (before !== null && before !== l.head_count) {
-    const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, id, before, l.head_count, 'edit')
-    if (ledgerErr) return { ok: false, status: 500, error: 'That count could not be written to the record, so the bunch was left as it was.' }
-  }
   let q = supabase.from('herd_lots').update({
     class: l.class, name: l.name ?? null, head_count: l.head_count, avg_weight: l.avg_weight, weight_unit: l.weight_unit,
     frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, updated_by: who.uid,
@@ -137,7 +133,19 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   if (expectedUpdatedAt) q = q.eq('updated_at', expectedUpdatedAt)
   const { data, error } = await q.select(LOT_COLUMNS)
   if (error) return { ok: false, status: 500, error: error.message }
-  if (data && data.length === 1) return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data[0] as LotRow)]))[0] }
+  if (data && data.length === 1) {
+    // Block 12 (12.6): the ledger row AFTER the compare-and-set has won. Under
+    // 066 the row's trigger rebuilds the column to the same value (no change,
+    // no touch); written before the update it bumped updated_at and made the
+    // token match nothing — the first run after 12.6 showed every count edit
+    // answering 500. A row that cannot be written is said out loud: the column
+    // moved, the record did not, and the next rebuild would put it back.
+    if (before !== null && before !== l.head_count) {
+      const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, id, before, l.head_count, 'edit')
+      if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but the count could not be written to the record — set the count again.' }
+    }
+    return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data[0] as LotRow)]))[0] }
+  }
   // Nothing moved: distinguish "gone" from "changed under you". The words for
   // both live in lib/stale-edit.ts now, so places inherits them verbatim
   // instead of growing a second dialect of the same sentence.
