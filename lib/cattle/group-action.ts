@@ -130,14 +130,21 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
   }
 }
 
-// The function's own SQLSTATEs. Its messages are written for a person at a
-// chute — "90 that stayed and 5 that moved do not add up to the 100 counted" —
-// so they are passed through. Anything unmapped is not.
+// 064: THE FUNCTION RETURNS ITS REFUSALS AS DATA. 063 raised them, and the
+// first isolation run showed both raised refusals arriving here as 500s — the
+// SQLSTATE did not survive the trip the way the code assumed, so a stale count
+// read as "could not be recorded just now" instead of the sentence written for
+// it. Nothing now depends on how an exception is translated between Postgres,
+// PostgREST and the client: the reason is a string in the body.
 const STATUS: Record<string, number> = {
-  '28000': 401,   // not authenticated
-  '22023': 400,   // a number or a name the working cannot mean
-  'P0002': 404,   // no such bunch on this ranch (RLS made it invisible, or it is retired)
-  '40001': 409,   // someone else moved the count under this recorder
+  not_authenticated: 401,
+  unknown_action: 400,
+  bad_number: 400,
+  mismatch: 400,
+  unnamed_group: 400,
+  source_not_found: 404,
+  dest_not_found: 404,
+  stale: 409,
 }
 
 export interface GroupActionResult {
@@ -149,7 +156,8 @@ export interface GroupActionResult {
 /**
  * One RPC, one transaction. Everything that could half-happen happens together
  * or not at all — see supabase/migrations/063_group_actions.sql for why that
- * is a function and not three writes from here.
+ * is a function and not three writes from here, and 064 for why the duplicate
+ * check comes before everything else in it.
  */
 export async function recordGroupAction(supabase: SupabaseClient, input: GroupActionInput): Promise<GroupActionResult> {
   const { data, error } = await supabase.rpc('record_group_action', {
@@ -165,17 +173,26 @@ export async function recordGroupAction(supabase: SupabaseClient, input: GroupAc
   })
 
   if (error) {
-    const status = STATUS[error.code ?? '']
-    if (status) throw new GroupActionError(status, error.message)
-    // 42883 = the function is not there yet, i.e. 063 has not been run. Say
-    // that as something a person can act on, never as a missing-function error.
+    // 42883 = the function is not there yet, i.e. 063/064 unrun. Say that as
+    // something a person can act on, never as a missing-function error.
     if (error.code === '42883') {
       throw new GroupActionError(503, 'Recording a working is not switched on for this ranch yet.')
     }
     throw new GroupActionError(500, 'That working could not be recorded just now.')
   }
 
-  const out = (data ?? {}) as { duplicate?: boolean; event_id?: string; payload?: GroupActionPayload }
+  const out = (data ?? {}) as {
+    ok?: boolean; reason?: string; message?: string
+    duplicate?: boolean; event_id?: string; payload?: GroupActionPayload
+  }
+
+  if (out.ok === false) {
+    const status = STATUS[out.reason ?? ''] ?? 400
+    // The function's messages are written for a person at a chute and pass
+    // through; a reason with no message of its own never reaches the screen
+    // as a bare code.
+    throw new GroupActionError(status, out.message || 'That working could not be recorded.')
+  }
   if (!out.payload || !out.event_id) throw new GroupActionError(500, 'That working could not be recorded just now.')
   return { duplicate: !!out.duplicate, eventId: out.event_id, payload: out.payload }
 }
