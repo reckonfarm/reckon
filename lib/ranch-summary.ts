@@ -21,7 +21,7 @@ export interface RanchNumbers {
 export async function ranchNumbers(supabase: SupabaseClient, userId: string): Promise<RanchNumbers> {
   const [lots, hay, places, devices, work] = await Promise.all([
     getRanchLots(supabase, userId).catch(() => []),
-    getHayLedger(supabase, { since: ranchYearStart() }).catch(() => null),
+    getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() }).catch(() => null),
     // Live places only; tolerant of a database without 057.
     supabase.from('places').select('id', { count: 'exact', head: true }).is('retired_at', null)
       .then(r => (r.error ? supabase.from('places').select('id', { count: 'exact', head: true }) : r)),

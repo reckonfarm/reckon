@@ -49,9 +49,10 @@ function fmtRate(n: number): string {
 // label, so the card's own eyebrow is dropped; anywhere else it keeps it.
 export default async function HayInventoryCard({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
-  // Season-scoped read (this ranch year, capped); the latest count still
-  // anchors on-hand even when it predates the floor — see getHayLedger.
-  const { entries, summary } = await getHayLedger(supabase, { since: ranchYearStart() })
+  // Block 9: the read runs back to the last counted baseline, not to January 1
+  // — a winter's feeding does not reset at midnight on New Year's Eve. The
+  // ranch year is only the fallback for a ranch that has never counted.
+  const { entries, summary } = await getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() })
   if (entries.length === 0) return <LedgerPanel tab="hay" empty />
 
   const { stacked, fed, burnRate, onHand, runOut, range } = summary
@@ -127,7 +128,12 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           )}
           {range && (
             <p className="mt-3 font-dm-sans text-[14px] text-ink">
-              Since {fmtDay(range.from)} · from what you logged.
+              {/* Block 9: the window is the count, not the calendar — so the card
+                  says which window every figure above was added up over. Without
+                  a count there is no anchor and the first line read is the start. */}
+              {onHand
+                ? `Every line since your ${ranchDay(onHand.baseline.asOf)} count · from what you logged.`
+                : `Since ${fmtDay(range.from)} · from what you logged.`}
             </p>
           )}
         </Disclosure>

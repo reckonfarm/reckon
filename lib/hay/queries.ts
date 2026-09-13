@@ -147,51 +147,91 @@ function toEntry(r: EventRow): HayEntry | null {
 export const HAY_ROW_CAP = 1000
 
 // Reads the hay lines (RLS-scoped by the caller's client) and derives the
-// summary. `since` (ISO) trims the read; `now` fixes the burn-rate window
-// (tests pass it; pages let it default).
+// summary. `now` fixes the burn-rate window (tests pass it; pages let it
+// default).
 //
-// The baseline survives the floor: hay ON HAND exists only with a counted
-// baseline (the most recent hay_inventory line), and that count may predate
-// `since` — a November count feeding a January ledger. So when a floor is
-// given, the latest count is read on its own (one row) and merged in if the
-// bounded read didn't already carry it. The season totals (stacked / fed /
-// burn rate) stay bounded; only the anchor is exempt.
+// THE WINDOW IS THE COUNT, NOT THE CALENDAR (Block 9). Every call site used to
+// pass a ranch-year floor of January 1, and on January 1 that silently threw
+// away the winter. The baseline was exempt — read on its own and merged back —
+// but the feeding was not, so a November count kept anchoring the arithmetic
+// while the November and December feeding it was supposed to be reduced by
+// vanished. Measured against summarizeHay: a 400-bale count on Nov 15, 98
+// bales fed across Nov–Dec, 10 fed in January, read on Jan 5 — the whole
+// ledger says 292 on hand and a run-out of Apr 22; floored at Jan 1 it says
+// 390 on hand and withholds the date for thin feeding. Overstated by the
+// entire Nov–Dec feed, in the one season the number matters.
+//
+// So the floor is the counted baseline's own ranch day: hay reads the whole
+// ledger back to the last count and no further. That is the same window the
+// on-hand arithmetic already used ("+ added − fed since that count"), so the
+// read and the equation now agree by construction, and nothing resets at
+// midnight on New Year's Eve.
+//
+// `sinceWithoutBaseline` is the fallback floor, used ONLY when no count exists
+// at all. There is no on-hand to get wrong in that case — only the stacked and
+// fed totals, which are display figures the card labels with their own start
+// date — and it keeps the read bounded on a ranch that has never counted.
 export async function getHayLedger(
   supabase: SupabaseClient,
-  opts: { since?: string; now?: number } = {},
+  opts: { sinceWithoutBaseline?: string; now?: number } = {},
 ): Promise<HayLedger> {
   try {
     // Block 5B: through the correction chain — a superseded line does not count,
     // its replacement does; a void counts for nothing. Never applied twice.
-    // 7D: skip the deleted filter on a database without 061 (temporary).
-    let q = effective(supabase
+    const hay = () => effective(supabase
       .from('events')
       .select('id, type, ts, payload')
       .in('type', [...HAY_EVENT_TYPES])
       .eq('payload->>source', 'manual'))
-      .order('ts', { ascending: true })
-      .limit(HAY_ROW_CAP)
-    if (opts.since) q = q.gte('ts', opts.since)
+
+    // The anchor first, so the floor can be its day. Ordered exactly the way
+    // summarizeHay picks the baseline — latest as_of, ties to the latest
+    // logged — so the row that sets the floor is the row that anchors the
+    // arithmetic. A correction to a count is followed here too: `effective`
+    // returns the count that currently stands, not the one it replaced.
+    const { data: anchorRows } = await effective(supabase
+      .from('events')
+      .select('id, type, ts, payload')
+      .eq('type', 'hay_inventory')
+      .eq('payload->>source', 'manual'))
+      .order('payload->>as_of', { ascending: false })
+      .order('ts', { ascending: false })
+      .limit(1)
+    const anchor = ((anchorRows ?? []) as EventRow[])[0] ?? null
+    const anchorAsOf = anchor ? str((anchor.payload ?? {}).as_of) : null
+
+    // Read from the day BEFORE the count and let dayKey do the exact cut
+    // below: the floor is a UTC instant and the count is a ranch day, and
+    // half a day of slack is cheaper than dropping a real feeding to a
+    // timezone edge.
+    const floor = anchorAsOf
+      ? new Date(Date.parse(`${anchorAsOf}T00:00:00Z`) - 86_400_000).toISOString()
+      : opts.sinceWithoutBaseline
+    let q = hay().order('ts', { ascending: true }).limit(HAY_ROW_CAP)
+    if (floor) q = q.gte('ts', floor)
     const { data, error } = await q
     if (error) return EMPTY
     const rows = (data ?? []) as EventRow[]
 
-    if (opts.since && !rows.some(r => r.type === 'hay_inventory')) {
-      const { data: latestCount } = await effective(supabase
-        .from('events')
-        .select('id, type, ts, payload')
-        .eq('type', 'hay_inventory')
-        .eq('payload->>source', 'manual'))
-        .order('ts', { ascending: false })
-        .limit(1)
-      for (const r of (latestCount ?? []) as EventRow[]) rows.push(r)
-    }
+    // The anchor itself may sit outside the read — a count logged for a day
+    // earlier than its own timestamp, or one that fell to the row cap.
+    if (anchor && !rows.some(r => r.id === anchor.id)) rows.push(anchor)
 
-    const entries = rows.map(toEntry).filter((e): e is HayEntry => e !== null)
+    const entries = sinceCount(rows.map(toEntry).filter((e): e is HayEntry => e !== null), anchorAsOf)
     return { entries, summary: summarizeHay(entries, opts.now) }
   } catch {
     return EMPTY
   }
+}
+
+// The exact cut the read is bounded by, on the RANCH day — the same day
+// comparison summarizeHay uses for "fed since the count", so the read and the
+// arithmetic cannot disagree. Counts themselves are never trimmed: the
+// baseline is the anchor, and a count logged for a day before its own
+// timestamp must survive its own floor. Pure, so the harness can lock it.
+export function sinceCount(entries: HayEntry[], anchorAsOf: string | null): HayEntry[] {
+  if (!anchorAsOf) return entries
+  return entries.filter(e => e.type === 'hay_inventory' || dayKey(e.ts) >= anchorAsOf)
 }
 
 // Pure: entries (any order) → summary. Exported so the harness can lock it

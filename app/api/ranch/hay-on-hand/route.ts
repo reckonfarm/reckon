@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const session = await sessionUser(req)
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   try {
-    const ledger = await getHayLedger(session.supabase, { since: ranchYearStart() })
+    const ledger = await getHayLedger(session.supabase, { sinceWithoutBaseline: ranchYearStart() })
     const onHand = ledger?.summary?.onHand ?? null
     return NextResponse.json({ bales: onHand ? onHand.bales : null, asOf: ledger?.summary?.baseline?.asOf ?? null })
   } catch {

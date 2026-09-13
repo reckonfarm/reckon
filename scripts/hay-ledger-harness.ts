@@ -11,7 +11,7 @@
 // receive after the filter: the superseded line gone, its replacement present,
 // a void gone. Cutoffs are ranch days (America/Denver), never UTC.
 
-import { summarizeHay, type HayEntry } from '../lib/hay/queries'
+import { sinceCount, summarizeHay, type HayEntry } from '../lib/hay/queries'
 
 let failures = 0
 function check(name: string, pass: boolean, detail: string) {
@@ -79,6 +79,48 @@ const fedSince = (entries: HayEntry[]) => summarizeHay(entries, NOW).onHand!.fed
   check('two counts: the later count is the baseline; the Aug 25 feeding sits before it → 34', onHand(two) === 34 && summarizeHay(two, NOW).onHand!.baseline.asOf === '2026-09-01', `on hand ${onHand(two)}, baseline ${summarizeHay(two, NOW).onHand!.baseline.asOf}`)
   const movedPast = [two[0], fed('ac', '2026-09-02T18:00:00Z', 6), two[2], two[3]]   // the Aug 25 feeding corrected to Sep 2 — now after the later count
   check('a correction that moves a feeding past the intervening count draws on that count → 28', onHand(movedPast) === 28, `on hand ${onHand(movedPast)}`)
+}
+
+{
+  // ── Block 9: the window is the count, not the calendar ──────────────────────
+  // A winter operation, read on Jan 5. The count is a November one; the
+  // feeding runs straight through the New Year. Every hay call site used to
+  // floor the read at January 1, which kept the November count anchoring the
+  // arithmetic while the November and December feeding it was supposed to be
+  // reduced by disappeared. This is that ledger, both ways.
+  const JAN5 = new Date('2027-01-05T18:00:00Z').getTime()
+  const nov = count('c', '2026-11-15', '2026-11-15T18:00:00Z', 400)
+  const winter = ['2026-11-20', '2026-11-27', '2026-12-04', '2026-12-11', '2026-12-18', '2026-12-25', '2026-12-30'].map(d => fed(d, `${d}T18:00:00Z`, 14))
+  const january = ['2027-01-02', '2027-01-04'].map(d => fed(d, `${d}T18:00:00Z`, 5))
+  const whole = summarizeHay(sinceCount([nov, ...winter, ...january], '2026-11-15'), JAN5)
+  const jan1Floored = summarizeHay([nov, ...january], JAN5)   // what the old floor handed it
+  check('the window is the count: a November count reads its own winter — 400 − 108 = 292 on hand, 9 feeding days',
+    whole.onHand!.bales === 292 && whole.fed!.days === 9,
+    `on hand ${whole.onHand!.bales} · fed ${whole.fed!.bales} on ${whole.fed!.days} days`)
+  check('and the run-out date survives New Year — the 7-day gate is not re-armed by the calendar',
+    !!whole.runOut.date, `runOut ${whole.runOut.date ?? whole.runOut.withheld}`)
+  check('the January-1 floor is what wrong looks like: 98 bales of Nov–Dec feeding gone, on hand overstated, the date withheld',
+    jan1Floored.onHand!.bales === 390 && jan1Floored.runOut.withheld === 'thin_feeding',
+    `on hand ${jan1Floored.onHand!.bales} (overstated by ${jan1Floored.onHand!.bales - whole.onHand!.bales}) · runOut ${jan1Floored.runOut.date ?? jan1Floored.runOut.withheld}`)
+
+  // The cut itself: everything before the count goes, the count never does —
+  // including a count logged for a day earlier than its own timestamp.
+  const older = count('old', '2026-10-01', '2026-10-01T18:00:00Z', 900)
+  const before = fed('pre', '2026-11-01T18:00:00Z', 20)
+  const cut = sinceCount([older, before, nov, ...january], '2026-11-15')
+  check('the cut keeps every count and drops only work recorded before the anchor',
+    cut.length === 4 && cut.filter(e => e.type === 'hay_inventory').length === 2 && !cut.some(e => e.id === 'pre'),
+    `${cut.length} of 5 kept · counts ${cut.filter(e => e.type === 'hay_inventory').length} · pre-count feeding dropped ${!cut.some(e => e.id === 'pre')}`)
+  check('with no count at all there is nothing to anchor to, and nothing is cut',
+    sinceCount([before, ...january], null).length === 3, `${sinceCount([before, ...january], null).length} of 3 kept`)
+
+  // The cut is a RANCH-day comparison, the same one the on-hand arithmetic
+  // uses — so a feeding the equation counts is never dropped by the read.
+  const lateOnCountDay = fed('late', '2026-11-16T05:30:00Z', 9)   // 10:30 PM MST Nov 15 — the count day on the ranch
+  const withLate = sinceCount([nov, lateOnCountDay], '2026-11-15')
+  check('a feeding at 10:30 PM on the count day is kept by the read and counted by the equation — they cannot disagree',
+    withLate.length === 2 && summarizeHay(withLate, JAN5).onHand!.bales === 391,
+    `kept ${withLate.length} of 2 · on hand ${summarizeHay(withLate, JAN5).onHand!.bales}`)
 }
 
 console.log(failures === 0 ? '\nhay-ledger-harness: all checks pass' : `\nhay-ledger-harness: ${failures} FAILED`)
