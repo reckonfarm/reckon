@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { useWakeLock } from '@/lib/use-wake-lock'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
@@ -9,9 +9,25 @@ import { warning } from '@/lib/brand-colors'
 
 // ─── Preg check at the chute (Block 10) ───────────────────────────────────────
 //
-// Built for one hand, in the cold, on one bar. Everything on this screen is
-// either a 64px target or a number big enough to read at arm's length, and the
-// arithmetic is on screen at all times so it is never a surprise at Save.
+// Built for one hand, in the cold, on one bar. Two ways in, because PK will
+// pick whichever fits the morning:
+//
+//   TALLY — one big Bred button, one big Open button, a tap per animal as they
+//   come out. The count builds itself. This is how the work actually goes: he
+//   is watching cows come out one at a time, not holding a total in his head.
+//   A mis-tap at a chute is not a possibility, it is a certainty, so Undo is a
+//   first-class control and names what it will take back.
+//
+//   TOTALS — the count through and the opens, with bred calculated. For when
+//   the numbers come off the vet's sheet or the chute's own counter.
+//
+// BOTH MODES ARE THE SAME TWO NUMBERS. State is (counted, open) and bred is
+// counted − open, in both:
+//   · a Bred tap is counted + 1, open unchanged  → bred + 1
+//   · an Open tap is counted + 1 and open + 1    → bred unchanged
+// So switching modes mid-working carries everything across and loses nothing,
+// and there is exactly one arithmetic on the screen rather than two that could
+// drift apart.
 //
 // WHAT MAKES IT SAFE, and none of it is in this file:
 //   · the outbox saves to the phone before the network is touched, mints the
@@ -24,54 +40,23 @@ import { warning } from '@/lib/brand-colors'
 //     service worker and a page iOS discards comes back by RELOADING, which
 //     at a chute with no bars is the browser's offline error and not the app
 //     (lib/use-wake-lock).
-//
-// The reconciliation is stated as an equation, not as a validation error:
-// "200 bred + 12 open = 212 · matches the 212 counted". PK counts out loud;
-// the screen should agree with him out loud.
 
 export interface ChuteLot { id: string; name: string; head: number; updatedAt: string }
+
+type Mode = 'tally' | 'totals'
+type Tap = 'bred' | 'open'
 
 const STEP = [1, 5, 10] as const
 const btn = 'inline-flex items-center justify-center rounded-xl font-dm-sans font-semibold'
 const pad = `${btn} min-h-[64px] min-w-[64px] border border-control-border bg-surface text-[22px] text-ink active:bg-forest-green/10`
-
-function Counter({ label, value, onChange, audit }: {
-  label: string; value: number; onChange: (n: number) => void; audit: string
-}) {
-  return (
-    <div className="mt-4" data-audit={audit}>
-      <div className="flex items-baseline justify-between">
-        <span className="font-dm-sans text-[18px] font-semibold text-ink">{label}</span>
-        <span className="type-main-number text-ink" data-audit={`${audit}-value`}>{value.toLocaleString()}</span>
-      </div>
-      <div className="mt-2 flex gap-2">
-        {STEP.map(s => (
-          <button key={`-${s}`} type="button" className={pad} onClick={() => onChange(Math.max(0, value - s))} data-audit={`${audit}-minus-${s}`}>
-            −{s}
-          </button>
-        ))}
-        <span className="grow" />
-        {STEP.map(s => (
-          <button key={`+${s}`} type="button" className={pad} onClick={() => onChange(value + s)} data-audit={`${audit}-plus-${s}`}>
-            +{s}
-          </button>
-        ))}
-      </div>
-      <input
-        type="number" inputMode="numeric" min={0} value={value === 0 ? '' : String(value)} placeholder="0"
-        onChange={e => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-        className="mt-2 block w-full min-h-[56px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[22px] text-ink"
-        aria-label={`${label} — type it`}
-        data-audit={`${audit}-input`}
-      />
-    </div>
-  )
-}
+const field = 'block w-full min-h-[56px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[18px] text-ink'
 
 export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: string }) {
+  const [mode, setMode] = useState<Mode>('tally')
   const [sourceId, setSourceId] = useState<string | null>(lots.length === 1 ? lots[0].id : null)
   const [counted, setCounted] = useState(0)
   const [open, setOpen] = useState(0)
+  const [taps, setTaps] = useState<Tap[]>([])
   const [destId, setDestId] = useState<string>('')        // '' = a new group
   const [destName, setDestName] = useState(`Open cows ${today}`)
   const [saved, setSaved] = useState<string | null>(null)
@@ -79,19 +64,33 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
   const eventId = useRef<string | null>(null)
 
   // Held for the whole page, not just while saving: the risk is the page being
-  // discarded BETWEEN entries, which is most of a working morning.
+  // discarded BETWEEN bunches, which is most of a working morning.
   const wake = useWakeLock(true)
 
   const source = lots.find(l => l.id === sourceId) ?? null
   const bred = Math.max(0, counted - open)
-  const reconciles = counted > 0 && open <= counted
+  const overOpen = open > counted
+  const reconciles = counted > 0 && !overOpen
   const dest = lots.find(l => l.id === destId) ?? null
 
-  const equation = useMemo(() => {
-    if (counted === 0) return 'Count them through first.'
-    if (open > counted) return `${open.toLocaleString()} open is more than the ${counted.toLocaleString()} counted — one of those is wrong.`
-    return `${bred.toLocaleString()} bred + ${open.toLocaleString()} open = ${counted.toLocaleString()} · matches the ${counted.toLocaleString()} counted`
-  }, [bred, open, counted])
+  function tap(which: Tap) {
+    setCounted(c => c + 1)
+    if (which === 'open') setOpen(o => o + 1)
+    setTaps(t => [...t, which])
+    setError(null)
+  }
+
+  function undo() {
+    const last = taps[taps.length - 1]
+    if (!last) return
+    setCounted(c => Math.max(0, c - 1))
+    if (last === 'open') setOpen(o => Math.max(0, o - 1))
+    setTaps(t => t.slice(0, -1))
+  }
+
+  function reset() {
+    setCounted(0); setOpen(0); setTaps([]); eventId.current = null
+  }
 
   function save() {
     setError(null)
@@ -120,9 +119,7 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
       return
     }
     setSaved(id)
-    eventId.current = null
-    setCounted(0)
-    setOpen(0)
+    reset()
   }
 
   // ── Pick the bunch ──────────────────────────────────────────────────────────
@@ -132,7 +129,7 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
         <p className="font-dm-sans text-[18px] text-ink">Which bunch are you working?</p>
         {lots.length === 0 && (
           <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="preg-no-lots">
-            There are no bunches on the ranch yet. Add one under Ranch → Herd first — this screen moves head
+            There are no bunches on the ranch yet. Add one under Ranch → Cattle first — this screen moves head
             between bunches, so it needs one to move from.
           </p>
         )}
@@ -149,26 +146,79 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
     )
   }
 
+  const equation = counted === 0
+    ? (mode === 'tally' ? 'Tap one for every cow as she comes out.' : 'Count them through first.')
+    : overOpen
+      ? `${open.toLocaleString()} open is more than the ${counted.toLocaleString()} counted — one of those is wrong.`
+      : `${bred.toLocaleString()} bred + ${open.toLocaleString()} open = ${counted.toLocaleString()} counted`
+
   return (
-    <div data-audit="preg-check">
+    <div data-audit="preg-check" data-mode={mode}>
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-dm-sans text-[18px] font-semibold text-ink" data-audit="preg-source">
           {source.name} · {source.head.toLocaleString()} head
         </p>
         {lots.length > 1 && (
-          <button type="button" onClick={() => { setSourceId(null); setSaved(null) }} data-audit="preg-change-lot"
+          <button type="button" onClick={() => { setSourceId(null); setSaved(null); reset() }} data-audit="preg-change-lot"
             className="font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">
             Change
           </button>
         )}
       </div>
 
-      <Counter label="Counted through" value={counted} onChange={setCounted} audit="preg-counted" />
-      <Counter label="Open" value={open} onChange={setOpen} audit="preg-open" />
+      {/* Both modes are the same two numbers, so switching carries everything
+          across — no confirmation, no lost taps. */}
+      <div className="mt-3 flex gap-2" role="group" aria-label="How to enter it" data-audit="preg-mode">
+        {(['tally', 'totals'] as const).map(m => (
+          <button key={m} type="button" onClick={() => setMode(m)} data-audit={`preg-mode-${m}`} aria-pressed={mode === m}
+            className={`${btn} min-h-[48px] grow px-4 text-[17px] ${mode === m ? 'bg-brand text-cream' : 'border border-control-border bg-surface text-ink'}`}>
+            {m === 'tally' ? 'Tap each one' : 'Type totals'}
+          </button>
+        ))}
+      </div>
 
-      {/* The arithmetic, always on screen — never a surprise at Save. */}
-      <p className={`mt-4 font-dm-sans text-[17px] font-semibold ${reconciles ? 'text-ink' : ''}`}
-         style={reconciles ? undefined : { color: warning }} data-audit="preg-equation" data-reconciles={reconciles ? 'true' : 'false'}>
+      {/* The running answer, big enough to read at arm's length. */}
+      <div className="mt-5 text-center" data-audit="preg-running">
+        <p className="type-main-number text-ink" data-audit="preg-counted-value">{counted.toLocaleString()}</p>
+        <p className="font-dm-sans text-[16px] text-ink">counted through</p>
+        <p className="mt-2 font-dm-sans text-[20px] font-semibold text-ink">
+          <span data-audit="preg-bred-value">{bred.toLocaleString()}</span> bred
+          {' · '}
+          <span data-audit="preg-open-value">{open.toLocaleString()}</span> open
+        </p>
+      </div>
+
+      {mode === 'tally' ? (
+        <div className="mt-5" data-audit="preg-tally">
+          {/* Thumb country: the two targets a person hits a hundred times are
+              the biggest things on the screen, and Undo is deliberately not
+              beside them. */}
+          <div className="flex gap-3">
+            <button type="button" onClick={() => tap('bred')} data-audit="preg-tap-bred"
+              className={`${btn} min-h-[112px] grow bg-brand text-[26px] text-cream active:opacity-80`}>
+              Bred
+            </button>
+            <button type="button" onClick={() => tap('open')} data-audit="preg-tap-open"
+              className={`${btn} min-h-[112px] grow border-2 border-forest-green bg-surface text-[26px] text-ink active:bg-forest-green/10`}>
+              Open
+            </button>
+          </div>
+          <button type="button" onClick={undo} disabled={taps.length === 0} data-audit="preg-undo"
+            className={`${btn} mt-3 min-h-[56px] w-full border border-control-border bg-surface px-4 text-[17px] text-ink disabled:opacity-40`}>
+            {taps.length === 0 ? 'Nothing to undo' : `Undo that ${taps[taps.length - 1]} one`}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-5" data-audit="preg-totals">
+          <Stepper label="Counted through" value={counted} onChange={n => { setCounted(n); setTaps([]) }} audit="preg-counted" />
+          <Stepper label="Open" value={open} onChange={n => { setOpen(n); setTaps([]) }} audit="preg-open" />
+        </div>
+      )}
+
+      {/* The arithmetic, always on screen — never a surprise at Record it. */}
+      <p className={`mt-4 font-dm-sans text-[17px] font-semibold ${reconciles || counted === 0 ? 'text-ink' : ''}`}
+         style={reconciles || counted === 0 ? undefined : { color: warning }}
+         data-audit="preg-equation" data-reconciles={reconciles ? 'true' : 'false'}>
         {equation}
       </p>
       {/* Ruling 1: the chute count is an observation of real animals; the
@@ -184,8 +234,7 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
           <label className="block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor="preg-dest">
             The {open.toLocaleString()} open go to
           </label>
-          <select id="preg-dest" value={destId} onChange={e => setDestId(e.target.value)} data-audit="preg-dest-select"
-            className="mt-1 block w-full min-h-[56px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[18px] text-ink">
+          <select id="preg-dest" value={destId} onChange={e => setDestId(e.target.value)} data-audit="preg-dest-select" className={`mt-1 ${field}`}>
             <option value="">A new group</option>
             {lots.filter(l => l.id !== source.id).map(l => (
               <option key={l.id} value={l.id}>{l.name} ({l.head.toLocaleString()} head)</option>
@@ -193,8 +242,7 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
           </select>
           {!destId && (
             <input value={destName} onChange={e => setDestName(e.target.value)} maxLength={MAX_GROUP_NAME}
-              className="mt-2 block w-full min-h-[56px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[18px] text-ink"
-              aria-label="Name for the new group" data-audit="preg-dest-name" />
+              className={`mt-2 ${field}`} aria-label="Name for the new group" data-audit="preg-dest-name" />
           )}
         </div>
       )}
@@ -220,6 +268,34 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
             ? 'This phone will not hold the screen on. Keep the app in front between bunches.'
             : 'Screen may sleep. Keep the app in front between bunches.'}
       </p>
+    </div>
+  )
+}
+
+function Stepper({ label, value, onChange, audit }: {
+  label: string; value: number; onChange: (n: number) => void; audit: string
+}) {
+  return (
+    <div className="mt-4" data-audit={audit}>
+      <span className="font-dm-sans text-[18px] font-semibold text-ink">{label}</span>
+      <div className="mt-2 flex gap-2">
+        {STEP.map(s => (
+          <button key={`-${s}`} type="button" className={pad} onClick={() => onChange(Math.max(0, value - s))} data-audit={`${audit}-minus-${s}`}>
+            −{s}
+          </button>
+        ))}
+        <span className="grow" />
+        {STEP.map(s => (
+          <button key={`+${s}`} type="button" className={pad} onClick={() => onChange(value + s)} data-audit={`${audit}-plus-${s}`}>
+            +{s}
+          </button>
+        ))}
+      </div>
+      <input
+        type="number" inputMode="numeric" min={0} value={value === 0 ? '' : String(value)} placeholder="0"
+        onChange={e => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+        className={`mt-2 ${field} text-[22px]`} aria-label={`${label} — type it`} data-audit={`${audit}-input`}
+      />
     </div>
   )
 }
