@@ -879,6 +879,59 @@ async function trashChecks() {
   await admin.from('places').delete().eq('id', tp.id)
 }
 
+// ── Block 12 (12.6) — the head-count projection cannot be steered across ranches ─
+//
+// 066 made herd_lots.head_count a projection rebuilt by a SECURITY DEFINER
+// trigger. PK asked whether the trigger function could be called directly to
+// rebuild a count on a ranch the caller does not belong to. It cannot — a
+// RETURNS TRIGGER function is refused outside a trigger — but the question
+// found the real door beside it: a member of B may write a ledger row on B
+// whose PAYLOAD names A's lot, and 066's rebuild believed it. 067 makes the
+// projection believe only rows on the lot's own ranch. This is the proof, and
+// it is RED on any database with 066 and not 067.
+async function projectionChecks() {
+  const a = fx.A!, b = fx.B!
+  const B = await userClient('B')
+
+  // Capability, not existence: 42883 = the function is not there (066 unrun).
+  // Anything else (42501 permission denied, or a row) = 066 is applied.
+  const probe = await admin.rpc('rebuild_lot_head', { p_lot: '00000000-0000-0000-0000-000000000000' })
+  if (probe.error?.code === '42883') { record('(skipped)', '12.6: projection checks — migration 066 not applied', true, ''); return }
+
+  const headOf = async (id: string) => ((await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()).data as { head_count?: number } | null)?.head_count ?? null
+  const aBefore = await headOf(a.lotId)
+  if (aBefore == null) { record('(skipped)', '12.6: projection checks — seeded lot gone', true, ''); return }
+
+  // B writes a count for A's lot — on B's OWN ranch, which 043 permits.
+  const set = await B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, lot_id: a.lotId, head_before: aBefore, head_after: 999, reason: 'edit' } }).select('id').single()
+  const afterSet = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6/067: a count B writes on B\'s ranch naming A\'s lot moves nothing on A — the projection believes only the lot\'s own ranch',
+    afterSet === aBefore, `B\'s row ${set.error ? `refused (${set.error.code})` : 'landed on B'} · A ${aBefore} → ${afterSet}`)
+
+  // B writes a working on B naming A's lot as a result.
+  const ga = await B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'group_action', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, action: 'sort', counted: 50, stayed: 0, moved: 50, source_lot_id: b.lotId, source_head_before: 40, source_head_after: 0,
+      results: [{ lot_id: a.lotId, head: 50, created: false, head_before: aBefore, head_after: aBefore + 50 }] } }).select('id').single()
+  const afterGa = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6/067: a working B writes on B naming A\'s lot as a result moves nothing on A',
+    afterGa === aBefore, `B\'s row ${ga.error ? `refused (${ga.error.code})` : 'landed on B'} · A ${aBefore} → ${afterGa}`)
+
+  // Direct calls: neither function is a client's to call.
+  const direct = await B.rpc('rebuild_lot_head', { p_lot: a.lotId })
+  const afterDirect = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6: B cannot call rebuild_lot_head on A\'s lot — refused, and A unmoved',
+    !!direct.error && afterDirect === aBefore, `${direct.error?.code ?? 'ALLOWED'} · A ${afterDirect}`)
+  const trig = await B.rpc('events_project_head_counts')
+  record('user B (other ranch)', '12.6: the trigger function cannot be called directly by a client', !!trig.error, `${trig.error?.code ?? 'ALLOWED'} ${(trig.error?.message ?? '').slice(0, 60)}`)
+
+  // Tidy: B's probe rows.
+  if (set.data) await admin.from('events').delete().eq('id', set.data.id)
+  if (ga.data) await admin.from('events').delete().eq('id', ga.data.id)
+  // And A's own count must still be what it was after those deletes fire the trigger.
+  record('user A (owner)', '12.6/067: after B\'s rows are gone, A\'s count still stands where A left it', (await headOf(a.lotId)) === aBefore, `A ${await headOf(a.lotId)} (was ${aBefore})`)
+}
+
 async function turnoutChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1376,6 +1429,7 @@ async function main() {
     await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
     await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
+    await projectionChecks()    // Block 12 — the head-count projection cannot be steered across ranches; needs 066 (skips without it); RED until 067
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')
