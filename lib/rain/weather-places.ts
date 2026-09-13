@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { live } from '@/lib/ledger-effective'
+import { hasTrash, liveOnly } from '@/lib/trash'
 
 // ─── Which places earn a row on Weather (Block 7D.4) ──────────────────────────
 //
@@ -50,11 +51,16 @@ export async function weatherPlaces(
   supabase: SupabaseClient,
   placeIdsWithReadings: Set<string>,
 ): Promise<WeatherPlaces> {
-  const { data } = await supabase.from('places').select('id, name, pinned_at').is('retired_at', null).order('name')
+  const trashOn = await hasTrash(supabase)
+  const { data } = await liveOnly(supabase.from('places').select('id, name, pinned_at').is('retired_at', null), trashOn).order('name')
   const places = ((data ?? []) as unknown as PlaceRow[])
   if (places.length === 0) return { listed: [], rest: [] }
 
-  const { data: devs } = await supabase.from('devices').select('place_id').not('place_id', 'is', null)
+  // A plain ternary, not liveOnly(): the generic against this builder is
+  // "excessively deep" for the checker (the same wall ViewBodies hit).
+  const { data: devs } = trashOn
+    ? await supabase.from('devices').select('place_id').not('place_id', 'is', null).is('deleted_at', null)
+    : await supabase.from('devices').select('place_id').not('place_id', 'is', null)
   const withDevice = new Set(((devs ?? []) as { place_id: string }[]).map(d => d.place_id))
 
   const listed: WeatherPlace[] = []

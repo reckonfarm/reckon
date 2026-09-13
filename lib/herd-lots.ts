@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveRanchId } from './ranch-membership'
 import { normalizeLot, isLotPurpose, type Lot } from './herd'
 import { staleEdit, retiredWhileOpen } from './stale-edit'
+import { hasTrash, liveOnly } from './trash'
 
 // ─── The ranch's cattle lots — real rows (Block 4B, migration 051) ─────────────
 // One row per lot on herd_lots, membership-gated (043 shape). Two members
@@ -60,7 +61,7 @@ async function ranchOf(supabase: SupabaseClient, userId?: string): Promise<{ uid
 export async function getRanchLots(supabase: SupabaseClient, userId?: string): Promise<Lot[]> {
   const who = await ranchOf(supabase, userId)
   if (!who) return []
-  const { data } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId).is('retired_at', null).order('created_at', { ascending: true })
+  const { data } = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId).is('retired_at', null), await hasTrash(supabase)).order('created_at', { ascending: true })
   return withPurpose(supabase, ((data ?? []) as LotRow[]).map(rowToLot))
 }
 
@@ -68,7 +69,8 @@ export async function getRanchLots(supabase: SupabaseClient, userId?: string): P
 export async function getRanchLotsIncludingRetired(supabase: SupabaseClient, userId?: string): Promise<Lot[]> {
   const who = await ranchOf(supabase, userId)
   if (!who) return []
-  const { data } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId).order('created_at', { ascending: true })
+  // Retired lots still resolve a name; TRASHED ones do not — the trash is invisible everywhere but /account/trash.
+  const { data } = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId), await hasTrash(supabase)).order('created_at', { ascending: true })
   return withPurpose(supabase, ((data ?? []) as LotRow[]).map(rowToLot))
 }
 

@@ -8,6 +8,7 @@ import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './ma
 import { GROUP_ACTION_LABELS, GROUP_ACTION_TYPE, isGroupAction } from './cattle/kinds'
 import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
 import { live } from './ledger-effective'
+import { hasTrash, liveOnly } from './trash'
 
 // ─── The activity record (Block 5A) ───────────────────────────────────────────
 // Everything a person recorded on the ranch, findable by stable id forever.
@@ -251,7 +252,7 @@ export async function filterOptions(supabase: SupabaseClient, userId: string): P
   const [{ data: members }, { data: places }, lots] = await Promise.all([
     createServiceClient().from('ranch_members').select('user_id').eq('ranch_id', ranchId),
     // Tolerant of a database without 057 — there, no place is retired.
-    supabase.from('places').select('id, name, retired_at').eq('ranch_id', ranchId).order('name')
+    liveOnly(supabase.from('places').select('id, name, retired_at').eq('ranch_id', ranchId), await hasTrash(supabase)).order('name')
       .then(async r => (r.error
         ? { data: (((await supabase.from('places').select('id, name').eq('ranch_id', ranchId).order('name')).data ?? []) as { id: string; name: string }[]).map(x => ({ ...x, retired_at: null as string | null })) }
         : { data: (r.data ?? []) as { id: string; name: string; retired_at: string | null }[] })),

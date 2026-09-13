@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { hasTrash, liveOnly } from '@/lib/trash'
 
 // ─── "Check device" (Block 6A) ────────────────────────────────────────────────
 // A Needs-attention row for a device that has a KNOWN expected check-in cadence
@@ -14,7 +15,7 @@ export interface DeviceAttention { id: string; name: string; type: string; lastS
 export async function devicesNeedingAttention(supabase: SupabaseClient): Promise<DeviceAttention[]> {
   const types = Object.keys(CHECK_IN_CADENCE_MS)
   if (types.length === 0) return []
-  const { data } = await supabase.from('devices').select('id, name, type, last_seen').in('type', types)
+  const { data } = await liveOnly(supabase.from('devices').select('id, name, type, last_seen').in('type', types), await hasTrash(supabase))
   const now = Date.now()
   return ((data ?? []) as { id: string; name: string; type: string; last_seen: string | null }[])
     .filter(d => { const every = CHECK_IN_CADENCE_MS[d.type]; return every != null && (!d.last_seen || now - Date.parse(d.last_seen) > every) })
