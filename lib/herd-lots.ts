@@ -74,6 +74,22 @@ export async function getRanchLotsIncludingRetired(supabase: SupabaseClient, use
   return withPurpose(supabase, ((data ?? []) as LotRow[]).map(rowToLot))
 }
 
+// ─── Block 12 (12.6): a head count is history ─────────────────────────────────
+// The lot form used to write head_count and nothing else, so the ledger had
+// holes exactly where a person had typed over the number. Every change is a
+// row now: head_count_set { lot_id, head_before, head_after, reason }. With
+// 066 applied, the database rebuilds the column FROM these rows and from the
+// group actions after them — so the row is written first, and the direct
+// column write below is the same value, kept for a database without 066.
+// Written on the caller's own client: the 043 insert policy is the gate.
+async function recordHeadCountSet(supabase: SupabaseClient, uid: string, ranchId: string, lotId: string, before: number | null, after: number, reason: 'created' | 'edit'): Promise<string | null> {
+  const { error } = await supabase.from('events').insert({
+    user_id: uid, ranch_id: ranchId, device_id: null, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, lot_id: lotId, head_before: before, head_after: after, reason },
+  })
+  return error ? error.message : null
+}
+
 export type LotWrite =
   | { ok: true; lot: Lot }
   | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; changed_by?: string | null; changed_at?: string | null }
@@ -91,7 +107,10 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }).select(LOT_COLUMNS).single()
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? 'Could not save the lot.' }
-  return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data as LotRow)]))[0] }
+  const created = data as LotRow
+  const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created')
+  if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but its count could not be written to the record — open it and set the count again.' }
+  return { ok: true, lot: (await withPurpose(supabase, [rowToLot(created)]))[0] }
 }
 
 // Update — ONLY when the row still carries the updated_at the editor last saw.
@@ -103,6 +122,13 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   const n = normalizeLot({ ...(typeof raw === 'object' && raw ? raw : {}), id })
   if (!n.ok) return { ok: false, status: 400, error: n.error }
   const l = n.lot
+  // What the count says now, so a change is a change and an unchanged count writes nothing.
+  const { data: now } = await supabase.from('herd_lots').select('head_count').eq('id', id).eq('ranch_id', who.ranchId).maybeSingle()
+  const before = (now as { head_count?: number } | null)?.head_count ?? null
+  if (before !== null && before !== l.head_count) {
+    const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, id, before, l.head_count, 'edit')
+    if (ledgerErr) return { ok: false, status: 500, error: 'That count could not be written to the record, so the bunch was left as it was.' }
+  }
   let q = supabase.from('herd_lots').update({
     class: l.class, name: l.name ?? null, head_count: l.head_count, avg_weight: l.avg_weight, weight_unit: l.weight_unit,
     frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, updated_by: who.uid,
