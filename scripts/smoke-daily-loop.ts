@@ -381,7 +381,7 @@ async function main() {
       // is md:hidden, the header's Record is hidden on the narrow layout. Pick
       // by VISIBILITY, not DOM order: .first() on the pair silently chose the
       // hidden one and every assertion after it read a sheet that never opened.
-      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click()
+      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
       // An empty number can never save as 0 — it is refused in the form now,
@@ -783,7 +783,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
       await page.waitForTimeout(500)
-      const fab = page.locator('[data-audit="record-fab"]')
+      const fab = page.locator('[data-audit="record-action"]')
       const box = await fab.boundingBox().catch(() => null)
       const vp = page.viewportSize()!
       const inside = !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height
@@ -830,26 +830,41 @@ async function main() {
       record('6A: the same ranch name in the header on Today, Ranch, Cattle, Activity, Places, Markets, Weather, Account — and no county title on any', names.size === 1 && !names.has('') && countyTitled.length === 0, `ranch "${[...names].join('|')}" · titles: ${seen.map(x => `${x.path.replace(/\?.*/, '')}="${x.title.replace(/ — Dryline$/, '')}"`).join(' ')}`)
     }
 
-    // ── Block 6A (3): the Record FAB on a phone — above the bar, hidden while a sheet is open ──
+    // ── Block 6A (3) / 11.4: the bottom bar carries Record on a phone ────────
+    // The FAB this used to check is deleted. It floated over real controls on
+    // four screens — including "Drop a place here" on Places, that screen's
+    // whole purpose — and PK's ruling was to fix the class rather than the
+    // instances: no floating element may sit over an interactive control. The
+    // cheapest way to keep that promise is to have almost no floating
+    // elements, so Record moved INTO the bar and the pill went.
+    //
+    // The behaviour worth keeping from the old check survives: Record opens
+    // the sheet, and it is not offered while the sheet is already up.
     {
       const prior = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      const fab = page.locator('[data-audit="record-fab"]')
-      await fab.waitFor({ timeout: 15_000 }).catch(() => {})
-      const fabBox = await fab.boundingBox().catch(() => null)
-      const barBox = await page.locator('[data-audit="bottom-bar"]').boundingBox().catch(() => null)
+      const bar = page.locator('[data-audit="bottom-bar"]')
+      await bar.waitFor({ timeout: 15_000 }).catch(() => {})
       const tabs = await page.locator('[data-audit="bottom-bar"] a').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      record('6A: four labeled bottom tabs and a Record FAB that sits clear above the bar', tabs.join(' ') === 'Today Ranch Markets Weather' && !!fabBox && !!barBox && fabBox.y + fabBox.height <= barBox.y, `tabs [${tabs.join(', ')}] · fab bottom ${fabBox ? Math.round(fabBox.y + fabBox.height) : 'none'} · bar top ${barBox ? Math.round(barBox.y) : 'none'}`)
-      await fab.click()
+      const rec = page.locator('[data-audit="record-action"]')
+      const recCount = await rec.count()
+      const oldFab = await page.locator('[data-audit="record-fab"]').count()
+      record('6A/11.4: four labeled destinations and Record, all in the bar — and no floating pill left anywhere',
+        tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && oldFab === 0,
+        `tabs [${tabs.join(', ')}] · Record in bar ${recCount} · floating pill ${oldFab}`)
+
+      await rec.click()
       await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
       const openDialogs = await page.getByRole('dialog').count()
-      const fabWhileOpen = await fab.count()
+      const recWhileOpen = await rec.count()
       const flag = await page.evaluate(() => document.documentElement.dataset.recordSheet ?? '')
       await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
       await page.waitForTimeout(300)
-      const fabAfter = await fab.isVisible().catch(() => false)
-      record('6A: the FAB opens the record sheet and is hidden while the sheet is up, back when it closes', openDialogs === 1 && fabWhileOpen === 0 && flag === 'open' && fabAfter, `dialogs ${openDialogs} · fab while open ${fabWhileOpen} · html flag "${flag}" · fab after close ${fabAfter}`)
+      const recAfter = await rec.isVisible().catch(() => false)
+      record('6A: Record opens the sheet and is not offered while the sheet is up, back when it closes',
+        openDialogs === 1 && recWhileOpen === 0 && flag === 'open' && recAfter,
+        `dialogs ${openDialogs} · Record while open ${recWhileOpen} · html flag "${flag}" · back after close ${recAfter}`)
       if (prior) await page.setViewportSize(prior)
     }
 
@@ -1374,12 +1389,23 @@ async function main() {
       if (!v0) skip('6B-2: voids', 'could not seed the feeding to void')
       else {
         const fed = await onHandNow()
+        // Block 11 (11.13): the Void BUTTON is gone — 7D ruled "void" does not
+        // survive as a user-facing word, and Delete's record path took over
+        // what a person meant by it. The MECHANISM is unchanged and still
+        // worth every check below, so the void is made through the route the
+        // way any other client would, and everything after this line is
+        // exactly the assertion it always was: a void stands on every
+        // timeline, marked, greyed, and counting for nothing.
         await page.goto(`/ranch/activity/${v0.id}`, { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="void-entry"]').click()
-        await page.locator('[data-audit="correction-reason"]').fill('6B-2 never happened')
-        await page.locator('[data-audit="correction-save"]').click()
-        await page.waitForURL(/\/activity\/[0-9a-f-]{36}\?saved=1/, { timeout: 30_000 }).catch(() => {})
-        const voidId = (page.url().match(/\/activity\/([0-9a-f-]{36})/) ?? ['', ''])[1]
+        const voided = await page.request.post(`/api/activity/${v0.id}/void`, {
+          data: { id: randomUUID(), reason: '6B-2 never happened' },
+        })
+        const voidJson = await voided.json().catch(() => ({} as Record<string, unknown>))
+        const voidId = String(((voidJson.event ?? {}) as { id?: string }).id ?? '')
+        record('6B-2/11.13: a void is still recordable through the route with no button on the screen',
+          voided.ok() && !!voidId && (await page.locator('[data-audit="void-entry"]').count()) === 0,
+          `${voided.status()} · void ${voidId.slice(0, 8) || 'NONE'} · buttons on screen ${await page.locator('[data-audit="void-entry"]').count()}`)
+        if (voidId) await page.goto(`/ranch/activity/${voidId}?saved=1`, { waitUntil: 'domcontentloaded' })
         const after = await onHandNow()
         const readRows = async (sel: string) => page.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({ id: li.getAttribute('data-id') ?? '', marker: li.getAttribute('data-marker') ?? 'none', text: (li.querySelector('a')?.textContent ?? '').replace(/\s+/g, ' ').trim(), grey: !!li.querySelector('a span.text-secondary-ink'), chain: (li.querySelector('[data-audit="row-chain"]')?.textContent ?? '').replace(/\s+/g, ' ') })))
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
@@ -1958,6 +1984,20 @@ async function main() {
       if (prior) await page.setViewportSize(prior)
     }
 
+    // ── Block 11 (11.13): two actions on an entry, not three ────────────────
+    {
+      const { data: e0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 1, herd_lot_id: null, place_id: placeId } }).select('id').single()
+      if (e0) {
+        await page.goto(`/ranch/activity/${e0.id}`, { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="correction-actions"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        const labels = await page.locator('[data-audit="correction-actions"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+        record('11.13: an entry offers Correct and Delete — "void" is not a word on the screen',
+          labels.length === 2 && /correct/i.test(labels[0] ?? '') && /delete/i.test(labels[1] ?? '') && !labels.some(l => /void/i.test(l)),
+          `[${labels.join(' | ')}]`)
+        await admin.from('events').delete().eq('id', e0.id)
+      }
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
@@ -1976,7 +2016,7 @@ async function main() {
       // unsynced, and it says what each button does to them.
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
       await page.context().setOffline(true)
-      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click().catch(() => {})
+      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click().catch(() => {})
       await page.locator('[data-audit="tile-hay_fed"]').first().click().catch(() => {})
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})

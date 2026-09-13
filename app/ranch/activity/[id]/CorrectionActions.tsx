@@ -198,9 +198,17 @@ export default function CorrectionActions({ event }: { event: Editable }) {
 
   if (mode === 'idle') {
     return (
+      /* Block 11 (11.13): TWO ACTIONS, NOT THREE. 7D's own ruling was that
+         "void" does not survive as a user-facing word, and Delete has since
+         taken over the job it was doing — its record path keeps the entry in
+         the ledger with a note of who removed it and when, which is what a
+         person meant by voiding. Three buttons made a rancher choose between
+         two words for the same intention.
+         The MECHANISM stays: 054 voids already on the ledger still render as
+         "Voided:" on every timeline and still count for nothing, and the route
+         still answers. Only the word is gone from the screen. */
       <div className="mt-5 flex flex-wrap gap-3" data-audit="correction-actions">
         <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Correct this entry</button>
-        <button type="button" onClick={() => setMode('void')} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="void-entry">Void this entry</button>
         <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">Delete this entry</button>
       </div>
     )
