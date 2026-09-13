@@ -16,6 +16,7 @@ import Disclosure from '@/app/components/ui/Disclosure'
 import DrawPlace from './DrawPlace'
 import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
+import RowActions from '@/app/components/RowActions'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
 // The list first. Each row: name, type, acreage if the ground is drawn, last
@@ -70,6 +71,8 @@ export default async function PlacesPage() {
             <ul className="divide-y divide-rule" data-audit="place-rows">
               {live.map(p => (
                 <li key={p.id}>
+                  {/* Block 12 (12.3): hold the row for Open · Edit · Delete; the place page opens on the mode asked for. */}
+                  <RowActions links={{ openHref: `/ranch/places/${p.id}`, editHref: `/ranch/places/${p.id}#edit`, deleteHref: `/ranch/places/${p.id}#delete`, label: p.name }}>
                   <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-row">
                     <span className="min-w-0">
                       <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
@@ -80,6 +83,7 @@ export default async function PlacesPage() {
                     </span>
                     <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
                   </Link>
+                  </RowActions>
                 </li>
               ))}
             </ul>
