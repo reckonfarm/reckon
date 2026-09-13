@@ -11,6 +11,7 @@ import { lotLabel, type Lot } from '@/lib/herd'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
+import Link from 'next/link'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
 // each at most three visible fields, time defaults to now (change it behind a
@@ -694,20 +695,41 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
 
             {!type ? (
               <div className="mt-4" data-audit="record-picker">
-                <div className="grid grid-cols-2 gap-3">
+                {/* Block 12 (12.2): the list reads as WHAT AM I RECORDING — Work,
+                    Count, Ground — not as a flat menu of event types. 11.9: the
+                    tile subtitles are gone; only Count hay keeps its hint, because
+                    "not a stock movement" is a rule a person can get wrong. */}
+                <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-work">Work</p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
                   {MOVEMENT_TYPES.map(t => (
-                    <button key={t} type="button" onClick={() => setType(t)} className="min-h-[84px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit={`tile-${t}`}>
+                    <button key={t} type="button" onClick={() => setType(t)} className="min-h-[64px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit={`tile-${t}`}>
                       <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB[t]}</span>
-                      <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT[t]}</span>
                     </button>
                   ))}
                 </div>
                 {/* Count stands apart: it states what is there; it never adds or takes stock. */}
-                <p className="mt-4 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Count · not a stock movement</p>
+                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-count">Count</p>
                 <button type="button" onClick={() => setType('hay_inventory')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-hay_inventory">
                   <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
                   <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>
                 </button>
+                <Link href="/ranch/preg-check" onClick={close} className="mt-2 flex min-h-[56px] w-full items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit="tile-preg-check">
+                  <span>Preg check</span><span className="font-normal text-secondary-ink">count them through</span>
+                </Link>
+                {/* Ground: a place is recorded with the phone already in your hand,
+                    standing in it — the same moment as recording work (8B.1). */}
+                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-ground">Ground</p>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                  {([
+                    ['drop', 'Drop a point where you stand', 'a stack, a gate, a tank'],
+                    ['ride', 'Ride the perimeter', 'a field, a pasture, a corral'],
+                    ['draw', 'Draw a place on the map', 'tap the corners'],
+                  ] as const).map(([mode, label, hint]) => (
+                    <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`} onClick={close} className="flex min-h-[56px] items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit={`tile-place-${mode}`}>
+                      <span>{label}</span><span className="font-normal text-secondary-ink">{hint}</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
             ) : (
               <form
