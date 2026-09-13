@@ -1032,7 +1032,10 @@ async function main() {
             && /bales? on hand/.test(balanceFirst) && !/counted/.test(balanceFirst) && behindTap === 1,
           `balance "${balanceFirst}" · detail ${behindTap} · equation "${m3 ? m3[0] : 'MISSING'}"`)
         await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
-        const eq = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        // Wait for it, do not sample it — and read textContent, because the
+        // equation sits inside the closed Details disclosure (7.7).
+        await page.locator('[data-audit="hay-equation"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+        const eq = ((await page.locator('[data-audit="hay-equation"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
         const m2 = eq.match(EQ)
         record('6C: the Hay balance states the same equation with the same numbers — one explanation model', !!m2 && !!m && m2.slice(1, 5).join() === m.slice(1, 5).join() && /across the ranch/.test(eq), m2 ? `"${m2[0]}"` : `no equation in: ${eq.slice(0, 160)}`)
       }
@@ -1766,11 +1769,19 @@ async function main() {
         const { data } = await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()
         return (data as { head_count?: number } | null)?.head_count ?? null
       }
-      const before = await headOf(lotId)
-      // 6G seeded a second bunch on this ranch; its count is the control.
-      const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', lotId).is('retired_at', null).limit(1)
-      const lot6gId = ((otherLots ?? []) as { id: string }[])[0]?.id ?? ''
-      const head6gBefore = ((otherLots ?? []) as { head_count: number }[])[0]?.head_count ?? null
+      // THE SEEDED LOT IS ARCHIVED BY 6A, two thousand lines above this — which
+      // is why the first two runs of this block opened on "Pairs" and measured
+      // the wrong cattle. The app was right both times. A block that moves head
+      // counts seeds its own bunch and does not borrow one whose life it does
+      // not control.
+      const chuteLotId = randomUUID()
+      const CHUTE_LOT = `${PREFIX} Chute cows`
+      const { error: cErr } = await admin.from('herd_lots').insert({ id: chuteLotId, ranch_id: ranchId, class: 'cows', name: CHUTE_LOT, head_count: 60, avg_weight: 1250, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (cErr) throw new Error(`chute lot: ${cErr.message}`)
+      const before = await headOf(chuteLotId)
+      // Every OTHER live bunch is a control: none of them may move.
+      const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', chuteLotId).is('retired_at', null)
+      const controls = ((otherLots ?? []) as { id: string; head_count: number }[])
 
       await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="preg-check"], [data-audit="preg-pick-lot"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
@@ -1782,18 +1793,18 @@ async function main() {
       // post-Block-10 suite audit exists for. The screen emits data-lot for
       // exactly this reason.
       let choices = await page.locator('[data-audit="preg-lot-choice"]').count()
-      if (choices === 0 && !(await text('[data-audit="preg-source"]')).startsWith(LOT_NAME) && (await page.locator('[data-audit="preg-change-lot"]').count()) > 0) {
+      if (choices === 0 && !(await text('[data-audit="preg-source"]')).startsWith(CHUTE_LOT) && (await page.locator('[data-audit="preg-change-lot"]').count()) > 0) {
         // Opened on a different bunch — take the path a person would.
         await page.locator('[data-audit="preg-change-lot"]').click()
         choices = await page.locator('[data-audit="preg-lot-choice"]').count()
       }
-      if (choices > 0) await page.locator(`[data-audit="preg-lot-choice"][data-lot="${lotId}"]`).click()
+      if (choices > 0) await page.locator(`[data-audit="preg-lot-choice"][data-lot="${chuteLotId}"]`).click()
       const source = await text('[data-audit="preg-source"]')
       // Evidence either way: what the database holds live vs what the page offered.
       const { data: liveLots } = await admin.from('herd_lots').select('name, head_count').eq('ranch_id', ranchId).is('retired_at', null)
       const liveNames = ((liveLots ?? []) as { name: string; head_count: number }[]).map(l => `${l.name} ${l.head_count}`).join(', ')
       record('10: the chute screen opens on the bunch it was asked for, naming it and its head count',
-        new RegExp(`${LOT_NAME}`).test(source) && new RegExp(`${before} head`).test(source),
+        source.startsWith(CHUTE_LOT) && new RegExp(`${before} head`).test(source),
         `${choices} bunch(es) offered · "${source.slice(0, 60)}" · live in db: [${liveNames}]`)
 
       // Tally: 9 bred, 3 open — with a mis-tap and an Undo in the middle.
@@ -1830,18 +1841,19 @@ async function main() {
       await watchStates(page, 'Synced to ranch', 30_000, 'Preg check')
 
       // THE LEDGER MOVED THE CATTLE, or this screen is a lie.
-      const after = await headOf(lotId)
+      const after = await headOf(chuteLotId)
       const { data: madeRows } = await admin.from('herd_lots').select('id, head_count, class, ranch_id').eq('name', destName)
       const made = ((madeRows ?? []) as { id: string; head_count: number; class: string; ranch_id: string }[])[0] ?? null
       record('10: the working moved the head counts — the source ends at what stayed, the opens are a real bunch on this ranch',
         after === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
-        `${LOT_NAME} ${before} → ${after} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
+        `${CHUTE_LOT} ${before} → ${after} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
 
-      // 6G's lot is measured by 6G's own checks. This working must not have
-      // touched it — the only bunch that moves is the one that was addressed.
-      const otherHead = await headOf(lot6gId)
+      // No other bunch on the ranch moved — a working touches the bunch it
+      // names and nothing else.
+      const moved: string[] = []
+      for (const c of controls) { const h = await headOf(c.id); if (h !== c.head_count) moved.push(`${c.id.slice(0, 8)} ${c.head_count} → ${h}`) }
       record('10: no other bunch moved — a working touches the bunch it names and nothing else',
-        otherHead === head6gBefore, `the other bunch ${head6gBefore} → ${otherHead}`)
+        moved.length === 0, moved.length ? moved.join(' · ') : `${controls.length} other bunch(es) unmoved`)
 
       // And it is in the record, in one line, like everything else.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
@@ -1855,7 +1867,7 @@ async function main() {
       // lot is created by the FUNCTION, not the fixture, so it is named here
       // to keep teardown's promise that nothing SMOKE-* survives.
       if (made) await admin.from('herd_lots').delete().eq('id', made.id)
-      if (before != null) await admin.from('herd_lots').update({ head_count: before }).eq('id', lotId)
+      await admin.from('herd_lots').delete().eq('id', chuteLotId)
     }
 
     // ── Block 11 (P0): the save receipt is transient UI ─────────────────────

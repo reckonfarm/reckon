@@ -151,10 +151,13 @@
    be: the document reserves the bar's height plus the home indicator. The other
    half is that the bar is now the ONLY fixed interactive thing on a phone — the
    Record FAB moved into it and the feedback pill moved to Account — so there is
-   nothing else left that could cover anything. 56px is the bar's min-height in
-   BottomTabBar; the two must move together. */
+   nothing else left that could cover anything. The bar's min-height is 56px
+   but it PAINTS at 64 (icon + label + padding + border), and the overlap
+   check found the last control on four screens under those 8px — the check
+   measured the painted box, this reserve had assumed the CSS one. 72 clears
+   the painted bar with margin; the check asserts padding ≥ the measured bar. */
 @media (max-width: 767px) {
   body {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
