@@ -2007,9 +2007,19 @@ async function main() {
           }
           const controls = [...document.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary, [role="button"]')]
           for (const c of controls) {
+            // THE RULE IS REACHABILITY, NOT COINCIDENCE. Any fixed bar covers
+            // whatever happens to be at the bottom of the viewport at scroll
+            // position 0 — that is what a fixed bar is, and the person scrolls.
+            // The defect PK named is a control that CANNOT be reached: one that
+            // stays covered once you have scrolled it into the middle of the
+            // screen (the receipt over Delete, "Drop a place here" behind the
+            // pill at the end of a page with no reserve). So centre each
+            // control first, then ask what is on top of it. The body reserve
+            // is what lets the last control on a page come clear, and the
+            // structural check below holds that separately.
+            c.scrollIntoView({ block: 'center', inline: 'nearest' })
             const r = c.getBoundingClientRect()
             if (r.width === 0 || r.height === 0) continue
-            if (r.bottom < 0 || r.top > innerHeight) continue          // off screen, not covered
             const cx = r.left + r.width / 2, cy = r.top + r.height / 2
             if (cx < 0 || cx > innerWidth || cy < 0 || cy > innerHeight) continue
             const hit = document.elementFromPoint(cx, cy)
@@ -2027,7 +2037,7 @@ async function main() {
         for (const f of found.out) blocked.push(`${screen.split('?')[0]}: "${f.control}" under ${f.floater}`)
       }
 
-      record(`11.4 (${width}): no floating element sits over anything you can tap, on any screen`,
+      record(`11.4 (${width}): no control on any screen stays under a floating element once scrolled into view`,
         blocked.length === 0,
         blocked.length ? blocked.slice(0, 4).join(' · ') + (blocked.length > 4 ? ` · +${blocked.length - 4} more` : '') : `${SCREENS.length} screens clear · floating: ${[...floaters].join(', ') || 'nothing'}`)
 
