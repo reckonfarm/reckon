@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import RowActions from './RowActions'
 import type { ReactNode } from 'react'
 
 // ─── One activity row, everywhere (Block 6 · 6B) ──────────────────────────────
@@ -30,11 +31,17 @@ export function markerFor(r: { supersedes_event_id?: string | null; superseded_b
   return null
 }
 
+// Block 12 (12.5): the WORD a person reads. 'voided' stays as the data value
+// (data-marker, the 054 column, the suites) because it is a fact about the
+// row; "removed" is what it means to the person reading the list. Delete's
+// record path and a 054 void look the same from the outside: it no longer
+// counts, and what it took out is one tap away.
+const MARKER_WORD: Record<Exclude<RowMarker, null>, string> = { corrected: 'corrected', replaced: 'replaced', voided: 'removed' }
 const MARKER_AUDIT: Record<Exclude<RowMarker, null>, string> = { corrected: 'row-correction', replaced: 'row-superseded', voided: 'row-voided' }
 const MARKER_TITLE: Record<Exclude<RowMarker, null>, string> = {
   corrected: 'This entry replaced an earlier one',
   replaced: 'An earlier value — a later entry replaced it',
-  voided: 'Voided — it no longer counts',
+  voided: 'Removed — it no longer counts',
 }
 
 export default function ActivityRowItem({ id, who, line, when, marker, chain, aside, audit = 'activity-row', rowClass = 'px-4 py-3', sep = ' · ', href }: {
@@ -54,6 +61,11 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
   const greyed = marker === 'voided'
   return (
     <li data-marker={marker ?? 'none'} data-id={id}>
+      {/* Block 12 (12.3): hold the row (or right-click it) for Open · Edit ·
+          Delete. Edit and Delete land on the entry page with the mode already
+          open; a machine job (href to /jobs) has neither, because the record
+          of a machine is not a thing a person corrects. */}
+      <RowActions links={{ openHref: href ?? `/ranch/activity/${id}`, editHref: href ? null : `/ranch/activity/${id}#correct`, deleteHref: href ? null : `/ranch/activity/${id}#delete`, label: line }}>
       {/* Block 7.10 — below 360px the two columns squeeze the sentence into a
           ribbon two or three words wide. Under that width the row becomes one
           full-width line with the time beneath it; from 360 up it is exactly
@@ -62,14 +74,15 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
         <span className={`min-w-0 font-dm-sans text-[17px] leading-snug ${greyed ? 'text-secondary-ink' : 'text-ink'}`}>
           {who ? <><span className="font-semibold">{who}</span>{sep}</> : null}
           {struck ? <s className="decoration-2">{line}</s> : line}
-          {marker && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink" title={MARKER_TITLE[marker]} data-audit={MARKER_AUDIT[marker]}>{marker}</span>}
+          {marker && <span className="ml-2 font-dm-sans text-[14px] font-semibold text-secondary-ink" title={MARKER_TITLE[marker]} data-audit={MARKER_AUDIT[marker]}>{MARKER_WORD[marker]}</span>}
         </span>
         <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{when}</span>
       </Link>
+      </RowActions>
       {aside}
       {(marker === 'corrected' || marker === 'voided') && chain && (
         <details className={`pb-3 ${rowClass.includes('px-4') ? 'px-4' : ''}`} data-audit="row-chain">
-          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">{marker === 'voided' ? 'What it voided' : 'What it replaced'}</summary>
+          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">{marker === 'voided' ? 'What it removed' : 'What it replaced'}</summary>
           {chain.length === 0 ? (
             <p className="font-dm-sans text-[15px] text-secondary-ink">The entry it replaced is older than this list — open the entry for the whole chain.</p>
           ) : (

@@ -99,7 +99,7 @@ export function chainWithin(rows: ActivityRow[], head: ActivityRow, names: Names
 // ── One line for one event, the same words everywhere ─────────────────────────
 export function describeEvent(r: ActivityRow, names: Names): string {
   const line = describeBody(r, names)
-  return r.voided_at ? `Voided: ${line}` : line
+  return r.voided_at ? `Removed: ${line}` : line   // 12.5: 'void' is not a word a person reads
 }
 function describeBody(r: ActivityRow, names: Names): string {
   const p = r.payload

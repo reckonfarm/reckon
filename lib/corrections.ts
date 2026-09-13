@@ -31,7 +31,7 @@ async function loadHead(supabase: SupabaseClient, id: string): Promise<{ row: Or
   const row = data as OriginalRow | null
   if (!row) return { error: { ok: false, status: 404, error: 'No such entry on your ranch' } }
   if (!isManualEventType(row.type)) return { error: { ok: false, status: 400, error: 'Only entries logged by hand can be corrected' } }
-  if (row.voided_at) return { error: { ok: false, status: 409, error: 'This entry was voided; there is nothing to correct' } }
+  if (row.voided_at) return { error: { ok: false, status: 409, error: 'This entry was removed; there is nothing to correct' } }
   if (row.superseded_by) return { error: { ok: false, status: 409, error: 'This entry was already corrected — correct the current entry instead', } }
   return { row }
 }
