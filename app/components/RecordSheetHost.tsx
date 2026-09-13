@@ -8,7 +8,6 @@ import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
 import { takeDiscardedNotice } from '@/lib/private-state'
 import { warning } from '@/lib/brand-colors'
-import RecordFab from './RecordFab'
 
 // ─── The record sheet, mounted once for a signed-in person (Block 6A) ─────────
 // Any surface opens it with openLogIt(): the FAB, the header's Record, a place
@@ -77,8 +76,8 @@ function GlobalSaveStatus() {
   // states that are NOT this one (the strip renders those inline on Today,
   // where it is in the flow and cannot cover anything).
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }} data-audit="global-save-status">
-      <div className="mx-auto max-w-2xl pr-32 md:pr-0"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
+    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status">
+      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
     </div>
   )
 }
@@ -98,7 +97,6 @@ export default function RecordSheetHost() {
       <DiscardedOnSwitch />
       <LogIt launcher={false} />
       <GlobalSaveStatus />
-      <RecordFab />
     </>
   )
 }

@@ -1865,6 +1865,99 @@ async function main() {
       await page.waitForTimeout(4_000)
     }
 
+    // ── Block 11 (11.4/11.5): nothing floats over anything you can tap ──────
+    // PK's ruling: "no floating element may sit over an interactive control on
+    // any screen, with a check that proves it screen by screen." So this is
+    // not a check that Places is fixed — it is a check of the RULE, run over
+    // every screen a person reaches on a phone, at both widths, and it will
+    // fail the day someone adds a new floating thing.
+    //
+    // It works the way a thumb does: for every fixed element on the page, take
+    // its box, and ask the browser what is actually on top at the centre of
+    // every interactive control underneath it. If the answer is the floating
+    // element rather than the control, the control cannot be tapped.
+    for (const width of [390, 320]) {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width, height: 844 })
+      const SCREENS = ['/today?fips=' + HOME_FIPS, '/ranch', '/ranch/cattle', '/ranch/hay', '/ranch/places', '/ranch/activity', '/markets', '/weather', '/account', '/ranch/preg-check']
+      const blocked: string[] = []
+      const floaters = new Set<string>()
+
+      for (const screen of SCREENS) {
+        await page.goto(screen, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(1_200)
+        const found = await page.evaluate(() => {
+          const out: { floater: string; control: string }[] = []
+          const names = new Set<string>()
+          const fixed = [...document.querySelectorAll<HTMLElement>('body *')].filter(el => {
+            const cs = getComputedStyle(el)
+            if (cs.position !== 'fixed' && cs.position !== 'sticky') return false
+            if (cs.visibility === 'hidden' || cs.display === 'none' || cs.pointerEvents === 'none') return false
+            const r = el.getBoundingClientRect()
+            return r.width > 0 && r.height > 0
+          })
+          // Only the outermost fixed ancestors — a fixed bar's own children are
+          // not separately "floating over" anything.
+          const tops = fixed.filter(el => !fixed.some(o => o !== el && o.contains(el)))
+          for (const f of tops) {
+            names.add(f.getAttribute('data-audit') || f.tagName.toLowerCase() + (f.className ? '.' + String(f.className).split(' ')[0] : ''))
+          }
+          const controls = [...document.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary, [role="button"]')]
+          for (const c of controls) {
+            const r = c.getBoundingClientRect()
+            if (r.width === 0 || r.height === 0) continue
+            if (r.bottom < 0 || r.top > innerHeight) continue          // off screen, not covered
+            const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+            if (cx < 0 || cx > innerWidth || cy < 0 || cy > innerHeight) continue
+            const hit = document.elementFromPoint(cx, cy)
+            if (!hit || hit === c || c.contains(hit) || hit.contains(c)) continue
+            const over = tops.find(f => f === hit || f.contains(hit))
+            if (!over) continue                                         // covered by ordinary layout, not a floater
+            out.push({
+              floater: over.getAttribute('data-audit') || over.tagName.toLowerCase(),
+              control: (c.getAttribute('data-audit') || c.textContent || c.tagName).replace(/\s+/g, ' ').trim().slice(0, 40),
+            })
+          }
+          return { out, names: [...names] }
+        })
+        for (const n of found.names) floaters.add(n)
+        for (const f of found.out) blocked.push(`${screen.split('?')[0]}: "${f.control}" under ${f.floater}`)
+      }
+
+      record(`11.4 (${width}): no floating element sits over anything you can tap, on any screen`,
+        blocked.length === 0,
+        blocked.length ? blocked.slice(0, 4).join(' · ') + (blocked.length > 4 ? ` · +${blocked.length - 4} more` : '') : `${SCREENS.length} screens clear · floating: ${[...floaters].join(', ') || 'nothing'}`)
+
+      // And the structural half: the page reserves room for the bar, so the
+      // last thing on it is never underneath the bar either.
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      const room = await page.evaluate(() => {
+        const bar = document.querySelector<HTMLElement>('[data-audit="bottom-bar"]')
+        const pad = parseFloat(getComputedStyle(document.body).paddingBottom || '0')
+        return { bar: bar ? Math.round(bar.getBoundingClientRect().height) : 0, pad: Math.round(pad) }
+      })
+      record(`11.4 (${width}): the page reserves the bar's own height, so nothing ends underneath it`,
+        room.bar > 0 && room.pad >= room.bar, `bar ${room.bar}px · body padding ${room.pad}px`)
+
+      if (prior) await page.setViewportSize(prior)
+    }
+
+    // ── Block 11 (11.5): one Record control on a phone, and it is the bar ────
+    {
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_200)
+      const inBar = await page.locator('[data-audit="record-action"]').count()
+      const fab = await page.locator('[data-audit="record-fab"]').count()
+      const launcher = await page.locator('[data-audit="finish-draft"]').count()
+      record('11.5: Today offers Record once — in the bar, with no pill and no second button beside it',
+        inBar === 1 && fab === 0 && launcher === 0,
+        `bar ${inBar} · pill ${fab} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
+      if (prior) await page.setViewportSize(prior)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

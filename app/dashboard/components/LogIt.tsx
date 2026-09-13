@@ -644,13 +644,25 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     <>
       {launcher && (
       <div className="space-y-3">
-        <button
-          type="button"
-          onClick={openSheet}
-          className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white transition-colors hover:bg-forest-green/90"
-        >
-          {hasDraft && !open ? 'Record work · finish your unsaved entry' : 'Record work'}
-        </button>
+        {/* Block 11 (11.5) — Today had a full-width Record button AND the
+            floating pill. The pill is gone into the bottom bar, which every
+            screen now carries, so a second Record here would just be the same
+            action twice on the one screen that needs it least.
+            What survives is the thing the bar cannot say: that there is an
+            unfinished entry sitting on this phone. Then it is not a duplicate
+            Record — it is a way back to work already started. */}
+        {hasDraft && !open && (
+          <button
+            type="button"
+            onClick={openSheet}
+            data-audit="finish-draft"
+            className="min-h-[56px] w-full rounded-lg bg-forest-green px-4 py-3 text-center font-dm-sans text-[17px] font-semibold text-white transition-colors hover:bg-forest-green/90"
+          >
+            Finish your unsaved entry
+          </button>
+        )}
+        {/* The strip stays in the flow here — this is where Undo, Try again and
+            Sync now can be tapped without anything floating over the page. */}
         <SaveStatus />
       </div>
       )}
