@@ -21,6 +21,7 @@ import EmDesignationNote from '@/app/components/EmDesignationNote'
 // localStorage key for the Livestock/Row-Crop mode toggle.
 const FARMER_TYPE_KEY = 'farmer_type'
 import { trackEvent, bucketHeadCount } from '@/lib/analytics'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -614,7 +615,7 @@ function LivestockPanel({
                 <label className="mb-1 block text-[14px] font-medium text-secondary-ink font-dm-sans">
                   Livestock type
                 </label>
-                <select
+                <Select
                   value={livestock}
                   onChange={e => { setLivestock(e.target.value as LivestockKind); setEstimateTouched(true) }}
                   className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
@@ -622,7 +623,7 @@ function LivestockPanel({
                   {PAYMENT_RATES_2026.map(r => (
                     <option key={r.kind} value={r.kind}>{r.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -744,7 +745,7 @@ function LivestockPanel({
             {typeNames.length === 1 ? (
               <p className="text-[16px] font-medium text-forest-green font-dm-sans">{typeNames[0]}</p>
             ) : (
-              <select
+              <Select
                 value={selectedType}
                 onChange={e => handleTypeChange(e.target.value)}
                 className="w-full rounded-lg border border-forest-green/20 bg-cream px-3 py-2 text-[16px] font-dm-sans text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
@@ -752,7 +753,7 @@ function LivestockPanel({
                 {typeNames.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
-              </select>
+              </Select>
             )}
             <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans">
               FSA Official · {fsaPeriod?.year ?? ''}

@@ -11,6 +11,7 @@ import MarketplaceDisclaimer from '@/app/components/MarketplaceDisclaimer'
 import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
 import { trackEvent } from '@/lib/analytics'
+import { Select } from '@/app/components/ui/Field'
 
 type SortKey = 'delivered' | 'newest' | 'price'
 
@@ -806,7 +807,7 @@ export default function HayPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Bale type</label>
-                  <select value={baleType} onChange={e => setBaleType(e.target.value)} className={SELECT_CLS}>
+                  <Select value={baleType} onChange={e => setBaleType(e.target.value)} className={SELECT_CLS}>
                     <option value="">— Select —</option>
                     <option value="small_square_2string">Small Square (2-string)</option>
                     <option value="small_square_3string">Small Square (3-string)</option>
@@ -815,17 +816,17 @@ export default function HayPage() {
                     <option value="large_square_4x4">Large Square (4x4)</option>
                     <option value="round_4x4">Round (4x4)</option>
                     <option value="round_5x6">Round (5x6)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Cutting</label>
-                  <select value={cuttingNumber} onChange={e => setCuttingNumber(e.target.value)} className={SELECT_CLS}>
+                  <Select value={cuttingNumber} onChange={e => setCuttingNumber(e.target.value)} className={SELECT_CLS}>
                     <option value="">— Unknown —</option>
                     <option value="1">1st cutting</option>
                     <option value="2">2nd cutting</option>
                     <option value="3">3rd cutting</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -837,12 +838,12 @@ export default function HayPage() {
 
                 <div>
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Storage method</label>
-                  <select value={storageMethod} onChange={e => setStorageMethod(e.target.value)} className={SELECT_CLS}>
+                  <Select value={storageMethod} onChange={e => setStorageMethod(e.target.value)} className={SELECT_CLS}>
                     <option value="">— Select —</option>
                     <option value="barn">Barn</option>
                     <option value="covered">Covered</option>
                     <option value="outside">Outside</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -1132,25 +1133,25 @@ export default function HayPage() {
           {/* Filter bar */}
           {!listingsLoading && listings.length > 0 && (
             <div className="mb-4 flex flex-wrap gap-2">
-              <select
+              <Select
                 value={filterState}
                 onChange={e => { setFilterState(e.target.value); pushFilters(e.target.value, filterVariety, filterType) }}
                 className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
               >
                 <option value="">All states</option>
                 {availableStates.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={filterVariety}
                 onChange={e => { setFilterVariety(e.target.value); pushFilters(filterState, e.target.value, filterType) }}
                 className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
               >
                 <option value="">All varieties</option>
                 {availableVarieties.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={filterType}
                 onChange={e => { setFilterType(e.target.value); pushFilters(filterState, filterVariety, e.target.value) }}
                 className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
@@ -1158,9 +1159,9 @@ export default function HayPage() {
                 <option value="">For sale &amp; wanted</option>
                 <option value="sell">For sale only</option>
                 <option value="want">Wanted only</option>
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={effectiveSort}
                 onChange={e => setSortChosen(e.target.value as SortKey)}
                 className="rounded-lg border border-forest-green/20 bg-white px-3 py-1.5 font-dm-sans text-xs text-forest-green focus:outline-none focus:ring-2 focus:ring-forest-green/30"
@@ -1170,7 +1171,7 @@ export default function HayPage() {
                 </option>
                 <option value="newest">Newest</option>
                 <option value="price">Listing price (low→high)</option>
-              </select>
+              </Select>
 
               {(filterState || filterVariety || filterType) && (
                 <button
@@ -1220,11 +1221,11 @@ export default function HayPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Listing type</label>
-                  <select value={saveType} onChange={e => setSaveType(e.target.value as '' | 'sell' | 'donate')} className={SELECT_CLS}>
+                  <Select value={saveType} onChange={e => setSaveType(e.target.value as '' | 'sell' | 'donate')} className={SELECT_CLS}>
                     <option value="">Any (sale + donations)</option>
                     <option value="sell">For sale only</option>
                     <option value="donate">Donations only</option>
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-forest-green/60 font-dm-sans mb-1">Max price $/ton (optional)</label>

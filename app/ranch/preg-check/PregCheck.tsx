@@ -6,6 +6,7 @@ import { useWakeLock } from '@/lib/use-wake-lock'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { GROUP_ACTION_TYPE, MAX_GROUP_NAME } from '@/lib/cattle/kinds'
 import { warning } from '@/lib/brand-colors'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── Preg check at the chute (Block 10) ───────────────────────────────────────
 //
@@ -234,12 +235,12 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
           <label className="block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor="preg-dest">
             The {open.toLocaleString()} open go to
           </label>
-          <select id="preg-dest" value={destId} onChange={e => setDestId(e.target.value)} data-audit="preg-dest-select" className={`mt-1 ${field}`}>
+          <Select id="preg-dest" value={destId} onChange={e => setDestId(e.target.value)} data-audit="preg-dest-select" className={`mt-1 ${field}`}>
             <option value="">A new group</option>
             {lots.filter(l => l.id !== source.id).map(l => (
               <option key={l.id} value={l.id}>{l.name} ({l.head.toLocaleString()} head)</option>
             ))}
-          </select>
+          </Select>
           {!destId && (
             <input value={destName} onChange={e => setDestName(e.target.value)} maxLength={MAX_GROUP_NAME}
               className={`mt-2 ${field}`} aria-label="Name for the new group" data-audit="preg-dest-name" />

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── The lot selector on Markets (Block 6B) ───────────────────────────────────
 // Honors and writes ?lot= so a link from Ranch → Cattle lands on that lot; the
@@ -14,7 +15,7 @@ export default function LotSelector({ lots, selectedId }: { lots: { id: string; 
   return (
     <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">
       <span className="sr-only">Lot</span>
-      <select
+      <Select
         value={selectedId}
         onChange={e => { const next = new URLSearchParams(params.toString()); next.set('lot', e.target.value); router.replace(`${pathname}?${next.toString()}`) }}
         className="min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink"
@@ -22,7 +23,7 @@ export default function LotSelector({ lots, selectedId }: { lots: { id: string; 
         aria-label="Lot"
       >
         {lots.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
-      </select>
+      </Select>
     </label>
   )
 }

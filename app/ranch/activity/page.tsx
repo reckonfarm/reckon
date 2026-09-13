@@ -13,6 +13,7 @@ import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import ReviewedButton from '@/app/components/ReviewedButton'
 import FilterShell from './ActivityFilters'
 import ActivityDays from './ActivityDays'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
@@ -101,17 +102,17 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             <FilterShell active={activeFilterLabel} filtering={filtering}>
             <form method="get" action="/ranch/activity" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">Person
-                <select name="actor" defaultValue={filters.actor ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
+                <Select name="actor" defaultValue={filters.actor ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
                   <option value="">Everyone</option>{options.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                </Select></label>
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">Place
-                <select name="place" defaultValue={filters.place ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
+                <Select name="place" defaultValue={filters.place ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
                   <option value="">Anywhere</option>{options.places.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                </Select></label>
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">Lot
-                <select name="lot" defaultValue={filters.lot ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
+                <Select name="lot" defaultValue={filters.lot ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink">
                   <option value="">Any lot</option>{options.lots.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select></label>
+                </Select></label>
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">From
                 <input type="date" name="from" defaultValue={filters.from ?? ''} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" /></label>
               <label className="font-dm-sans text-[14px] font-medium text-secondary-ink">To

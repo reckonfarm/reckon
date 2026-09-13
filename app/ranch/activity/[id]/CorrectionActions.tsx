@@ -7,6 +7,7 @@ import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
 import { warning } from '@/lib/brand-colors'
 import { forgetSynced } from '@/lib/outbox'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
 // From an event that currently stands. A correction is a crossed-out number on
@@ -76,6 +77,14 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   // depends on whether another member has read the ledger since it landed.
   const [plan, setPlan] = useState<{ state: 'loading' } | { state: 'failed' } | { state: 'ready'; mode: 'hard' | 'record'; reason: string | null; label: string }>({ state: 'loading' })
   const [draft, setDraft] = useState<Draft>(() => fromOriginal(event))
+  // Block 12 (12.3): a row held for Edit or Delete arrives here with the mode
+  // in the hash, so the person lands in the form rather than on the page.
+  useEffect(() => {
+    const h = typeof window !== 'undefined' ? window.location.hash : ''
+    if (h === '#correct') setMode('correct')
+    else if (h === '#delete') setMode('delete')
+  }, [])
+
   const [options, setOptions] = useState<Options>({ state: 'loading' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -181,12 +190,12 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     return (
       <div key={key}>
         <label className={labelCls}>{label}
-          <select name={key} value={value} disabled={held} onChange={e => set(key, e.target.value)} className={inputCls} data-audit={`correction-${key}`} data-resolved={unresolved ? 'no' : resolved ? 'yes' : 'pending'}>
+          <Select name={key} value={value} disabled={held} onChange={e => set(key, e.target.value)} className={inputCls} data-audit={`correction-${key}`} data-resolved={unresolved ? 'no' : resolved ? 'yes' : 'pending'}>
             {held && value !== '' && <option value={value}>{options.state === 'loading' ? `Loading ${kind} names…` : `Stored ${kind} (names unavailable)`}</option>}
             {unresolved && <option value={value}>Unresolved {kind} · {value.slice(0, 8)}</option>}
             {(value === '' || held) && <option value="">No {kind}</option>}
             {!held && list.map(o => <option key={o.id} value={o.id}>{o.name}{o.retired ? ' · retired' : ''}</option>)}
-          </select>
+          </Select>
         </label>
         {unresolved && <p className={hintCls} data-audit={`correction-unresolved-${key}`}>This {kind} isn&apos;t on the ranch&apos;s list now (removed or renamed). It stays on the entry unless you clear it.</p>}
         {resolved?.retired && <p className={hintCls}>A retired {kind}. It stays on the entry unless you clear it.</p>}
