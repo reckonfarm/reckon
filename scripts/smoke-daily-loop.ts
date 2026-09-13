@@ -1689,17 +1689,26 @@ async function main() {
         return (data as { head_count?: number } | null)?.head_count ?? null
       }
       const before = await headOf(lotId)
+      // 6G seeded a second bunch on this ranch; its count is the control.
+      const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', lotId).is('retired_at', null).limit(1)
+      const lot6gId = ((otherLots ?? []) as { id: string }[])[0]?.id ?? ''
+      const head6gBefore = ((otherLots ?? []) as { head_count: number }[])[0]?.head_count ?? null
 
       await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="preg-check"], [data-audit="preg-pick-lot"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
 
-      // One lot on this ranch, so it opens straight on the working.
-      if (await page.locator('[data-audit="preg-lot-choice"]').count() > 0) {
-        await page.locator('[data-audit="preg-lot-choice"]').first().click()
-      }
+      // ADDRESS THE BUNCH, do not take the first one offered. 6G seeds a
+      // second lot before this runs, so `.first()` picked "SMOKE-DAILY-LOOP
+      // Pairs" and this whole block then measured the wrong cattle — the app
+      // was right and the check was wrong, which is the failure mode the
+      // post-Block-10 suite audit exists for. The screen emits data-lot for
+      // exactly this reason.
+      const choices = await page.locator('[data-audit="preg-lot-choice"]').count()
+      if (choices > 0) await page.locator(`[data-audit="preg-lot-choice"][data-lot="${lotId}"]`).click()
       const source = await text('[data-audit="preg-source"]')
-      record('10: the chute screen opens on the bunch, naming it and its head count',
-        new RegExp(`${LOT_NAME}`).test(source) && /\d+ head/.test(source), `"${source.slice(0, 60)}"`)
+      record('10: the chute screen opens on the bunch it was asked for, naming it and its head count',
+        new RegExp(`${LOT_NAME}`).test(source) && new RegExp(`${before} head`).test(source),
+        `${choices} bunch(es) offered · "${source.slice(0, 60)}"`)
 
       // Tally: 9 bred, 3 open — with a mis-tap and an Undo in the middle.
       const mode = await page.locator('[data-audit="preg-check"]').first().getAttribute('data-mode')
@@ -1726,7 +1735,7 @@ async function main() {
       const disc = await text('[data-audit="preg-discrepancy"]')
       const saveDisabled = await page.locator('[data-audit="preg-save"]').isDisabled()
       record('10: a chute count that disagrees with the stored number is stated, not refused',
-        /said 60/.test(disc) && /Going with the 12 you counted/.test(disc) && !saveDisabled,
+        new RegExp(`said ${before}`).test(disc) && /Going with the 12 you counted/.test(disc) && !saveDisabled,
         `"${disc.slice(0, 80)}" · save ${saveDisabled ? 'DISABLED' : 'enabled'}`)
 
       const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
@@ -1739,8 +1748,14 @@ async function main() {
       const { data: madeRows } = await admin.from('herd_lots').select('id, head_count, class, ranch_id').eq('name', destName)
       const made = ((madeRows ?? []) as { id: string; head_count: number; class: string; ranch_id: string }[])[0] ?? null
       record('10: the working moved the head counts — the source ends at what stayed, the opens are a real bunch on this ranch',
-        before === 60 && after === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
-        `${LOT_NAME} ${before} → ${after} · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
+        after === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
+        `${LOT_NAME} ${before} → ${after} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
+
+      // 6G's lot is measured by 6G's own checks. This working must not have
+      // touched it — the only bunch that moves is the one that was addressed.
+      const otherHead = await headOf(lot6gId)
+      record('10: no other bunch moved — a working touches the bunch it names and nothing else',
+        otherHead === head6gBefore, `the other bunch ${head6gBefore} → ${otherHead}`)
 
       // And it is in the record, in one line, like everything else.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
@@ -1754,7 +1769,7 @@ async function main() {
       // lot is created by the FUNCTION, not the fixture, so it is named here
       // to keep teardown's promise that nothing SMOKE-* survives.
       if (made) await admin.from('herd_lots').delete().eq('id', made.id)
-      await admin.from('herd_lots').update({ head_count: 60 }).eq('id', lotId)
+      if (before != null) await admin.from('herd_lots').update({ head_count: before }).eq('id', lotId)
     }
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
