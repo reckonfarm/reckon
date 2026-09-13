@@ -616,25 +616,22 @@ async function main() {
     // 12.13: Today's Activity tab is gone; the Ranch hub's recent rows are where
     // the owner sees the hand's entry named with its lot.
     await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-    await page.locator('[data-audit="ranch-recent"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
-    const ownerText = ((await page.locator('[data-audit="ranch-recent"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
-    record('4A: the hand\'s feeding shows its lot name to the owner (on the Ranch hub)', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+    await page.locator('[data-audit="ranch-today"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+    const ownerText = ((await page.locator('[data-audit="ranch-today"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+    record('4A/12.8: the hand\'s feeding shows its lot name to the owner, in the hand\'s line under Today on the ranch', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
     // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
     {
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="ranch-sections"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      const numbers = await page.locator('[data-audit="section-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      const recentRows = await page.locator('[data-audit="ranch-recent"] li').count()
-      const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
-      // The fixture has one live lot with a head count and one place; it has no devices and its hay
-      // count IS a baseline, so on hand exists. No device number may render.
-      // 7B.2: the hub opens on TWO rows, not five, with the rest behind an
-      // in-place expander — so the count asserted here is 2 (or however few
-      // the ranch has), and the expander must be offered when there are more.
-      const wantRows = Math.min(2, eventsOnRanch ?? 0)
-      const expander = await page.locator('[data-audit="ranch-recent-more"]').count()
-      record('6A/7B.2: the hub opens on two recent rows with the rest one tap away, and shows only the numbers something stands behind (no devices → no device number)', recentRows === wantRows && expander === ((eventsOnRanch ?? 0) > wantRows ? 1 : 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · expander ${expander} · numbers [${numbers.join(' | ')}]`)
+      // Block 12 (12.7): three tiles, each with a number only where something
+      // stands behind it. This ranch has no devices, so Ground names places
+      // alone; Cattle names head; the record names today's entries.
+      await page.locator('[data-audit="ranch-tiles"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const tileLabels = await page.locator('[data-audit="ranch-tile"]').evaluateAll(els => els.map(e => (e.getAttribute('data-tile') ?? '')))
+      const numbers = await page.locator('[data-audit="tile-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6A/12.7: Ranch is three things — Cattle · Ground · The record — and shows only the numbers something stands behind (no devices → no device number)',
+        tileLabels.join(',') === 'cattle,ground,record' && numbers.some(n => /head$/.test(n)) && !numbers.some(n => /device/.test(n)),
+        `tiles [${tileLabels.join(', ')}] · numbers [${numbers.join(' | ')}]`)
       // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
@@ -1064,8 +1061,10 @@ async function main() {
       const { error: aErr } = jErr ? { error: null } : await admin.from('job_annotations').insert({ job_id: jobId, user_id: userId, ranch_id: ranchId, name: 'Baling', machine: 'baler', actual_bale_count: 32 })
       if (jErr || aErr) skip('6J: Work under Ranch', `fixture: ${(jErr ?? aErr)!.message.slice(0, 80)}`)
       else {
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        const workSection = (await page.locator('[data-audit="ranch-section"]').filter({ has: page.locator('span', { hasText: /^Work$/ }) }).first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+        // Block 12 (12.7): Work is no longer a hub section — machine sessions
+        // are the record's Machines filter (6J). The page still answers; the
+        // 6J reachability rule is held by the 12.7 check below.
+        const workSection = 'Work'
         await page.goto('/ranch/work', { waitUntil: 'domcontentloaded' })
         const row = page.locator('[data-audit="work-list"] > li').filter({ has: page.locator(`[data-id="${jobId}"]`) }).first()
         const rowLi = page.locator(`[data-audit="work-list"] > li[data-id="${jobId}"]`)
@@ -1379,16 +1378,7 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
         record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        // 7B.2: the hub opens on two rows. Open it before reading — the invariant
-        // is about how a correction is marked WHEREVER it appears, so the whole
-        // list is the subject, not the first screenful. This reads more of the
-        // hub than the check ever did before, when it saw at most five rows.
-        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'center' })).catch(() => {})
-        await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
-        await page.waitForTimeout(600)
-        const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
-        record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
+        // Block 12 (12.8): the hub no longer lists rows; the record below is the surface.
         // Block 12 (12.13): Today's Activity tab is gone — its rows were a subset of
         // the record. The same assertion stands on the Ranch hub above and on the
         // record below; a third copy on a surface that no longer exists is not evidence.
@@ -1454,10 +1444,11 @@ async function main() {
         const pl = (await readRows('[data-audit="place-activity"]')).find(r => r.id === voidId)
         const plOrig = (await readRows('[data-audit="place-activity"]')).filter(r => r.id === v0.id)
         record('6B-2: the voided feeding stands on the place timeline — marked voided, greyed, what it voided one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /voided/.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        const hub = (await readRows('[data-audit="ranch-recent"]')).find(r => r.id === voidId)
-        // 12.13: Today's Activity tab is gone; the hub is the surface that keeps the void in view.
-        record('6B-2: the Ranch hub keeps the void, marked — never hidden', !!hub && hub.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'}`)
+        // 12.8: the hub no longer lists rows; the record keeps the void in view.
+        await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+        await page.locator(`li[data-id="${voidId}"]`).first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        const hub = (await page.locator('li[data-id]').evaluateAll(els => els.map(li => ({ id: li.getAttribute('data-id') ?? '', marker: li.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
+        record('6B-2: the record keeps the void, marked — never hidden', !!hub && hub.marker === 'voided', `record ${hub?.marker ?? 'MISSING'}`)
         record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
     }
@@ -1471,132 +1462,50 @@ async function main() {
       const prior6d = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })   // the FAB is the phone's entry point (md:hidden)
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      const hayNumber = async () => parseInt(((await page.locator('[data-audit="ranch-section"]', { hasText: 'Hay' }).locator('[data-audit="section-number"]').innerText().catch(() => '')).match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
-      const beforeHay = await hayNumber()
-      const firstBefore = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      // Block 12 (12.7/12.8): hay left the hub; the record tile counts today's
+      // entries and the person line says what was done. Both must follow a save
+      // made from this page, without navigating.
+      const entriesToday = async () => parseInt((((await page.locator('[data-audit="ranch-tile"][data-tile="record"] [data-audit="tile-number"]').textContent().catch(() => '')) ?? '').match(/(\d+)/) ?? ['', '0'])[1], 10)
+      const beforeHay = await entriesToday()
+      const firstBefore = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       await logFeed(page, 2)
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
       for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
       record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
-      for (let i = 0; i < 60 && afterHay !== beforeHay - 2; i++) { afterHay = await hayNumber(); firstAfter = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (afterHay !== beforeHay - 2) await page.waitForTimeout(500) }
-      record('6D: without navigating, the hub\'s Hay number and its recent rows follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay - 2 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && /\/ranch$/.test(page.url().replace(/\?.*$/, '')), `hay ${beforeHay} → ${afterHay} · first row "${firstAfter.slice(0, 50)}" · ${page.url().replace(BASE, '')}`)
+      for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
+      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
       if (prior6d) await page.setViewportSize(prior6d)
     }
 
-    // ── Block 7B.2: the Ranch hub opens its recent rows in place ──────────
-    // Five rows and a navigation was the only way further down a list the page
-    // had already read. Two rows now, the rest revealed in place — and "in
-    // place" is the whole claim, so it is tested as one: no request, no URL
-    // change, the Sections list (and its Activity link) still on the page.
+    // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
+    // Did the hand do what I asked today; is there anything I have not looked
+    // at; can I get to everything that left the hub. Replaces the 7B.2 expander
+    // checks, which measured a surface PK ruled out of existence.
     {
-      const prior7b = page.viewportSize()
-      await page.setViewportSize({ width: 390, height: 844 })
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      // Drop the SYNCED receipt the 6D check above deliberately leaves up. It is
-      // pinned to the bottom of the viewport for 90 s and it is the previous
-      // check's state, not this one's subject — the same clean-up 7.4 needed
-      // when a restored half-typed sheet sat on top of the FAB. Only synced
-      // entries go: anything genuinely unsynced is real work and stays.
-      await page.evaluate((k: string) => {
-        try {
-          const raw = localStorage.getItem(k)
-          if (!raw) return
-          const kept = (JSON.parse(raw) as { state: string }[]).filter(i => i.state !== 'synced')
-          localStorage.setItem(k, JSON.stringify(kept))
-        } catch { /* no outbox, nothing to clear */ }
-      }, 'dryline_outbox_v1')
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1_500)
-      const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
-      // This page has a fixed overlay at BOTH ends. The save receipt is pinned
-      // to the bottom for 90 s (RecordSheetHost, fadeAfterMs 90_000) and the 6D
-      // check immediately above deliberately leaves one up; the site header is
-      // sticky at the top. Playwright's own auto-scroll put the button under
-      // the receipt, and scrolling it to `start` put it under the header — two
-      // crashed runs, one for each end. `center` is the clear band between
-      // them, which is where a person reading the list has it anyway.
-      //
-      // The click is also no longer allowed to take the run down with it. A
-      // 30 s actionability timeout inside a 25-minute suite should be one red
-      // line naming what intercepted the tap, not an exception that discards
-      // every check after it.
-      const tapMore = async (): Promise<string | null> => {
-        const btn = page.locator('[data-audit="ranch-recent-more"]')
-        try {
-          await btn.evaluate(el => el.scrollIntoView({ block: 'center' }))
-          await page.waitForTimeout(200)
-          await btn.click({ timeout: 15_000 })
-          return null
-        } catch (e) {
-          // Say WHAT was on top, not just that the click timed out. Playwright
-          // names the interceptor in its call log, and elementFromPoint at the
-          // button's own centre says it independently — a bare "Timeout 15000ms
-          // exceeded" sent me guessing at overlays twice.
-          const msg = (e instanceof Error ? e.message : String(e)).split('\n')
-          const intercept = msg.find(l => l.includes('intercepts pointer events'))?.trim()
-          const onTop = await btn.evaluate(el => {
-            const r = el.getBoundingClientRect()
-            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-            if (!top) return 'nothing (off-screen)'
-            const a = top.closest('[data-audit]')?.getAttribute('data-audit')
-            return `${top.tagName.toLowerCase()}${a ? `[${a}]` : ''}`
-          }).catch(() => 'unreadable')
-          return `${msg[0]} · on top: ${onTop}${intercept ? ` · ${intercept.slice(0, 120)}` : ''}`
-        }
-      }
-      const shown = await liCount()
-      const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
-      const promised = parseInt((label.match(/Show (\d+) more/) ?? ['', 'NaN'])[1], 10)
-      record('7B.2: the hub opens on two recent rows, and the expander says how many more there are',
-        shown === 2 && promised > 0,
-        `${shown} row(s) · "${label}"`)
-
-      // Count what the tap fetches. The rows are already on the page; an
-      // expander that goes back for them is a page load wearing a disclosure's
-      // clothes, and that is the thing being asserted.
-      //
-      // NOT every request counts, and the rule is about THIS page's data rather
-      // than a list of allowed paths. Revealing 26 rows puts 26 more <Link>s on
-      // screen and pushes the Sections list down, so Next prefetches whatever
-      // is near the viewport — measured, RSC requests for /ranch/activity/<id>
-      // (the rows' own detail pages) and /ranch/devices (a Sections link). Those
-      // are the framework preparing the NEXT tap, and they would happen on any
-      // page whose content grew.
-      //
-      // What must be zero is this page going back for its own content: a /ranch
-      // RSC refetch (which is also where a server action would land) or an API
-      // call. Two earlier versions of this check got the boundary wrong by
-      // naming paths — first "zero requests", then an allow-list of activity
-      // links — and each failed on a prefetch while proving nothing about the
-      // expander.
-      const fetched: string[] = []
-      let prefetches = 0
-      const countReq = (r: { url: () => string }) => {
-        const path = r.url().replace(BASE, '').split('?')[0]
-        const isOwnData = path === '/ranch' || path.startsWith('/api/')
-        if (isOwnData) fetched.push(path)
-        else prefetches++
-      }
-      page.on('request', countReq)
-      const urlBefore = page.url()
-      const tapErr = await tapMore()
-      await page.waitForTimeout(1_500)
-      page.off('request', countReq)
-      const opened = await liCount()
-      const sections = await page.locator('[data-audit="ranch-sections"]').count()
-      const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
-      record('7B.2: the rest open in place — the rows are never refetched, no navigation, the Sections list and its Activity link untouched',
-        !tapErr && opened === shown + promised && fetched.length === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
-        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${fetched.length} data request(s)${fetched.length ? ` [${fetched.slice(0, 3).join(', ')}]` : ''} · ${prefetches} link prefetch(es) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
-
-      const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
-      const closeErr = await tapMore()
-      await page.waitForTimeout(800)
-      record('7B.2: it closes again to two rows', !closeErr && (await liCount()) === 2 && /Show fewer/.test(collapsed),
-        closeErr ? `the expander could not be tapped: ${closeErr}` : `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
-      if (prior7b) await page.setViewportSize(prior7b)
+      await page.locator('[data-audit="ranch-today"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const persons = await page.locator('[data-audit="ranch-person"]').evaluateAll(els => els.map(e => ({ user: e.getAttribute('data-user') ?? '', text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })))
+      const handLine = persons.find(p => p.user === userIdB)
+      record('12.8: one line per person who recorded today — the hand\'s names what they did and when they last did it',
+        persons.length >= 1 && !!handLine && /Fed 1 bale/.test(handLine.text) && /last at \d/.test(handLine.text),
+        `${persons.length} person line(s) · hand: "${(handLine?.text ?? 'MISSING').slice(0, 80)}"`)
+      const since = await text('[data-audit="ranch-since"]')
+      const reviewed = await page.locator('[data-audit="ranch-since"] button').count()
+      record('12.8: the count since you last checked is on the hub with Reviewed beside it',
+        /\d+ entr(y|ies) since you last checked/.test(since) && reviewed === 1, `"${since.slice(0, 60)}" · Reviewed ${reviewed}`)
+      // The 6J reachability rule: everything that left the hub is still one tap
+      // from where a person would look for it.
+      const routes: string[] = []
+      for (const r of ['/ranch/hay', '/ranch/work', '/ranch/devices']) { const res = await page.request.get(r).catch(() => null); routes.push(`${r} → ${res ? res.status() : 'no response'}`) }
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      const devLink = await page.locator('[data-audit="places-devices-link"]').count()
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const machinesFilter = await page.locator('a[href*="machines"], [data-audit="activity-filter"]').filter({ hasText: /Machines/i }).count()
+      record('12.7: what left the hub is still reachable from where a person would look — Devices from Ground, machine work from the record, every old route answering',
+        routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
     }
 
     // ── Block 7B.1: headlines last on Today, and only as expensive as shown ──
@@ -1841,7 +1750,7 @@ async function main() {
 
       // And it is in the record, in one line, like everything else.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="activity-day"], [data-audit="ranch-section"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="activity-day"], [data-audit="ranch-tile"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
       const record10 = ((await page.locator('body').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       record('10: the working is in the Activity record, naming what was counted and where they went',
         new RegExp(`Preg check[^.]*12 counted`).test(record10) && record10.includes(destName),
