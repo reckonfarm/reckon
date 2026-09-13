@@ -2,6 +2,7 @@ import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
+import { GROUP_ACTION_TYPE, GroupActionError, groupActionConsequence, parseGroupAction, recordGroupAction } from '@/lib/cattle/group-action'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -47,6 +48,27 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
+  // Block 10: a group action is not an insert — it is one transaction that
+  // also moves head counts, so it goes through the 063 function. It rides this
+  // route and not its own because the outbox posts HERE and nowhere else:
+  // offline saving, the client-minted id, the retry ladder and the save-status
+  // strip all come free, and rebuilding any of them for the chute would be the
+  // worst trade available three days out.
+  if (body.type === GROUP_ACTION_TYPE) {
+    try {
+      const input = parseGroupAction(body as Record<string, unknown>)
+      const done = await recordGroupAction(supabase, input)
+      const { data: event } = await supabase.from('events').select(EVENT_COLS).eq('id', done.eventId).maybeSingle()
+      return NextResponse.json(
+        { event, ...(done.duplicate ? { duplicate: true } : {}), consequence: groupActionConsequence(done.payload) },
+        { status: done.duplicate ? 200 : 201 },
+      )
+    } catch (err) {
+      if (err instanceof GroupActionError) return NextResponse.json({ error: err.message }, { status: err.status })
+      return NextResponse.json({ error: 'That working could not be recorded just now.' }, { status: 500 })
+    }
+  }
+
   if (!isManualEventType(body.type)) {
     return NextResponse.json(
       { error: `type must be one of ${MANUAL_EVENT_TYPES.join(', ')}` },

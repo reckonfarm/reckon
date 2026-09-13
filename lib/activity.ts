@@ -5,6 +5,7 @@ import { resolveRanchId } from './ranch-membership'
 import { getRanchLotsIncludingRetired } from './herd-lots'
 import { lotLabel, type Lot } from './herd'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './manual-log'
+import { GROUP_ACTION_LABELS, GROUP_ACTION_TYPE, isGroupAction } from './cattle/kinds'
 import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
 import { live } from './ledger-effective'
 import { hasEventDeletion } from './schema-capability'
@@ -18,7 +19,11 @@ import { hasEventDeletion } from './schema-capability'
 // display names come through the service role (profiles is not ranch-scoped),
 // only for the ids on the page.
 
-export const ACTIVITY_TYPES = [...MANUAL_EVENT_TYPES, 'alert'] as const
+// Block 10: a group action is not in MANUAL_EVENT_TYPES — it is not something
+// the Log it sheet offers, it has its own screen and it moves head counts. It
+// IS in the record, because a working that changed the herd and appears
+// nowhere would be the most alarming thing the app could do.
+export const ACTIVITY_TYPES = [...MANUAL_EVENT_TYPES, GROUP_ACTION_TYPE, 'alert'] as const
 export const PAGE_SIZE = 50
 
 export interface ActivityRow {
@@ -108,6 +113,19 @@ function describeBody(r: ActivityRow, names: Names): string {
     case 'cattle_moved': { const head = num(p.head); const from = names.place(p.from_place_id); const to = names.place(p.to_place_id); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'Cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); const route = from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''; return `Moved ${who}${route}` }
     case 'cattle_worked': { const head = num(p.head); const what = str(p.what); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}` }
     case 'hay_inventory': { const bales = num(p.bales); const asOf = str(p.as_of); const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''; return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}` }
+    case GROUP_ACTION_TYPE: {
+      // One line, like every other row (8B.3). The full arithmetic is on the
+      // entry's own page; this says what happened and where they went.
+      const action = str(p.action)
+      const label = isGroupAction(action) ? GROUP_ACTION_LABELS[action] : 'Worked'
+      const counted = num(p.counted)
+      const from = str(p.source_name)
+      const results = Array.isArray(p.results) ? p.results as { name?: unknown; head?: unknown }[] : []
+      const moved = results
+        .map(x => { const h = num(x.head); const n = str(x.name); return h == null || !n ? null : `${h.toLocaleString()} to ${n}` })
+        .filter((x): x is string => x !== null).join(', ')
+      return `${label}${counted == null ? '' : ` · ${counted.toLocaleString()} counted`}${from ? ` from ${from}` : ''}${moved ? ` · ${moved}` : ' · none moved'}`
+    }
     case 'alert': return str(p.title) ?? 'Alert'
     default: return (isManualEventType(r.type) ? MANUAL_EVENT_LABELS[r.type] : r.type) + suffix
   }
