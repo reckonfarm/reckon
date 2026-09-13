@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import Disclosure from '@/app/components/ui/Disclosure'
 import { getHayLedger } from '@/lib/hay/queries'
+import { planToTurnout } from '@/lib/hay/plan'
+import { getTurnout, suggestedTurnout } from '@/lib/hay/turnout'
+import HayToTurnout from './HayToTurnout'
 import { explainOnHand } from '@/lib/hay/explain'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -49,9 +52,13 @@ function fmtRate(n: number): string {
 // label, so the card's own eyebrow is dropped; anywhere else it keeps it.
 export default async function HayInventoryCard({ heading = true }: { heading?: boolean } = {}) {
   const supabase = await createClient()
-  // Season-scoped read (this ranch year, capped); the latest count still
-  // anchors on-hand even when it predates the floor — see getHayLedger.
-  const { entries, summary } = await getHayLedger(supabase, { since: ranchYearStart() })
+  // Block 9: the read runs back to the last counted baseline, not to January 1
+  // — a winter's feeding does not reset at midnight on New Year's Eve. The
+  // ranch year is only the fallback for a ranch that has never counted.
+  const [{ entries, summary }, turnoutState] = await Promise.all([
+    getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() }),
+    getTurnout(supabase),
+  ])
   if (entries.length === 0) return <LedgerPanel tab="hay" empty />
 
   const { stacked, fed, burnRate, onHand, runOut, range } = summary
@@ -107,6 +114,13 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           ))}
         </div>
       )}
+      {/* Block 9 — the runway gets an end. Above Details deliberately: this is
+          the answer a man opens the app for in November, and the arithmetic
+          behind the balance is what moves one tap away, not the decision. */}
+      <HayToTurnout
+        plan={planToTurnout({ turnout: turnoutState.upcoming?.date ?? null, onHand, entries })}
+        turnout={{ ...turnoutState, suggested: suggestedTurnout(turnoutState.last) }}
+      />
       {/* Block 7.7 — one dominant number and the date it was counted stay in
           the open; the arithmetic behind it moves one tap away. The equation is
           the honest provenance of the number and is never removed — but a
@@ -127,7 +141,12 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           )}
           {range && (
             <p className="mt-3 font-dm-sans text-[14px] text-ink">
-              Since {fmtDay(range.from)} · from what you logged.
+              {/* Block 9: the window is the count, not the calendar — so the card
+                  says which window every figure above was added up over. Without
+                  a count there is no anchor and the first line read is the start. */}
+              {onHand
+                ? `Every line since your ${ranchDay(onHand.baseline.asOf)} count · from what you logged.`
+                : `Since ${fmtDay(range.from)} · from what you logged.`}
             </p>
           )}
         </Disclosure>

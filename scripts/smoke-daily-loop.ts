@@ -1606,6 +1606,73 @@ async function main() {
       await page.unroute('**/api/news**')
     }
 
+    // ── Block 9: hay to turnout — the runway gets an end ───────────────────
+    // The card already said how long the stack lasts. This says whether that
+    // reaches grass, at his own heaviest fourteen days, on two dates: turnout
+    // as he expects it and turnout three weeks late.
+    //
+    // Read with textContent, never innerText: the standing rule. And every
+    // figure on screen must survive the envelope check — needed minus on hand
+    // IS the short number, or the surface is lying quietly.
+    {
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="hay-to-turnout"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+
+      // Nothing set: it asks for the one thing only he can answer, and never
+      // guesses one from the FSA grazing period.
+      const withheld = await text('[data-audit="turnout-withheld"]')
+      const reason = await page.locator('[data-audit="turnout-withheld"]').first().getAttribute('data-reason').catch(() => null)
+      record('9: with no turnout date the card asks for one and answers nothing — never a guessed date',
+        reason === 'no_turnout' && /go back to grass/i.test(withheld) && (await page.locator('[data-audit="turnout-expected"]').count()) === 0,
+        `reason ${reason ?? 'NONE'} · "${withheld.slice(0, 70)}"`)
+
+      // Set one through the UI, the way he would.
+      const year = new Date().getUTCFullYear() + 1
+      const turnout = `${year}-05-15`
+      await page.locator('[data-audit="turnout-open"]').first().click()
+      await page.locator('[data-audit="turnout-input"]').fill(turnout)
+      await page.locator('[data-audit="turnout-save"]').click()
+      await page.locator('[data-audit="turnout-expected"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+
+      const expected = await text('[data-audit="turnout-expected"]')
+      const late = await text('[data-audit="turnout-late"]')
+      const rate = await text('[data-audit="turnout-rate"]')
+      const nums = (t: string) => {
+        const m = t.match(/([\d,]+) needed · ([\d,]+) on hand — (?:reaches it with ([\d,]+) bales? to spare|([\d,]+) bales? short)/)
+        return m ? { needed: Number(m[1].replace(/,/g, '')), onHand: Number(m[2].replace(/,/g, '')), spare: m[3] ? Number(m[3].replace(/,/g, '')) : null, short: m[4] ? Number(m[4].replace(/,/g, '')) : null } : null
+      }
+      const e = nums(expected), l = nums(late)
+      const adds = (x: ReturnType<typeof nums>) => !!x && (x.spare !== null ? x.onHand - x.needed === x.spare : x.needed - x.onHand === x.short)
+
+      record('9: the pair answers on two dates — turnout as set, and three weeks late — both against the same on-hand',
+        /May 15/.test(expected) && /Three weeks late/.test(late) && /Jun 5/.test(late) && !!e && !!l && e.onHand === l.onHand,
+        `expected "${expected.slice(0, 80)}" · late "${late.slice(0, 80)}"`)
+      record('9: every figure survives the envelope check — needed minus on hand IS the short number, on both dates',
+        adds(e) && adds(l), e && l ? `expected ${e.needed}−${e.onHand}=${e.spare ?? e.short} · late ${l.needed}−${l.onHand}=${l.spare ?? l.short}` : 'no figures parsed')
+      record('9: the later date is the harder one — three weeks costs feed, never less',
+        !!e && !!l && l.needed > e.needed, e && l ? `${e.needed} → ${l.needed}` : 'no figures parsed')
+      record('9: the rate names where it came from, and says plainly when it is not yet a worst case',
+        /bales\/day/.test(rate) && (/heaviest 14 days so far, \w+ \d+–\w+ \d+/.test(rate) || /not yet a full 14 days, so it is not a worst case/.test(rate)),
+        `"${rate.slice(0, 110)}"`)
+
+      // Under the seven-day gate the answer still shows and says how thin it
+      // is, while the run-out DATE stays behind its gate — PK's ruling that
+      // the two answers do not move together.
+      const thin = await page.locator('[data-audit="turnout-thin"]').count()
+      const thinText = thin ? await text('[data-audit="turnout-thin"]') : ''
+      record('9: a thin ledger still gets the answer, carrying the count of feeding days behind it',
+        thin === 0 || /days? of feeding so far/.test(thinText),
+        thin ? `"${thinText.slice(0, 60)}"` : 'not thin on this ranch')
+
+      // It survives a reload — the date is on the ranch, not in the browser.
+      await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="turnout-expected"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      const again = await text('[data-audit="turnout-expected"]')
+      record('9: the turnout date is stored on the ranch — it is still there on the next load',
+        /May 15/.test(again) && again === expected, `"${again.slice(0, 80)}"`)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with

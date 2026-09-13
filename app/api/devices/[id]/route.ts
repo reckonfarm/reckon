@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
 import { createServiceClient } from '@/lib/supabase'
 import { deviceReferences, deviceRefsSentence, planDeviceCascade, deviceCascadeSentence } from '@/lib/devices/references'
-import { applySplit, cascadeAvailable } from '@/lib/cascade'
+import { applySplit } from '@/lib/cascade'
 import { resolveRanchId } from '@/lib/ranch-membership'
 
 // ─── DELETE /api/devices/[id] (Block 7D.3) ───────────────────────────────────
@@ -37,9 +37,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
 
   if (refs.total > 0 && !cascade) {
     const ranchId = await resolveRanchId(supabase, session.user.id)
-    const plan = ranchId && await cascadeAvailable(supabase)
-      ? await planDeviceCascade(supabase, session.user.id, ranchId, id)
-      : null
+    const plan = ranchId ? await planDeviceCascade(supabase, session.user.id, ranchId, id) : null
     return NextResponse.json({
       error: 'still referenced', device, refs, message: deviceRefsSentence(refs),
       ...(plan ? {
@@ -52,9 +50,6 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (refs.total > 0 && cascade) {
     const ranchId = await resolveRanchId(supabase, session.user.id)
     if (!ranchId) return NextResponse.json({ error: 'No ranch' }, { status: 404 })
-    if (!(await cascadeAvailable(supabase))) {
-      return NextResponse.json({ error: 'Deleting entries is not switched on for this ranch yet.', code: 'no_deletion' }, { status: 503 })
-    }
     const plan = await planDeviceCascade(supabase, session.user.id, ranchId, id)
     const applied = await applySplit(session.user.id, plan.hard, plan.record)
     if (!applied.ok) return NextResponse.json({ error: 'Those observations could not be deleted just now' }, { status: 500 })

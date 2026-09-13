@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasEventDeletion } from '@/lib/schema-capability'
 import { splitEvents, CASCADE_COLS, type CascadeRow } from '@/lib/cascade'
+import { live } from '@/lib/ledger-effective'
 
 // ─── What still points at a place (Block 7D.3) ────────────────────────────────
 //
@@ -37,14 +37,9 @@ export interface PlaceRefs {
  * happened to belong to someone else, and no count can leak across ranches.
  */
 export async function placeReferences(supabase: SupabaseClient, placeId: string): Promise<PlaceRefs> {
-  // A deleted entry does not hold a place hostage — but on a database without
-  // 061 there are no deleted entries, so the filter is skipped rather than
-  // erroring (lib/schema-capability.ts).
-  const canDel = await hasEventDeletion(supabase)
+  // A deleted entry does not hold a place hostage.
   const entryCounts = await Promise.all(PLACE_KEYS.map(async k => {
-    let q = supabase.from('events').select('id', { count: 'exact', head: true })
-    if (canDel) q = q.is('deleted_at', null)
-    const { count } = await q.eq(`payload->>${k}`, placeId)
+    const { count } = await live(supabase.from('events').select('id', { count: 'exact', head: true })).eq(`payload->>${k}`, placeId)
     return count ?? 0
   }))
   const [{ count: devices }, { count: children }] = await Promise.all([
@@ -85,12 +80,9 @@ export interface PlaceCascade {
 
 /** Every live entry naming this place, already classified. */
 export async function planPlaceCascade(supabase: SupabaseClient, userId: string, ranchId: string, placeId: string): Promise<PlaceCascade> {
-  const canDel = await hasEventDeletion(supabase)
   const seen = new Map<string, CascadeRow>()
   for (const k of PLACE_KEYS) {
-    let q = supabase.from('events').select(CASCADE_COLS).eq(`payload->>${k}`, placeId)
-    if (canDel) q = q.is('deleted_at', null)
-    const { data } = await q
+    const { data } = await live(supabase.from('events').select(CASCADE_COLS)).eq(`payload->>${k}`, placeId)
     for (const r of (data ?? []) as unknown as CascadeRow[]) seen.set(r.id, r)
   }
   const rows = [...seen.values()]

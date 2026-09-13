@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { hasEventDeletion } from '@/lib/schema-capability'
 import { splitEvents, CASCADE_COLS, type CascadeRow } from '@/lib/cascade'
+import { live } from '@/lib/ledger-effective'
 
 // ─── What still points at a device (Block 7D.3) ───────────────────────────────
 //
@@ -31,9 +31,7 @@ export interface DeviceRefs {
 
 /** Counted on the CALLER's client, so RLS scopes every count to their ranch. */
 export async function deviceReferences(supabase: SupabaseClient, deviceId: string): Promise<DeviceRefs> {
-  const canDel = await hasEventDeletion(supabase)
-  let eventsQ = supabase.from('events').select('id', { count: 'exact', head: true }).eq('device_id', deviceId)
-  if (canDel) eventsQ = eventsQ.is('deleted_at', null)
+  const eventsQ = live(supabase.from('events').select('id', { count: 'exact', head: true })).eq('device_id', deviceId)
   const [{ count: entries }, { count: jobs }, { count: detections }] = await Promise.all([
     eventsQ,
     supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('device_id', deviceId),
@@ -63,10 +61,7 @@ export function deviceRefsSentence(refs: DeviceRefs): string {
 export interface DeviceCascade { hard: string[]; record: string[]; jobs: number; detections: number }
 
 export async function planDeviceCascade(supabase: SupabaseClient, userId: string, ranchId: string, deviceId: string): Promise<DeviceCascade> {
-  const canDel = await hasEventDeletion(supabase)
-  let q = supabase.from('events').select(CASCADE_COLS).eq('device_id', deviceId)
-  if (canDel) q = q.is('deleted_at', null)
-  const { data } = await q
+  const { data } = await live(supabase.from('events').select(CASCADE_COLS)).eq('device_id', deviceId)
   const rows = (data ?? []) as unknown as CascadeRow[]
   const { hard, record } = await splitEvents(supabase, userId, ranchId, rows)
   const [{ count: jobs }, { count: detections }] = await Promise.all([

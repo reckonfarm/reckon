@@ -1,7 +1,6 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
-import { hasEventDeletion } from '@/lib/schema-capability'
 
 // ─── Deleting a thing and everything recorded at it (Block 8B.2) ──────────────
 //
@@ -104,11 +103,6 @@ export async function applySplit(userId: string, hard: string[], record: string[
     }
   }
   return { ok: true }
-}
-
-/** True when 061 is applied. Without it the record path has nowhere to write. */
-export async function cascadeAvailable(supabase: SupabaseClient): Promise<boolean> {
-  return hasEventDeletion(supabase)
 }
 
 export { type Row as CascadeRow, COLS as CASCADE_COLS }
