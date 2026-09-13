@@ -978,7 +978,19 @@ async function main() {
         const m = strip.match(EQ)
         const nums = m ? m.slice(1, 5).map(Number) : null
         const adds = !!nums && nums[0] + nums[1] - nums[2] === nums[3]
-        record('6C: the receipt states the complete equation — counted + added − fed = on hand — it adds up, the 5 stacked are in it, ranch scope stated', !!nums && adds && nums[1] === 5 && /across the ranch/.test(strip), m ? `"${m[0]}" · ${/across the ranch/.test(strip) ? 'scope stated' : 'NO scope'}` : `no equation in: ${strip.slice(0, 160)}`)
+        // Block 11 (11.12): the equation is still stated in full and still has
+        // to add up — it just sits behind "How that adds up" now instead of in
+        // the middle of the receipt. The balance leads. Read with textContent,
+        // because a closed <details> is exactly what this is testing.
+        const receiptText = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+        const m3 = receiptText.match(EQ)
+        const balanceFirst = (await page.locator('[data-audit="receipt-balance"]').first().textContent().catch(() => '') ?? '').replace(/\s+/g, ' ').trim()
+        const behindTap = await page.locator('[data-audit="receipt-detail"]').count()
+        record('6C/11.12: the receipt leads with the balance and keeps the complete equation one tap away — it still adds up, the 5 stacked are still in it',
+          !!m3 && m3.slice(1, 5).map(Number)[0] + m3.slice(1, 5).map(Number)[1] - m3.slice(1, 5).map(Number)[2] === m3.slice(1, 5).map(Number)[3]
+            && Number(m3[2]) === 5 && /across the ranch/.test(receiptText)
+            && /bales? on hand/.test(balanceFirst) && !/counted/.test(balanceFirst) && behindTap === 1,
+          `balance "${balanceFirst}" · detail ${behindTap} · equation "${m3 ? m3[0] : 'MISSING'}"`)
         await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
         const eq = (await page.locator('[data-audit="hay-equation"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
         const m2 = eq.match(EQ)

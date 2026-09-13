@@ -11,6 +11,7 @@ import RanchNameCard from './RanchNameCard'
 import RanchPeopleCard from './RanchPeopleCard'
 import SignOutButton from './SignOutButton'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
+import ShareButton from '@/app/components/ShareButton'
 
 // ─── /account (Block 6A) ──────────────────────────────────────────────────────
 // Behind the header's Account button: identity · ranch settings · crew and
@@ -81,6 +82,17 @@ export default async function AccountPage() {
 
         {/* Block 11 (11.4) — the feedback pill floated over content on every
             screen. It lives here now, in the flow, where it covers nothing. */}
+        {/* Block 11 (11.8) — Share left the identity bar, which repeated on
+            four surfaces. A signed-in person shares from here; the public
+            county page keeps its own, because that is the funnel. */}
+        <section className="mt-6" aria-labelledby="acct-share">
+          <h2 id="acct-share" className={`${EYEBROW} !text-ink`}>Share Dryline</h2>
+          <Card className="px-5 py-4">
+            <p className="font-dm-sans text-[16px] text-ink">Send a neighbour the county view — drought, the FSA estimate, and what the barns are paying.</p>
+            <div className="mt-3"><ShareButton surface="dashboard" /></div>
+          </Card>
+        </section>
+
         <section className="mt-6" aria-labelledby="acct-feedback">
           <h2 id="acct-feedback" className={`${EYEBROW} !text-ink`}>Feedback</h2>
           <Card className="px-5 py-4">
