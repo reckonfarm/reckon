@@ -613,11 +613,12 @@ async function main() {
     // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
     // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
     //  "since you last checked" news and break 2E's fixed sequence.)
-    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-    await page.waitForTimeout(800)
-    const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-    record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+    // 12.13: Today's Activity tab is gone; the Ranch hub's recent rows are where
+    // the owner sees the hand's entry named with its lot.
+    await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+    await page.locator('[data-audit="ranch-recent"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+    const ownerText = ((await page.locator('[data-audit="ranch-recent"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+    record('4A: the hand\'s feeding shows its lot name to the owner (on the Ranch hub)', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
     // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
     {
@@ -700,7 +701,7 @@ async function main() {
       await page.getByText('Name shown on your work entries').waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
       const nameHint = await page.getByText('Name shown on your work entries').count()
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
-      record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
+      record('6A/12.13: copy queue rendered — Jobs this season · Hay tabs (the Activity tab went in 12.13); Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
     }
 
     // ── Block 6 (6K): weather copy — no "County County"; the rainfall line says what it is; the Drought Monitor's two dates named apart ──
@@ -1388,12 +1389,9 @@ async function main() {
         await page.waitForTimeout(600)
         const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
         record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
-        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
-        const todayRows = await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', text: (a.textContent ?? '').replace(/\s+/g, ' ').trim(), marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))
-        const todayFour = todayRows.find(r => r.id === four.id), todayOrig = todayRows.filter(r => r.id === four.supersedes_event_id)
-        record('6B: Today\'s Activity tab — the effective feeding marked corrected, the replaced original absent', !!todayFour && /Fed 4 bales/.test(todayFour.text) && todayFour.marker === 'corrected' && todayOrig.length === 0, `rows ${todayRows.length} · the correction → ${todayFour ? `"${todayFour.text.slice(0, 40)}" ${todayFour.marker}` : 'MISSING'} · the original as a row: ${todayOrig.length}`)
+        // Block 12 (12.13): Today's Activity tab is gone — its rows were a subset of
+        // the record. The same assertion stands on the Ranch hub above and on the
+        // record below; a third copy on a surface that no longer exists is not evidence.
         await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
         const history = await readList(page, '[data-audit="activity-list"]')
         const hSix = history.find(r => r.id === four.supersedes_event_id), hFour = history.find(r => r.id === four.id)
@@ -1458,11 +1456,8 @@ async function main() {
         record('6B-2: the voided feeding stands on the place timeline — marked voided, greyed, what it voided one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /voided/.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
         await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
         const hub = (await readRows('[data-audit="ranch-recent"]')).find(r => r.id === voidId)
-        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
-        const today = (await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
-        record('6B-2: the Ranch hub and Today\'s Activity tab keep the void, marked the same way — never hidden', !!hub && hub.marker === 'voided' && !!today && today.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'} · today ${today?.marker ?? 'MISSING'}`)
+        // 12.13: Today's Activity tab is gone; the hub is the surface that keeps the void in view.
+        record('6B-2: the Ranch hub keeps the void, marked — never hidden', !!hub && hub.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'}`)
         record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
     }
@@ -1629,7 +1624,7 @@ async function main() {
       // not part of the news card itself must sort above it.
       const below = order.slice(hookAt + 1).filter(a => a && !a.startsWith('news-'))
       // And the ledger strip — hay — must be above it, positively.
-      const hayAt = order.findIndex(a => a === 'hay-details' || a === 'logged-row' || a === 'whole-record')
+      const hayAt = order.findIndex(a => a === 'hay-details')   // 12.13: logged-row / whole-record no longer exist
       record(`7B.1 (${width}): headlines are on Today, last, below hay`,
         hookAt >= 0 && below.length === 0 && hayAt >= 0 && hayAt < hookAt,
         hookAt < 0 ? 'news-hook ABSENT from Today' : `position ${hookAt + 1} of ${order.length} · ledger at ${hayAt + 1} · below it: ${below.join(', ') || 'nothing'}`)
