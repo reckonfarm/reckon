@@ -21,21 +21,22 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 // empty line for that tab instead of a blank panel. Until a body has
 // streamed in, the tab shows its Suspense fallback — never blank either.
 
-export type LedgerTab = 'season' | 'hay' | 'logged'
+// Block 12 (12.13): 'logged' is gone. Today had three activity surfaces — this
+// tab's three rows were a subset of "Recorded since you checked" or of the
+// record — and three lists is why it read busy. Two tabs also helps 320px.
+export type LedgerTab = 'season' | 'hay'
 
-const TABS: LedgerTab[] = ['season', 'hay', 'logged']
+const TABS: LedgerTab[] = ['season', 'hay']
 
 const LABELS: Record<LedgerTab, string> = {
   season: 'Jobs this season',
   hay: 'Hay',
-  logged: 'Activity',
 }
 
 // Plain-spoken, and each says what would fill it.
 const EMPTY: Record<LedgerTab, ReactNode> = {
   season: <>No jobs recorded this season. Your manual entries are in <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</>,
   hay: 'No hay logged this season yet. Log a count of the stack, bales stacked, or hay fed.',
-  logged: 'Nothing logged yet. Log it is right above.',
 }
 
 interface LedgerCtx { report: (tab: LedgerTab, empty: boolean) => void }
@@ -56,13 +57,13 @@ export function LedgerLoading() {
   return <p className="px-1 py-3 font-dm-sans text-[16px] text-ink">Adding it up…</p>
 }
 
-export default function LedgerTabs({ season, hay, logged }: Record<LedgerTab, ReactNode>) {
+export default function LedgerTabs({ season, hay }: Record<LedgerTab, ReactNode>) {
   const [active, setActive] = useState<LedgerTab>('hay')   // Block 5E: hay on hand and runway is what Today shows first
   const [empty, setEmpty] = useState<Partial<Record<LedgerTab, boolean>>>({})
   const report = useCallback((tab: LedgerTab, e: boolean) => {
     setEmpty(prev => (prev[tab] === e ? prev : { ...prev, [tab]: e }))
   }, [])
-  const bodies: Record<LedgerTab, ReactNode> = { season, hay, logged }
+  const bodies: Record<LedgerTab, ReactNode> = { season, hay }
 
   return (
     <Ctx.Provider value={{ report }}>

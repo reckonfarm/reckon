@@ -46,7 +46,6 @@ import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/pro
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
-import RecentlyLogged from './components/RecentlyLogged'
 import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
@@ -480,7 +479,6 @@ export async function DashboardShell({
             <LedgerTabs
               season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
               hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
-              logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
             />
           </div>
         )}
@@ -717,7 +715,6 @@ export async function DashboardShell({
                         <LedgerTabs
                           season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
                           hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
-                          logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
                         />
                       </>
                     )}
