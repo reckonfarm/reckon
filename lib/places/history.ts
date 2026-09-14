@@ -4,6 +4,7 @@ import { lotLabel, type Lot } from '@/lib/herd'
 import { getRanchLots } from '@/lib/herd-lots'
 import { placeEntryCounts } from '@/lib/activity'
 import { effective } from '@/lib/ledger-effective'
+import { liveOnly } from '@/lib/trash'
 
 // ─── A place's practical memory (Block 2F) ────────────────────────────────────
 // "When did we last…" at one place, answered from the ledger: the most recent
@@ -23,9 +24,12 @@ export interface PlaceMemory {
 }
 
 export interface PlaceHistory {
-  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null; updated_at: string; updated_by: string | null; retired_at: string | null } | null
+  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null; updated_at: string; updated_by: string | null; retired_at: string | null; parent_id: string | null } | null
   memory: PlaceMemory[]           // present kinds only, most recent first
   counts: { entries: number; sinceIso: string | null }
+  /** Block 7A: the place this one sits inside (live only), and the live places inside it. */
+  parent: { id: string; name: string; kind: string } | null
+  children: { id: string; name: string; kind: string }[]
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
@@ -41,11 +45,11 @@ export function whenLabel(iso: string): string {
 interface Row { id: string; type: string; ts: string; device_id: string | null; payload: Record<string, unknown> | null }
 
 export async function getPlaceHistory(supabase: SupabaseClient, placeId: string): Promise<PlaceHistory> {
-  const empty: PlaceHistory = { place: null, memory: [], counts: { entries: 0, sinceIso: null } }
+  const empty: PlaceHistory = { place: null, memory: [], counts: { entries: 0, sinceIso: null }, parent: null, children: [] }
   try {
     // Tolerant read (040's precedent): `acres` does not exist before migration
     // 056, and asking for it would fail the select and 404 the whole page.
-    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres, updated_at, updated_by, retired_at').eq('id', placeId).maybeSingle()
+    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres, updated_at, updated_by, retired_at, parent_id').eq('id', placeId).maybeSingle()
     const place = withAcres.error
       ? (await supabase.from('places').select('id, name, kind, created_at, geometry').eq('id', placeId).maybeSingle()).data
       : withAcres.data
@@ -53,14 +57,25 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
 
     // Manual lines that name this place (as where, or as the move's endpoints).
     // 7D: skip the deleted filter on a database without 061 (temporary).
-    const [here, from, to, devices, herd] = await Promise.all([
+    // Block 7A: the hierarchy around this place. Parent only when it is live
+    // (a retired or trashed parent is not a link anyone can use); children
+    // likewise. Both on the caller's client, so RLS is the scope.
+    const parentId = (place as { parent_id?: unknown }).parent_id
+    const [here, from, to, devices, herd, parentRes, childRes] = await Promise.all([
       // Block 5B: the "last …" answers are what currently STANDS (through the chain).
       effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('payload->>source', 'manual').eq('payload->>place_id', placeId)).order('ts', { ascending: false }).limit(400),
       effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>from_place_id', placeId)).order('ts', { ascending: false }).limit(5),
       effective(supabase.from('events').select('id, type, ts, device_id, payload').eq('type', 'cattle_moved').eq('payload->>to_place_id', placeId)).order('ts', { ascending: false }).limit(5),
       supabase.from('devices').select('id, name, type').eq('place_id', placeId),
       getRanchLots(supabase),
+      typeof parentId === 'string' && parentId
+        ? liveOnly(supabase.from('places').select('id, name, kind, retired_at').eq('id', parentId)).maybeSingle()
+        : Promise.resolve({ data: null }),
+      liveOnly(supabase.from('places').select('id, name, kind').eq('parent_id', placeId).is('retired_at', null)).order('name', { ascending: true }),
     ])
+    const parentRow = (parentRes as { data: { id: string; name: string; kind: string; retired_at: string | null } | null }).data
+    const parent = parentRow && !parentRow.retired_at ? { id: parentRow.id, name: parentRow.name, kind: parentRow.kind } : null
+    const children = ((childRes as { data: { id: string; name: string; kind: string }[] | null }).data ?? [])
     const rows = new Map<string, Row>()
     for (const r of [...(here.data ?? []), ...(from.data ?? []), ...(to.data ?? [])] as Row[]) rows.set(r.id, r)
     const all = [...rows.values()].sort((a, b) => b.ts.localeCompare(a.ts))
@@ -101,9 +116,11 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
     }
     memory.sort((a, b) => b.ts.localeCompare(a.ts))
     return {
-      place: { acres: null, updated_by: null, retired_at: null, ...place } as PlaceHistory['place'],
+      place: { acres: null, updated_by: null, retired_at: null, parent_id: null, ...place } as PlaceHistory['place'],
       memory,
       counts: await placeEntryCounts(supabase, placeId),   // Block 5A: exact, same predicate as /activity?place=
+      parent,
+      children,
     }
   } catch {
     return empty

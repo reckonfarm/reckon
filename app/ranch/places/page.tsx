@@ -5,7 +5,7 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { privateTitle } from '@/lib/private-title'
-import { placeRows } from '@/lib/places/rows'
+import { placeRows, placeTree, childrenSummary, type PlaceNode } from '@/lib/places/rows'
 import { resolveMapCentre } from '@/lib/places/anchor'
 import { fmtAcres } from '@/lib/places/geo'
 import { kindLabel } from '@/lib/places/kinds'
@@ -37,6 +37,7 @@ export default async function PlacesPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/places')
   const { live, retired } = await placeRows(supabase)
+  const tree = placeTree(live)
   const drawn = live.filter(r => r.ring)
   const centre = await resolveMapCentre(supabase, user.id, drawn.map(r => r.ring!))
   const undrawn = live.length - drawn.length
@@ -74,27 +75,31 @@ export default async function PlacesPage() {
             <p className="font-dm-sans text-[17px] text-ink">No places named yet. Draw one on the map, or record work and name the place in the same entry — it is created with it.</p>
           </Card>
         ) : (
-          <Card className="mt-4 p-0">
-            <ul className="divide-y divide-rule" data-audit="place-rows">
-              {live.map(p => (
-                <li key={p.id}>
-                  {/* Block 12 (12.3): hold the row for Open · Edit · Delete; the place page opens on the mode asked for. */}
-                  <RowActions links={{ openHref: `/ranch/places/${p.id}`, editHref: `/ranch/places/${p.id}#edit`, deleteHref: `/ranch/places/${p.id}#delete`, label: p.name }}>
-                  <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-row">
-                    <span className="min-w-0">
-                      <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
-                      <span className="block font-dm-sans text-[15px] text-secondary-ink">
-                        {p.lastWork ? <span data-audit="place-last-work">Last recorded work: {isManualEventType(p.lastWork.type) ? MANUAL_EVENT_LABELS[p.lastWork.type].toLowerCase() : p.lastWork.type}, {fmtDay(p.lastWork.ts)}</span> : <span>Nothing recorded here yet</span>}
-                        {p.lastRain && <span data-audit="place-last-rain"> · Last recorded rain: {p.lastRain.inches.toFixed(2)}&quot;, {fmtDay(p.lastRain.ts)}</span>}
-                      </span>
-                    </span>
-                    <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
-                  </Link>
-                  </RowActions>
-                </li>
-              ))}
-            </ul>
-          </Card>
+          <>
+            {/* Block 7A — THE HIERARCHY. Pastures (and anything else that holds
+                places) at the top, each with what sits inside it nested under
+                it; everything that stands on its own in Unplaced, at the
+                bottom. Never hidden: a place whose parent is not on this list
+                renders at the top level (lib/places/rows.ts placeTree). */}
+            {tree.top.length > 0 && (
+              <Card className="mt-4 p-0" data-audit="places-grouped">
+                <ul className="divide-y divide-rule" data-audit="place-rows">
+                  {tree.top.map(n => <PlaceBranch key={n.id} node={n} />)}
+                </ul>
+              </Card>
+            )}
+            {tree.unplaced.length > 0 && (
+              <section className="mt-4" aria-labelledby="places-unplaced">
+                <h2 id="places-unplaced" className={`${EYEBROW} !text-ink`}>Unplaced</h2>
+                <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">Not inside any pasture or field. Open one to put it somewhere.</p>
+                <Card className="mt-2 p-0">
+                  <ul className="divide-y divide-rule" data-audit={tree.top.length === 0 ? 'place-rows' : 'place-rows-unplaced'}>
+                    {tree.unplaced.map(n => <PlaceBranch key={n.id} node={n} />)}
+                  </ul>
+                </Card>
+              </section>
+            )}
+          </>
         )}
 
         {/* Retired places are OFF the live list but never out of reach — the
@@ -131,7 +136,7 @@ export default async function PlacesPage() {
               row, so nothing downstream can tell them apart except by reading
               provenance, which is why provenance is recorded. */}
           <div id="capture" />
-          <CapturePlace />
+          <CapturePlace initialCenter={centre} otherShapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))} />
           <DrawPlace
             initialCenter={centre}
             otherShapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))}
@@ -140,5 +145,35 @@ export default async function PlacesPage() {
         </div>
       </main>
     </>
+  )
+}
+
+// One row, and the rows inside it. Depth is shown by indent and a "·" lead,
+// not by hiding anything: every place is one tap away at every depth.
+function PlaceBranch({ node }: { node: PlaceNode }) {
+  const p = node
+  const inside = childrenSummary(p.children, kindLabel)
+  return (
+    <li data-audit="place-branch" data-depth={p.depth} data-kind={p.kind}>
+      {/* Block 12 (12.3): hold the row for Open · Edit · Delete; the place page opens on the mode asked for. */}
+      <RowActions links={{ openHref: `/ranch/places/${p.id}`, editHref: `/ranch/places/${p.id}#edit`, deleteHref: `/ranch/places/${p.id}#delete`, label: p.name }}>
+      <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" style={{ paddingLeft: `${1 + Math.min(p.depth, 4) * 1.25}rem` }} data-audit="place-row" data-id={p.id}>
+        <span className="min-w-0">
+          <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.depth > 0 && <span aria-hidden className="mr-1 text-secondary-ink">·</span>}{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
+          <span className="block font-dm-sans text-[15px] text-secondary-ink">
+            {inside && <span data-audit="place-children">{inside[0].toUpperCase() + inside.slice(1)} · </span>}
+            {p.lastWork ? <span data-audit="place-last-work">Last recorded work: {isManualEventType(p.lastWork.type) ? MANUAL_EVENT_LABELS[p.lastWork.type].toLowerCase() : p.lastWork.type}, {fmtDay(p.lastWork.ts)}</span> : <span>Nothing recorded here yet</span>}
+            {p.lastRain && <span data-audit="place-last-rain"> · Last recorded rain: {p.lastRain.inches.toFixed(2)}&quot;, {fmtDay(p.lastRain.ts)}</span>}
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+      </Link>
+      </RowActions>
+      {p.children.length > 0 && (
+        <ul className="divide-y divide-rule border-t border-rule" data-audit="place-children-rows">
+          {p.children.map(c => <PlaceBranch key={c.id} node={c} />)}
+        </ul>
+      )}
+    </li>
   )
 }

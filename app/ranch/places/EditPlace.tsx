@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
-import { PLACE_KINDS, MAX_NAME } from '@/lib/places/kinds'
+import { PLACE_KINDS, MAX_NAME, allowedParentKinds, kindLabel, parentRule } from '@/lib/places/kinds'
 import { warning } from '@/lib/brand-colors'
 
 // ─── Correcting a place (057) ─────────────────────────────────────────────────
@@ -37,7 +37,12 @@ export interface EditablePlace {
   kind: string
   updatedAt: string
   retiredAt: string | null
+  /** Block 7A: the live parent, if any. */
+  parentId: string | null
+  parentName: string | null
 }
+
+interface PlaceOption { id: string; name: string; kind: string }
 
 type Mode = 'idle' | 'editing' | 'confirmRetire' | 'confirmDelete' | 'referenced'
 
@@ -56,6 +61,26 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   }, [])
   const [name, setName] = useState(place.name)
   const [kind, setKind] = useState(place.kind)
+  // Block 7A: the parent. Candidates are the ranch's live places, loaded when
+  // the form opens, filtered by the kind table for the kind being chosen —
+  // change the kind and the parent row changes with it. This place and the
+  // places inside it are never offered (a loop the route and 068 would refuse
+  // anyway; better not to offer the chip).
+  const [parentId, setParentId] = useState<string | null>(place.parentId)
+  const [options, setOptions] = useState<PlaceOption[] | null>(null)
+  useEffect(() => {
+    if (mode !== 'editing' || options !== null) return
+    let alive = true
+    fetch('/api/places').then(r => (r.ok ? r.json() : { places: [] })).then(j => { if (alive) setOptions(((j.places ?? []) as PlaceOption[]).filter(p => p.id !== place.id)) }).catch(() => { if (alive) setOptions([]) })
+    return () => { alive = false }
+  }, [mode, options, place.id])
+  const allowed = allowedParentKinds(kind)
+  const parentOptions = (options ?? []).filter(p => allowed.includes(p.kind))
+  // DERIVED: a parent the current kind cannot sit inside reads as none. The
+  // chip is off the row, so the value is not read — never synced by an effect.
+  const effectiveParent: string | null = options === null
+    ? parentId
+    : parentOptions.some(p => p.id === parentId) ? parentId : null
   const [expected, setExpected] = useState(place.updatedAt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -240,19 +265,39 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
         </div>
         <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{PLACE_KINDS.find(k => k.value === kind)?.hint ?? ' '}</p>
 
+        {/* Block 7A: inside what. No row for a kind that is never inside
+            anything, and none while the candidates are still loading — a
+            control that cannot yet say anything true is not shown. */}
+        {allowed.length > 0 && options !== null && (parentOptions.length > 0 || effectiveParent) && (
+          <>
+            <p className="mt-4 font-dm-sans text-[14px] font-medium text-secondary-ink" id="edit-place-parent-label">Inside</p>
+            <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="edit-place-parent-label" data-audit="place-edit-parent">
+              <button type="button" role="radio" aria-checked={effectiveParent === null} onClick={() => setParentId(null)} className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${effectiveParent === null ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="place-edit-parent-none">
+                None
+              </button>
+              {parentOptions.map(p => (
+                <button key={p.id} type="button" role="radio" aria-checked={effectiveParent === p.id} onClick={() => setParentId(p.id)} className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${effectiveParent === p.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="place-edit-parent-option" data-kind={p.kind}>
+                  {p.name} <span className="font-normal opacity-80">· {kindLabel(p.kind).toLowerCase()}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{parentRule(kind)}</p>
+          </>
+        )}
+
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold leading-snug" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={busy || !name.trim()}
-            onClick={() => send({ name: name.trim(), kind, expected_updated_at: expected })}
+            onClick={() => send({ name: name.trim(), kind, ...(effectiveParent !== place.parentId ? { parent_id: effectiveParent } : {}), expected_updated_at: expected })}
             className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
             data-audit="place-edit-save"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" disabled={busy} onClick={() => { setName(place.name); setKind(place.kind); setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-edit-cancel">
+          <button type="button" disabled={busy} onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-edit-cancel">
             Cancel
           </button>
         </div>
@@ -276,11 +321,11 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   return (
     <button
       type="button"
-      onClick={() => { setName(place.name); setKind(place.kind); setError(null); setMode('editing') }}
+      onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setError(null); setMode('editing') }}
       className="mt-3 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2"
       data-audit="place-edit-open"
     >
-      Edit name or kind
+      Edit name, kind or where it sits
     </button>
   )
 }
