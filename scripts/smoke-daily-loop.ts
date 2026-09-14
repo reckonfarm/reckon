@@ -2096,6 +2096,11 @@ async function main() {
 
       await take.click().catch(() => {})
       await page.locator('[data-audit="capture-name"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      // The candidates load once, on mount; on a slow server they can still be
+      // in flight when the name step opens (the third local run counted zero
+      // chips and then clicked one a moment later). Wait for the row before
+      // reading it — the check is about WHICH chips, not how fast.
+      await page.locator('[data-audit="capture-parent-option"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
       const kinds = (sel: string) => page.locator(`[data-audit="capture-parent-option"]${sel}`).count()
       // Default kind is field: only pastures may hold one, so the stackyard
       // seeded at the top of this run must NOT be offered.
