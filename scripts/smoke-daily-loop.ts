@@ -2140,7 +2140,15 @@ async function main() {
       // stackyard, and every live place is on the page exactly once.
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="place-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const nested = await page.locator(`li[data-audit="place-branch"][data-depth="0"] a[data-id="${placeId}"] ~ ul li[data-audit="place-branch"][data-depth="1"] a[data-id="${newId}"]`).count()
+      // Nesting is read from the DOM's own containment, not a sibling
+      // selector: the row link sits inside RowActions' wrapper, so the
+      // children <ul> is a sibling of the wrapper, never of the link.
+      const nested = await page.evaluate(([childId, parentId]: string[]) => {
+        const link = document.querySelector(`a[data-audit="place-row"][data-id="${childId}"]`)
+        const li = link?.closest('li[data-audit="place-branch"]')
+        const up = li?.parentElement?.closest('li[data-audit="place-branch"]')
+        return li?.getAttribute('data-depth') === '1' && up?.getAttribute('data-depth') === '0' && !!up.querySelector(`a[data-audit="place-row"][data-id="${parentId}"]`) ? 1 : 0
+      }, [newId, placeId])
       const { data: liveRows } = await admin.from('places').select('id').eq('ranch_id', ranchId).is('retired_at', null).is('deleted_at', null)
       const liveIds = ((liveRows ?? []) as { id: string }[]).map(r => r.id)
       const onPage = await page.evaluate(() => Array.from(document.querySelectorAll('[data-audit="place-row"]')).map(a => a.getAttribute('data-id')))
