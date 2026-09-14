@@ -73,6 +73,16 @@ function subscribeLaunchers(l: () => void) { launcherListeners.add(l); return ()
 export function useLauncherMounted(): boolean {
   return useSyncExternalStore(subscribeLaunchers, () => launchers > 0, () => false)
 }
+// Block 7A: a surface with its own save strip (the capture card's answer, with
+// a tappable link) registers here while mounted, so the global strip — which
+// takes no taps — stands down instead of showing the same receipt twice.
+export function useOwnSaveStrip(active: boolean): void {
+  useEffect(() => {
+    if (!active) return
+    launchers++; for (const l of launcherListeners) l()
+    return () => { launchers--; for (const l of launcherListeners) l() }
+  }, [active])
+}
 function useHasDraft(): boolean {
   return useSyncExternalStore(subscribeDraft, () => !!readDraft()?.type, () => false)
 }

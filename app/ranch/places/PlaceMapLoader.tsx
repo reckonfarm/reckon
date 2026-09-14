@@ -24,11 +24,27 @@ export interface MapShape {
   draft?: boolean
 }
 
+/**
+ * Block 7A — a dropped point on the map. `fix` and `accuracyM` are what the
+ * phone said and never move; `position` is where the pin is, which starts at
+ * the fix and moves only if the person drags it. The map reports a drag and
+ * writes nothing.
+ */
+export interface MapPin {
+  fix: LatLng
+  accuracyM: number
+  position: LatLng
+  /** Absent = the pin is shown but not draggable (the live fix, before the drop). */
+  onMove?: (p: LatLng) => void
+}
+
 export interface PlaceMapProps {
   shapes: MapShape[]
   /** Where to open when there is nothing drawn to fit to. */
   initialCenter: LatLng
   height?: number
+  /** Pin mode: the map opens on the pin, follow is off, and the pin is the subject. */
+  pin?: MapPin
   /** Draw mode: corner placement on, follow off, toolbar visible. */
   drawing?: boolean
   /** A validated, closed ring the operator accepted. The map never writes. */

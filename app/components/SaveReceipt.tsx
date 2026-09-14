@@ -13,10 +13,12 @@ export interface SaveReceiptProps {
   lines?: string[]             // what it meant, in order
   eventId?: string | null      // the exact entry; omitted when the receipt IS the entry's page
   eventLabel?: string          // link words, default "Open this entry"
+  href?: string | null         // Block 7A: where the link goes when the thing saved is not an entry (a place)
   tone?: 'plain' | 'strip'     // strip = inside the status strip (no own box)
 }
 
-export default function SaveReceipt({ headline, label, lines = [], eventId, eventLabel = 'Open this entry', tone = 'plain' }: SaveReceiptProps) {
+export default function SaveReceipt({ headline, label, lines = [], eventId, eventLabel = 'Open this entry', href, tone = 'plain' }: SaveReceiptProps) {
+  const to = href ?? (eventId ? `/ranch/activity/${eventId}` : null)
   const box = tone === 'plain' ? 'rounded-lg bg-forest-green/[0.06] px-4 py-3' : ''
   return (
     <div className={`font-dm-sans ${box}`} data-audit="save-receipt">
@@ -41,8 +43,8 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
           )}
         </div>
       )}
-      {eventId && (
-        <Link href={`/ranch/activity/${eventId}`} className="mt-2 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
+      {to && (
+        <Link href={to} className="mt-2 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
           {eventLabel} →
         </Link>
       )}
