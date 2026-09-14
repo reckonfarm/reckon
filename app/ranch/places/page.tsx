@@ -16,6 +16,7 @@ import Disclosure from '@/app/components/ui/Disclosure'
 import DrawPlace from './DrawPlace'
 import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
+import RowActions from '@/app/components/RowActions'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
 // The list first. Each row: name, type, acreage if the ground is drawn, last
@@ -46,6 +47,13 @@ export default async function PlacesPage() {
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>Ranch · Places</p>
         <h1 className="mt-1 type-page-heading text-ink">Places</h1>
+        {/* Block 12 (12.7): Devices fold under Ground — a device is AT a place and
+            has no life of its own — so the way to them is from here, not from
+            the hub. The 6J rule: every surface reachable from where a person
+            would look, not just reachable by URL. */}
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
+          Where things happen. Connected machines and loggers are under <Link href="/ranch/devices" className="font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices</Link>.
+        </p>
 
         {drawn.length > 0 && (
           <div className="mt-4" data-audit="places-map">
@@ -70,6 +78,8 @@ export default async function PlacesPage() {
             <ul className="divide-y divide-rule" data-audit="place-rows">
               {live.map(p => (
                 <li key={p.id}>
+                  {/* Block 12 (12.3): hold the row for Open · Edit · Delete; the place page opens on the mode asked for. */}
+                  <RowActions links={{ openHref: `/ranch/places/${p.id}`, editHref: `/ranch/places/${p.id}#edit`, deleteHref: `/ranch/places/${p.id}#delete`, label: p.name }}>
                   <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-row">
                     <span className="min-w-0">
                       <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
@@ -80,6 +90,7 @@ export default async function PlacesPage() {
                     </span>
                     <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
                   </Link>
+                  </RowActions>
                 </li>
               ))}
             </ul>

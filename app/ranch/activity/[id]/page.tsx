@@ -80,11 +80,11 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           // Block 5C — the same receipt every save gets; this page IS the entry, so the link goes to the one it replaced.
           <div className="mt-3" data-audit="event-saved">
             <SaveReceipt
-              headline={isVoid ? 'Saved — entry voided' : 'Saved — entry corrected'}
+              headline={isVoid ? 'Saved — entry removed' : 'Saved — entry corrected'}
               label={isVoid ? 'The entry it voids is marked and no longer counts.' : 'This entry now stands; the one it corrects is marked and no longer counts.'}
               lines={receipt}
               eventId={original?.id ?? null}
-              eventLabel={isVoid ? 'Open the voided entry' : 'Open the entry it corrects'}
+              eventLabel={isVoid ? 'Open the removed entry' : 'Open the entry it corrects'}
             />
             <span hidden data-audit="event-consequence">{receipt.join(' · ')}</span>
           </div>
@@ -92,7 +92,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
         {replaced && (
           <Card className="mt-4 border-rust/40 p-4" data-audit="event-replaced">
-            <p className={EYEBROW}>{head.voided_at ? 'This entry was voided' : 'This entry was corrected'}</p>
+            <p className={EYEBROW}>{head.voided_at ? 'This entry was removed' : 'This entry was corrected'}</p>
             <p className="mt-1 font-dm-sans text-[17px] leading-snug text-ink">
               {head.voided_at ? 'It no longer counts. ' : <>Current: <Link href={`/ranch/activity/${head.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-current-link">{describeEvent(head, names)}</Link>. </>}
               Changed by {names.person(head.user_id)} on {fmtDay(head.ingested_at)} at {fmtTime(head.ingested_at)}{head.correction_reason?.trim() ? ` — ${head.correction_reason.trim()}` : ''}.

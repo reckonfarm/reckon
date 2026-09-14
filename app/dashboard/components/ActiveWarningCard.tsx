@@ -18,7 +18,16 @@ export default async function ActiveWarningCard({ dataPromise }: { dataPromise: 
         {alerts.map(a => (
           <Card key={a.id} shadow="none" className="border-l-4 border-rust px-5 py-3" data-audit="weather-warning-item">
             <p className="font-fraunces text-lg font-semibold leading-tight text-ink">{a.event}</p>
-            <p className="mt-0.5 font-dm-sans text-[16px] text-ink">{[a.severity, a.expires ? `until ${fmt(a.expires)}` : null, a.senderName].filter(Boolean).join(' · ')}</p>
+            {/* Block 11/12 (11.6): ONE end time, the hazard's. `expires` is the bulletin's
+                expiry and put a second, earlier "until" three lines above NWS's own
+                prose. `ends` is what a person means; `expires` only when NWS gave no
+                `ends`, and then it is named for what it is. Severity ("Moderate") is
+                NWS grading, not a fact anyone acts on — the event name and the text
+                carry the weight. */}
+            <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="warning-until">{[
+              a.ends ? `ends ${fmt(a.ends)}` : a.expires ? `this notice expires ${fmt(a.expires)}` : null,
+              a.senderName,
+            ].filter(Boolean).join(' · ')}</p>
             {a.headline && <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">{a.headline}</p>}
             <Disclosure title="Full alert" audit={`warning-${a.id.slice(-8)}`} className="mt-2" summary="What it says and what to do">
               {a.description && <p className="whitespace-pre-line font-dm-sans text-[16px] leading-relaxed text-ink">{a.description}</p>}

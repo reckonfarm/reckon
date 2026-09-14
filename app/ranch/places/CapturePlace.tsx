@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
 import { PLACE_KINDS, MAX_NAME, DEFAULT_KIND } from '@/lib/places/kinds'
@@ -10,6 +10,7 @@ import {
   SETTLE_MAX_ACC_M,
 } from '@/lib/places/capture'
 import { useCapture } from './useCapture'
+import { Select } from '@/app/components/ui/Field'
 
 // ─── Capturing a place in the field (Block 8.1 · 8.2 · 8.3 · 8.4) ─────────────
 //
@@ -84,6 +85,16 @@ export default function CapturePlace() {
 
   async function beginDrop() { setMode('drop'); setOutcomeMsg(null); await cap.start() }
   async function beginRide() { setMode('ride'); setOutcomeMsg(null); await cap.start() }
+  // Block 12 (12.2): the Record pill's Ground group links straight to a way of
+  // marking a place — #capture-drop or #capture-ride start it; #capture (draw,
+  // or no preference) lands on the chooser. Read once, on mount; the hash is a
+  // request, not state.
+  useEffect(() => {
+    const h = typeof window !== 'undefined' ? window.location.hash : ''
+    if (h === '#capture-drop') void beginDrop()
+    else if (h === '#capture-ride') void beginRide()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function takePoint() {
     const avg = averagePosition(usable.slice(-8))
@@ -201,13 +212,18 @@ export default function CapturePlace() {
   if (mode === 'choose') {
     return (
       <Card className="mt-4 p-4 sm:p-5" data-audit="capture-choose">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">Record a place where you are standing</p>
+        <p className="font-dm-sans text-[17px] font-semibold text-ink">Add a place</p>
+        {/* Block 12 (12.12): what this makes, and what happens next, before the
+            two ways of making it. */}
+        <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">A named spot on your map. Pick how to mark it; you name it on the next screen.</p>
         <div className="mt-3 flex flex-col gap-2">
           <button type="button" onClick={() => void beginDrop()} className="min-h-[52px] rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream" data-audit="capture-drop-open">
             Drop a place here
+            <span className="block text-[14px] font-normal opacity-90">Marks the spot you are standing on</span>
           </button>
           <button type="button" onClick={() => void beginRide()} className="min-h-[52px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="capture-ride-open">
             Ride the perimeter
+            <span className="block text-[14px] font-normal text-secondary-ink">Draws the shape from your track as you go round</span>
           </button>
         </div>
         <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
@@ -302,9 +318,9 @@ export default function CapturePlace() {
       </label>
       <label className="mt-3 block font-dm-sans text-[16px] font-semibold text-ink">
         What is it
-        <select value={kind} onChange={e => setKind(e.target.value)} className="mt-1 min-h-[52px] w-full rounded-lg border border-control-border px-3 font-dm-sans text-[17px] text-ink" data-audit="capture-kind">
+        <Select value={kind} onChange={e => setKind(e.target.value)} className="mt-1 min-h-[52px] w-full rounded-lg border border-control-border px-3 font-dm-sans text-[17px] text-ink" data-audit="capture-kind">
           {PLACE_KINDS.map(k => <option key={k.value} value={k.value}>{k.label} — {k.hint}</option>)}
-        </select>
+        </Select>
       </label>
 
       {/* ONE VERDICT PER POLYGON. A save error means the server refused the

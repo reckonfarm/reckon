@@ -153,7 +153,11 @@ export async function deleteEvent(supabase: SupabaseClient, userId: string, id: 
   const db = createServiceClient()
 
   if (mode === 'hard') {
-    const { error } = await db.from('events').delete().eq('id', id)
+    // Block 12 (12.4): nothing a person deletes is gone at once. The hard path
+    // kept its test (own, unseen, no chain) because that is what decides whether
+    // the RECORD must keep a note — but the row itself goes to the trash like
+    // everything else, restorable for TRASH_DAYS, removed by purge_trash().
+    const { error } = await db.from('events').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', id).is('deleted_at', null)
     if (!error) return { ok: true, mode: 'hard', label }
     // The FK backstop. Nothing above should reach it, but if it does the
     // person gets the honest outcome rather than a database code: fall through

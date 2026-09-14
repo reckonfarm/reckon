@@ -38,7 +38,7 @@ export default async function AccountPage() {
         <p className="mt-1 break-words font-dm-sans text-[16px] text-secondary-ink" data-audit="account-email">{user.email}</p>
 
         <section className="mt-6" aria-labelledby="acct-identity">
-          <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>Identity</h2>
+          <h2 id="acct-identity" className={`${EYEBROW} !text-ink`}>You</h2>
           <ProfileForm />
         </section>
 
@@ -98,6 +98,16 @@ export default async function AccountPage() {
           <Card className="px-5 py-4">
             <p className="font-dm-sans text-[16px] text-ink">Tell me what is wrong with this thing, or what is missing. It comes straight to me.</p>
             <div className="mt-3"><FeedbackWidget /></div>
+          </Card>
+        </section>
+
+        {/* Block 12 (12.4) — the trash lives behind Account and is linked from
+            nowhere else. PK never sees it unless he goes looking. */}
+        <section className="mt-6" aria-labelledby="acct-trash">
+          <h2 id="acct-trash" className={`${EYEBROW} !text-ink`}>Trash</h2>
+          <Card className="px-5 py-4">
+            <p className="font-dm-sans text-[16px] text-ink">Deleted entries, places, bunches and devices wait seven days before they are gone for good.</p>
+            <Link href="/account/trash" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="account-trash">Open the trash →</Link>
           </Card>
         </section>
 

@@ -46,7 +46,6 @@ import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/pro
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
-import RecentlyLogged from './components/RecentlyLogged'
 import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
@@ -480,7 +479,6 @@ export async function DashboardShell({
             <LedgerTabs
               season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
               hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
-              logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
             />
           </div>
         )}
@@ -705,7 +703,9 @@ export async function DashboardShell({
                         <Link href="/ranch/places#capture" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="today-add-place">
                           <span className="min-w-0">
                             <span className="block font-dm-sans text-[17px] font-semibold text-ink">Add a place</span>
-                            <span className="block font-dm-sans text-[15px] text-secondary-ink">Drop a point where you are, or ride the perimeter.</span>
+                            {/* Block 12 (12.12): say what it makes and what happens after —
+                                a named spot on the map you can record work against. */}
+                            <span className="block font-dm-sans text-[15px] text-secondary-ink">Name a spot on your map — stand in it, ride around it, or draw it. Then feedings, rain and cattle can be recorded there.</span>
                           </span>
                           <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
                         </Link>
@@ -715,7 +715,6 @@ export async function DashboardShell({
                         <LedgerTabs
                           season={<Suspense fallback={<LedgerLoading />}><SeasonTotals heading={false} /></Suspense>}
                           hay={<Suspense fallback={<LedgerLoading />}><HayInventoryCard heading={false} /></Suspense>}
-                          logged={<Suspense fallback={<LedgerLoading />}><RecentlyLogged heading={false} /></Suspense>}
                         />
                       </>
                     )}

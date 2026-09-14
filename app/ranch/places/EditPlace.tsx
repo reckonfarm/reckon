@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
@@ -47,6 +47,13 @@ const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
 export default function EditPlace({ place }: { place: EditablePlace }) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('idle')
+  // Block 12 (12.3): a row held for Edit or Delete lands here with the mode
+  // in the hash, so the person is in the form, not on the page.
+  useEffect(() => {
+    const h = typeof window !== 'undefined' ? window.location.hash : ''
+    if (h === '#edit') setMode('editing')
+    else if (h === '#delete') setMode('confirmDelete')
+  }, [])
   const [name, setName] = useState(place.name)
   const [kind, setKind] = useState(place.kind)
   const [expected, setExpected] = useState(place.updatedAt)

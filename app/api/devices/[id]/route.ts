@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase'
 import { deviceReferences, deviceRefsSentence, planDeviceCascade, deviceCascadeSentence } from '@/lib/devices/references'
 import { applySplit } from '@/lib/cascade'
 import { resolveRanchId } from '@/lib/ranch-membership'
+import { trashRow } from '@/lib/trash'
 
 // ─── DELETE /api/devices/[id] (Block 7D.3) ───────────────────────────────────
 //
@@ -55,7 +56,9 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     if (!applied.ok) return NextResponse.json({ error: 'Those observations could not be deleted just now' }, { status: 500 })
   }
 
-  const { error } = await createServiceClient().from('devices').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: 'That device could not be deleted just now' }, { status: 500 })
-  return NextResponse.json({ deleted: true, device, ...(cascade ? { cascaded: true } : {}) })
+  // Block 12 (12.4): into the trash. Devices were the one thing still
+  // hard-deleted by a client action; they stop. Pre-065 fallback below.
+  const t = await trashRow(supabase, session.user.id, 'devices', id)
+  if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status })
+  return NextResponse.json({ deleted: true, trashed: true, device, ...(cascade ? { cascaded: true } : {}) })
 }

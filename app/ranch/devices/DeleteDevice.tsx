@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { warning } from '@/lib/brand-colors'
@@ -21,6 +21,10 @@ type Mode = 'idle' | 'confirm' | 'referenced'
 export default function DeleteDevice({ id, name }: { id: string; name: string }) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('idle')
+  // Block 12 (12.3): a device row held for Delete lands here with the confirm open.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === `#delete-${id}`) setMode('confirm')
+  }, [id])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refs, setRefs] = useState<string | null>(null)

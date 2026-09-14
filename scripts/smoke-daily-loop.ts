@@ -185,7 +185,7 @@ const rawSeen = () => ` [strip: ${lastWatch.map(t => JSON.stringify(t.slice(0, 6
 // Record on desktop (where this suite runs by default), the bar's on a phone.
 // One helper, so no check has to know which.
 function recordControl(page: Page) {
-  return page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first()
+  return page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first()
 }
 
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
@@ -403,7 +403,7 @@ async function main() {
       // is md:hidden, the header's Record is hidden on the narrow layout. Pick
       // by VISIBILITY, not DOM order: .first() on the pair silently chose the
       // hidden one and every assertion after it read a sheet that never opened.
-      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click()
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click()
       await page.locator('[data-audit="tile-hay_inventory"]').first().click()
       await page.waitForTimeout(1_200)
       // An empty number can never save as 0 — it is refused in the form now,
@@ -613,27 +613,25 @@ async function main() {
     // Block 4A — the hand's feeding keeps its lot name for the OWNER: A's Recently logged names the lot.
     // (After 2E on purpose: reloading A's page earlier would turn B's feeding into A's own
     //  "since you last checked" news and break 2E's fixed sequence.)
-    await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-    await page.waitForTimeout(800)
-    const ownerText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-    record('4A: the hand\'s feeding shows its lot name to the owner', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+    // 12.13: Today's Activity tab is gone; the Ranch hub's recent rows are where
+    // the owner sees the hand's entry named with its lot.
+    await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+    await page.locator('[data-audit="ranch-today"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+    const ownerText = ((await page.locator('[data-audit="ranch-today"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+    record('4A/12.8: the hand\'s feeding shows its lot name to the owner, in the hand\'s line under Today on the ranch', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
 
     // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
     {
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="ranch-sections"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      const numbers = await page.locator('[data-audit="section-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      const recentRows = await page.locator('[data-audit="ranch-recent"] li').count()
-      const { count: eventsOnRanch } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId)
-      // The fixture has one live lot with a head count and one place; it has no devices and its hay
-      // count IS a baseline, so on hand exists. No device number may render.
-      // 7B.2: the hub opens on TWO rows, not five, with the rest behind an
-      // in-place expander — so the count asserted here is 2 (or however few
-      // the ranch has), and the expander must be offered when there are more.
-      const wantRows = Math.min(2, eventsOnRanch ?? 0)
-      const expander = await page.locator('[data-audit="ranch-recent-more"]').count()
-      record('6A/7B.2: the hub opens on two recent rows with the rest one tap away, and shows only the numbers something stands behind (no devices → no device number)', recentRows === wantRows && expander === ((eventsOnRanch ?? 0) > wantRows ? 1 : 0) && numbers.some(n => /head$/.test(n)) && numbers.some(n => /on hand$/.test(n)) && numbers.some(n => /place/.test(n)) && !numbers.some(n => /device/.test(n)), `recent ${recentRows} of ${eventsOnRanch} · expander ${expander} · numbers [${numbers.join(' | ')}]`)
+      // Block 12 (12.7): three tiles, each with a number only where something
+      // stands behind it. This ranch has no devices, so Ground names places
+      // alone; Cattle names head; the record names today's entries.
+      await page.locator('[data-audit="ranch-tiles"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const tileLabels = await page.locator('[data-audit="ranch-tile"]').evaluateAll(els => els.map(e => (e.getAttribute('data-tile') ?? '')))
+      const numbers = await page.locator('[data-audit="tile-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      record('6A/12.7: Ranch is three things — Cattle · Ground · The record — and shows only the numbers something stands behind (no devices → no device number)',
+        tileLabels.join(',') === 'cattle,ground,record' && numbers.some(n => /head$/.test(n)) && !numbers.some(n => /device/.test(n)),
+        `tiles [${tileLabels.join(', ')}] · numbers [${numbers.join(' | ')}]`)
       // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
@@ -671,7 +669,8 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
-      const countApart = await page.locator('[data-audit="record-picker"]').innerText().then(t => /count · not a stock movement/i.test(t)).catch(() => false)   // the eyebrow is uppercased by CSS
+      // Block 12 (12.2): the picker reads Work · Count · Ground; Count hay sits under Count and keeps its hint.
+      const countApart = (await page.locator('[data-audit="picker-group-count"]').count()) === 1 && (await page.locator('[data-audit="picker-group-work"]').count()) === 1 && (await page.locator('[data-audit="picker-group-ground"]').count()) === 1
       await page.locator('[data-audit="tile-hay_fed"]').click()
       await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
@@ -681,7 +680,7 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A: the sheet offers verbs with Count apart; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+      record('6A/12.2: the sheet offers Work · Count · Ground, Count hay under Count; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     }
 
     // ── Block 6A (9): the copy queue, as rendered ──
@@ -700,7 +699,7 @@ async function main() {
       await page.getByText('Name shown on your work entries').waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
       const nameHint = await page.getByText('Name shown on your work entries').count()
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
-      record('6A: copy queue rendered — Jobs this season · Hay · Activity tabs; Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay | Activity' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
+      record('6A/12.13: copy queue rendered — Jobs this season · Hay tabs (the Activity tab went in 12.13); Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
     }
 
     // ── Block 6 (6K): weather copy — no "County County"; the rainfall line says what it is; the Drought Monitor's two dates named apart ──
@@ -805,7 +804,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
       await page.waitForTimeout(500)
-      const fab = page.locator('[data-audit="record-action"]')
+      const fab = page.locator('[data-audit="record-fab"]')
       const box = await fab.boundingBox().catch(() => null)
       const vp = page.viewportSize()!
       const inside = !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height
@@ -869,29 +868,18 @@ async function main() {
       const bar = page.locator('[data-audit="bottom-bar"]')
       await bar.waitFor({ timeout: 15_000 }).catch(() => {})
       const tabs = await page.locator('[data-audit="bottom-bar"] a').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      const rec = page.locator('[data-audit="record-action"]')
+      // Block 12 (12.1): the pill is back. Four destinations in the bar and
+      // nothing else; Record floats above it, clear of it, under the 11.4 rule
+      // that the overlap check enforces on every screen.
+      const rec = page.locator('[data-audit="record-fab"]')
+      await rec.waitFor({ timeout: 15_000 }).catch(() => {})
       const recCount = await rec.count()
-      const oldFab = await page.locator('[data-audit="record-fab"]').count()
-      record('6A/11.4: four labeled destinations and Record, all in the bar — and no floating pill left anywhere',
-        tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && oldFab === 0,
-        `tabs [${tabs.join(', ')}] · Record in bar ${recCount} · floating pill ${oldFab}`)
-
-      // 11.4 follow-on: the FAB lived inside the host that mounts only for a
-      // signed-in person, so signing out hid it for free. The bar is in the
-      // root layout and renders for everyone, so Record must be gated on a
-      // sheet actually existing — a button that does nothing is the same
-      // defect class as a button you cannot reach.
-      const anon = await ctx.browser()!.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
-      try {
-        const anonPage = await anon.newPage()
-        await anonPage.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await anonPage.waitForTimeout(2_500)
-        const anonBar = await anonPage.locator('[data-audit="bottom-bar"]').count()
-        const anonRecord = await anonPage.locator('[data-audit="record-action"]').count()
-        record('11.4: a signed-out visitor is not offered Record — the bar is there, the tap that would do nothing is not',
-          anonBar === 1 && anonRecord === 0, `bar ${anonBar} · Record offered ${anonRecord}`)
-        await anonPage.close()
-      } finally { await anon.close() }
+      const inBar = await page.locator('[data-audit="bottom-bar"] [data-audit="record-action"]').count()
+      const fabBox = await rec.boundingBox().catch(() => null)
+      const barBox = await bar.boundingBox().catch(() => null)
+      record('6A/12.1: four labeled destinations in the bar, and Record is the pill above it — clear of the bar, and not in it',
+        tabs.join(' ') === 'Today Ranch Markets Weather' && recCount === 1 && inBar === 0 && !!fabBox && !!barBox && fabBox.y + fabBox.height <= barBox.y,
+        `tabs [${tabs.join(', ')}] · pill ${recCount} · in bar ${inBar} · pill bottom ${fabBox ? Math.round(fabBox.y + fabBox.height) : 'none'} · bar top ${barBox ? Math.round(barBox.y) : 'none'}`)
 
       await rec.click()
       await page.getByRole('dialog').waitFor({ timeout: 10_000 }).catch(() => {})
@@ -1074,8 +1062,10 @@ async function main() {
       const { error: aErr } = jErr ? { error: null } : await admin.from('job_annotations').insert({ job_id: jobId, user_id: userId, ranch_id: ranchId, name: 'Baling', machine: 'baler', actual_bale_count: 32 })
       if (jErr || aErr) skip('6J: Work under Ranch', `fixture: ${(jErr ?? aErr)!.message.slice(0, 80)}`)
       else {
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        const workSection = (await page.locator('[data-audit="ranch-section"]').filter({ has: page.locator('span', { hasText: /^Work$/ }) }).first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+        // Block 12 (12.7): Work is no longer a hub section — machine sessions
+        // are the record's Machines filter (6J). The page still answers; the
+        // 6J reachability rule is held by the 12.7 check below.
+        const workSection = 'Work'
         await page.goto('/ranch/work', { waitUntil: 'domcontentloaded' })
         const row = page.locator('[data-audit="work-list"] > li').filter({ has: page.locator(`[data-id="${jobId}"]`) }).first()
         const rowLi = page.locator(`[data-audit="work-list"] > li[data-id="${jobId}"]`)
@@ -1083,7 +1073,7 @@ async function main() {
         const type = await d('type'), state = await d('state'), machine = await d('machine'), origin = await d('origin'), qty = await d('quantity'), when = await d('when')
         const stockRule = await page.locator('[data-audit="stock-rule"]').count()
         void row
-        record('6J: Ranch lists Work as a section with its session count, and the Work page answers type, time, machine, origin, quantity and state — with the stock rule stated', /Work/.test(workSection) && /1 session/.test(workSection) && type === 'Baling' && state === 'ended' && /Machine: baler/.test(machine) && /^Origin: /.test(origin) && /32 bales counted by hand/.test(qty) && /\d – \d|\d –|–/.test(when) && stockRule === 1, `section "${workSection.slice(0, 60)}" · ${type} · ${state} · ${machine} · ${origin} · ${qty} · ${when} · stock rule ${stockRule}`)
+        record('6J/12.7: the Work page answers type, time, machine, origin, quantity and state — with the stock rule stated', /Work/.test(workSection) && type === 'Baling' && state === 'ended' && /Machine: baler/.test(machine) && /^Origin: /.test(origin) && /32 bales counted by hand/.test(qty) && /\d – \d|\d –|–/.test(when) && stockRule === 1, `section "${workSection.slice(0, 60)}" · ${type} · ${state} · ${machine} · ${origin} · ${qty} · ${when} · stock rule ${stockRule}`)
         await page.goto('/ranch/work?kind=cutting', { waitUntil: 'domcontentloaded' })
         const cuttingEmpty = await page.locator('[data-audit="work-empty"]').count(), cuttingRows = await page.locator('[data-audit="work-row"]').count()
         await page.goto('/ranch/work?kind=baling', { waitUntil: 'domcontentloaded' })
@@ -1389,22 +1379,10 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
         record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        // 7B.2: the hub opens on two rows. Open it before reading — the invariant
-        // is about how a correction is marked WHEREVER it appears, so the whole
-        // list is the subject, not the first screenful. This reads more of the
-        // hub than the check ever did before, when it saw at most five rows.
-        await page.locator('[data-audit="ranch-recent-more"]').evaluate(el => el.scrollIntoView({ block: 'center' })).catch(() => {})
-        await page.locator('[data-audit="ranch-recent-more"]').click({ timeout: 5_000 }).catch(() => {})
-        await page.waitForTimeout(600)
-        const hubRows = operational(await readList(page, '[data-audit="ranch-recent"]'))
-        record('6B: the Ranch hub marks the same entry the same way — no replaced original as an ordinary row', hubRows.ok, hubRows.detail)
-        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
-        const todayRows = await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', text: (a.textContent ?? '').replace(/\s+/g, ' ').trim(), marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))
-        const todayFour = todayRows.find(r => r.id === four.id), todayOrig = todayRows.filter(r => r.id === four.supersedes_event_id)
-        record('6B: Today\'s Activity tab — the effective feeding marked corrected, the replaced original absent', !!todayFour && /Fed 4 bales/.test(todayFour.text) && todayFour.marker === 'corrected' && todayOrig.length === 0, `rows ${todayRows.length} · the correction → ${todayFour ? `"${todayFour.text.slice(0, 40)}" ${todayFour.marker}` : 'MISSING'} · the original as a row: ${todayOrig.length}`)
+        // Block 12 (12.8): the hub no longer lists rows; the record below is the surface.
+        // Block 12 (12.13): Today's Activity tab is gone — its rows were a subset of
+        // the record. The same assertion stands on the Ranch hub above and on the
+        // record below; a third copy on a surface that no longer exists is not evidence.
         await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
         const history = await readList(page, '[data-audit="activity-list"]')
         const hSix = history.find(r => r.id === four.supersedes_event_id), hFour = history.find(r => r.id === four.id)
@@ -1466,14 +1444,12 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         const pl = (await readRows('[data-audit="place-activity"]')).find(r => r.id === voidId)
         const plOrig = (await readRows('[data-audit="place-activity"]')).filter(r => r.id === v0.id)
-        record('6B-2: the voided feeding stands on the place timeline — marked voided, greyed, what it voided one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /voided/.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
-        await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-        const hub = (await readRows('[data-audit="ranch-recent"]')).find(r => r.id === voidId)
-        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await page.getByRole('tab', { name: 'Activity', exact: true }).click().catch(() => {})
-        await page.locator('[data-audit="logged-row"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
-        const today = (await page.locator('[data-audit="logged-row"]').evaluateAll(els => els.map(a => ({ id: a.closest('li')?.getAttribute('data-id') ?? '', marker: a.closest('li')?.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
-        record('6B-2: the Ranch hub and Today\'s Activity tab keep the void, marked the same way — never hidden', !!hub && hub.marker === 'voided' && !!today && today.marker === 'voided', `hub ${hub?.marker ?? 'MISSING'} · today ${today?.marker ?? 'MISSING'}`)
+        record('6B-2/12.5: the removed feeding stands on the place timeline — marked removed, greyed, what it removed one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /removed/i.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
+        // 12.8: the hub no longer lists rows; the record keeps the void in view.
+        await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+        await page.locator(`li[data-id="${voidId}"]`).first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        const hub = (await page.locator('li[data-id]').evaluateAll(els => els.map(li => ({ id: li.getAttribute('data-id') ?? '', marker: li.getAttribute('data-marker') ?? 'none' })))).find(r => r.id === voidId)
+        record('6B-2: the record keeps the void, marked — never hidden', !!hub && hub.marker === 'voided', `record ${hub?.marker ?? 'MISSING'}`)
         record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
     }
@@ -1487,132 +1463,50 @@ async function main() {
       const prior6d = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })   // the FAB is the phone's entry point (md:hidden)
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      const hayNumber = async () => parseInt(((await page.locator('[data-audit="ranch-section"]', { hasText: 'Hay' }).locator('[data-audit="section-number"]').innerText().catch(() => '')).match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
-      const beforeHay = await hayNumber()
-      const firstBefore = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+      // Block 12 (12.7/12.8): hay left the hub; the record tile counts today's
+      // entries and the person line says what was done. Both must follow a save
+      // made from this page, without navigating.
+      const entriesToday = async () => parseInt((((await page.locator('[data-audit="ranch-tile"][data-tile="record"] [data-audit="tile-number"]').textContent().catch(() => '')) ?? '').match(/(\d+)/) ?? ['', '0'])[1], 10)
+      const beforeHay = await entriesToday()
+      const firstBefore = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       await logFeed(page, 2)
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
       for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
       record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
-      for (let i = 0; i < 60 && afterHay !== beforeHay - 2; i++) { afterHay = await hayNumber(); firstAfter = (await page.locator('[data-audit="ranch-recent"] > li a').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (afterHay !== beforeHay - 2) await page.waitForTimeout(500) }
-      record('6D: without navigating, the hub\'s Hay number and its recent rows follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay - 2 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && /\/ranch$/.test(page.url().replace(/\?.*$/, '')), `hay ${beforeHay} → ${afterHay} · first row "${firstAfter.slice(0, 50)}" · ${page.url().replace(BASE, '')}`)
+      for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
+      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
       if (prior6d) await page.setViewportSize(prior6d)
     }
 
-    // ── Block 7B.2: the Ranch hub opens its recent rows in place ──────────
-    // Five rows and a navigation was the only way further down a list the page
-    // had already read. Two rows now, the rest revealed in place — and "in
-    // place" is the whole claim, so it is tested as one: no request, no URL
-    // change, the Sections list (and its Activity link) still on the page.
+    // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
+    // Did the hand do what I asked today; is there anything I have not looked
+    // at; can I get to everything that left the hub. Replaces the 7B.2 expander
+    // checks, which measured a surface PK ruled out of existence.
     {
-      const prior7b = page.viewportSize()
-      await page.setViewportSize({ width: 390, height: 844 })
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      // Drop the SYNCED receipt the 6D check above deliberately leaves up. It is
-      // pinned to the bottom of the viewport for 90 s and it is the previous
-      // check's state, not this one's subject — the same clean-up 7.4 needed
-      // when a restored half-typed sheet sat on top of the FAB. Only synced
-      // entries go: anything genuinely unsynced is real work and stays.
-      await page.evaluate((k: string) => {
-        try {
-          const raw = localStorage.getItem(k)
-          if (!raw) return
-          const kept = (JSON.parse(raw) as { state: string }[]).filter(i => i.state !== 'synced')
-          localStorage.setItem(k, JSON.stringify(kept))
-        } catch { /* no outbox, nothing to clear */ }
-      }, 'dryline_outbox_v1')
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1_500)
-      const liCount = () => page.locator('[data-audit="ranch-recent"] > li').count()
-      // This page has a fixed overlay at BOTH ends. The save receipt is pinned
-      // to the bottom for 90 s (RecordSheetHost, fadeAfterMs 90_000) and the 6D
-      // check immediately above deliberately leaves one up; the site header is
-      // sticky at the top. Playwright's own auto-scroll put the button under
-      // the receipt, and scrolling it to `start` put it under the header — two
-      // crashed runs, one for each end. `center` is the clear band between
-      // them, which is where a person reading the list has it anyway.
-      //
-      // The click is also no longer allowed to take the run down with it. A
-      // 30 s actionability timeout inside a 25-minute suite should be one red
-      // line naming what intercepted the tap, not an exception that discards
-      // every check after it.
-      const tapMore = async (): Promise<string | null> => {
-        const btn = page.locator('[data-audit="ranch-recent-more"]')
-        try {
-          await btn.evaluate(el => el.scrollIntoView({ block: 'center' }))
-          await page.waitForTimeout(200)
-          await btn.click({ timeout: 15_000 })
-          return null
-        } catch (e) {
-          // Say WHAT was on top, not just that the click timed out. Playwright
-          // names the interceptor in its call log, and elementFromPoint at the
-          // button's own centre says it independently — a bare "Timeout 15000ms
-          // exceeded" sent me guessing at overlays twice.
-          const msg = (e instanceof Error ? e.message : String(e)).split('\n')
-          const intercept = msg.find(l => l.includes('intercepts pointer events'))?.trim()
-          const onTop = await btn.evaluate(el => {
-            const r = el.getBoundingClientRect()
-            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-            if (!top) return 'nothing (off-screen)'
-            const a = top.closest('[data-audit]')?.getAttribute('data-audit')
-            return `${top.tagName.toLowerCase()}${a ? `[${a}]` : ''}`
-          }).catch(() => 'unreadable')
-          return `${msg[0]} · on top: ${onTop}${intercept ? ` · ${intercept.slice(0, 120)}` : ''}`
-        }
-      }
-      const shown = await liCount()
-      const label = ((await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
-      const promised = parseInt((label.match(/Show (\d+) more/) ?? ['', 'NaN'])[1], 10)
-      record('7B.2: the hub opens on two recent rows, and the expander says how many more there are',
-        shown === 2 && promised > 0,
-        `${shown} row(s) · "${label}"`)
-
-      // Count what the tap fetches. The rows are already on the page; an
-      // expander that goes back for them is a page load wearing a disclosure's
-      // clothes, and that is the thing being asserted.
-      //
-      // NOT every request counts, and the rule is about THIS page's data rather
-      // than a list of allowed paths. Revealing 26 rows puts 26 more <Link>s on
-      // screen and pushes the Sections list down, so Next prefetches whatever
-      // is near the viewport — measured, RSC requests for /ranch/activity/<id>
-      // (the rows' own detail pages) and /ranch/devices (a Sections link). Those
-      // are the framework preparing the NEXT tap, and they would happen on any
-      // page whose content grew.
-      //
-      // What must be zero is this page going back for its own content: a /ranch
-      // RSC refetch (which is also where a server action would land) or an API
-      // call. Two earlier versions of this check got the boundary wrong by
-      // naming paths — first "zero requests", then an allow-list of activity
-      // links — and each failed on a prefetch while proving nothing about the
-      // expander.
-      const fetched: string[] = []
-      let prefetches = 0
-      const countReq = (r: { url: () => string }) => {
-        const path = r.url().replace(BASE, '').split('?')[0]
-        const isOwnData = path === '/ranch' || path.startsWith('/api/')
-        if (isOwnData) fetched.push(path)
-        else prefetches++
-      }
-      page.on('request', countReq)
-      const urlBefore = page.url()
-      const tapErr = await tapMore()
-      await page.waitForTimeout(1_500)
-      page.off('request', countReq)
-      const opened = await liCount()
-      const sections = await page.locator('[data-audit="ranch-sections"]').count()
-      const activityLink = await page.locator('[data-audit="ranch-section"]', { hasText: 'Activity' }).count()
-      record('7B.2: the rest open in place — the rows are never refetched, no navigation, the Sections list and its Activity link untouched',
-        !tapErr && opened === shown + promised && fetched.length === 0 && page.url() === urlBefore && sections === 1 && activityLink === 1,
-        tapErr ? `the expander could not be tapped: ${tapErr}` : `${shown} → ${opened} row(s) (promised ${promised}) · ${fetched.length} data request(s)${fetched.length ? ` [${fetched.slice(0, 3).join(', ')}]` : ''} · ${prefetches} link prefetch(es) · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'} · sections ${sections} · Activity link ${activityLink}`)
-
-      const collapsed = await page.locator('[data-audit="ranch-recent-more"]').innerText().catch(() => '')
-      const closeErr = await tapMore()
-      await page.waitForTimeout(800)
-      record('7B.2: it closes again to two rows', !closeErr && (await liCount()) === 2 && /Show fewer/.test(collapsed),
-        closeErr ? `the expander could not be tapped: ${closeErr}` : `open label "${collapsed.replace(/\s+/g, ' ').trim()}" · back to ${await liCount()} row(s)`)
-      if (prior7b) await page.setViewportSize(prior7b)
+      await page.locator('[data-audit="ranch-today"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const persons = await page.locator('[data-audit="ranch-person"]').evaluateAll(els => els.map(e => ({ user: e.getAttribute('data-user') ?? '', text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })))
+      const handLine = persons.find(p => p.user === userIdB)
+      record('12.8: one line per person who recorded today — the hand\'s names what they did and when they last did it',
+        persons.length >= 1 && !!handLine && /Fed 1 bale/.test(handLine.text) && /last at \d/.test(handLine.text),
+        `${persons.length} person line(s) · hand: "${(handLine?.text ?? 'MISSING').slice(0, 80)}"`)
+      const since = await text('[data-audit="ranch-since"]')
+      const reviewed = await page.locator('[data-audit="ranch-since"] button').count()
+      record('12.8: the count since you last checked is on the hub with Reviewed beside it',
+        /\d+ entr(y|ies) since you last checked/.test(since) && reviewed === 1, `"${since.slice(0, 60)}" · Reviewed ${reviewed}`)
+      // The 6J reachability rule: everything that left the hub is still one tap
+      // from where a person would look for it.
+      const routes: string[] = []
+      for (const r of ['/ranch/hay', '/ranch/work', '/ranch/devices']) { const res = await page.request.get(r).catch(() => null); routes.push(`${r} → ${res ? res.status() : 'no response'}`) }
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      const devLink = await page.locator('[data-audit="places-devices-link"]').count()
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const machinesFilter = await page.locator('[data-audit="activity-machines-link"]').count()
+      record('12.7: what left the hub is still reachable from where a person would look — Devices from Ground, machine work from the record, every old route answering',
+        routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
     }
 
     // ── Block 7B.1: headlines last on Today, and only as expensive as shown ──
@@ -1640,7 +1534,7 @@ async function main() {
       // not part of the news card itself must sort above it.
       const below = order.slice(hookAt + 1).filter(a => a && !a.startsWith('news-'))
       // And the ledger strip — hay — must be above it, positively.
-      const hayAt = order.findIndex(a => a === 'hay-details' || a === 'logged-row' || a === 'whole-record')
+      const hayAt = order.findIndex(a => a === 'hay-details')   // 12.13: logged-row / whole-record no longer exist
       record(`7B.1 (${width}): headlines are on Today, last, below hay`,
         hookAt >= 0 && below.length === 0 && hayAt >= 0 && hayAt < hookAt,
         hookAt < 0 ? 'news-hook ABSENT from Today' : `position ${hookAt + 1} of ${order.length} · ledger at ${hayAt + 1} · below it: ${below.join(', ') || 'nothing'}`)
@@ -1857,7 +1751,7 @@ async function main() {
 
       // And it is in the record, in one line, like everything else.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="activity-day"], [data-audit="ranch-section"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="activity-day"], [data-audit="ranch-tile"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
       const record10 = ((await page.locator('body').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       record('10: the working is in the Activity record, naming what was counted and where they went',
         new RegExp(`Preg check[^.]*12 counted`).test(record10) && record10.includes(destName),
@@ -2050,8 +1944,8 @@ async function main() {
         const pad = parseFloat(getComputedStyle(document.body).paddingBottom || '0')
         return { bar: bar ? Math.round(bar.getBoundingClientRect().height) : 0, pad: Math.round(pad) }
       })
-      record(`11.4 (${width}): the page reserves the bar's own height, so nothing ends underneath it`,
-        room.bar > 0 && room.pad >= room.bar, `bar ${room.bar}px · body padding ${room.pad}px`)
+      record(`11.4/12.1 (${width}): the page reserves the bar AND the pill zone above it, so nothing ends underneath either`,
+        room.bar > 0 && room.pad >= room.bar + 56, `bar ${room.bar}px · body padding ${room.pad}px (needs ≥ bar + 56)`)
 
       if (prior) await page.setViewportSize(prior)
     }
@@ -2065,9 +1959,9 @@ async function main() {
       const inBar = await page.locator('[data-audit="record-action"]').count()
       const fab = await page.locator('[data-audit="record-fab"]').count()
       const launcher = await page.locator('[data-audit="finish-draft"]').count()
-      record('11.5: Today offers Record once — in the bar, with no pill and no second button beside it',
-        inBar === 1 && fab === 0 && launcher === 0,
-        `bar ${inBar} · pill ${fab} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
+      record('11.5/12.1: Today offers Record once — the pill, with nothing in the bar and no second button on the page',
+        fab === 1 && inBar === 0 && launcher === 0,
+        `pill ${fab} · in bar ${inBar} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
       if (prior) await page.setViewportSize(prior)
     }
 
@@ -2083,6 +1977,99 @@ async function main() {
           `[${labels.join(' | ')}]`)
         await admin.from('events').delete().eq('id', e0.id)
       }
+    }
+
+    // ── Block 12: the pill's groups, the gesture, the dropdowns, the copy, the trash ──
+    {
+      const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      const prior = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+
+      // 12.2 — the pill reads as what am I recording: Work · Count · Ground.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="record-fab"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.locator('[data-audit="record-fab"]').click().catch(() => {})
+      await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const groups = await Promise.all(['work', 'count', 'ground'].map(g => text(`[data-audit="picker-group-${g}"]`)))
+      const workTiles = await page.locator('[data-audit="record-picker"] [data-audit^="tile-"]:not([data-audit^="tile-place-"]):not([data-audit="tile-preg-check"])').count()
+      const groundLinks = await page.locator('[data-audit^="tile-place-"]').count()
+      const preg = await page.locator('[data-audit="tile-preg-check"]').count()
+      record('12.2: the pill opens Work · Count · Ground — six workings, Preg check under Count, three ways to mark ground',
+        groups.join('|') === 'Work|Count|Ground' && workTiles === 6 && preg === 1 && groundLinks === 3,
+        `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
+      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+
+      // 12.11 — every dropdown looks like one: a chevron beside every select.
+      let bare = 0, total = 0
+      for (const screen of ['/ranch/activity', '/ranch/preg-check', '/markets']) {
+        await page.goto(screen, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(1_200)
+        const r = await page.evaluate(() => {
+          const sels = [...document.querySelectorAll('select')]
+          const bareOnes = sels.filter(s => !(s.parentElement && s.parentElement.querySelector('svg') && getComputedStyle(s).appearance === 'none'))
+          return { total: sels.length, bare: bareOnes.length }
+        })
+        total += r.total; bare += r.bare
+      }
+      record('12.11: every select on Activity, Preg check and Markets draws its own chevron — none is bare platform text',
+        total > 0 && bare === 0, `${total} select(s) · ${bare} bare`)
+
+      // 12.12 — Add a place says what it makes and what happens next.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1_000)
+      const addCopy = (await page.locator('a[href="/ranch/places#capture"]').first().textContent().catch(() => '') ?? '').replace(/\s+/g, ' ')
+      record('12.12: "Add a place" says what it makes and what follows — a named spot, then work can be recorded there',
+        /Name a spot on your map/.test(addCopy) && /can be recorded there/.test(addCopy), `"${addCopy.slice(0, 120)}"`)
+
+      // 12.3 — hold a row: Open · Edit · Delete, and Edit lands IN the form.
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const row = page.locator('[data-audit="row-actions"]').first()
+      await row.waitFor({ timeout: 15_000 }).catch(() => {})
+      const box = await row.boundingBox().catch(() => null)
+      let sheetSeen = 0, editLanded = false
+      if (box) {
+        await page.mouse.move(box.x + 40, box.y + box.height / 2)
+        await page.mouse.down()
+        await page.waitForTimeout(750)
+        await page.mouse.up()
+        sheetSeen = await page.locator('[data-audit="row-actions-sheet"]').count()
+        if (sheetSeen) {
+          await page.locator('[data-audit="row-action-edit"]').click().catch(() => {})
+          await page.waitForURL(/\/ranch\/activity\/[0-9a-f-]{36}#correct/, { timeout: 15_000 }).catch(() => {})
+          await page.locator('[data-audit="correction-save"], [data-audit="correction-reason"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+          editLanded = (await page.locator('[data-audit="correction-reason"]').count()) > 0
+        }
+      }
+      record('12.3: holding a row offers Open · Edit · Delete, and Edit lands in the correction form — not on the page',
+        sheetSeen === 1 && editLanded, `sheet ${sheetSeen} · form open ${editLanded}`)
+
+      // 12.4 — delete a place → it is in the trash → Restore → it is back.
+      // Skips, saying so, until 065 is applied.
+      await page.goto('/account/trash', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="trash-off"], [data-audit="trash-empty"], [data-audit="trash-list"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+      if ((await page.locator('[data-audit="trash-off"]').count()) > 0) {
+        skip('12.4: a deleted place waits in the trash and Restore brings it back', 'migration 065 not applied on this database')
+      } else {
+        const { data: tp } = await admin.from('places').insert({ ranch_id: ranchId, user_id: userId, name: `${PREFIX} Trash test`, kind: 'field' }).select('id').single()
+        if (!tp) skip('12.4: a deleted place waits in the trash and Restore brings it back', 'could not seed a place')
+        else {
+          const del = await page.request.delete(`/api/places/${tp.id}`)
+          const dj = await del.json().catch(() => ({})) as { trashed?: boolean }
+          await page.goto('/account/trash', { waitUntil: 'domcontentloaded' })
+          await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).waitFor({ timeout: 15_000 }).catch(() => {})
+          const listed = await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).count()
+          const rowText = await text(`[data-audit="trash-row"][data-id="${tp.id}"]`)
+          await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"] [data-audit="trash-restore"]`).click().catch(() => {})
+          await page.waitForTimeout(2_000)
+          const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+          const restored = !!back && (back as { deleted_at: string | null }).deleted_at === null
+          record('12.4: a deleted place waits in the trash — named, dated, with the day it goes for good — and Restore brings it back',
+            del.ok() && dj.trashed === true && listed === 1 && /gone for good/.test(rowText) && restored,
+            `${del.status()} trashed=${dj.trashed} · listed ${listed} · "${rowText.slice(0, 70)}" · restored ${restored}`)
+          await admin.from('places').delete().eq('id', tp.id)
+        }
+      }
+      if (prior) await page.setViewportSize(prior)
     }
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
@@ -2103,7 +2090,7 @@ async function main() {
       // unsynced, and it says what each button does to them.
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
       await page.context().setOffline(true)
-      await page.locator('[data-audit="record-button"], [data-audit="record-action"]').locator('visible=true').first().click().catch(() => {})
+      await page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first().click().catch(() => {})
       await page.locator('[data-audit="tile-hay_fed"]').first().click().catch(() => {})
       await page.getByLabel('Hay fed').first().fill('3').catch(() => {})
       await page.locator('[data-audit="record-save"]').first().click().catch(() => {})

@@ -414,10 +414,18 @@ async function lotsChecks() {
     record('member D (hand)', 'same-lot edit with a stale updated_at → 409, the other edit stands', stale.status === 409 && still?.name === `${a.lotName}-renamed-by-A` && still?.head_count === 41, `${stale.status} ${String(stale.json.code ?? stale.json.error ?? '')} · "${still?.name}" ${still?.head_count}`)
     const fresh = await api(D, `/api/herd/lots/${a.lotId}`, { class: 'steers', name: `${a.lotName}-then-by-D`, head_count: 42, avg_weight: 550, weight_unit: 'lb', expected_updated_at: still?.updated_at ?? null }, 'PATCH')
     record('member D (hand)', 'the same edit with the CURRENT updated_at → 200 and the owner reads it', fresh.status === 200 && (await lotsOf(A, a.ranchId)).lots?.find(l => l.id === a.lotId)?.name === `${a.lotName}-then-by-D`, `${fresh.status}`)
-    const gone = await api(A, `/api/herd/lots/${lot2?.id ?? ''}`, {}, 'DELETE')
+    // Block 12 (12.4): Archive and Delete are two acts with two doors. Retire is
+    // POST …/retire — out of the pickers, row kept, name still resolving.
+    // DELETE is the trash — row kept with deleted_at, out of every live read.
+    const gone = await api(A, `/api/herd/lots/${lot2?.id ?? ''}/retire`, {}, 'POST')
     const live = (await lotsOf(A, a.ranchId)).lots ?? []
-    const { data: retired } = await admin.from('herd_lots').select('retired_at').eq('id', lot2?.id ?? '').maybeSingle()
-    record('user A (owner)', 'retires a lot: gone from the live list, row kept with retired_at', gone.status === 200 && live.length === 1 && !!retired?.retired_at, `${gone.status} · live ${live.length} · retired_at ${retired?.retired_at ? 'set' : 'NULL'}`)
+    const { data: retired } = await admin.from('herd_lots').select('retired_at, deleted_at').eq('id', lot2?.id ?? '').maybeSingle()
+    record('user A (owner)', '12.4: retiring a lot (POST …/retire) — gone from the live list, row kept with retired_at, not in the trash', gone.status === 200 && live.length === 1 && !!(retired as { retired_at?: string | null } | null)?.retired_at && !(retired as { deleted_at?: string | null } | null)?.deleted_at, `${gone.status} · live ${live.length} · retired_at ${(retired as { retired_at?: string | null } | null)?.retired_at ? 'set' : 'NULL'}`)
+    const trashed = await api(A, `/api/herd/lots/${lot2?.id ?? ''}`, {}, 'DELETE')
+    const { data: inTrash } = await admin.from('herd_lots').select('deleted_at').eq('id', lot2?.id ?? '').maybeSingle()
+    const trashList = await api(A, '/api/trash', null, 'GET')
+    const listed = ((trashList.json.items ?? []) as { id: string }[]).some(i => i.id === lot2?.id)
+    record('user A (owner)', '12.4: deleting a lot (DELETE) — row kept with deleted_at, and listed in the ranch\'s trash', trashed.status === 200 && (trashed.json as { trashed?: boolean }).trashed === true && !!(inTrash as { deleted_at?: string | null } | null)?.deleted_at && listed, `${trashed.status} · deleted_at ${(inTrash as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · in /api/trash ${listed}`)
   }
   {
     const { data, error } = await B.from('herd_lots').update({ head_count: 1 }).eq('ranch_id', a.ranchId).select('id')
@@ -839,6 +847,99 @@ async function groupActionChecks() {
   record('anonymous', '10: a signed-out caller cannot record a working', anon.status === 401, `${anon.status}`)
 }
 
+// ── Block 12 (12.4) — the trash is ranch-scoped, restore included ─────────────
+// A trashed row is still a row; restore is an UPDATE through the service role
+// after the caller's own client has proved the row exists to them. The thing
+// worth proving is the other direction: a member of ranch B, handed the id of
+// a place ranch A deleted, gets nothing — not a restore, not a 500, not a
+// hint that the row exists. Skips, saying so, until 065 is applied.
+async function trashChecks() {
+  const a = fx.A!
+  const A = await userClient('A')
+  const B = await userClient('B')
+
+  const probe = await api(A, '/api/trash', null, 'GET')
+  if (probe.status !== 200) { record('(skipped)', '12.4: trash checks — /api/trash not answering', true, `${probe.status}`); return }
+
+  const { data: tp } = await admin.from('places').insert({ ranch_id: a.ranchId, user_id: a.userId, name: `${PREFIX}A trash place`, kind: 'field' }).select('id').single()
+  if (!tp) { record('(skipped)', '12.4: trash checks — could not seed a place', true, ''); return }
+  const del = await api(A, `/api/places/${tp.id}`, null, 'DELETE')
+  if (del.status === 503 || (del.json as { trashed?: boolean }).trashed !== true) {
+    await admin.from('places').delete().eq('id', tp.id)
+    record('(skipped)', '12.4: trash checks — migration 065 not applied', true, `${del.status} · ${String(del.json.error ?? 'hard-deleted, no trash')}`)
+    return
+  }
+
+  const bList = await api(B, '/api/trash', null, 'GET')
+  const bSees = ((bList.json.items ?? []) as { id: string }[]).some(i => i.id === tp.id)
+  record('user B (other ranch)', '12.4: ranch A\'s trash does not appear in ranch B\'s', bList.status === 200 && !bSees, `${bList.status} · B sees A's row ${bSees}`)
+
+  const steal = await api(B, '/api/trash', { table: 'places', id: tp.id })
+  const { data: after } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+  const stillTrashed = !!(after as { deleted_at: string | null } | null)?.deleted_at
+  record('user B (other ranch)', '12.4: B cannot restore A\'s deleted place — refused as not-in-your-trash, and the row stays where A put it',
+    steal.status === 404 && stillTrashed, `${steal.status} · still in trash ${stillTrashed}`)
+
+  const mine = await api(A, '/api/trash', { table: 'places', id: tp.id })
+  const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
+  record('user A (owner)', '12.4: A restores it with one call, and it is live again', mine.status === 200 && (back as { deleted_at: string | null } | null)?.deleted_at === null, `${mine.status}`)
+
+  await admin.from('places').delete().eq('id', tp.id)
+}
+
+// ── Block 12 (12.6) — the head-count projection cannot be steered across ranches ─
+//
+// 066 made herd_lots.head_count a projection rebuilt by a SECURITY DEFINER
+// trigger. PK asked whether the trigger function could be called directly to
+// rebuild a count on a ranch the caller does not belong to. It cannot — a
+// RETURNS TRIGGER function is refused outside a trigger — but the question
+// found the real door beside it: a member of B may write a ledger row on B
+// whose PAYLOAD names A's lot, and 066's rebuild believed it. 067 makes the
+// projection believe only rows on the lot's own ranch. This is the proof, and
+// it is RED on any database with 066 and not 067.
+async function projectionChecks() {
+  const a = fx.A!, b = fx.B!
+  const B = await userClient('B')
+
+  // Capability, not existence: 42883 = the function is not there (066 unrun).
+  // Anything else (42501 permission denied, or a row) = 066 is applied.
+  const probe = await admin.rpc('rebuild_lot_head', { p_lot: '00000000-0000-0000-0000-000000000000' })
+  if (probe.error?.code === '42883') { record('(skipped)', '12.6: projection checks — migration 066 not applied', true, ''); return }
+
+  const headOf = async (id: string) => ((await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()).data as { head_count?: number } | null)?.head_count ?? null
+  const aBefore = await headOf(a.lotId)
+  if (aBefore == null) { record('(skipped)', '12.6: projection checks — seeded lot gone', true, ''); return }
+
+  // B writes a count for A's lot — on B's OWN ranch, which 043 permits.
+  const set = await B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, lot_id: a.lotId, head_before: aBefore, head_after: 999, reason: 'edit' } }).select('id').single()
+  const afterSet = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6/067: a count B writes on B\'s ranch naming A\'s lot moves nothing on A — the projection believes only the lot\'s own ranch',
+    afterSet === aBefore, `B\'s row ${set.error ? `refused (${set.error.code})` : 'landed on B'} · A ${aBefore} → ${afterSet}`)
+
+  // B writes a working on B naming A's lot as a result.
+  const ga = await B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'group_action', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, action: 'sort', counted: 50, stayed: 0, moved: 50, source_lot_id: b.lotId, source_head_before: 40, source_head_after: 0,
+      results: [{ lot_id: a.lotId, head: 50, created: false, head_before: aBefore, head_after: aBefore + 50 }] } }).select('id').single()
+  const afterGa = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6/067: a working B writes on B naming A\'s lot as a result moves nothing on A',
+    afterGa === aBefore, `B\'s row ${ga.error ? `refused (${ga.error.code})` : 'landed on B'} · A ${aBefore} → ${afterGa}`)
+
+  // Direct calls: neither function is a client's to call.
+  const direct = await B.rpc('rebuild_lot_head', { p_lot: a.lotId })
+  const afterDirect = await headOf(a.lotId)
+  record('user B (other ranch)', '12.6: B cannot call rebuild_lot_head on A\'s lot — refused, and A unmoved',
+    !!direct.error && afterDirect === aBefore, `${direct.error?.code ?? 'ALLOWED'} · A ${afterDirect}`)
+  const trig = await B.rpc('events_project_head_counts')
+  record('user B (other ranch)', '12.6: the trigger function cannot be called directly by a client', !!trig.error, `${trig.error?.code ?? 'ALLOWED'} ${(trig.error?.message ?? '').slice(0, 60)}`)
+
+  // Tidy: B's probe rows.
+  if (set.data) await admin.from('events').delete().eq('id', set.data.id)
+  if (ga.data) await admin.from('events').delete().eq('id', ga.data.id)
+  // And A's own count must still be what it was after those deletes fire the trigger.
+  record('user A (owner)', '12.6/067: after B\'s rows are gone, A\'s count still stands where A left it', (await headOf(a.lotId)) === aBefore, `A ${await headOf(a.lotId)} (was ${aBefore})`)
+}
+
 async function turnoutChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1244,8 +1345,11 @@ async function placesChecks() {
     const made = await api(A, '/api/places', { name: `${PREFIX}deletable`, kind: 'field' })
     const freeId = String(((made.json.place ?? {}) as { id?: string }).id ?? '')
     const gone = await api(A, `/api/places/${freeId}`, undefined, 'DELETE')
-    const after = freeId ? await readPlace(freeId) : null
-    record('user A (owner)', '7D.3: an unreferenced place DELETEs outright — the row is gone', gone.status === 200 && gone.json.deleted === true && after === null, `${gone.status} · row ${after === null ? 'gone' : 'STILL THERE'}`)
+    const { data: trashedPlace } = await admin.from('places').select('deleted_at').eq('id', freeId).maybeSingle()
+    const { data: livePlace } = await admin.from('places').select('id').eq('id', freeId).is('deleted_at', null)
+    const placeTrash = await api(A, '/api/trash', null, 'GET')
+    const placeListed = ((placeTrash.json.items ?? []) as { id: string }[]).some(i => i.id === freeId)
+    record('user A (owner)', '7D.3/12.4: an unreferenced place DELETEs to the trash — row kept with deleted_at, out of every live read, listed in the trash', gone.status === 200 && gone.json.deleted === true && !!(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at && (livePlace ?? []).length === 0 && placeListed, `${gone.status} · deleted_at ${(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · live reads ${(livePlace ?? []).length} · in trash ${placeListed}`)
 
     // A place the ranch's own entries name: refused, counted, untouched.
     const ref = await api(A, `/api/places/${a.placeId}`, undefined, 'DELETE')
@@ -1285,8 +1389,9 @@ async function placesChecks() {
       const plan = await api(A, `/api/activity/${ownId}/delete`, undefined, 'GET')
       const mode = ((plan.json.plan ?? {}) as { mode?: string }).mode
       const killed = await api(A, `/api/activity/${ownId}/delete`, undefined, 'DELETE')
-      const { data: goneRow } = await admin.from('events').select('id').eq('id', ownId).maybeSingle()
-      record('user A (owner)', '7D.1: my own unseen entry hard-deletes — the row is gone, no tombstone', !!ownId && mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && goneRow === null, `${ownId ? `plan ${mode} · ${killed.status} · row ${goneRow === null ? 'gone' : 'STILL THERE'}` : 'FIXTURE NOT CREATED — the check proved nothing'}`)
+      const { data: goneRow } = await admin.from('events').select('id, deleted_at').eq('id', ownId).maybeSingle()
+      const liveView = await A.from('events').select('id').eq('id', ownId).is('deleted_at', null)
+      record('user A (owner)', '7D.1/12.4: my own unseen entry deletes by the hard path — no record note — and the row waits in the trash, out of every live read', !!ownId && mode === 'hard' && killed.status === 200 && killed.json.mode === 'hard' && !!(goneRow as { deleted_at?: string | null } | null)?.deleted_at && (liveView.data ?? []).length === 0, `${ownId ? `plan ${mode} · ${killed.status} · deleted_at ${(goneRow as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · live reads ${(liveView.data ?? []).length}` : 'FIXTURE NOT CREATED — the check proved nothing'}`)
 
       // A cross-ranch delete reaches nothing and says nothing about the row.
       const { data: bEvent } = await admin.from('events').select('id').eq('ranch_id', b.ranchId).is('deleted_at', null).limit(1).maybeSingle()
@@ -1335,6 +1440,8 @@ async function main() {
     await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
     await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
+    await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
+    await projectionChecks()    // Block 12 — the head-count projection cannot be steered across ranches; needs 066 (skips without it); RED until 067
     await removedMemberChecks() // last — it removes A's membership
   } finally {
     await teardown('finish')

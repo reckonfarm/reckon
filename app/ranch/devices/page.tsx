@@ -8,6 +8,8 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import RecordHere from '../places/RecordHere'
 import DeleteDevice from './DeleteDevice'
+import { liveOnly } from '@/lib/trash'
+import RowActions from '@/app/components/RowActions'
 
 // ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
 // Empty: says you can record work now, and what will appear here. Populated:
@@ -53,9 +55,10 @@ export default async function DevicesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/devices')
-  const { data, error } = await supabase
+  // Block 12 (12.4): a device in the trash is not on this list.
+  const { data, error } = await liveOnly(supabase
     .from('devices')
-    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)')
+    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)'))
     .order('name', { ascending: true })
   const devices = (data ?? []) as unknown as DeviceRow[]
   return (
@@ -87,6 +90,9 @@ export default async function DevicesPage() {
               const lead = d.places?.name ?? d.name
               return (
                 <li key={d.id} id={d.id}>
+                  {/* Block 12 (12.3): hold the card for Open · Delete. No Edit — a
+                      device's name is set by the device and corrected nowhere. */}
+                  <RowActions links={{ openHref: `/ranch/devices#${d.id}`, editHref: null, deleteHref: `/ranch/devices#delete-${d.id}`, label: lead }}>
                   <Card className="p-4 sm:p-5" data-audit="device-card">
                     <p className="font-dm-sans text-[17px] font-semibold text-ink">{lead} <span className="font-normal text-secondary-ink">· {role}</span></p>
                     <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">{product}{d.name !== lead ? ` · ${d.name}` : ''}</p>
@@ -107,6 +113,7 @@ export default async function DevicesPage() {
                     <DeleteDevice id={d.id} name={d.name} />
 
                   </Card>
+                  </RowActions>
                 </li>
               )
             })}

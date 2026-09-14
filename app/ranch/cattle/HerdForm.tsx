@@ -22,6 +22,7 @@ import { Button } from '@/app/components/ui/Button'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
 import Link from 'next/link'
+import RowActions from '@/app/components/RowActions'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
@@ -66,6 +67,15 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   const [loadError, setLoadError] = useState('')
 
   const [editing, setEditing] = useState<Editing>(null)
+  // Block 12 (12.3): a lot row held for Edit or Delete lands with the form
+  // (or the row menu, where Delete lives) already open.
+  useEffect(() => {
+    const h = typeof window !== 'undefined' ? window.location.hash : ''
+    const e = /^#edit-([0-9a-f-]{36})$/i.exec(h); const d = /^#delete-([0-9a-f-]{36})$/i.exec(h)
+    if (e) { const lot = (initialLots ?? []).find(l => l.id === e[1]); if (lot) openEdit(lot) }
+    else if (d) setMenuFor(d[1])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -188,7 +198,8 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   }
 
   async function removeLot(id: string) {
-    if (await write(`/api/herd/lots/${id}`, 'DELETE') && editing === id) setEditing(null)
+    // Block 12 (12.4): Archive retires — its own route. DELETE on the lot is the trash now.
+    if (await write(`/api/herd/lots/${id}/retire`, 'POST') && editing === id) setEditing(null)
   }
 
   function addWindow() {
@@ -355,7 +366,8 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     const work = lastWork[lot.id]
     const menuOpen = menuFor === lot.id
     return (
-      <Card key={lot.id} shadow="sm" className="p-4" data-audit="lot-row">
+      <RowActions key={lot.id} links={{ openHref: `/ranch/cattle#${lot.id}`, editHref: `/ranch/cattle#edit-${lot.id}`, deleteHref: `/ranch/cattle#delete-${lot.id}`, label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}` }}>
+      <Card shadow="sm" className="p-4" data-audit="lot-row">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-dm-sans text-[17px] font-semibold text-ink">
@@ -395,6 +407,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
           </div>
         </div>
       </Card>
+      </RowActions>
     )
   }
   // ── Render ──────────────────────────────────────────────────────────────────────

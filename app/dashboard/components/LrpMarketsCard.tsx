@@ -5,6 +5,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import type { LrpResult, LrpHeadline, LrpLadderRung } from '@/lib/lrp-service'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import { Select } from '@/app/components/ui/Field'
 
 // Cattle markets card — USDA RMA Livestock Risk Protection (LRP) coverage-price floor.
 // Every figure comes from the LrpResult (read from the snapshot table); nothing is
@@ -55,7 +56,7 @@ function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: numb
       <label htmlFor="lrp-term" className="block font-dm-sans text-[16px] font-medium text-ink">
         Endorsement — pick the one that ends nearest your sale date; the floor, premium, and end date above follow it.
       </label>
-      <select
+      <Select
         id="lrp-term"
         value={sel ?? ''}
         onChange={e => onSel(e.target.value === '' ? null : Number(e.target.value))}
@@ -68,7 +69,7 @@ function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: numb
             {fmtDate(r.endorsement_end_date)} · {r.endorsement_length_weeks} wk
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   )
 }
@@ -133,7 +134,7 @@ export default function LrpMarketsCard({ result }: { result: LrpResult }) {
   return (
     <Card shadow="soft" className="p-4 sm:p-6">
       <div className="mb-3">
-        <p className={EYEBROW}>Cattle markets</p>
+        <p className={EYEBROW}>Price protection (LRP)</p>
         <Heading level={3} visual={5} className="mt-1">Livestock Risk Protection</Heading>
       </div>
 

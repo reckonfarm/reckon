@@ -8,6 +8,7 @@ import { resolveRanchId } from '@/lib/ranch-membership'
 import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
+import { trashRow } from '@/lib/trash'
 
 // One place (places, slice 1).
 //
@@ -308,7 +309,10 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     if (!applied.ok) return NextResponse.json({ error: 'Those entries could not be deleted just now' }, { status: 500 })
   }
 
-  const { error } = await createServiceClient().from('places').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: 'That place could not be deleted just now' }, { status: 500 })
-  return NextResponse.json({ deleted: true, place, ...(cascade ? { cascaded: true } : {}) })
+  // Block 12 (12.4): into the trash, not gone. Restorable for TRASH_DAYS from
+  // /account/trash; purge_trash() removes it after. Its entries kept naming it
+  // all along, so restore is only clearing deleted_at.
+  const t = await trashRow(supabase, session.user.id, 'places', id)
+  if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status })
+  return NextResponse.json({ deleted: true, trashed: true, place, ...(cascade ? { cascaded: true } : {}) })
 }

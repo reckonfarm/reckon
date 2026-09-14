@@ -102,7 +102,7 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
     <Card shadow="none" className="px-5 py-4">
       {heading && (
         <p className={EYEBROW}>
-          Hay
+          Hay on hand
         </p>
       )}
       {stats.length > 0 && (
