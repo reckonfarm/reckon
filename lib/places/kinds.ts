@@ -54,3 +54,56 @@ export function kindLabel(kind: string): string {
   const known = PLACE_KINDS.find(k => k.value === kind)
   return known ? known.label : kind.replace(/_/g, ' ')
 }
+
+// ─── Who may sit inside whom (Block 7A) ───────────────────────────────────────
+//
+// The hierarchy is pasture → field → stackyard → stack, and a parent is
+// OPTIONAL at every level: a stack may sit straight in a pasture, a field may
+// stand on its own. What is refused is nonsense — a pasture inside a stack.
+// PK's ruling, 2026-09-14, verbatim:
+//
+//   pasture   → no parent
+//   field     → pasture
+//   stackyard → pasture | field
+//   stack     → stackyard | field | pasture
+//   gate, tank, yard → pasture | field
+//
+// A PRODUCT rule over a TEXT column, so it lives here and not in the schema —
+// the same reason PLACE_KINDS is a list and not an enum. Migration 068 holds
+// the two rules that are not product rules (same ranch, no loops). This table
+// is enforced in POST and PATCH /api/places and drives which chips the
+// capture and edit forms offer; a kind the table does not list (free text
+// stored by an older writer, or a kind added later) is treated like a gate: it
+// may sit inside a pasture or a field. That is the least surprising reading
+// of "a named spot on the ground", and it never rejects a row the table has
+// not heard of.
+export const PARENT_KINDS: Readonly<Record<string, readonly string[]>> = {
+  pasture:   [],
+  field:     ['pasture'],
+  stackyard: ['pasture', 'field'],
+  stack:     ['stackyard', 'field', 'pasture'],
+  gate:      ['pasture', 'field'],
+  tank:      ['pasture', 'field'],
+  yard:      ['pasture', 'field'],
+}
+const UNLISTED_PARENT_KINDS: readonly string[] = ['pasture', 'field']
+
+/** The kinds a place of `kind` may sit inside. Empty = it is always top-level. */
+export function allowedParentKinds(kind: string): readonly string[] {
+  return PARENT_KINDS[kind] ?? UNLISTED_PARENT_KINDS
+}
+
+/** Whether a place of `parentKind` may contain a place of `childKind`. */
+export function canContain(parentKind: string, childKind: string): boolean {
+  return allowedParentKinds(childKind).includes(parentKind)
+}
+
+/** The rule for `kind`, as a sentence a refusal can quote. */
+export function parentRule(kind: string): string {
+  const allowed = allowedParentKinds(kind)
+  const what = kindLabel(kind).toLowerCase()
+  if (allowed.length === 0) return `A ${what} is never inside another place.`
+  const names = allowed.map(k => `a ${kindLabel(k).toLowerCase()}`)
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
+  return `A ${what} sits inside ${list}, or on its own.`
+}
