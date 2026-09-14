@@ -1326,17 +1326,106 @@ async function placesChecks() {
       dropped.status === 201 && !!d?.geometry && d?.geometry_provenance?.source === 'dropped' && d?.geometry_provenance?.accuracy_m === 3.2 && d?.kind === 'stack',
       `${dropped.status} · source ${String(d?.geometry_provenance?.source)} · ±${String(d?.geometry_provenance?.accuracy_m)} m · kind ${String(d?.kind)}`)
 
-    // A capture cannot plant a place on another ranch by naming one.
+    // A capture cannot plant a place on another ranch by naming one. Block 7A
+    // TIGHTENED this: the old form only asserted that the child landed on A
+    // (it did — with B's place as its parent, which is the gap). The parent
+    // must be REFUSED, in the same words as a parent that does not exist, and
+    // no row may land at all.
     const crossParent = await api(A, '/api/places', {
       name: `${PREFIX}crossparent`, kind: 'field', parent_id: b.placeId,
       geometry: { type: 'Polygon', coordinates: [rect().map(p => [p.lng, p.lat])] },
       capture: { source: 'ridden', track: [] },
     })
     const cpId = String(((crossParent.json.place ?? {}) as { id?: string }).id ?? '')
-    const { data: cp } = cpId ? await admin.from('places').select('ranch_id').eq('id', cpId).maybeSingle() : { data: null }
-    record('user A (owner)', '8: naming ranch B\'s place as a parent never lands the capture on ranch B',
-      cpId === '' || (cp as { ranch_id: string } | null)?.ranch_id === a.ranchId,
-      `landed on ${cpId === '' ? 'nothing' : (cp as { ranch_id: string } | null)?.ranch_id === a.ranchId ? 'A (correct)' : 'RANCH B'}`)
+    const { count: cpRows } = await admin.from('places').select('id', { count: 'exact', head: true }).eq('name', `${PREFIX}crossparent`)
+    record('user A (owner)', '7A: naming ranch B\'s place as a parent is refused — 400, "no such place", no row lands anywhere',
+      crossParent.status === 400 && cpId === '' && (cpRows ?? 0) === 0 && /No such place to sit inside/.test(String(crossParent.json.error)),
+      `${crossParent.status} · "${String(crossParent.json.error).slice(0, 50)}" · rows ${cpRows ?? 0}`)
+  }
+
+  // ── Block 7A — the hierarchy: the kind table, loops, and 068's guard ────────
+  {
+    const idOf = (r: { json: Record<string, unknown> }) => String(((r.json.place ?? {}) as { id?: string }).id ?? '')
+    const mk = (name: string, kind: string, parent_id?: string | null) =>
+      api(A, '/api/places', { name: `${PREFIX}${name}`, kind, ...(parent_id ? { parent_id } : {}) })
+
+    // pasture → field → stack, each accepted with its parent, and the answer
+    // names the parent and counts what is in it.
+    const pasture = await mk('7a-pasture', 'pasture'); const pastureId = idOf(pasture)
+    const field = await mk('7a-field', 'field', pastureId); const fieldId = idOf(field)
+    const stack = await mk('7a-stack', 'stack', fieldId); const stackId = idOf(stack)
+    const { data: chain } = await admin.from('places').select('id, parent_id').in('id', [pastureId, fieldId, stackId].filter(Boolean))
+    const parentOf = new Map(((chain ?? []) as { id: string; parent_id: string | null }[]).map(r => [r.id, r.parent_id]))
+    const stackAnswer = (stack.json.consequence as { lines?: string[] } | undefined)?.lines?.[0] ?? ''
+    record('user A (owner)', '7A: pasture → field → stack are accepted with their parents, and the answer counts what is in the parent',
+      pasture.status === 201 && field.status === 201 && stack.status === 201
+        && parentOf.get(fieldId) === pastureId && parentOf.get(stackId) === fieldId
+        && (stack.json.parent as { id?: string } | null)?.id === fieldId && /1 place in .*7a-field now/.test(stackAnswer),
+      `${pasture.status}/${field.status}/${stack.status} · field→${parentOf.get(fieldId) === pastureId ? 'pasture' : '?'} · stack→${parentOf.get(stackId) === fieldId ? 'field' : '?'} · "${stackAnswer}"`)
+
+    // Nonsense: a pasture inside a stack. Refused with the rule, no row.
+    const nonsense = await mk('7a-nonsense', 'pasture', stackId)
+    const { count: nonsenseRows } = await admin.from('places').select('id', { count: 'exact', head: true }).eq('name', `${PREFIX}7a-nonsense`)
+    record('user A (owner)', '7A: a pasture inside a stack is refused with the rule, and no row lands',
+      nonsense.status === 400 && /never inside another place/.test(String(nonsense.json.error)) && (nonsenseRows ?? 0) === 0,
+      `${nonsense.status} · "${String(nonsense.json.error).slice(0, 60)}" · rows ${nonsenseRows ?? 0}`)
+
+    // A kind change the children forbid: the field holds a stack, so it cannot
+    // become a stack; it CAN become a stackyard (a stack sits in one).
+    const toStack = await api(A, `/api/places/${fieldId}`, { kind: 'stack' }, 'PATCH')
+    const toYard = await api(A, `/api/places/${fieldId}`, { kind: 'stackyard' }, 'PATCH')
+    const { data: fieldNow } = await admin.from('places').select('kind').eq('id', fieldId).maybeSingle()
+    record('user A (owner)', '7A: a kind change is judged against what is inside — field-with-a-stack cannot become a stack, can become a stackyard',
+      toStack.status === 400 && /cannot sit inside a stack/.test(String(toStack.json.error)) && toYard.status === 200 && (fieldNow as { kind?: string } | null)?.kind === 'stackyard',
+      `→stack ${toStack.status} "${String(toStack.json.error).slice(0, 50)}" · →stackyard ${toYard.status} · kind now ${String((fieldNow as { kind?: string } | null)?.kind)}`)
+
+    // The route's own loop walk cannot be reached through the kind table (a
+    // loop needs a kind that can hold its own ancestor, and the table is
+    // strictly ordered), so the loop guard that matters is 068's, at the
+    // database, against a direct write. Probed by capability: on a database
+    // without 068 the write LANDS, which is reported as the migration missing
+    // and put back — never as a pass.
+    const loop = await A.from('places').update({ parent_id: stackId }).eq('id', pastureId).select('id, parent_id')
+    const loopLanded = !loop.error && (loop.data ?? []).length > 0 && (loop.data as { parent_id: string | null }[])[0].parent_id === stackId
+    if (loopLanded) {
+      await admin.from('places').update({ parent_id: null }).eq('id', pastureId)
+      record('(skipped)', '7A/068: a loop written straight to the table is refused — migration 068 not applied', true, 'the loop landed and was put back')
+    } else {
+      record('user A (owner)', '7A/068: a loop written straight to the table is refused by the guard',
+        !!loop.error && /inside one of its own places/.test(loop.error.message), `${loop.error ? loop.error.message.slice(0, 60) : 'no error'}`)
+    }
+
+    // 068 from the other side: a direct insert naming B's place as parent.
+    // Under RLS the parent is invisible; the guard says "no such place" and
+    // the row never lands. Same capability probe.
+    const direct = await A.from('places').insert({ user_id: a.userId, ranch_id: a.ranchId, name: `${PREFIX}7a-direct-cross`, kind: 'field', parent_id: b.placeId }).select('id')
+    const directLanded = !direct.error && (direct.data ?? []).length > 0
+    if (directLanded) {
+      await admin.from('places').delete().eq('name', `${PREFIX}7a-direct-cross`)
+      record('(skipped)', '7A/068: a cross-ranch parent written straight to the table is refused — migration 068 not applied', true, 'the row landed and was removed')
+    } else {
+      record('user A (owner)', '7A/068: a cross-ranch parent written straight to the table is refused by the guard, in words that confirm nothing',
+        !!direct.error && /No such place to sit inside/.test(direct.error.message), `${direct.error ? direct.error.message.slice(0, 60) : 'no error'}`)
+    }
+
+    // A replayed client id — a retry after a save that landed but timed out on
+    // the way back — is answered 200 with the same row, and there is one row.
+    const cid = randomUUID()
+    const first = await api(A, '/api/places', { id: cid, name: `${PREFIX}7a-replay`, kind: 'stack', parent_id: fieldId })
+    const again = await api(A, '/api/places', { id: cid, name: `${PREFIX}7a-replay`, kind: 'stack', parent_id: fieldId })
+    const { count: replayRows } = await admin.from('places').select('id', { count: 'exact', head: true }).eq('name', `${PREFIX}7a-replay`)
+    record('user A (owner)', '7A: a replayed client id is answered 200 · duplicate, with the row that landed, and there is one row',
+      first.status === 201 && idOf(first) === cid && again.status === 200 && again.json.duplicate === true && idOf(again) === cid && replayRows === 1,
+      `${first.status} then ${again.status} duplicate=${String(again.json.duplicate)} · rows ${replayRows}`)
+
+    // The client id is never accepted from B's ranch onto A's place: B posting
+    // A's id is a fresh insert on B's ranch that collides on the primary key
+    // and is answered with… nothing of A's. RLS makes the re-read see no row,
+    // so B gets a 500 and never A's place.
+    const Bc = await userClient('B')
+    const steal = await api(Bc, '/api/places', { id: cid, name: `${PREFIX}7a-steal`, kind: 'stack' })
+    record('user B (other ranch)', '7A: replaying another ranch\'s client id never returns their place',
+      steal.status !== 200 && steal.status !== 201 && idOf(steal) === '', `${steal.status} · place ${idOf(steal) || 'none'}`)
   }
 
   // ── Block 7D.3 — delete means delete, and a referenced place is not deleted ──

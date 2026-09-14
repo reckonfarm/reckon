@@ -2072,6 +2072,99 @@ async function main() {
       if (prior) await page.setViewportSize(prior)
     }
 
+    // ── Block 7A — a place from where you stand: chips, the pin, the outbox ──
+    // The phone's position is emulated (Playwright's geolocation), which is
+    // the only honest way to drive a capture headless: the app sees real
+    // watchPosition callbacks, settles on five steady readings, and drops.
+    {
+      const LAT = 47.1215, LNG = -108.4301
+      const { data: pasture } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 7A pasture`, kind: 'pasture' }).select('id').single()
+      const pastureId = String((pasture as { id?: string } | null)?.id ?? '')
+      const ctx7a = page.context()
+      await ctx7a.grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await ctx7a.setGeolocation({ latitude: LAT, longitude: LNG, accuracy: 30 })
+      await page.goto('/ranch/places#capture-drop', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-drop"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      // Six steady readings, each a hair apart so the watcher fires every time.
+      for (let i = 0; i < 6; i++) { await ctx7a.setGeolocation({ latitude: LAT + i * 2e-7, longitude: LNG, accuracy: 3 }); await page.waitForTimeout(350) }
+      const mapDuringDrop = await page.locator('[data-audit="capture-drop-map"] .leaflet-container').count()
+      const pinDuringDrop = await page.locator('[data-audit="capture-drop-map"] [data-audit="map-pin"]').count()
+      const take = page.locator('[data-audit="capture-take-point"]')
+      const takeEnabled = await take.isEnabled().catch(() => false)
+      record('7A: during the drop the map is up, on the fix, with the pin on it — and the drop is offered once the fix settles',
+        mapDuringDrop === 1 && pinDuringDrop === 1 && takeEnabled, `map ${mapDuringDrop} · pin ${pinDuringDrop} · Drop it here ${takeEnabled ? 'enabled' : 'DISABLED'}`)
+
+      await take.click().catch(() => {})
+      await page.locator('[data-audit="capture-name"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const kinds = (sel: string) => page.locator(`[data-audit="capture-parent-option"]${sel}`).count()
+      // Default kind is field: only pastures may hold one, so the stackyard
+      // seeded at the top of this run must NOT be offered.
+      const forField = { pasture: await kinds('[data-kind="pasture"]'), stackyard: await kinds('[data-kind="stackyard"]'), any: await kinds('') }
+      await page.locator('[data-audit="capture-kind-pasture"]').click().catch(() => {})
+      const forPasture = await page.locator('[data-audit="capture-parent"]').count()
+      await page.locator('[data-audit="capture-kind-stack"]').click().catch(() => {})
+      const forStack = { pasture: await kinds('[data-kind="pasture"]'), stackyard: await kinds('[data-kind="stackyard"]'), field: await kinds('[data-kind="field"]') }
+      record('7A: the parent chips follow the kind table — a field is offered pastures only, a pasture is offered nothing, a stack is offered stackyards and pastures',
+        forField.pasture >= 1 && forField.stackyard === 0 && forField.any === forField.pasture && forPasture === 0 && forStack.stackyard >= 1 && forStack.pasture >= 1,
+        `field: ${forField.pasture} pasture / ${forField.stackyard} stackyard of ${forField.any} · pasture: ${forPasture} rows · stack: ${forStack.stackyard} stackyard / ${forStack.pasture} pasture / ${forStack.field} field`)
+
+      // Name it, put it in the seeded stackyard, and save OFFLINE.
+      await page.locator('[data-audit="capture-name-input"]').fill('7A stack')
+      await page.locator(`[data-audit="capture-parent-option"][data-kind="stackyard"]`).first().click().catch(() => {})
+      const pinMapAtName = await page.locator('[data-audit="capture-pin-map"] [data-audit="map-pin"]').count()
+      await ctx7a.setOffline(true)
+      await page.locator('[data-audit="capture-save"]').click().catch(() => {})
+      const seqOff7a = await watchStates(page, 'Synced to ranch', 4_000, '7A stack')
+      const strips = await page.locator('[role="status"]').count()
+      record('7A: offline, the place is Saved on this phone and stays there — one strip on the page, not two',
+        seqOff7a[0] === 'Saved on this phone' && !seqOff7a.includes('Synced to ranch') && strips === 1 && pinMapAtName === 1,
+        `${seqOff7a.join(' → ')} · strips ${strips} · pin at name step ${pinMapAtName}` + rawSeen())
+      await ctx7a.setOffline(false)
+      const seqOn7a = await watchStates(page, 'Synced to ranch', 45_000, '7A stack')
+      const ob7a = await outbox(page)
+      const placeItem = ob7a.find(i => (i.body as { name?: string }).name === '7A stack')
+      const newId = placeItem?.id ?? ''
+      const { data: row } = newId ? await admin.from('places').select('id, kind, parent_id, geometry, geometry_provenance').eq('id', newId).maybeSingle() : { data: null }
+      const r7 = row as { kind: string; parent_id: string | null; geometry: unknown; geometry_provenance: Record<string, unknown> } | null
+      const receipt = (await page.locator('[data-audit="capture-saved"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const openHref = await page.locator('[data-audit="capture-saved"] [data-audit="receipt-open-entry"]').getAttribute('href').catch(() => null)
+      record('7A: back online it syncs under its client id — a stack, in the stackyard, a polygon with the fix in provenance and adjusted: false',
+        seqOn7a.includes('Synced to ranch') && !!r7 && r7.kind === 'stack' && r7.parent_id === placeId && !!r7.geometry
+          && r7.geometry_provenance?.source === 'dropped' && r7.geometry_provenance?.adjusted === false && !!r7.geometry_provenance?.fix,
+        `${seqOn7a.join(' → ')} · row ${r7 ? `${r7.kind} in ${r7.parent_id === placeId ? 'the stackyard' : String(r7.parent_id)} · ${String(r7.geometry_provenance?.source)} adjusted=${String(r7.geometry_provenance?.adjusted)}` : 'MISSING'}`)
+      record('7A: the receipt is an answer — what was added, where it sits, how many are in there now, and the place one tap away',
+        /7A stack added · stack · in SMOKE-DAILY-LOOP West stack/.test(receipt) && /\d+ places? in SMOKE-DAILY-LOOP West stack now/.test(receipt) && openHref === `/ranch/places/${newId}`,
+        `"${receipt.slice(0, 120)}" · open → ${openHref}`)
+
+      // The list is a hierarchy: the new stack sits one deep under the
+      // stackyard, and every live place is on the page exactly once.
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const nested = await page.locator(`li[data-audit="place-branch"][data-depth="0"] a[data-id="${placeId}"] ~ ul li[data-audit="place-branch"][data-depth="1"] a[data-id="${newId}"]`).count()
+      const { data: liveRows } = await admin.from('places').select('id').eq('ranch_id', ranchId).is('retired_at', null).is('deleted_at', null)
+      const liveIds = ((liveRows ?? []) as { id: string }[]).map(r => r.id)
+      const onPage = await page.evaluate(() => Array.from(document.querySelectorAll('[data-audit="place-row"]')).map(a => a.getAttribute('data-id')))
+      const each = liveIds.every(id => onPage.filter(x => x === id).length === 1)
+      const unplaced = await page.locator('#places-unplaced').count()
+      record('7A: the list groups by hierarchy — the stack is nested under its stackyard, Unplaced holds the rest, and every live place appears exactly once',
+        nested === 1 && each && unplaced === 1, `nested ${nested} · ${liveIds.length} live, ${onPage.length} rows, each once ${each} · Unplaced ${unplaced}`)
+
+      // The place page says where it sits; the parent's page says what is in it.
+      await page.goto(`/ranch/places/${newId}`, { waitUntil: 'domcontentloaded' })
+      const parentLink = await page.locator(`[data-audit="place-parent"] a[href="/ranch/places/${placeId}"]`).count()
+      await page.locator('[data-audit="place-edit-open"]').click().catch(() => {})
+      await page.locator('[data-audit="place-edit-parent"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const editChecked = await page.locator('[data-audit="place-edit-parent-option"][data-kind="stackyard"][aria-checked="true"]').count()
+      await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      const inside = (await page.locator('[data-audit="place-children-count"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const childRow = await page.locator(`[data-audit="place-child-row"][href="/ranch/places/${newId}"]`).count()
+      record('7A: the place page links its parent and offers it as the checked chip; the parent\'s page counts and lists what is inside',
+        parentLink === 1 && editChecked === 1 && /a stack in it/i.test(inside) && childRow === 1,
+        `parent link ${parentLink} · edit chip checked ${editChecked} · "${inside}" · child row ${childRow}`)
+
+      if (pastureId) await admin.from('places').delete().eq('id', pastureId)
+    }
+
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
