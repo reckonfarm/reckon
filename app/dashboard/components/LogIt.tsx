@@ -31,6 +31,15 @@ const LAST_PLACE_KEY = 'manual_log_last_place'
 // The last lot fed — its OWN key, never the place key: a place and a lot are
 // two different answers and one must never overwrite the other.
 const LAST_LOT_KEY = 'manual_log_last_lot'
+// Block 14: the bunch list, kept on the phone. A count or a feeding with no
+// signal still has to offer the bunches — the last list this phone saw is
+// the honest offer (offline-first, like the operation profile). Written on
+// every good fetch, read only when the fetch fails.
+const LOTS_CACHE_KEY = 'dryline_bunches_v1'
+function readLotsCache(): Lot[] | null {
+  try { const raw = localStorage.getItem(LOTS_CACHE_KEY); const v = raw ? JSON.parse(raw) as unknown : null; return Array.isArray(v) ? v as Lot[] : null } catch { return null }
+}
+function writeLotsCache(lots: Lot[]) { try { localStorage.setItem(LOTS_CACHE_KEY, JSON.stringify(lots)) } catch { /* private mode */ } }
 // A half-filled sheet survives an app switch (Block 2A): every keystroke is
 // mirrored here and the sheet reopens on it. Cleared on save or an explicit
 // Cancel/discard — never by an accident.
@@ -334,7 +343,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   // Block 14: "New bunch" inside any bunch picker opens the on-the-spot form
   // below it; a made bunch joins the list and is picked at once.
   const [newBunch, setNewBunch] = useState(false)
-  const bunchMade = (made: Lot) => { setLots(prev => [...(prev ?? []), made]); setLot(made.id); setNewBunch(false); writeLastLot(made.id) }
+  const bunchMade = (made: Lot) => { setLots(prev => { const next = [...(prev ?? []), made]; writeLotsCache(next); return next }); setLot(made.id); setNewBunch(false); writeLastLot(made.id) }
 
   const hasDraft = useHasDraft()
 
@@ -412,13 +421,22 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         if (cancelled) return
         const list = Array.isArray(j?.profile?.herd?.lots) ? j!.profile!.herd!.lots! : []
         setLots(list)
+        writeLotsCache(list)
         const last = readLastLot()
         // A draft's lot that the list no longer names is left UNASSIGNED, never
         // swapped for the last-used lot (6A: a slow option load rewrites nothing
         // the person chose). The last-used default applies only to an empty draft.
         setLot(prev => prev ? (list.some(l => l.id === prev) ? prev : '') : (list.some(l => l.id === last) ? last : ''))
       })
-      .catch(() => { if (!cancelled) { setLots([]); setLotsError(true) } })   // a real error state, not a silent empty picker
+      .catch(() => {
+        if (cancelled) return
+        // No signal: the last list this phone saw, so the entry can still be
+        // recorded against a bunch and sync later. No list ever seen → a real
+        // error state, never a silent empty picker.
+        const cached = readLotsCache()
+        if (cached && cached.length > 0) { setLots(cached); setLotsError(false) }
+        else { setLots([]); setLotsError(true) }
+      })
     return () => { cancelled = true }
   }, [open, type, lots])
 
