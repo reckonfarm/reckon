@@ -20,7 +20,7 @@ export default function LotSelector({ lots, selectedId }: { lots: { id: string; 
         onChange={e => { const next = new URLSearchParams(params.toString()); next.set('lot', e.target.value); router.replace(`${pathname}?${next.toString()}`) }}
         className="min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink"
         data-audit="lot-selector"
-        aria-label="Lot"
+        aria-label="Bunch"
       >
         {lots.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
       </Select>

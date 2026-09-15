@@ -48,11 +48,12 @@ function labelFor(e: Editable): string {
     case 'hay_inventory': return `Counted ${String(v.bales ?? '?')} bales`
     case 'cattle_moved': return `Moved ${String(v.head ?? '?')} head`
     case 'cattle_worked': return `${String(v.what ?? 'Worked')} ${String(v.head ?? '?')} head`
+    case 'cattle_counted': return `Counted ${String(v.counted ?? '?')} head`
     default: return e.type.replace(/_/g, ' ')
   }
 }
 type RefKey = typeof REF_KEYS[number]
-const NUM_KEYS = ['bales', 'inches', 'count', 'head'] as const
+const NUM_KEYS = ['bales', 'inches', 'count', 'head', 'counted'] as const
 type NumKey = typeof NUM_KEYS[number]
 type Draft = Record<RefKey | NumKey | 'what' | 'as_of' | 'date' | 'time' | 'reason', string>
 
@@ -76,7 +77,7 @@ function localParts(iso: string): { date: string; time: string } {
 function fromOriginal(event: Editable): Draft {
   const v = event.values, t = localParts(event.ts)
   return {
-    bales: num(v.bales), inches: num(v.inches), count: num(v.count), head: num(v.head),
+    bales: num(v.bales), inches: num(v.inches), count: num(v.count), head: num(v.head), counted: num(v.counted),
     what: str(v.what), as_of: str(v.as_of),
     herd_lot_id: str(v.herd_lot_id), place_id: str(v.place_id), from_place_id: str(v.from_place_id), to_place_id: str(v.to_place_id),
     date: t.date, time: t.time, reason: '',
@@ -131,6 +132,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       case 'hay_inventory': numKey('bales'); if (draft.as_of && draft.as_of !== str(v.as_of)) p.as_of = draft.as_of; refKey('place_id'); break
       case 'cattle_moved': numKey('head'); refKey('herd_lot_id'); refKey('from_place_id'); refKey('to_place_id'); break
       case 'cattle_worked': numKey('head'); if (draft.what.trim() && draft.what !== str(v.what)) p.what = draft.what; refKey('herd_lot_id'); refKey('place_id'); break
+      case 'cattle_counted': numKey('counted'); refKey('herd_lot_id'); refKey('place_id'); break
     }
     if (draft.date && draft.time && (draft.date !== initial.date || draft.time !== initial.time)) p.ts = new Date(`${draft.date}T${draft.time}:00`).toISOString()
     return p
@@ -190,6 +192,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   // draft from the first render; the list only labels it. While the names load
   // the control is held; if they never come, the id stays as recorded.
   const refSelect = (key: RefKey, label: string, kind: 'lot' | 'place') => {
+    const word = kind === 'lot' ? 'bunch' : 'place'
     const stored = str(v[key]), value = draft[key]
     const list = options.state === 'ready' ? (kind === 'lot' ? options.lots : options.places) : []
     const resolved = list.find(o => o.id === value)
@@ -205,10 +208,10 @@ export default function CorrectionActions({ event }: { event: Editable }) {
             {!held && list.map(o => <option key={o.id} value={o.id}>{o.name}{o.retired ? ' · off the list' : ''}</option>)}
           </Select>
         </label>
-        {unresolved && <p className={hintCls} data-audit={`correction-unresolved-${key}`}>This {kind} isn&apos;t on the ranch&apos;s list now (removed or renamed). It stays on the entry unless you clear it.</p>}
-        {resolved?.retired && <p className={hintCls}>This {kind} is off the list now. It stays on the entry unless you clear it.</p>}
-        {value === '' && stored !== '' && <p className={hintCls} data-audit={`correction-cleared-${key}`}>Cleared — the correction will carry no {kind}.</p>}
-        {value !== '' && !held && <button type="button" onClick={() => set(key, '')} className={clearCls} data-audit={`correction-clear-${key}`}>Clear {kind}</button>}
+        {unresolved && <p className={hintCls} data-audit={`correction-unresolved-${key}`}>This {word} isn&apos;t on the ranch&apos;s list now (removed or renamed). It stays on the entry unless you clear it.</p>}
+        {resolved?.retired && <p className={hintCls}>This {word} is off the list now. It stays on the entry unless you clear it.</p>}
+        {value === '' && stored !== '' && <p className={hintCls} data-audit={`correction-cleared-${key}`}>Cleared — the correction will carry no {word}.</p>}
+        {value !== '' && !held && <button type="button" onClick={() => set(key, '')} className={clearCls} data-audit={`correction-clear-${key}`}>Clear {word}</button>}
       </div>
     )
   }
@@ -252,7 +255,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       </p>
       {mode === 'correct' && (
         <p className={hintCls} role="status" data-audit="correction-options" data-state={options.state}>
-          {options.state === 'loading' ? 'Loading lot and place names…' : options.state === 'failed' ? 'Lot and place names couldn’t load — those stay as recorded. You can still correct the other values.' : ''}
+          {options.state === 'loading' ? 'Loading bunch and place names…' : options.state === 'failed' ? 'Bunch and place names couldn’t load — those stay as recorded. You can still correct the other values.' : ''}
         </p>
       )}
       {mode === 'correct' && (
@@ -264,7 +267,8 @@ export default function CorrectionActions({ event }: { event: Editable }) {
           {event.type === 'hay_inventory' && numInput('bales', 'Bales on hand', LIMITS.onHand, { inputMode: 'numeric' })}
           {event.type === 'hay_inventory' && <label className={labelCls}>Counted as of<input name="as_of" type="date" value={draft.as_of} onChange={e => set('as_of', e.target.value)} className={inputCls} required /></label>}
           {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && numInput('head', 'Head', LIMITS.head, { inputMode: 'numeric' })}
-          {(event.type === 'cattle_moved' || event.type === 'cattle_worked') && refSelect('herd_lot_id', 'Lot', 'lot')}
+          {event.type === 'cattle_counted' && numInput('counted', 'Counted (head)', LIMITS.counted, { inputMode: 'numeric' })}
+          {(event.type === 'cattle_moved' || event.type === 'cattle_worked' || event.type === 'cattle_counted') && refSelect('herd_lot_id', 'Bunch', 'lot')}
           {event.type === 'cattle_worked' && <label className={labelCls}>What was done<input name="what" type="text" maxLength={LIMITS.what.maxLen} value={draft.what} onChange={e => set('what', e.target.value)} className={inputCls} required /></label>}
           {event.type === 'cattle_moved' ? (<>{refSelect('from_place_id', 'From', 'place')}{refSelect('to_place_id', 'To', 'place')}</>) : refSelect('place_id', 'Place', 'place')}
           <label className={labelCls}>Work date<input name="date" type="date" value={draft.date} onChange={e => set('date', e.target.value)} className={inputCls} required /></label>

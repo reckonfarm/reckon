@@ -60,7 +60,13 @@ export interface OutboxItem {
   // recorded is not an entry on the activity record.
   endpoint?: string
   link?: { href: string; label: string }
+  // Block 14: one thing the server offers AFTER an entry lands — "Change bunch
+  // to 274?" on a count that differed. Data, not a function: the strip knows
+  // what each kind means. Cleared once taken or declined.
+  followUp?: FollowUp
 }
+
+export type FollowUp = { kind: 'set_head'; lot_id: string; head: number; label: string; done?: boolean }
 
 export const STATE_LABEL: Record<OutboxState, string> = {
   local:  'Saved on this phone',
@@ -220,6 +226,12 @@ export function forgetSynced(eventId: string): void {
   if (after.length !== before.length) { try { write(after) } catch { /* keep what is there */ } }
 }
 
+/** Block 14: the follow-up was taken or declined; it does not show again. */
+export function settleFollowUp(id: string): void {
+  const item = read().find(i => i.id === id)
+  if (item?.followUp) update(id, { followUp: { ...item.followUp, done: true } })
+}
+
 export function discard(id: string): void {
   try { write(read().filter(i => i.id !== id)) } catch { /* keep */ }
 }
@@ -264,10 +276,11 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       const consequence = json && typeof json === 'object' && Array.isArray((json as { consequence?: { lines?: unknown } }).consequence?.lines)
         ? { lines: ((json as { consequence: { lines: unknown[] } }).consequence.lines).filter((l): l is string => typeof l === 'string') }
         : undefined
-      const j = json as { event?: { id?: string }; place?: { id?: string } }
+      const j = json as { event?: { id?: string }; place?: { id?: string }; follow_up?: FollowUp }
       const serverId = j.event?.id ?? j.place?.id
+      const followUp = j.follow_up && j.follow_up.kind === 'set_head' && typeof j.follow_up.lot_id === 'string' && typeof j.follow_up.head === 'number' ? j.follow_up : undefined
       await sleep(Math.max(0, MIN_DWELL_MS - (Date.now() - queuedAt)))   // 'queued' is seen before 'synced'
-      update(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId })
+      update(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId, ...(followUp ? { followUp } : {}) })
       return
     }
     const message = typeof (json as { error?: unknown }).error === 'string' ? (json as { error: string }).error : `Server said ${res.status}`

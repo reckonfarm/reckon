@@ -129,6 +129,7 @@ function describeBody(r: ActivityRow, names: Names): string {
     case 'bales_stacked': { const count = num(p.count); return count == null ? `Bales stacked${suffix}` : `Stacked ${plural(count, 'bale')}${suffix}` }
     case 'cattle_moved': { const head = num(p.head); const from = names.place(p.from_place_id); const to = names.place(p.to_place_id); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'Cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); const route = from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''; return `Moved ${who}${route}` }
     case 'cattle_worked': { const head = num(p.head); const what = str(p.what); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}` }
+    case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); const lot = names.lot(p.herd_lot_id); return `Counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${lot ? ` of ${lot}` : ''}${e != null && c != null ? ` · ${e.toLocaleString()} expected · ${c - e === 0 ? 'same' : c - e > 0 ? `+${c - e}` : `−${e - c}`}` : ''}${suffix}` }
     case 'hay_inventory': { const bales = num(p.bales); const asOf = str(p.as_of); const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''; return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}` }
     case GROUP_ACTION_TYPE: {
       // One line, like every other row (8B.3). The full arithmetic is on the
@@ -157,6 +158,7 @@ export function quantityOf(r: ActivityRow): string | null {
     case 'bales_stacked': { const c = num(p.count); return c == null ? null : plural(c, 'bale') }
     case 'hay_inventory': { const b = num(p.bales); return b == null ? null : `${plural(b, 'bale')} on hand` }
     case 'cattle_moved': case 'cattle_worked': { const h = num(p.head); return h == null ? null : `${h.toLocaleString()} head` }
+    case 'cattle_counted': { const c = num(p.counted); return c == null ? null : `${c.toLocaleString()} head counted` }
     default: return null
   }
 }

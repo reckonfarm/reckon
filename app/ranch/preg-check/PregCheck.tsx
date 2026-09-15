@@ -6,7 +6,8 @@ import { useWakeLock } from '@/lib/use-wake-lock'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { GROUP_ACTION_TYPE, MAX_GROUP_NAME } from '@/lib/cattle/kinds'
 import { warning } from '@/lib/brand-colors'
-import { Select } from '@/app/components/ui/Field'
+import { LOT_CLASSES, LOT_CLASS_LABELS, lotLabel, type Lot, type LotClass } from '@/lib/herd'
+import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
 
 // ─── Preg check at the chute (Block 10) ───────────────────────────────────────
 //
@@ -42,7 +43,7 @@ import { Select } from '@/app/components/ui/Field'
 //     at a chute with no bars is the browser's offline error and not the app
 //     (lib/use-wake-lock).
 
-export interface ChuteLot { id: string; name: string; head: number; updatedAt: string }
+export interface ChuteLot { id: string; name: string; head: number; updatedAt: string; class: LotClass }
 
 type Mode = 'tally' | 'totals'
 type Tap = 'bred' | 'open'
@@ -52,17 +53,26 @@ const btn = 'inline-flex items-center justify-center rounded-xl font-dm-sans fon
 const pad = `${btn} min-h-[64px] min-w-[64px] border border-control-border bg-surface text-[22px] text-ink active:bg-forest-green/10`
 const field = 'block w-full min-h-[56px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[18px] text-ink'
 
-export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: string }) {
+export default function PregCheck({ lots: initialLots, today }: { lots: ChuteLot[]; today: string }) {
   const [mode, setMode] = useState<Mode>('tally')
-  const [sourceId, setSourceId] = useState<string | null>(lots.length === 1 ? lots[0].id : null)
+  // Block 14: a bunch made on the spot joins the list this screen was handed.
+  const [lots, setLots] = useState<ChuteLot[]>(initialLots)
+  const [newBunch, setNewBunch] = useState(false)
+  const [sourceId, setSourceId] = useState<string | null>(initialLots.length === 1 ? initialLots[0].id : null)
   const [counted, setCounted] = useState(0)
   const [open, setOpen] = useState(0)
   const [taps, setTaps] = useState<Tap[]>([])
-  const [destId, setDestId] = useState<string>('')        // '' = a new group
-  const [destName, setDestName] = useState(`Open cows ${today}`)
   const [saved, setSaved] = useState<string | null>(null)
+  // Block 14: what the saved check was, so the sort offered afterward can name
+  // the opens and the bunch they came from. The check itself never splits.
+  const [lastCheck, setLastCheck] = useState<{ sourceId: string; sourceName: string; sourceClass: LotClass; counted: number; open: number } | null>(null)
+  const [sortOpen, setSortOpen] = useState(false)
+  const [sortName, setSortName] = useState(`Open cows ${today}`)
+  const [sortClass, setSortClass] = useState<LotClass>('old_cows')
+  const [sortSaved, setSortSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const eventId = useRef<string | null>(null)
+  const sortId = useRef<string | null>(null)
 
   // Held for the whole page, not just while saving: the risk is the page being
   // discarded BETWEEN bunches, which is most of a working morning.
@@ -72,7 +82,6 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
   const bred = Math.max(0, counted - open)
   const overOpen = open > counted
   const reconciles = counted > 0 && !overOpen
-  const dest = lots.find(l => l.id === destId) ?? null
 
   function tap(which: Tap) {
     setCounted(c => c + 1)
@@ -93,11 +102,13 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
     setCounted(0); setOpen(0); setTaps([]); eventId.current = null
   }
 
+  // Block 14: THE CHECK RECORDS COUNTS ON THE BUNCH CHECKED. The bunch ends at
+  // what was counted; bred and open are numbers on the row; nothing is split.
+  // The sort — if wanted — is offered as one tap after, as its own working.
   function save() {
     setError(null)
     if (!source) { setError('Pick the bunch you are working.'); return }
     if (!reconciles) { setError('The numbers do not add up yet.'); return }
-    if (open > 0 && !destId && !destName.trim()) { setError('Name the group the opens go to.'); return }
 
     const id = eventId.current ?? (eventId.current = newEventId())
     const body: Record<string, unknown> = {
@@ -107,20 +118,54 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
       source_lot_id: source.id,
       expected_head: source.head,
       counted,
-      stay: bred,
-      results: open > 0
-        ? [destId ? { lot_id: destId, head: open } : { lot_id: null, name: destName.trim().slice(0, MAX_GROUP_NAME), head: open }]
-        : [],
+      stay: counted,
+      results: [],
+      detail: { bred, open },
     }
-    const where = open === 0 ? 'none open' : `${open} open to ${dest ? dest.name : destName.trim()}`
     try {
-      enqueue(body, `Preg check · ${counted} counted · ${where}`)
+      enqueue(body, `Preg check · ${counted} counted · ${bred} bred · ${open} open`)
     } catch {
       setError("Couldn't save — this phone refused to store it. Write it down.")
       return
     }
     setSaved(id)
+    setLastCheck({ sourceId: source.id, sourceName: source.name, sourceClass: source.class, counted, open })
+    // The bunch now reads what was counted: the next working here must expect that.
+    setLots(prev => prev.map(l => (l.id === source.id ? { ...l, head: counted } : l)))
+    setSortClass(source.class === 'cows' ? 'old_cows' : source.class)
+    setSortName(`Open ${source.class === 'cows' || source.class === 'old_cows' || source.class === 'pairs' ? 'cows' : LOT_CLASS_LABELS[source.class].toLowerCase()} ${today}`)
+    setSortOpen(false); setSortSaved(null); sortId.current = null
     reset()
+  }
+
+  // Block 14: "Make a bunch from the N opens?" — a SORT working, its own row,
+  // moving the opens out of the checked bunch into a bunch of the class the
+  // person picks (defaulted: cows → old cows, anything else keeps its class).
+  function saveSort() {
+    if (!lastCheck) return
+    setError(null)
+    const name = sortName.trim().slice(0, MAX_GROUP_NAME)
+    if (!name) { setError('Name the new bunch.'); return }
+    const id = sortId.current ?? (sortId.current = newEventId())
+    const body: Record<string, unknown> = {
+      id,
+      type: GROUP_ACTION_TYPE,
+      action: 'sort',
+      source_lot_id: lastCheck.sourceId,
+      expected_head: lastCheck.counted,
+      counted: lastCheck.counted,
+      stay: lastCheck.counted - lastCheck.open,
+      results: [{ lot_id: null, name, class: sortClass, head: lastCheck.open }],
+    }
+    try {
+      enqueue(body, `Sorted · ${lastCheck.open} open out of ${lastCheck.sourceName} to ${name}`)
+    } catch {
+      setError("Couldn't save — this phone refused to store it. Write it down.")
+      return
+    }
+    setSortSaved(id)
+    setLots(prev => prev.map(l => (l.id === lastCheck.sourceId ? { ...l, head: lastCheck.counted - lastCheck.open } : l)))
+    setSortOpen(false)
   }
 
   // ── Pick the bunch ──────────────────────────────────────────────────────────
@@ -142,6 +187,19 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
               <span className="text-secondary-ink">{l.head.toLocaleString()} head</span>
             </button>
           ))}
+          {/* Block 14: make the bunch here, and it is picked. */}
+          {!newBunch && (
+            <button type="button" onClick={() => setNewBunch(true)} data-audit="preg-new-bunch"
+              className={`${btn} min-h-[64px] w-full border border-dashed border-forest-green/40 bg-surface px-5 text-[18px] text-forest-green`}>
+              New bunch…
+            </button>
+          )}
+          {newBunch && (
+            <NewBunchInline
+              onMade={(made: Lot) => { const cl: ChuteLot = { id: made.id, name: lotLabel(made), head: made.head_count, updatedAt: made.updated_at, class: made.class }; setLots(prev => [...prev, cl]); setNewBunch(false); setSourceId(made.id) }}
+              onCancel={() => setNewBunch(false)}
+            />
+          )}
         </div>
       </div>
     )
@@ -231,21 +289,9 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
       )}
 
       {open > 0 && (
-        <div className="mt-5" data-audit="preg-destination">
-          <label className="block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor="preg-dest">
-            The {open.toLocaleString()} open go to
-          </label>
-          <Select id="preg-dest" value={destId} onChange={e => setDestId(e.target.value)} data-audit="preg-dest-select" className={`mt-1 ${field}`}>
-            <option value="">A new group</option>
-            {lots.filter(l => l.id !== source.id).map(l => (
-              <option key={l.id} value={l.id}>{l.name} ({l.head.toLocaleString()} head)</option>
-            ))}
-          </Select>
-          {!destId && (
-            <input value={destName} onChange={e => setDestName(e.target.value)} maxLength={MAX_GROUP_NAME}
-              className={`mt-2 ${field}`} aria-label="Name for the new group" data-audit="preg-dest-name" />
-          )}
-        </div>
+        <p className="mt-4 font-dm-sans text-[16px] text-ink" data-audit="preg-opens-note">
+          The {open.toLocaleString()} open stay in {source.name} on this record. After it saves, one tap makes a bunch of them if you want one.
+        </p>
       )}
 
       {error && (
@@ -258,6 +304,41 @@ export default function PregCheck({ lots, today }: { lots: ChuteLot[]; today: st
       </button>
 
       {saved && <div className="mt-3"><SaveStatus itemId={saved} /></div>}
+
+      {/* Block 14: the split, offered — never done for you. */}
+      {saved && lastCheck && lastCheck.open > 0 && !sortSaved && (
+        <div className="mt-3 rounded-xl border border-forest-green/25 bg-forest-green/[0.04] p-4" data-audit="preg-sort-offer">
+          {!sortOpen ? (
+            <button type="button" onClick={() => setSortOpen(true)} data-audit="preg-sort-open"
+              className={`${btn} min-h-[56px] w-full border border-forest-green/40 bg-surface px-4 text-[17px] text-forest-green`}>
+              Make a bunch from the {lastCheck.open.toLocaleString()} opens?
+            </button>
+          ) : (
+            <div data-audit="preg-sort-form">
+              <p className="font-dm-sans text-[17px] font-semibold text-ink">A new bunch of {lastCheck.open.toLocaleString()} from {lastCheck.sourceName}</p>
+              <label className="mt-3 block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor="preg-sort-name">Name
+                <input id="preg-sort-name" value={sortName} onChange={e => setSortName(e.target.value)} maxLength={MAX_GROUP_NAME} className={`mt-1 ${field}`} data-audit="preg-sort-name" />
+              </label>
+              <p className="mt-3 font-dm-sans text-[14px] font-medium text-secondary-ink" id="preg-sort-class">What they are</p>
+              <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="preg-sort-class" data-audit="preg-sort-class">
+                {LOT_CLASSES.map(c => (
+                  <button key={c} type="button" role="radio" aria-checked={sortClass === c} onClick={() => setSortClass(c)}
+                    className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${sortClass === c ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit={`preg-sort-class-${c}`}>
+                    {LOT_CLASS_LABELS[c]}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={saveSort} data-audit="preg-sort-save" className={`${btn} min-h-[56px] flex-1 bg-brand px-4 text-[17px] text-cream`}>
+                  Make the bunch
+                </button>
+                <button type="button" onClick={() => setSortOpen(false)} className={`${btn} min-h-[56px] px-4 text-[17px] text-secondary-ink underline underline-offset-2`}>Not now</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {sortSaved && <div className="mt-3" data-audit="preg-sort-saved"><SaveStatus itemId={sortSaved} /></div>}
 
       {/* Honest about what the wake lock is and is not. It keeps the page in
           front so iOS does not discard it; it does not make the app work with

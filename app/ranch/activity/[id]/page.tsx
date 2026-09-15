@@ -55,7 +55,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ['Who', <>{names.person(row.user_id)} <span className="text-secondary-ink">· {actorRole}</span></>],
     ['What', line],
     ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
-    ...(lotName ? [['Lot', lotName] as [string, React.ReactNode]] : []),
+    ...(lotName ? [['Bunch', lotName] as [string, React.ReactNode]] : []),
     ...(placeName && placeId ? [['Place', <Link key="p" href={`/ranch/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
     // 6E: the optional fields the form asks for read back here — a note, and the
     // stack the hay was taken from. Absent = no row, never a blank.

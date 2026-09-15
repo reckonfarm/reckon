@@ -40,17 +40,27 @@ export async function ranchNumbers(supabase: SupabaseClient, userId: string): Pr
 
 // The last recorded work per lot: the most recent feeding that STANDS (through
 // the correction chain) naming the lot. One read for every lot on the ranch.
-export interface LastWork { ts: string; bales: number | null; what: string | null; head: number | null; eventId: string }
+export interface LastWork { ts: string; bales: number | null; what: string | null; head: number | null; eventId: string   /** Block 14: the most recent count of this bunch, if any — shown on its own line. */
+  count?: LastCount
+}
 // The lot's last recorded work: a feeding, or cattle work naming the lot (6G).
 export async function lastWorkByLot(supabase: SupabaseClient, lotIds: string[]): Promise<Record<string, LastWork>> {
   if (lotIds.length === 0) return {}
   // 7D: skip the deleted filter on a database without 061 (temporary).
-  const { data } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', ['hay_fed', 'cattle_worked']).eq('payload->>source', 'manual'))
+  const { data } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', ['hay_fed', 'cattle_worked', 'cattle_counted']).eq('payload->>source', 'manual'))
     .in('payload->>herd_lot_id', lotIds).order('ts', { ascending: false }).limit(400)
   const out: Record<string, LastWork> = {}
+  // Block 14: the last COUNT is its own line on the bunch card, kept apart
+  // from the last work so a count never reads as a working.
+  const counts: Record<string, LastCount> = {}
   for (const r of (data ?? []) as { id: string; type: string; ts: string; payload: Record<string, unknown> }[]) {
     const lot = typeof r.payload.herd_lot_id === 'string' ? r.payload.herd_lot_id : null
-    if (!lot || out[lot]) continue
+    if (!lot) continue
+    if (r.type === 'cattle_counted') {
+      if (!counts[lot] && typeof r.payload.counted === 'number') counts[lot] = { ts: r.ts, eventId: r.id, counted: r.payload.counted, expected: typeof r.payload.expected === 'number' ? r.payload.expected : null }
+      continue
+    }
+    if (out[lot]) continue
     out[lot] = {
       ts: r.ts, eventId: r.id,
       bales: r.type === 'hay_fed' && typeof r.payload.bales === 'number' ? r.payload.bales : null,
@@ -58,5 +68,8 @@ export async function lastWorkByLot(supabase: SupabaseClient, lotIds: string[]):
       head: r.type === 'cattle_worked' && typeof r.payload.head === 'number' ? r.payload.head : null,
     }
   }
+  for (const lot of Object.keys(counts)) out[lot] = { ...(out[lot] ?? { ts: '', eventId: '', bales: null, what: null, head: null }), count: counts[lot] }
   return out
 }
+
+export interface LastCount { ts: string; eventId: string; counted: number; expected: number | null }

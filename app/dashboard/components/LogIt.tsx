@@ -8,6 +8,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@/lib/manual-log'
 import { lotLabel, type Lot } from '@/lib/herd'
+import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
@@ -30,6 +31,15 @@ const LAST_PLACE_KEY = 'manual_log_last_place'
 // The last lot fed — its OWN key, never the place key: a place and a lot are
 // two different answers and one must never overwrite the other.
 const LAST_LOT_KEY = 'manual_log_last_lot'
+// Block 14: the bunch list, kept on the phone. A count or a feeding with no
+// signal still has to offer the bunches — the last list this phone saw is
+// the honest offer (offline-first, like the operation profile). Written on
+// every good fetch, read only when the fetch fails.
+const LOTS_CACHE_KEY = 'dryline_bunches_v1'
+function readLotsCache(): Lot[] | null {
+  try { const raw = localStorage.getItem(LOTS_CACHE_KEY); const v = raw ? JSON.parse(raw) as unknown : null; return Array.isArray(v) ? v as Lot[] : null } catch { return null }
+}
+function writeLotsCache(lots: Lot[]) { try { localStorage.setItem(LOTS_CACHE_KEY, JSON.stringify(lots)) } catch { /* private mode */ } }
 // A half-filled sheet survives an app switch (Block 2A): every keystroke is
 // mirrored here and the sheet reopens on it. Cleared on save or an explicit
 // Cancel/discard — never by an accident.
@@ -97,6 +107,7 @@ const TILE_VERB: Record<ManualEventType, string> = {
   cattle_moved: 'Move cattle',
   cattle_worked: 'Record cattle work',
   hay_inventory: 'Count hay',
+  cattle_counted: 'Count cattle',
 }
 const SAVE_LABEL: Record<ManualEventType, string> = {
   rain: 'Record rain',
@@ -105,10 +116,11 @@ const SAVE_LABEL: Record<ManualEventType, string> = {
   cattle_moved: 'Record move',
   cattle_worked: 'Record work',
   hay_inventory: 'Record count',
+  cattle_counted: 'Record count',
 }
 const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
-const LOT_TYPES: readonly ManualEventType[] = ['hay_fed', 'cattle_moved', 'cattle_worked']
+const LOT_TYPES: readonly ManualEventType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted']
 const TILE_HINT: Record<ManualEventType, string> = {
   rain: 'inches in the gauge',
   hay_fed: 'bales put out',
@@ -116,6 +128,7 @@ const TILE_HINT: Record<ManualEventType, string> = {
   cattle_moved: 'head, from → to',
   cattle_worked: 'head and what you did',
   hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
+  cattle_counted: 'head you counted in one bunch \u2014 the bunch\u2019s number does not change',
 }
 
 // The day a form is recording, in the words a person would use. '' means now.
@@ -283,6 +296,7 @@ function describe(
     case 'cattle_moved':  return `Moved ${n} head${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
     case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
     case 'hay_inventory': return `${bales(n)} on hand${at}`
+    case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
   }
 }
 
@@ -326,6 +340,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [stock, setStock] = useState<PlaceSlot>(EMPTY_SLOT)   // hay_fed: the stack it came from, behind More
   const [more, setMore] = useState(false)
   const [lotsError, setLotsError] = useState(false)
+  // Block 14: "New bunch" inside any bunch picker opens the on-the-spot form
+  // below it; a made bunch joins the list and is picked at once.
+  const [newBunch, setNewBunch] = useState(false)
+  const bunchMade = (made: Lot) => { setLots(prev => { const next = [...(prev ?? []), made]; writeLotsCache(next); return next }); setLot(made.id); setNewBunch(false); writeLastLot(made.id) }
 
   const hasDraft = useHasDraft()
 
@@ -403,13 +421,22 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         if (cancelled) return
         const list = Array.isArray(j?.profile?.herd?.lots) ? j!.profile!.herd!.lots! : []
         setLots(list)
+        writeLotsCache(list)
         const last = readLastLot()
         // A draft's lot that the list no longer names is left UNASSIGNED, never
         // swapped for the last-used lot (6A: a slow option load rewrites nothing
         // the person chose). The last-used default applies only to an empty draft.
         setLot(prev => prev ? (list.some(l => l.id === prev) ? prev : '') : (list.some(l => l.id === last) ? last : ''))
       })
-      .catch(() => { if (!cancelled) { setLots([]); setLotsError(true) } })   // a real error state, not a silent empty picker
+      .catch(() => {
+        if (cancelled) return
+        // No signal: the last list this phone saw, so the entry can still be
+        // recorded against a bunch and sync later. No list ever seen → a real
+        // error state, never a silent empty picker.
+        const cached = readLotsCache()
+        if (cached && cached.length > 0) { setLots(cached); setLotsError(false) }
+        else { setLots([]); setLotsError(true) }
+      })
     return () => { cancelled = true }
   }, [open, type, lots])
 
@@ -528,6 +555,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           break
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
         case 'hay_inventory': body.bales = num; body.as_of = asOf || todayKey(); body.place_id = placeId; break
+        case 'cattle_counted':
+          if (!lot) { setError('Pick the bunch you counted.'); setBusy(false); return }
+          body.counted = num; body.herd_lot_id = lot; body.expected = lots?.find(l => l.id === lot)?.head_count ?? null
+          break
       }
       if (!Number.isFinite(num) && type !== 'rain') { setError('Enter the number first'); return }
 
@@ -571,18 +602,20 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     {/* Which bunch (Block 6A): the field's space is reserved while lots load, Save waits
         for them, a failed load is said out loud, and "no lot" reads as what it is. A lot
         is never created from here. */}
-    <Field label="Fed to" hint={lots && lots.length === 0 && !lotsError ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : undefined} error={lotsError ? 'Couldn’t load your lots — record without one, or try again below.' : undefined}>
+    <Field label="Fed to" hint={lots && lots.length === 0 && !lotsError ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : undefined} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
-        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
+        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
-        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)} data-audit="fed-to">
-          <option value="">Not assigned to a lot</option>
+        <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit="fed-to">
+          <option value="">Not assigned to a bunch</option>
           {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          <option value="__new__">New bunch…</option>
         </Select>
       )}
     </Field>
+    {newBunch && <NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} />}
     {lotsError && (
-      <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="-mt-2 self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="lots-retry">Try loading lots again</button>
+      <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="-mt-2 self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="lots-retry">Try loading bunches again</button>
     )}
     {placeField()}
     {n1.trim() !== '' && Number.isFinite(Number(n1)) && (
@@ -608,21 +641,23 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   // 6G: which bunch — optional, with "Unassigned" plain. What a move DOES is said
   // on the field: it records the move; it never changes a lot's head count.
-  const lotField = (label: string, hint: string, audit: string) => (
-    <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No lots on the ranch yet — add them under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your lots — record without one, or try again below.' : undefined}>
+  const lotField = (label: string, hint: string, audit: string) => (<>
+    <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
-        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading lots…</option></Select>
+        <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
-        <Select value={lot} disabled={busy} onChange={e => setLot(e.target.value)} data-audit={audit}>
+        <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit={audit}>
           <option value="">Unassigned</option>
           {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          <option value="__new__">New bunch…</option>
         </Select>
       )}
     </Field>
-  )
+    {newBunch && <NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} />}
+  </>)
   if (type === 'cattle_moved') fields = (<>
     <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} />
-    {lotField('Lot', 'Records the move against this bunch. A move never changes a lot’s head count — edit the lot under Ranch → Cattle for that.', 'lot-for-move')}
+    {lotField('Bunch', 'Records the move against this bunch. A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move')}
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
   </>)
@@ -642,12 +677,49 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       </p>
     )}
   </>)
+  // Block 14 — Count cattle: tap the bunch, type the number, save. Expected
+  // is what the bunch says now, shown so the difference is known before Save;
+  // the server re-reads it when the entry lands. The bunch's number does not
+  // move here — the answer offers "Change bunch to N?" afterward.
+  if (type === 'cattle_counted') {
+    const chosen = lots?.find(l => l.id === lot) ?? null
+    const n = n1.trim() === '' ? null : Number(n1)
+    fields = (<>
+      <div>
+        <p className="font-dm-sans text-[16px] font-medium text-ink" id="count-bunch-label">Which bunch</p>
+        {lots === null ? (
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="lots-loading">Loading bunches…</p>
+        ) : lotsError ? (
+          <p className="mt-1 font-dm-sans text-[16px] font-semibold text-warning">Couldn’t load your bunches — try again below.</p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="count-bunch-label" data-audit="count-bunch">
+            {lots.map(l => (
+              <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
+                className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="count-bunch-option" data-lot={l.id}>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {l.head_count.toLocaleString()}</span>
+              </button>
+            ))}
+            <button type="button" onClick={() => setNewBunch(true)} disabled={busy} className="min-h-[48px] rounded-full border border-dashed border-forest-green/40 px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="count-new-bunch">New bunch…</button>
+          </div>
+        )}
+        {newBunch && <div className="mt-2"><NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} /></div>}
+      </div>
+      <NumberField label="Counted" unit="head" value={n1} onChange={setN1} max={20000} placeholder="0" />
+      {chosen && (
+        <p className="font-dm-sans text-[17px] text-ink" data-audit="count-preview">
+          {n != null && Number.isFinite(n)
+            ? <><span className="font-semibold">{n.toLocaleString()} counted</span> · {chosen.head_count.toLocaleString()} expected · <span className="font-semibold">{n - chosen.head_count === 0 ? 'same' : n - chosen.head_count > 0 ? `+${(n - chosen.head_count).toLocaleString()}` : `−${(chosen.head_count - n).toLocaleString()}`}</span></>
+            : <>{lotLabel(chosen)} says <span className="font-semibold">{chosen.head_count.toLocaleString()} head</span>. Counting never changes that number by itself.</>}
+        </p>
+      )}
+    </>)
+  }
   if (type === 'cattle_worked') fields = (<>
     <NumberField label="Worked" unit="head" value={n1} onChange={setN1} max={20000} />
     <Field label="What">
       <Input value={what} onChange={e => setWhat(e.target.value)} maxLength={80} placeholder="pregged, vaccinated, weaned…" />
     </Field>
-    {lotField('Lot', 'Records the work against this bunch — it shows as the lot’s last recorded work.', 'lot-for-work')}
+    {lotField('Bunch', 'Records the work against this bunch — it shows as the bunch’s last recorded work.', 'lot-for-work')}
     {placeField()}
   </>)
 
@@ -696,7 +768,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
               <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
               <button
                 type="button"
-                onClick={type ? () => { eventId.current = null; setType(null); setError(null) } : close}
+                onClick={type ? () => { eventId.current = null; setType(null); setError(null); setNewBunch(false) } : close}
                 className="min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-ink hover:text-forest-green"
               >
                 {type ? 'Back' : 'Close'}
@@ -719,6 +791,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 </div>
                 {/* Count stands apart: it states what is there; it never adds or takes stock. */}
                 <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-count">Count</p>
+                <button type="button" onClick={() => setType('cattle_counted')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-cattle_counted">
+                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.cattle_counted}</span>
+                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.cattle_counted}</span>
+                </button>
                 <button type="button" onClick={() => setType('hay_inventory')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-hay_inventory">
                   <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
                   <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>

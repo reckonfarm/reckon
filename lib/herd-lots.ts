@@ -13,10 +13,20 @@ import { liveOnly } from './trash'
 // name forever. Every read and write here runs on the USER-SCOPED client — the
 // policy is the gate; user ids are recorded as authorship, never as grants.
 
-const LOT_COLUMNS = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at, updated_by'
+// Block 14 (069) adds place_id. TOLERANT READ, on 040's precedent and NOT the
+// memoised probe 12.4 had to remove: every read asks with place_id and, if the
+// column is not there yet, asks again without it — no cached answer that can
+// go stale the moment PK runs the migration.
+const LOT_COLUMNS_BASE = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at, updated_by'
+const LOT_COLUMNS = `${LOT_COLUMNS_BASE}, place_id`
+type Res = { data: unknown; error: { code?: string; message?: string } | null }
+const missingColumn = (e: { code?: string; message?: string } | null | undefined) => !!e && (e.code === '42703' || /place_id|does not exist/i.test(e.message ?? ''))
+/** Needs a migration a person can name, in words a person can read. */
+const NEEDS_069 = 'The ranch\'s database needs update 069 before a bunch can be made this way (a place, no weight, or pairs). Add it under Ranch → Cattle with a weight for now.'
 
 interface LotRow {
-  id: string; ranch_id: string; class: Lot['class']; name: string | null; head_count: number; avg_weight: number | string
+  id: string; ranch_id: string; class: Lot['class']; name: string | null; head_count: number; avg_weight: number | string | null
+  place_id?: string | null
   weight_unit: Lot['weight_unit']; frame: Lot['frame']; weaned: boolean; sale_windows: Lot['sale_windows'] | null
   created_at: string; updated_at: string; retired_at: string | null; updated_by?: string | null
   purpose?: string | null
@@ -24,7 +34,8 @@ interface LotRow {
 
 function rowToLot(r: LotRow): Lot {
   return {
-    id: r.id, class: r.class, head_count: r.head_count, avg_weight: Number(r.avg_weight), weight_unit: r.weight_unit,
+    id: r.id, class: r.class, head_count: r.head_count, avg_weight: r.avg_weight == null ? null : Number(r.avg_weight), weight_unit: r.weight_unit,
+    ...(r.place_id ? { place_id: r.place_id } : {}),
     frame: r.frame, weaned: r.weaned, sale_windows: Array.isArray(r.sale_windows) ? r.sale_windows : [],
     ...(r.name ? { name: r.name } : {}), ...(isLotPurpose(r.purpose) ? { purpose: r.purpose } : {}), created_at: r.created_at, updated_at: r.updated_at,
     ...(r.retired_at ? { retired_at: r.retired_at } : {}),
@@ -49,6 +60,14 @@ async function withPurpose(supabase: SupabaseClient, lots: Lot[]): Promise<Lot[]
   return lots.map(l => { const p = by.get(l.id); return isLotPurpose(p) ? { ...l, purpose: p } : l })
 }
 
+// Block 14: one row's place_id, when the column exists; the row as it is when not.
+async function withPlace(supabase: SupabaseClient, r: LotRow): Promise<Lot> {
+  if (r.place_id !== undefined) return rowToLot(r)
+  const { data, error } = await supabase.from('herd_lots').select('place_id').eq('id', r.id).maybeSingle()
+  if (error || !data) return rowToLot(r)
+  return rowToLot({ ...r, place_id: (data as { place_id?: string | null }).place_id ?? null })
+}
+
 async function ranchOf(supabase: SupabaseClient, userId?: string): Promise<{ uid: string; ranchId: string } | null> {
   const uid = userId ?? (await supabase.auth.getUser()).data.user?.id
   if (!uid) return null
@@ -61,8 +80,9 @@ async function ranchOf(supabase: SupabaseClient, userId?: string): Promise<{ uid
 export async function getRanchLots(supabase: SupabaseClient, userId?: string): Promise<Lot[]> {
   const who = await ranchOf(supabase, userId)
   if (!who) return []
-  const { data } = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId).is('retired_at', null)).order('created_at', { ascending: true })
-  return withPurpose(supabase, ((data ?? []) as LotRow[]).map(rowToLot))
+  let res: Res = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId).is('retired_at', null)).order('created_at', { ascending: true })
+  if (missingColumn(res.error)) res = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS_BASE).eq('ranch_id', who.ranchId).is('retired_at', null)).order('created_at', { ascending: true })
+  return withPurpose(supabase, ((res.data ?? []) as LotRow[]).map(rowToLot))
 }
 
 // …but a name must resolve for any lot the ledger ever fed, retired or not.
@@ -70,8 +90,9 @@ export async function getRanchLotsIncludingRetired(supabase: SupabaseClient, use
   const who = await ranchOf(supabase, userId)
   if (!who) return []
   // Retired lots still resolve a name; TRASHED ones do not — the trash is invisible everywhere but /account/trash.
-  const { data } = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId)).order('created_at', { ascending: true })
-  return withPurpose(supabase, ((data ?? []) as LotRow[]).map(rowToLot))
+  let res: Res = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS).eq('ranch_id', who.ranchId)).order('created_at', { ascending: true })
+  if (missingColumn(res.error)) res = await liveOnly(supabase.from('herd_lots').select(LOT_COLUMNS_BASE).eq('ranch_id', who.ranchId)).order('created_at', { ascending: true })
+  return withPurpose(supabase, ((res.data ?? []) as LotRow[]).map(rowToLot))
 }
 
 // ─── Block 12 (12.6): a head count is history ─────────────────────────────────
@@ -101,16 +122,34 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const n = normalizeLot(raw)
   if (!n.ok) return { ok: false, status: 400, error: n.error }
   const l = n.lot
-  const { data, error } = await supabase.from('herd_lots').insert({
+  // Block 14: where the bunch is — a live place this person can see, or none.
+  // Under RLS a place on another ranch is simply not found.
+  let placeId: string | null = null
+  if (l.place_id) {
+    const { data: pl } = await liveOnly(supabase.from('places').select('id, retired_at').eq('id', l.place_id)).maybeSingle()
+    const row = pl as { id: string; retired_at: string | null } | null
+    if (!row || row.retired_at) return { ok: false, status: 400, error: 'No such place to put the bunch at.' }
+    placeId = row.id
+  }
+  const row = {
     ranch_id: who.ranchId, class: l.class, name: l.name ?? null, head_count: l.head_count, avg_weight: l.avg_weight,
     weight_unit: l.weight_unit, frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, created_by: who.uid, updated_by: who.uid,
+    ...(placeId ? { place_id: placeId } : {}),
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
-  }).select(LOT_COLUMNS).single()
-  if (error || !data) return { ok: false, status: 500, error: error?.message ?? 'Could not save the lot.' }
+  }
+  let ins: Res = await supabase.from('herd_lots').insert(row).select(LOT_COLUMNS_BASE).single()
+  // A database without 069 refuses a place, a null weight or pairs. Say which
+  // update is missing, in words, and never a column name.
+  if (ins.error && (missingColumn(ins.error) || /avg_weight|herd_lots_class_check|herd_lots_weight_check/i.test(ins.error.message ?? ''))) {
+    if (!placeId && l.avg_weight != null && l.class !== 'pairs') ins = await supabase.from('herd_lots').insert(row).select(LOT_COLUMNS_BASE).single()
+    else return { ok: false, status: 400, error: NEEDS_069 }
+  }
+  const { data, error } = ins
+  if (error || !data) return { ok: false, status: 500, error: error?.message ?? 'Could not save the bunch.' }
   const created = data as LotRow
   const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created')
   if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but its count could not be written to the record — open it and set the count again.' }
-  return { ok: true, lot: (await withPurpose(supabase, [rowToLot(created)]))[0] }
+  return { ok: true, lot: (await withPurpose(supabase, [await withPlace(supabase, created)]))[0] }
 }
 
 // Update — ONLY when the row still carries the updated_at the editor last saw.
@@ -131,8 +170,15 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }).eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null)
   if (expectedUpdatedAt) q = q.eq('updated_at', expectedUpdatedAt)
-  const { data, error } = await q.select(LOT_COLUMNS)
-  if (error) return { ok: false, status: 500, error: error.message }
+  // The returning list names only columns every database has: PostgREST
+  // refuses the WHOLE statement — the update included — when it names one
+  // that is not there, and the first local run showed a stale edit answered
+  // 200 with nothing written because of exactly that. place_id is re-read
+  // below, tolerantly, once the write has landed.
+  const upd: Res = await q.select(LOT_COLUMNS_BASE)
+  const { error } = upd
+  const data = upd.data as LotRow[] | null
+  if (error) return { ok: false, status: 500, error: error.message ?? 'Could not save the bunch.' }
   if (data && data.length === 1) {
     // Block 12 (12.6): the ledger row AFTER the compare-and-set has won. Under
     // 066 the row's trigger rebuilds the column to the same value (no change,
@@ -144,24 +190,28 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
       const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, id, before, l.head_count, 'edit')
       if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but the count could not be written to the record — set the count again.' }
     }
-    return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data[0] as LotRow)]))[0] }
+    return { ok: true, lot: (await withPurpose(supabase, [await withPlace(supabase, data[0] as LotRow)]))[0] }
   }
   // Nothing moved: distinguish "gone" from "changed under you". The words for
   // both live in lib/stale-edit.ts now, so places inherits them verbatim
   // instead of growing a second dialect of the same sentence.
-  const { data: current } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('id', id).maybeSingle()
-  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: retiredWhileOpen('lot') }
+  let cur: Res = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('id', id).maybeSingle()
+  if (missingColumn(cur.error)) cur = await supabase.from('herd_lots').select(LOT_COLUMNS_BASE).eq('id', id).maybeSingle()
+  const current = cur.data
+  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: retiredWhileOpen('bunch') }
   const row = current as LotRow
-  return { ok: false, ...(await staleEdit('lot', row)) }
+  return { ok: false, ...(await staleEdit('bunch', row)) }
 }
 
 // Retire — the lot leaves the pickers and the estimate; its name still resolves.
 export async function retireLot(supabase: SupabaseClient, id: string): Promise<LotWrite> {
   const who = await ranchOf(supabase)
   if (!who) return { ok: false, status: 403, error: 'You are not on a ranch yet.' }
-  const { data, error } = await supabase.from('herd_lots').update({ retired_at: new Date().toISOString(), retired_by: who.uid, updated_by: who.uid })
-    .eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null).select(LOT_COLUMNS)
-  if (error) return { ok: false, status: 500, error: error.message }
-  if (!data?.length) return { ok: false, status: 404, error: 'That lot is no longer on the ranch.' }
+  const ret: Res = await supabase.from('herd_lots').update({ retired_at: new Date().toISOString(), retired_by: who.uid, updated_by: who.uid })
+    .eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null).select(LOT_COLUMNS_BASE)
+  const { error } = ret
+  const data = ret.data as LotRow[] | null
+  if (error) return { ok: false, status: 500, error: error.message ?? 'Could not save the bunch.' }
+  if (!data?.length) return { ok: false, status: 404, error: 'That bunch is no longer on the ranch.' }
   return { ok: true, lot: rowToLot(data[0] as LotRow) }
 }

@@ -88,7 +88,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
   // on the same test that used to gate the total itself.
   const grossOk = clear && purposes.size === 1 && !purposes.has('unknown') && bases.size === 1
   const noGross = priced.length > 1 && !grossOk
-    ? `No gross total: ${!clear ? `a lot is priced off fewer than ${THIN_HEAD_THRESHOLD} reported head` : purposes.has('unknown') ? 'a lot has no purpose set' : purposes.size > 1 ? 'the lots serve different purposes' : 'the lots price on different bases'}.`
+    ? `No gross total: ${!clear ? `a bunch is priced off fewer than ${THIN_HEAD_THRESHOLD} reported head` : purposes.has('unknown') ? 'a bunch has no purpose set' : purposes.size > 1 ? 'the lots serve different purposes' : 'the lots price on different bases'}.`
     : null
 
   // ── What changed ───────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
                 )}
                 <LotCard l={sel} />
                 {sel.thin && sel.value != null && selSrc && (
-                  <p data-audit="thin-exact">{usd(sel.value)} = {sel.head_count.toLocaleString('en-US')} head × {selSrc.price_basis === 'cwt' ? `${sel.avg_weight_lb.toLocaleString('en-US')} lb ÷ 100 × $${selSrc.avg_price}/cwt` : `$${selSrc.avg_price}/head`} — one reported price off {selSrc.head_count ?? '?'} head, applied to this lot.</p>
+                  <p data-audit="thin-exact">{usd(sel.value)} = {sel.head_count.toLocaleString('en-US')} head × {selSrc.price_basis === 'cwt' ? `${(sel.avg_weight_lb ?? 0).toLocaleString('en-US')} lb ÷ 100 × $${selSrc.avg_price}/cwt` : `$${selSrc.avg_price}/head`} — one reported price off {selSrc.head_count ?? '?'} head, applied to this lot.</p>
                 )}
               </div>
             </details>

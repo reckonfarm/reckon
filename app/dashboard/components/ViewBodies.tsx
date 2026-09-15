@@ -1013,7 +1013,7 @@ export async function MarketsViewBody({
           const stale = lrp?.stale ? ` · latest available, as of ${fmt(lrp.effective_date)}` : ''
           return <p className="font-dm-sans text-[17px] text-ink" data-audit="price-protection-row">{line}{stale}<span className="block text-[14px] text-secondary-ink">A CME national index floor, not your local cash price — basis varies.</span></p>
         })()}
-        <Disclosure title="Calculator and endorsements" audit="price-protection-more" remember="price-protection" summary="Per-lot reference floors, the endorsement ladder, premiums, basis">
+        <Disclosure title="Calculator and endorsements" audit="price-protection-more" remember="price-protection" summary="Per-bunch reference floors, the endorsement ladder, premiums, basis">
           <div className="space-y-3">
             {anchor && <PriceProtectionPanel outlook={anchor.outlook} />}
             <LrpMarketsCard result={lrpResult} />

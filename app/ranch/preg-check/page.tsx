@@ -31,7 +31,7 @@ export default async function PregCheckPage() {
   // count the recorder had on screen is what 063 checks against, so a bunch
   // someone else moved refuses instead of clobbering.
   const chuteLots: ChuteLot[] = lots.map(l => ({
-    id: l.id, name: lotLabel(l), head: l.head_count, updatedAt: l.updated_at,
+    id: l.id, name: lotLabel(l), head: l.head_count, updatedAt: l.updated_at, class: l.class,
   }))
 
   return (

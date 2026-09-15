@@ -45,7 +45,7 @@ export default function HerdValueCard({ anchor }: { anchor: HerdAnchor }) {
   // price reference does not withhold it — only a missing head or weight does.
   const cwtLots = estimate.perLot.filter(l => l.value != null && l.source?.price_basis === 'cwt')
   const perDollar = cwtLots.reduce((s, l) => s + (dollarsPerCwtMove(l.head_count, l.avg_weight_lb) ?? 0), 0)
-  const sensitivity = perDollar > 0 ? `Every $1/cwt move is $${perDollar.toLocaleString('en-US')} across ${cwtLots.length === 1 ? 'this lot' : `${cwtLots.length} lots`}.` : null
+  const sensitivity = perDollar > 0 ? `Every $1/cwt move is $${perDollar.toLocaleString('en-US')} across ${cwtLots.length === 1 ? 'this bunch' : `${cwtLots.length} bunches`}.` : null
 
   return (
     // Block 2.6I — the card is no longer one big link: the report links inside it

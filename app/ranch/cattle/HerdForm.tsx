@@ -22,6 +22,7 @@ import { Button } from '@/app/components/ui/Button'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
 import Link from 'next/link'
+import type { LastWork } from '@/lib/ranch-summary'
 import RowActions from '@/app/components/RowActions'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
@@ -44,7 +45,7 @@ interface LotPayload {
   name?: string        // optional; the server trims, caps, and drops a blank one
   class: LotClass
   head_count: number
-  avg_weight: number
+  avg_weight: number | null
   weight_unit: WeightUnit
   frame: LotFrame
   weaned: boolean
@@ -59,7 +60,18 @@ function formatMonth(ym: string): string {
   return `${d.toLocaleDateString('en-US', { month: 'short' })} ’${d.toLocaleDateString('en-US', { year: '2-digit' })}`
 }
 
-export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; what?: string | null; head?: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
+// "2 days ago" · "today" — the count's age, for the card's one line.
+function agoLabel(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  const d = Math.floor(ms / 86_400_000)
+  if (d <= 0) return 'today'
+  if (d === 1) return 'yesterday'
+  if (d < 30) return `${d} days ago`
+  const m = Math.floor(d / 30)
+  return m === 1 ? 'a month ago' : `${m} months ago`
+}
+
+export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, LastWork>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
   // Block 13: the server's list is the truth after a refresh — an Undo puts a
@@ -81,6 +93,15 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     if (e) { const lot = (initialLots ?? []).find(l => l.id === e[1]); if (lot) openEdit(lot) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Block 14: where a NEW bunch is. Set on create only; moved by a real move event after that.
+  const [dPlace, setDPlace] = useState<string>('')
+  const [placeOptions, setPlaceOptions] = useState<{ id: string; name: string }[] | null>(null)
+  useEffect(() => {
+    if (editing !== 'new' || placeOptions !== null) return
+    let alive = true
+    fetch('/api/places').then(r => (r.ok ? r.json() : { places: [] })).then(j => { if (alive) setPlaceOptions((j.places ?? []) as { id: string; name: string }[]) }).catch(() => { if (alive) setPlaceOptions([]) })
+    return () => { alive = false }
+  }, [editing, placeOptions])
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -113,7 +134,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
   function resetDraft() {
     setDName(''); setDClass(''); setDHead(''); setDWeight(''); setDUnit('lb')
-    setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false); setDPurpose('')
+    setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false); setDPurpose(''); setDPlace('')
   }
 
   function openAdd() { resetDraft(); setErrorMsg(''); setEditing('new') }
@@ -122,7 +143,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     setDName(lot.name ?? '')
     setDClass(lot.class)
     setDHead(String(lot.head_count))
-    setDWeight(String(lot.avg_weight))
+    setDWeight(lot.avg_weight == null ? '' : String(lot.avg_weight))
     setDUnit(lot.weight_unit)
     setDFrame(lot.frame)
     setDWeaned(lot.weaned)
@@ -137,14 +158,16 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
   const headNum = Number(dHead)
   const weightNum = Number(dWeight)
-  const draftValid = dClass !== '' && /^\d+$/.test(dHead.trim()) && headNum > 0 && weightNum > 0
+  // Block 14: weight is optional — blank means "no weight set", never a block.
+  const draftValid = dClass !== '' && /^\d+$/.test(dHead.trim()) && headNum > 0 && (dWeight.trim() === '' || weightNum > 0)
 
   function buildPayloadLot(): LotPayload {
     const lot: LotPayload = {
       name: dName.trim(),
       class: dClass as LotClass,
       head_count: headNum,
-      avg_weight: weightNum,
+      avg_weight: dWeight.trim() === '' ? null : weightNum,
+      ...(editing === 'new' && dPlace ? { place_id: dPlace } : {}),
       weight_unit: dUnit,
       frame: dFrame,
       weaned: dWeaned,
@@ -212,6 +235,13 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     router.refresh()
   }
 
+  // Block 14: "Change bunch to N?" — the bunch's head count set to the count,
+  // through the same PATCH as any edit (a head_count_set row, the projection
+  // follows). Everything else on the bunch is sent as it stands.
+  async function setHeadFromCount(lot: Lot, counted: number) {
+    await write(`/api/herd/lots/${lot.id}`, 'PATCH', { ...lot, head_count: counted, expected_updated_at: lot.updated_at })
+  }
+
   function addWindow() {
     if (!/^\d{4}-\d{2}$/.test(dMonth)) return
     setDWindows(w => (w.includes(dMonth) ? w : [...w, dMonth].sort()))
@@ -223,7 +253,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     return (
       <Card shadow="soft" className="p-4 sm:p-5">
         <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">
-          {editing === 'new' ? 'Add a lot' : 'Fix this lot'}
+          {editing === 'new' ? 'Add a bunch' : 'Fix this bunch'}
         </p>
 
         <div className="mt-3">
@@ -251,7 +281,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
         </div>
 
         <div className="mt-4">
-          <Field label="Name" hint="Optional — what you call this bunch. Left blank, the lot goes by its class.">
+          <Field label="Name" hint="Optional — what you call this bunch. Left blank, it goes by its class.">
             <Input
               value={dName}
               maxLength={LOT_NAME_MAX}
@@ -277,7 +307,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
             />
           </Field>
           <div>
-            <Field label="Average weight">
+            <Field label="Average weight" hint="Optional. Blank = no weight set; the market cards say so.">
               <Input
                 type="number" inputMode="decimal" min={0} step="any"
                 placeholder={dUnit === 'cwt' ? 'e.g. 5.5' : 'e.g. 550'}
@@ -295,6 +325,19 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
           </div>
         </div>
 
+        {editing === 'new' && placeOptions !== null && placeOptions.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink" id="lot-place-label">Where they are <span className="font-normal text-secondary-ink">· optional</span></p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="lot-place-label" data-audit="lot-place">
+              <button type="button" role="radio" aria-checked={dPlace === ''} onClick={() => setDPlace('')} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === '' ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`}>Not said</button>
+              {placeOptions.map(pl => (
+                <button key={pl.id} type="button" role="radio" aria-checked={dPlace === pl.id} onClick={() => setDPlace(pl.id)} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === pl.id ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`} data-audit="lot-place-option">{pl.name}</button>
+              ))}
+            </div>
+            <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">After this, a bunch moves only by recording a move.</p>
+          </div>
+        )}
+
         <div className="mt-4">
           <button
             type="button"
@@ -306,7 +349,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
           {showDetail && (
             <div className="mt-3 space-y-4 border-t border-line/10 pt-4">
-              <Field label="Frame" hint="USDA frame size — most lots are Medium and Large.">
+              <Field label="Frame" hint="USDA frame size — most bunches are Medium and Large.">
                 <Select value={dFrame} onChange={e => setDFrame(e.target.value as LotFrame)}>
                   {LOT_FRAMES.map(f => <option key={f} value={f}>{f}</option>)}
                 </Select>
@@ -362,7 +405,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
         <div className="mt-4 flex items-center gap-4">
           <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'}>
-            {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add lot' : 'Save changes'}
+            {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add bunch' : 'Save changes'}
           </Button>
           <button type="button" onClick={cancel} className="font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
             Cancel
@@ -385,10 +428,24 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
             <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
               {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}
               {lot.purpose ? <span data-audit="lot-purpose-label">{LOT_PURPOSE_LABELS[lot.purpose]} · </span> : null}
-              <span className="tabular-nums">{lot.avg_weight}</span> {lot.weight_unit} avg
+              {lot.avg_weight == null ? <span data-audit="lot-no-weight">no weight set</span> : <><span className="tabular-nums">{lot.avg_weight}</span> {lot.weight_unit} avg</>}
               {isFeeder(lot.class) ? ` · ${lot.weaned ? 'weaned' : 'unweaned'}` : ''}
             </p>
-            {work && (
+            {/* Block 14: the last count, one line, with the difference — and the
+                one button when it differs. A count never changed this number;
+                this button does, through the same save as any edit. */}
+            {work?.count && (
+              <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-last-count">
+                Last count: <Link href={`/ranch/activity/${work.count.eventId}`} className="underline underline-offset-2"><span className="font-semibold">{work.count.counted.toLocaleString()} counted</span>{work.count.expected != null && <> · {work.count.expected.toLocaleString()} expected · {work.count.counted - work.count.expected === 0 ? 'same' : work.count.counted - work.count.expected > 0 ? `+${(work.count.counted - work.count.expected).toLocaleString()}` : `−${(work.count.expected - work.count.counted).toLocaleString()}`}</>}</Link>
+                <span className="text-secondary-ink"> · {agoLabel(work.count.ts)}</span>
+                {work.count.counted !== lot.head_count && (
+                  <button type="button" disabled={status === 'saving'} onClick={() => void setHeadFromCount(lot, work.count!.counted)} className="ml-3 inline-flex min-h-[44px] items-center rounded-lg border border-forest-green/40 px-3 font-dm-sans text-[15px] font-semibold text-forest-green disabled:opacity-50" data-audit="lot-change-to-count">
+                    Change bunch to {work.count.counted.toLocaleString()}?
+                  </button>
+                )}
+              </p>
+            )}
+            {work && (work.bales != null || work.what) && (
               <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-last-work">
                 Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="underline underline-offset-2">{work.what ? `${work.what}${work.head != null ? ` ${work.head.toLocaleString('en-US')} head` : ''}` : work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
               </p>
@@ -434,13 +491,13 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
       {lots.length === 0 && editing !== 'new' && (
         <Card shadow="soft" className="px-6 py-10 text-center">
-          <p className="font-fraunces text-xl font-semibold text-ink">Add your first lot</p>
+          <p className="font-fraunces text-xl font-semibold text-ink">Add your first bunch</p>
           <p className="mx-auto mt-2 max-w-sm font-dm-sans text-[16px] text-secondary-ink">
             Tell us what you&rsquo;re running — a class, a head count, an average weight. A few
             seconds a lot, and you can sharpen the details later.
           </p>
           <div className="mt-5">
-            <Button variant="primary" onClick={openAdd}>Add a lot</Button>
+            <Button variant="primary" onClick={openAdd}>Add a bunch</Button>
           </div>
         </Card>
       )}
@@ -454,7 +511,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
       {editing === 'new' && renderEditor()}
 
       {editing === null && lots.length > 0 && (
-        <Button variant="secondary" onClick={openAdd}>Add another lot</Button>
+        <Button variant="secondary" onClick={openAdd}>Add another bunch</Button>
       )}
     </div>
   )
