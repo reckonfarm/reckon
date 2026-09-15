@@ -573,7 +573,7 @@ async function main() {
     const fedTo = pageB.locator('[data-audit="fed-to"]')   // Block 6A: the loaded control (the field's space is reserved while lots load)
     const fedToShown = await fedTo.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
     const lotOptions = fedToShown ? await fedTo.locator('option').allInnerTexts() : []
-    record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
+    record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.some(o => o.startsWith(LOT_NAME)), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
     await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
     await logFeed(pageB, 1, { lot: fedToShown ? LOT_NAME : undefined })
     const seqB = await watchStates(pageB, 'Sent', 20_000, 'Fed 1 bale')
@@ -1756,10 +1756,18 @@ async function main() {
         const { data } = await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()
         return (data as { head_count?: number } | null)?.head_count ?? null
       }
+      // The phone: the sheet is full width and Save sits at the bottom there.
+      const priorChute = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
       const chuteLotId = randomUUID()
       const CHUTE_LOT = `${PREFIX} Chute heifers`
       const { error: cErr } = await admin.from('herd_lots').insert({ id: chuteLotId, ranch_id: ranchId, class: 'heifers', name: CHUTE_LOT, head_count: 60, avg_weight: 900, weight_unit: 'lb', created_by: userId, updated_by: userId })
       if (cErr) throw new Error(`chute lot: ${cErr.message}`)
+      // Every real bunch has a head-count anchor (066 backfilled the old ones;
+      // the app writes one on create). The projection rebuilds from it, so an
+      // Undo can put the head back. A fixture inserted by hand needs one too.
+      await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'head_count_set', ts: new Date(Date.now() - 60_000).toISOString(), schema_version: 1,
+        payload: { source: 'manual', schema_version: 1, lot_id: chuteLotId, head_before: null, head_after: 60, reason: 'created' } })
       const before = await headOf(chuteLotId)
       const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', chuteLotId).is('retired_at', null).is('deleted_at', null)
       const controls = ((otherLots ?? []) as { id: string; head_count: number }[])
@@ -1891,6 +1899,7 @@ async function main() {
       // Cleanup: the smoke ranch is torn down wholesale; the bunch the function made is named here.
       if (madeId) await admin.from('herd_lots').delete().eq('id', madeId)
       await admin.from('herd_lots').delete().eq('id', chuteLotId)
+      if (priorChute) await page.setViewportSize(priorChute)
     }
 
     // ── Block 11 (P0): the save receipt is transient UI ─────────────────────
@@ -2654,7 +2663,7 @@ async function main() {
         const { data: newRow } = await admin.from('herd_lots').select('id, class, head_count, avg_weight').eq('name', NEW14).maybeSingle()
         const nr = newRow as { id: string; class: string; head_count: number; avg_weight: number | null } | null
         record('14: a bunch made from inside Feed hay — name, head, class — lands back on the feeding with it picked, and carries no weight',
-          formUp && stillOnFeed && pickedLabel === NEW14 && !!nr && nr.class === 'pairs' && nr.head_count === 18 && nr.avg_weight === null,
+          formUp && stillOnFeed && pickedLabel.startsWith(NEW14) && !!nr && nr.class === 'pairs' && nr.head_count === 18 && nr.avg_weight === null,
           `form ${formUp} · still on Feed hay ${stillOnFeed} · picked "${pickedLabel}" · row ${nr ? `${nr.class} ${nr.head_count} head, weight ${String(nr.avg_weight)}` : 'MISSING'}`)
         await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
 

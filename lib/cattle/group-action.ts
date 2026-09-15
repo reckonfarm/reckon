@@ -132,12 +132,11 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
     detail = { ...(bred != null ? { bred } : {}), ...(open != null ? { open } : {}) }
   }
 
-  // The reconciliation, said in the words the chute needs. The database says
-  // the same thing in the same shape; this one just arrives sooner.
-  const moved = results.reduce((n, r) => n + r.head, 0)
-  if ((stay as number) + moved !== counted) {
-    bad(`${stay} that stayed and ${moved} that moved do not add up to the ${counted} counted`)
-  }
+  // The reconciliation is the database's (070): a preg check with bred and
+  // open given keeps the bred and lets the opens move or simply leave the
+  // count; everything else is stayed + moved = counted. It is NOT repeated
+  // here — a copy of a rule in the route is how 070 changed nothing for a day.
+  // The ranch answers, in its own words, and the route relays them.
 
   const expectedHead = int(body.expected_head)
   const placeId = body.place_id == null || body.place_id === '' ? null
