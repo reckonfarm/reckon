@@ -14,7 +14,7 @@
 //   stack; /dashboard renders for 30069 and 30027; county search responds;
 //   a feed event saves through the Log it sheet.
 //   2A — the four states show in order (Saved on this phone → Waiting to
-//   sync → Synced to ranch); exactly one row, under the client-minted id;
+//   sync → Saved to the ranch); exactly one row, under the client-minted id;
 //   airplane mode: saved on the phone, waits, syncs on reconnect; a replay
 //   of the same body is answered duplicate with no second row; force-quit
 //   mid-save (page killed while offline) → reopened → exactly one row;
@@ -25,7 +25,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
-import { chromium, type Page, type BrowserContext } from '@playwright/test'
+import { chromium, type Locator, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
 
 function loadEnv() {
@@ -159,7 +159,7 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
 
 // Watch the SaveStatus strip and collect the distinct sequence of state
 // labels it shows, until `until` appears or the time runs out.
-const STATES = ['Saved on this phone', 'Waiting to sync', 'Synced to ranch', "Couldn't save — try again"]
+const STATES = ['Saved on this phone', 'Waiting to send', 'Saved to the ranch', "Couldn't save — try again"]
 let lastWatch: string[] = []   // raw strip texts seen by the last watch, for FAIL details
 async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
@@ -214,6 +214,37 @@ async function stableText(page: Page, selector: string, timeoutMs = 10_000): Pro
     await page.waitForTimeout(250)
   }
   return last
+}
+
+// Block 13 — the one gesture. Hold a row (mouse down, 600 ms, up) and read the
+// sheet. `hold` returns whether the sheet opened; the caller reads its parts.
+async function hold(page: Page, row: Locator): Promise<boolean> {
+  await row.scrollIntoViewIfNeeded().catch(() => {})
+  const box = await row.boundingBox().catch(() => null)
+  if (!box) return false
+  await page.mouse.move(box.x + Math.min(40, box.width / 3), box.y + box.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(650)
+  await page.mouse.up()
+  await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 3_000 }).catch(() => {})
+  return (await page.locator('[data-audit="row-actions-sheet"]').count()) === 1
+}
+const sheet = (page: Page) => ({
+  fix: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]'),
+  fixNote: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix-note"]'),
+  del: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete"]'),
+  deleteNote: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete-note"]'),
+  extra: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-extra"]'),
+  cancel: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-cancel"]'),
+})
+const undoStrip = (page: Page) => page.locator('[data-audit="undo-strip"]')
+async function pressUndo(page: Page): Promise<boolean> {
+  const btn = page.locator('[data-audit="undo-button"]')
+  await btn.waitFor({ timeout: 5_000 }).catch(() => {})
+  if ((await btn.count()) === 0) return false
+  await btn.click().catch(() => {})
+  for (let i = 0; i < 40; i++) { if ((await undoStrip(page).getAttribute('data-state').catch(() => null)) === 'undone') return true; await page.waitForTimeout(250) }
+  return false
 }
 
 async function outbox(page: Page): Promise<{ id: string; state: string; body: Record<string, unknown> }[]> {
@@ -284,8 +315,8 @@ async function main() {
     // ── 2A: online save, four states in order, one row under the client id ──
     await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await logFeed(page, 4)
-    const seq1 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 4 bales')
-    record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to sync', 'Synced to ranch']), seq1.join(' → '))
+    const seq1 = await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 4 bales')
+    record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to send', 'Saved to the ranch']), seq1.join(' → '))
     // Block 11 (11.12): the receipt leads with the balance and keeps the
     // arithmetic one tap away, so this reads textContent — a closed <details>
     // is the shape under test. "N bales recorded" no longer restates the label.
@@ -342,14 +373,14 @@ async function main() {
     await page.waitForTimeout(2500)   // let the post-sync refresh settle
     await ctx.setOffline(true)
     await logFeed(page, 3)
-    const seqOff = await watchStates(page, 'Synced to ranch', 4_000, 'Fed 3 bales')   // must NOT reach synced
+    const seqOff = await watchStates(page, 'Saved to the ranch', 4_000, 'Fed 3 bales')   // must NOT reach synced
     const stillLocal = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Saved on this phone')
-    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Synced to ranch') && stillLocal, seqOff.join(' → ') + rawSeen())
+    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Saved to the ranch') && stillLocal, seqOff.join(' → ') + rawSeen())
     await ctx.setOffline(false)
-    const seqOn = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 3 bales')
+    const seqOn = await watchStates(page, 'Saved to the ranch', 45_000, 'Fed 3 bales')
     const ob2 = await outbox(page)
     const id2 = ob2.find(i => (i.body as { bales?: number }).bales === 3)?.id ?? ''
-    record('reconnect → Synced to ranch, exactly one row', seqOn.includes('Synced to ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}` + rawSeen())
+    record('reconnect → Saved to the ranch, exactly one row', seqOn.includes('Saved to the ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}` + rawSeen())
 
     // ── force-quit mid-save: kill the page while offline, reopen ──
     await ctx.setOffline(true)
@@ -362,13 +393,13 @@ async function main() {
     page = await ctx.newPage()
     page.on('dialog', d => void d.accept())
     await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    const seqFq = await watchStates(page, 'Synced to ranch', 45_000, 'Fed 5 bales')
-    record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Synced to ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
+    const seqFq = await watchStates(page, 'Saved to the ranch', 45_000, 'Fed 5 bales')
+    record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Saved to the ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
 
     // ── double-tap Save → one row ──
     const before = await feedRows()
     await logFeed(page, 6, { doubleTap: true })
-    await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
+    await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 6 bales')
     await page.waitForTimeout(1000)
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 
@@ -438,7 +469,7 @@ async function main() {
     // ── 2F: a feeding AT the place, then the place page answers ──
     const placeName = `${PREFIX} West stack`
     await logFeed(page, 2, { place: placeName })
-    await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+    await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
     await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
     const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
@@ -469,8 +500,8 @@ async function main() {
     await same.click()                                                   // tap 2
     const undo = page.getByRole('button', { name: /^Undo/ })
     const sawUndo = await undo.waitFor({ timeout: 5_000 }).then(() => true).catch(() => false)
-    const seqRepeat = await watchStates(page, 'Synced to ranch', 30_000, 'Fed 2 bales')
-    record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Synced to ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
+    const seqRepeat = await watchStates(page, 'Saved to the ranch', 30_000, 'Fed 2 bales')
+    record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Saved to the ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
     // Undo within the window: nothing leaves the phone.
     const beforeUndo = await feedRows()
     await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).click()
@@ -502,9 +533,9 @@ async function main() {
     record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
     await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
     await logFeed(pageB, 1, { lot: fedToShown ? LOT_NAME : undefined })
-    const seqB = await watchStates(pageB, 'Synced to ranch', 20_000, 'Fed 1 bale')
+    const seqB = await watchStates(pageB, 'Saved to the ranch', 20_000, 'Fed 1 bale')
     const afterB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
-    record('no home county: a feed event saves and syncs', seqB.includes('Synced to ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
+    record('no home county: a feed event saves and syncs', seqB.includes('Saved to the ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
 
     // After a feed syncs the ledger page re-renders and its "visit" ping re-arms (4 s dwell),
     // so a ping can be IN FLIGHT when this fixture reset runs and land after it (seen
@@ -544,7 +575,7 @@ async function main() {
         await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
         const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('sync'), place = await d('place')
-        record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Synced to ranch/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
+        record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Saved to the ranch/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
         await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       }
       // The place's entry count is a door into the place's record (gate 2).
@@ -632,20 +663,36 @@ async function main() {
       record('6A/12.7: Ranch is three things — Cattle · Ground · The record — and shows only the numbers something stands behind (no devices → no device number)',
         tileLabels.join(',') === 'cattle,ground,record' && numbers.some(n => /head$/.test(n)) && !numbers.some(n => /device/.test(n)),
         `tiles [${tileLabels.join(', ')}] · numbers [${numbers.join(' | ')}]`)
-      // Archive the lot the feedings were logged against: the row leaves the list; the feedings still name it in the record.
+      // Block 13: hold the lot the feedings were logged against → Fix opens
+      // its form; Delete sends it to the trash with no confirm; every past
+      // feeding still names it, marked gone; Undo brings it back.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="lot-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
       const rowsBefore = await page.locator('[data-audit="lot-row"]').count()
-      const marketHref = await page.locator('[data-audit="lot-market-link"]').first().getAttribute('href').catch(() => null)
-      await page.locator('[data-audit="lot-more"]').first().click()
-      const menuText = (await page.locator('[data-audit="lot-menu"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      await page.locator('[data-audit="lot-archive"]').click()
-      for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) > 0; i++) await page.waitForTimeout(250)   // the list reloads from the server
+      const lotRow = page.locator('[data-audit="lot-row"]').first()
+      const lotSheet = await hold(page, lotRow)
+      await sheet(page).fix.click().catch(() => {})
+      const lotFormOpen = await page.getByText('Fix this lot').waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+      record('13 (lot): hold → Fix opens the lot form', lotSheet && lotFormOpen, `sheet ${lotSheet} · form ${lotFormOpen}`)
+      await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
+      const lotSheet2 = await hold(page, page.locator('[data-audit="lot-row"]').first())
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      const stripUp = (await undoStrip(page).count()) === 1
+      for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) >= rowsBefore; i++) await page.waitForTimeout(250)
       const rowsAfter = await page.locator('[data-audit="lot-row"]').count()
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME}`) }).count()
-      record('6A: Archive sits behind the row menu, states its consequence, removes the lot from current views, and every past feeding still names it', rowsBefore === 1 && rowsAfter === 0 && /History stays; the lot leaves current views/.test(menuText) && stillNamed >= 1 && /^\/markets\?lot=/.test(marketHref ?? ''), `rows ${rowsBefore}→${rowsAfter} · menu "${menuText.slice(0, 60)}" · feedings still naming the lot: ${stillNamed} · market link ${marketHref}`)
+      const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as deleted',
+        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as deleted ${stillNamed}`)
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      // The strip died with the navigation? No — it is a module store, and the
+      // ten seconds are still running. Undo from here.
+      const undone = await pressUndo(page)
+      for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) === 0; i++) await page.waitForTimeout(250)
+      const rowsBack = await page.locator('[data-audit="lot-row"]').count()
+      record('13 (lot): Undo puts the lot back on the list', undone && rowsBack === 1, `undo ${undone} · rows ${rowsBack}`)
     }
 
     // ── Block 6A (7): places rows carry last work only when a line exists; devices empty state + setup page ──
@@ -916,7 +963,7 @@ async function main() {
       await page.locator('[data-audit="lot-for-work"]').selectOption({ label: LOT6G })
       await page.getByLabel('Where').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record work', exact: true }).click()
-      await watchStates(page, 'Synced to ranch', 20_000, 'Pregged 12 head')
+      await watchStates(page, 'Saved to the ranch', 20_000, 'Pregged 12 head')
       const { data: worked } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_worked').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${worked?.id}`, { waitUntil: 'domcontentloaded' })
       const wLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), wWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -935,7 +982,7 @@ async function main() {
       await page.locator('[data-audit="lot-for-move"]').selectOption({ label: LOT6G })
       await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
-      await watchStates(page, 'Synced to ranch', 20_000, 'Moved 5 head')
+      await watchStates(page, 'Saved to the ranch', 20_000, 'Moved 5 head')
       const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
       const mLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -956,13 +1003,13 @@ async function main() {
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 6)
-        const seq6 = await watchStates(page, 'Synced to ranch', 20_000, 'Fed 6 bales')
+        const seq6 = await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 6 bales')
         // The answer lines follow the sync by a beat; read the strip until they are there (≤ 8 s).
         let strip6 = ''
         for (let i = 0; i < 32 && !/bales? on hand/.test(strip6); i++) { strip6 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip6)) await page.waitForTimeout(250) }
         const onHand6 = parseInt((strip6.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
         const { data: six } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '6').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
-        record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Synced to ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
+        record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Saved to the ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
         if (six) {
           await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-audit="correct-entry"]').click()
@@ -998,7 +1045,7 @@ async function main() {
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 1)
-        await watchStates(page, 'Synced to ranch', 20_000, 'Fed 1 bale')
+        await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 1 bale')
         let strip = ''
         // textContent, not innerText: the equation sits behind "How that adds up" (11.12).
         for (let i = 0; i < 32 && !/bales? on hand/.test(strip); i++) { strip = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip)) await page.waitForTimeout(250) }
@@ -1472,8 +1519,8 @@ async function main() {
       await logFeed(page, 2)
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
-      for (let i = 0; i < 80 && !/Synced to ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Synced to ranch/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Synced to ranch', /Synced to ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      for (let i = 0; i < 80 && !/Saved to the ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Saved to the ranch/.test(stripText)) await page.waitForTimeout(250) }
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Saved to the ranch', /Saved to the ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
       for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
       record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
@@ -1732,7 +1779,7 @@ async function main() {
       const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
       await page.locator('[data-audit="preg-dest-name"]').fill(destName)
       await page.locator('[data-audit="preg-save"]').click()
-      await watchStates(page, 'Synced to ranch', 30_000, 'Preg check')
+      await watchStates(page, 'Saved to the ranch', 30_000, 'Preg check')
 
       // THE LEDGER MOVED THE CATTLE, or this screen is a lie.
       const after = await headOf(chuteLotId)
@@ -1776,11 +1823,11 @@ async function main() {
     // still crosses a reload, because that is the offline promise and not a
     // receipt.
     {
-      const strip = () => page.locator('[role="status"]').filter({ hasText: 'Synced to ranch' })
+      const strip = () => page.locator('[role="status"]').filter({ hasText: 'Saved to the ranch' })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 2)
-      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
       const showedAtAll = await strip().count()
 
       // 11.1 — it must not survive a reload.
@@ -1794,7 +1841,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 2)
-      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 2 bales')
+      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
       await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(2_500)
       const onOtherPage = await strip().count()
@@ -1806,7 +1853,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 5)
-      await watchStates(page, 'Synced to ranch', 20_000, 'Fed 5 bales')
+      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 5 bales')
       const ob = await outbox(page)
       const doomed = ob.find(i => (i.body as { bales?: number }).bales === 5)
       const doomedId = doomed?.id ?? ''
@@ -1814,21 +1861,20 @@ async function main() {
         record('11.2: a receipt dies with its entry — never a balance for a row that is gone', false, 'could not find the entry to delete')
       } else {
         await page.goto(`/ranch/activity/${doomedId}`, { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="delete-entry"], [data-audit="delete-confirm"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
-        // 11.3 — the confirm must be reachable WITHOUT scrolling the receipt
-        // away: nothing transient may sit over a real control.
+        await page.locator('[data-audit="delete-entry"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        // 11.3 — Delete must be reachable WITHOUT scrolling the receipt away:
+        // nothing transient may sit over a real control. Block 13: there is no
+        // confirm any more; the tap IS the delete, and the strip's Undo is the
+        // safety.
         const opener = page.locator('[data-audit="delete-entry"]').first()
         let intercepted = false
         if (await opener.count() > 0) {
           await opener.click({ timeout: 5_000 }).catch(() => { intercepted = true })
         }
-        const confirm = page.locator('[data-audit="delete-confirm"]').first()
-        await confirm.waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {})
-        const reachable = await confirm.isVisible().catch(() => false)
-        record('11.3: nothing transient sits over Delete — the confirm is reachable without scrolling a receipt out of the way',
-          !intercepted && reachable, `click ${intercepted ? 'INTERCEPTED' : 'landed'} · confirm ${reachable ? 'visible' : 'NOT REACHABLE'}`)
+        const reachable = !intercepted
+        record('11.3/13: nothing transient sits over Delete, and Delete is one tap — no confirm',
+          !intercepted, `click ${intercepted ? 'INTERCEPTED' : 'landed'}`)
         if (reachable) {
-          await confirm.click().catch(() => {})
           await page.waitForURL(/\/ranch\/activity(\?|$)/, { timeout: 20_000 }).catch(() => {})
           await page.waitForTimeout(1_500)
           const receiptsLeft = await strip().count()
@@ -1857,7 +1903,7 @@ async function main() {
       const pending = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       const stillQueued = (await outbox(page)).some(i => i.state === 'local' || i.state === 'queued')
       record('11.1: unsynced work still crosses a reload — a warning is not a receipt',
-        stillQueued && /Saved on this phone|Waiting to sync/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
+        stillQueued && /Saved on this phone|Waiting to send/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
       await page.unroute('**/api/log')
       await page.waitForTimeout(4_000)
     }
@@ -2034,13 +2080,13 @@ async function main() {
         await page.mouse.up()
         sheetSeen = await page.locator('[data-audit="row-actions-sheet"]').count()
         if (sheetSeen) {
-          await page.locator('[data-audit="row-action-edit"]').click().catch(() => {})
+          await page.locator('[data-audit="row-action-fix"]').click().catch(() => {})
           await page.waitForURL(/\/ranch\/activity\/[0-9a-f-]{36}#correct/, { timeout: 15_000 }).catch(() => {})
           await page.locator('[data-audit="correction-save"], [data-audit="correction-reason"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
           editLanded = (await page.locator('[data-audit="correction-reason"]').count()) > 0
         }
       }
-      record('12.3: holding a row offers Open · Edit · Delete, and Edit lands in the correction form — not on the page',
+      record('12.3/13: holding a row offers Fix · Delete, and Fix lands in the correction form — not on the page',
         sheetSeen === 1 && editLanded, `sheet ${sheetSeen} · form open ${editLanded}`)
 
       // 12.4 — delete a place → it is in the trash → Restore → it is back.
@@ -2059,11 +2105,11 @@ async function main() {
           await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).waitFor({ timeout: 15_000 }).catch(() => {})
           const listed = await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).count()
           const rowText = await text(`[data-audit="trash-row"][data-id="${tp.id}"]`)
-          await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"] [data-audit="trash-restore"]`).click().catch(() => {})
+          if (await hold(page, page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`))) await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
           await page.waitForTimeout(2_000)
           const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
           const restored = !!back && (back as { deleted_at: string | null }).deleted_at === null
-          record('12.4: a deleted place waits in the trash — named, dated, with the day it goes for good — and Restore brings it back',
+          record('12.4/13: a deleted place waits in the trash — named, dated, with the day it goes for good — and holding the row → Put it back brings it back',
             del.ok() && dj.trashed === true && listed === 1 && /gone for good/.test(rowText) && restored,
             `${del.status()} trashed=${dj.trashed} · listed ${listed} · "${rowText.slice(0, 70)}" · restored ${restored}`)
           await admin.from('places').delete().eq('id', tp.id)
@@ -2119,13 +2165,13 @@ async function main() {
       const pinMapAtName = await page.locator('[data-audit="capture-pin-map"] [data-audit="map-pin"]').count()
       await ctx7a.setOffline(true)
       await page.locator('[data-audit="capture-save"]').click().catch(() => {})
-      const seqOff7a = await watchStates(page, 'Synced to ranch', 4_000, '7A stack')
+      const seqOff7a = await watchStates(page, 'Saved to the ranch', 4_000, '7A stack')
       const strips = await page.locator('[role="status"]').count()
       record('7A: offline, the place is Saved on this phone and stays there — one strip on the page, not two',
-        seqOff7a[0] === 'Saved on this phone' && !seqOff7a.includes('Synced to ranch') && strips === 1 && pinMapAtName === 1,
+        seqOff7a[0] === 'Saved on this phone' && !seqOff7a.includes('Saved to the ranch') && strips === 1 && pinMapAtName === 1,
         `${seqOff7a.join(' → ')} · strips ${strips} · pin at name step ${pinMapAtName}` + rawSeen())
       await ctx7a.setOffline(false)
-      const seqOn7a = await watchStates(page, 'Synced to ranch', 45_000, '7A stack')
+      const seqOn7a = await watchStates(page, 'Saved to the ranch', 45_000, '7A stack')
       const ob7a = await outbox(page)
       const placeItem = ob7a.find(i => (i.body as { name?: string }).name === '7A stack')
       const newId = placeItem?.id ?? ''
@@ -2134,7 +2180,7 @@ async function main() {
       const receipt = (await page.locator('[data-audit="capture-saved"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const openHref = await page.locator('[data-audit="capture-saved"] [data-audit="receipt-open-entry"]').getAttribute('href').catch(() => null)
       record('7A: back online it syncs under its client id — a stack, in the stackyard, a polygon with the fix in provenance and adjusted: false',
-        seqOn7a.includes('Synced to ranch') && !!r7 && r7.kind === 'stack' && r7.parent_id === placeId && !!r7.geometry
+        seqOn7a.includes('Saved to the ranch') && !!r7 && r7.kind === 'stack' && r7.parent_id === placeId && !!r7.geometry
           && r7.geometry_provenance?.source === 'dropped' && r7.geometry_provenance?.adjusted === false && !!r7.geometry_provenance?.fix,
         `${seqOn7a.join(' → ')} · row ${r7 ? `${r7.kind} in ${r7.parent_id === placeId ? 'the stackyard' : String(r7.parent_id)} · ${String(r7.geometry_provenance?.source)} adjusted=${String(r7.geometry_provenance?.adjusted)}` : 'MISSING'}`)
       record('7A: the receipt is an answer — what was added, where it sits, how many are in there now, and the place one tap away',
@@ -2176,6 +2222,243 @@ async function main() {
         `parent link ${parentLink} · edit chip checked ${editChecked} · "${inside}" · child row ${childRow}`)
 
       if (pastureId) await admin.from('places').delete().eq('id', pastureId)
+    }
+
+    // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
+    // Every row type: hold → the sheet; Fix does something or says why not;
+    // Delete goes to the trash with no confirm; Undo puts it back; anything
+    // attached survives and still names the deleted thing.
+    {
+      // Fixtures: a place with a feeding at it and a device on it, a session, a
+      // county on the watchlist, an open invitation. B is already a member.
+      const { data: p13 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 13 corral`, kind: 'yard' }).select('id').single()
+      const place13 = String((p13 as { id?: string } | null)?.id ?? '')
+      const { data: e13 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, type: 'rain', ts: new Date().toISOString(), payload: { source: 'manual', schema_version: 1, place_id: place13, inches: 0.13 } }).select('id').single()
+      const entry13 = String((e13 as { id?: string } | null)?.id ?? '')
+      const { data: d13 } = await admin.from('devices').insert({ user_id: userId, ranch_id: ranchId, hardware_id: `${PREFIX}-13-hw`, type: 'spotter', name: `${PREFIX} 13 gauge`, place_id: place13 }).select('id').single()
+      const device13 = String((d13 as { id?: string } | null)?.id ?? '')
+      const job13 = randomUUID()
+      const j13 = await admin.from('jobs').insert({ id: job13, user_id: userId, ranch_id: ranchId, device_id: null, hardware_id: 'smoke-scout-13', started_at: new Date(Date.now() - 5 * 3_600_000).toISOString(), ended_at: new Date(Date.now() - 4 * 3_600_000).toISOString(), duration_s: 3600, seq_start: 1, seq_end: 100, event_count: 100, evicted_count: 0, coverage: 1, multi_field: false })
+      if (!j13.error) await admin.from('job_annotations').insert({ job_id: job13, user_id: userId, ranch_id: ranchId, name: '13 baling', machine: 'baler' })
+      const { data: county } = await admin.from('counties').select('id').eq('fips', HOME_FIPS).maybeSingle()
+      const countyId = Number((county as { id?: number } | null)?.id ?? 0)
+      await page.request.post('/api/watchlist', { data: { countyId } }).catch(() => null)
+      const inv = await page.request.post('/api/invitations', { data: { email: 'smoke-13-invite@dryline.farm', role: 'member' } }).catch(() => null)
+      const invId = String(((await inv?.json().catch(() => ({}))) as { invite?: { id?: string } })?.invite?.id ?? '')
+
+      // 1 · Activity entry: Fix opens the correction form; Delete → trash → Undo.
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const entryRow = page.locator(`li[data-id="${entry13}"] [data-audit="row-actions"]`).first()
+      await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s1 = await hold(page, entryRow)
+      await sheet(page).fix.click().catch(() => {})
+      const fixOpen1 = await page.locator('[data-audit="correction-reason"], [data-audit="correct-form"]').first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      record('13 (entry): hold → Fix lands in the correction form', s1 && fixOpen1 && /#correct$/.test(page.url()), `sheet ${s1} · form ${fixOpen1} · ${page.url().replace(BASE, '')}`)
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s1b = await hold(page, entryRow)
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      const { data: trashed1 } = await admin.from('events').select('deleted_at').eq('id', entry13).maybeSingle()
+      const undone1 = await pressUndo(page)
+      const { data: back1 } = await admin.from('events').select('deleted_at').eq('id', entry13).maybeSingle()
+      record('13 (entry): hold → Delete goes to the trash with no confirm; Undo puts it back',
+        s1b && !!(trashed1 as { deleted_at?: string | null } | null)?.deleted_at && undone1 && (back1 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        `sheet ${s1b} · trashed ${!!(trashed1 as { deleted_at?: string | null } | null)?.deleted_at} · undo ${undone1} · back ${(back1 as { deleted_at?: string | null } | null)?.deleted_at === null}`)
+
+      // 2 · Place: Fix opens the form; Delete with things attached — the entry
+      // and the device survive and still name it; Undo puts it back.
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      const placeRow = page.locator(`a[data-audit="place-row"][data-id="${place13}"]`).first()
+      await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s2 = await hold(page, placeRow)
+      await sheet(page).fix.click().catch(() => {})
+      const fixOpen2 = await page.locator('[data-audit="place-edit"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const pinSwitch = await page.locator('[data-audit="place-edit-pinned"] input').count()
+      record('13 (place): hold → Fix opens the place form with name, kind, where it sits, and Show on Weather', s2 && fixOpen2 && pinSwitch === 1, `sheet ${s2} · form ${fixOpen2} · Weather switch ${pinSwitch}`)
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s2b = await hold(page, placeRow)
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      const noConfirm = (await page.locator('[data-audit="place-confirm-delete"], [data-audit="place-referenced"]').count()) === 0
+      const { data: ev2 } = await admin.from('events').select('payload, deleted_at').eq('id', entry13).maybeSingle()
+      const { data: dv2 } = await admin.from('devices').select('place_id, deleted_at').eq('id', device13).maybeSingle()
+      const entryKept = (ev2 as { payload?: { place_id?: string }; deleted_at?: string | null } | null)?.payload?.place_id === place13 && (ev2 as { deleted_at?: string | null } | null)?.deleted_at === null
+      const deviceKept = (dv2 as { place_id?: string | null; deleted_at?: string | null } | null)?.place_id === place13 && (dv2 as { deleted_at?: string | null } | null)?.deleted_at === null
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const namesGone = await page.locator(`li[data-id="${entry13}"]`).innerText().catch(() => '')
+      const undone2 = await pressUndo(page)
+      const { data: back2 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
+      record('13 (place): hold → Delete with an entry and a device attached — no confirm, both survive and still name it, the entry shows it as deleted; Undo puts it back',
+        s2b && noConfirm && entryKept && deviceKept && /\(deleted\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        `sheet ${s2b} · no confirm ${noConfirm} · entry kept ${entryKept} · device kept ${deviceKept} · row "${namesGone.slice(0, 60)}" · undo ${undone2}`)
+
+      // 3 · Device: Fix edits name and where it sits, and says what the device sets itself; Delete → Undo.
+      await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
+      const deviceCard = page.locator(`li#${device13.replace(/^(\d)/, '\\$1')} [data-audit="row-actions"]`).first()
+      const deviceCardAlt = page.locator('[data-audit="device-card"]').filter({ hasText: '13 gauge' }).first()
+      const devRow = (await deviceCard.count()) ? deviceCard : deviceCardAlt
+      await devRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s3 = await hold(page, devRow)
+      await sheet(page).fix.click().catch(() => {})
+      const fixOpen3 = await page.locator('[data-audit="device-fix"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const fixedFacts = (await page.locator('[data-audit="device-fix-fixed"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="device-fix-name"]').fill(`${PREFIX} 13 gauge renamed`).catch(() => {})
+      await page.locator('[data-audit="device-fix-save"]').click().catch(() => {})
+      await page.waitForTimeout(2_500)
+      const { data: dn } = await admin.from('devices').select('name').eq('id', device13).maybeSingle()
+      record('13 (device): hold → Fix edits the name and where it sits, names what the device sets itself as facts, and saves',
+        s3 && fixOpen3 && /Hardware ID/.test(fixedFacts) && /Battery/.test(fixedFacts) && (dn as { name?: string } | null)?.name === `${PREFIX} 13 gauge renamed`,
+        `sheet ${s3} · form ${fixOpen3} · facts "${fixedFacts.slice(0, 50)}" · saved name "${String((dn as { name?: string } | null)?.name)}"`)
+      await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
+      const devRow2 = page.locator('[data-audit="device-card"]').filter({ hasText: '13 gauge' }).first()
+      await devRow2.waitFor({ timeout: 20_000 }).catch(() => {})
+      const s3b = await hold(page, devRow2)
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      const { data: dt } = await admin.from('devices').select('deleted_at').eq('id', device13).maybeSingle()
+      const undone3 = await pressUndo(page)
+      const { data: db3 } = await admin.from('devices').select('deleted_at').eq('id', device13).maybeSingle()
+      record('13 (device): hold → Delete goes to the trash with no confirm; Undo puts it back',
+        s3b && !!(dt as { deleted_at?: string | null } | null)?.deleted_at && undone3 && (db3 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        `sheet ${s3b} · trashed ${!!(dt as { deleted_at?: string | null } | null)?.deleted_at} · undo ${undone3}`)
+
+      // 4 · Machine session: Fix opens the name form on its page; Delete → trash → Undo.
+      if (j13.error) skip('13 (session): hold → Fix / Delete / Undo', `fixture: ${j13.error.message.slice(0, 80)}`)
+      else {
+        await page.goto('/ranch/work', { waitUntil: 'domcontentloaded' })
+        const workRow = page.locator(`li[data-id="${job13}"] [data-audit="row-actions"]`).first()
+        await workRow.waitFor({ timeout: 20_000 }).catch(() => {})
+        const s4 = await hold(page, workRow)
+        await sheet(page).fix.click().catch(() => {})
+        const fixOpen4 = await page.locator('[data-audit="job-fix"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+        const chips4 = await page.locator('[data-audit="job-fix"] button').count()
+        record('13 (session): hold → Fix lands on the session with its name form open', s4 && fixOpen4 && /#fix$/.test(page.url()) && chips4 >= 2, `sheet ${s4} · form ${fixOpen4} · chips ${chips4} · ${page.url().replace(BASE, '')}`)
+        await page.goto('/ranch/work', { waitUntil: 'domcontentloaded' })
+        await workRow.waitFor({ timeout: 20_000 }).catch(() => {})
+        const s4b = await hold(page, workRow)
+        await sheet(page).del.click().catch(() => {})
+        await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+        const { data: ja } = await admin.from('job_annotations').select('dismissed_at').eq('job_id', job13).maybeSingle()
+        const inTrash4 = ((await (await page.request.get('/api/trash')).json().catch(() => ({}))) as { items?: { id: string; table: string }[] }).items?.some(i => i.id === job13 && i.table === 'jobs') ?? false
+        const undone4 = await pressUndo(page)
+        const { data: jb } = await admin.from('job_annotations').select('dismissed_at').eq('job_id', job13).maybeSingle()
+        record('13 (session): hold → Delete goes to the trash (listed there as a session); Undo puts it back',
+          s4b && !!(ja as { dismissed_at?: string | null } | null)?.dismissed_at && inTrash4 && undone4 && (jb as { dismissed_at?: string | null } | null)?.dismissed_at === null,
+          `sheet ${s4b} · deleted ${!!(ja as { dismissed_at?: string | null } | null)?.dismissed_at} · in trash ${inTrash4} · undo ${undone4}`)
+      }
+
+      // 5 · Weather rain-place row: Fix opens the place form; no Unpin/Delete links on the row.
+      await page.goto('/weather', { waitUntil: 'domcontentloaded' })
+      const rainRow = page.locator(`[data-audit="rain-place-row"][data-place="${place13}"] [data-audit="row-actions"]`).first()
+      const rainRowThere = await rainRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const oldLinks = await page.locator('[data-audit="weather-place-actions"]').count()
+      const s5 = rainRowThere ? await hold(page, rainRow) : false
+      await sheet(page).fix.click().catch(() => {})
+      const fixOpen5 = await page.locator('[data-audit="place-edit"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      record('13 (rain place): the Unpin and Delete links are gone from the row; hold → Fix opens the place form', rainRowThere ? (oldLinks === 0 && s5 && fixOpen5) : oldLinks === 0, rainRowThere ? `old links ${oldLinks} · sheet ${s5} · form ${fixOpen5}` : `row not on Weather (no reading, not pinned) · old links ${oldLinks}`)
+
+      // 6 · County on the watchlist: nothing to fix (the sentence), home is an action, Delete → Undo.
+      await page.goto('/weather/locations', { waitUntil: 'domcontentloaded' })
+      const countyRow = page.locator(`[data-audit="county-row"][data-fips="${HOME_FIPS}"] [data-audit="row-actions"]`).first()
+      const countyThere = await countyRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const s6 = countyThere ? await hold(page, countyRow) : false
+      const noFix6 = (await sheet(page).fix.count()) === 0
+      const note6 = (await sheet(page).fixNote.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const home6 = await sheet(page).extra.filter({ hasText: /home county/ }).count()
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      await page.waitForTimeout(800)
+      const rowsGone6 = (await page.locator(`[data-audit="county-row"][data-fips="${HOME_FIPS}"]`).count()) === 0
+      const undone6 = await pressUndo(page)
+      await page.waitForTimeout(1_500)
+      const rowsBack6 = (await page.locator(`[data-audit="county-row"][data-fips="${HOME_FIPS}"]`).count()) === 1
+      record('13 (county): hold → no Fix button, the sentence instead, home county as an action; Delete takes it off the list; Undo puts it back',
+        countyThere && s6 && noFix6 && /nothing to fix/i.test(note6) && home6 === 1 && rowsGone6 && undone6 && rowsBack6,
+        `there ${countyThere} · sheet ${s6} · no fix ${noFix6} · "${note6.slice(0, 40)}" · home action ${home6} · gone ${rowsGone6} · undo ${undone6} · back ${rowsBack6}`)
+
+      // 7 · People: a person's Fix is their role; Delete removes → Undo re-adds. An invitation has nothing to fix; Delete → Undo.
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })
+      const memberRow = page.locator(`[data-audit="member-row"][data-user="${userIdB}"] [data-audit="row-actions"]`).first()
+      const memberThere = await memberRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const s7 = memberThere ? await hold(page, memberRow) : false
+      const fixLabel7 = (await sheet(page).fix.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await sheet(page).del.click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+      const { count: goneB } = await admin.from('ranch_members').select('user_id', { count: 'exact', head: true }).eq('ranch_id', ranchId).eq('user_id', userIdB)
+      const undone7 = await pressUndo(page)
+      await page.waitForTimeout(1_000)
+      const { data: backB } = await admin.from('ranch_members').select('role').eq('ranch_id', ranchId).eq('user_id', userIdB).maybeSingle()
+      record('13 (person): hold → Fix is the role, Delete removes them with no confirm, Undo puts them back as a member',
+        memberThere && s7 && /Make .* an owner/.test(fixLabel7) && goneB === 0 && undone7 && (backB as { role?: string } | null)?.role === 'member',
+        `there ${memberThere} · sheet ${s7} · fix "${fixLabel7}" · removed ${goneB === 0} · undo ${undone7} · role back ${String((backB as { role?: string } | null)?.role)}`)
+      if (invId) {
+        await page.goto('/account', { waitUntil: 'domcontentloaded' })
+        const inviteRow = page.locator(`[data-audit="invite-row"][data-id="${invId}"] [data-audit="row-actions"]`).first()
+        const inviteThere = await inviteRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+        const s7b = inviteThere ? await hold(page, inviteRow) : false
+        const noFix7 = (await sheet(page).fix.count()) === 0 && (await sheet(page).fixNote.count()) === 1
+        await sheet(page).del.click().catch(() => {})
+        await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
+        const { data: rv } = await admin.from('invitations').select('revoked_at').eq('id', invId).maybeSingle()
+        const undone7b = await pressUndo(page)
+        const { data: rb } = await admin.from('invitations').select('revoked_at').eq('id', invId).maybeSingle()
+        record('13 (invitation): hold → nothing to fix (the sentence); Delete cancels it; Undo brings it back',
+          inviteThere && s7b && noFix7 && !!(rv as { revoked_at?: string | null } | null)?.revoked_at && undone7b && (rb as { revoked_at?: string | null } | null)?.revoked_at === null,
+          `there ${inviteThere} · sheet ${s7b} · note ${noFix7} · cancelled ${!!(rv as { revoked_at?: string | null } | null)?.revoked_at} · undo ${undone7b}`)
+      } else skip('13 (invitation): hold → Delete → Undo', 'could not create an invitation fixture')
+
+      // 8 · Never a dead end: a row that was replaced shows the sentence, not a button.
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const replacedRow = page.locator('li[data-marker="replaced"] [data-audit="row-actions"]').first()
+      const replacedThere = (await replacedRow.count()) > 0
+      const s8 = replacedThere ? await hold(page, replacedRow) : false
+      const note8 = (await sheet(page).fixNote.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const btn8 = await sheet(page).fix.count()
+      const greyed8 = await page.locator('[data-audit="row-actions-sheet"] button[disabled]').count()
+      await sheet(page).cancel.click().catch(() => {})
+      record('13 (no dead end): a replaced entry offers no Fix button — one plain sentence instead, and nothing greyed out',
+        replacedThere && s8 && btn8 === 0 && /already replaced/i.test(note8) && greyed8 === 0,
+        replacedThere ? `sheet ${s8} · fix buttons ${btn8} · "${note8.slice(0, 60)}" · greyed ${greyed8}` : 'no replaced row on this ranch')
+
+      // 9 · iOS: a hold never starts the phone's own menu — the row turns the
+      // link callout and text selection off. Measured on the painted row; the
+      // callout itself only exists in WebKit, so its rule is read from the
+      // style the row carries, and PK reproduces the hold on the phone.
+      const iosGuard = await page.evaluate(() => {
+        const el = document.querySelector('[data-audit="row-actions"]') as HTMLElement | null
+        if (!el) return { userSelect: 'none-found', callout: 'none-found' }
+        const cs = getComputedStyle(el)
+        return { userSelect: cs.userSelect || (cs as unknown as { webkitUserSelect?: string }).webkitUserSelect || '', callout: el.style.getPropertyValue('-webkit-touch-callout') || (el.getAttribute('class') ?? '').includes('touch-callout:none') ? 'none' : '' }
+      })
+      record('13 (iOS): a held row carries user-select: none and -webkit-touch-callout: none, so a hold never opens the link callout or selects text',
+        iosGuard.userSelect === 'none' && iosGuard.callout === 'none', `user-select ${iosGuard.userSelect} · touch-callout ${iosGuard.callout}`)
+
+      // 10 · Trash: hold → Put it back (the list check for this is 12.4, above). Nothing here deletes sooner: the sheet says so.
+      await page.request.delete(`/api/places/${place13}`).catch(() => null)
+      await page.goto('/account/trash', { waitUntil: 'domcontentloaded' })
+      const trashRow13 = page.locator(`[data-audit="trash-row"][data-id="${place13}"]`)
+      const trashThere = await trashRow13.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const s10 = trashThere ? await hold(page, trashRow13) : false
+      const putBack10 = await sheet(page).extra.filter({ hasText: 'Put it back' }).count()
+      const noDelete10 = (await sheet(page).del.count()) === 0 && /gone for good/i.test((await sheet(page).deleteNote.innerText().catch(() => '')))
+      await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
+      await page.waitForTimeout(2_000)
+      const { data: back10 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
+      record('13 (trash): hold a trash row → Put it back, and no Delete — the sheet says when it goes for good',
+        trashThere && s10 && putBack10 === 1 && noDelete10 && (back10 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        `there ${trashThere} · sheet ${s10} · put back ${putBack10} · no delete ${noDelete10} · restored ${(back10 as { deleted_at?: string | null } | null)?.deleted_at === null}`)
+
+      // Fixtures out (teardown also sweeps by user).
+      await page.request.delete('/api/watchlist', { data: { countyId } }).catch(() => null)
+      if (invId) await admin.from('invitations').delete().eq('id', invId)
+      await admin.from('job_annotations').delete().eq('job_id', job13); await admin.from('jobs').delete().eq('id', job13)
+      await admin.from('devices').delete().eq('id', device13)
+      await admin.from('events').delete().eq('id', entry13)
+      await admin.from('places').delete().eq('id', place13)
     }
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
@@ -2228,7 +2511,7 @@ async function main() {
       const signIn = await page.locator('a[href^="/signin"]').count() + (/sign in/i.test(afterText) ? 1 : 0)   // the public page offers a way in, in whatever words
       // The receipt is checked by ELEMENT, not by text: the public landing page's
       // own marketing copy contains the words "Saved on this phone → Waiting to
-      // sync → Synced to ranch", so a body-text match for that phrase was testing
+      // sync → Saved to the ranch", so a body-text match for that phrase was testing
       // Dryline's sales pitch, not whether a private receipt survived. It passed
       // only while the assertion happened to run before the landing finished
       // rendering; a slower sign-out (7.1 flushes first) exposed it.
