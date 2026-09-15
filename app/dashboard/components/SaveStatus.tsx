@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState } from '@/lib/outbox'
 import SaveReceipt from '@/app/components/SaveReceipt'
+import FollowUpButton from '@/app/components/FollowUpButton'
 
 // ─── Save status — the honest answer to "did that save?" (Block 2A) ───────────
 // Sits directly under Log it. Shows the most recent entry's state in the four
@@ -79,6 +80,8 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
           <Dot state={shown} />
           <div className="min-w-0 flex-1">
             <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} href={item.link?.href} eventLabel={item.link?.label} tone="strip" />
+            {/* Block 14: the one thing the server offered after the entry landed. */}
+            {item.followUp && <div className="pointer-events-auto"><FollowUpButton itemId={item.id} followUp={item.followUp} /></div>}
           </div>
         </div>
       ) : (
