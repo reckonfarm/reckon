@@ -60,6 +60,14 @@ async function withPurpose(supabase: SupabaseClient, lots: Lot[]): Promise<Lot[]
   return lots.map(l => { const p = by.get(l.id); return isLotPurpose(p) ? { ...l, purpose: p } : l })
 }
 
+// Block 14: one row's place_id, when the column exists; the row as it is when not.
+async function withPlace(supabase: SupabaseClient, r: LotRow): Promise<Lot> {
+  if (r.place_id !== undefined) return rowToLot(r)
+  const { data, error } = await supabase.from('herd_lots').select('place_id').eq('id', r.id).maybeSingle()
+  if (error || !data) return rowToLot(r)
+  return rowToLot({ ...r, place_id: (data as { place_id?: string | null }).place_id ?? null })
+}
+
 async function ranchOf(supabase: SupabaseClient, userId?: string): Promise<{ uid: string; ranchId: string } | null> {
   const uid = userId ?? (await supabase.auth.getUser()).data.user?.id
   if (!uid) return null
@@ -129,7 +137,7 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
     ...(placeId ? { place_id: placeId } : {}),
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }
-  let ins: Res = await supabase.from('herd_lots').insert(row).select(placeId ? LOT_COLUMNS : LOT_COLUMNS_BASE).single()
+  let ins: Res = await supabase.from('herd_lots').insert(row).select(LOT_COLUMNS_BASE).single()
   // A database without 069 refuses a place, a null weight or pairs. Say which
   // update is missing, in words, and never a column name.
   if (ins.error && (missingColumn(ins.error) || /avg_weight|herd_lots_class_check|herd_lots_weight_check/i.test(ins.error.message ?? ''))) {
@@ -141,7 +149,7 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const created = data as LotRow
   const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created')
   if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but its count could not be written to the record — open it and set the count again.' }
-  return { ok: true, lot: (await withPurpose(supabase, [rowToLot(created)]))[0] }
+  return { ok: true, lot: (await withPurpose(supabase, [await withPlace(supabase, created)]))[0] }
 }
 
 // Update — ONLY when the row still carries the updated_at the editor last saw.
@@ -162,11 +170,12 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }).eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null)
   if (expectedUpdatedAt) q = q.eq('updated_at', expectedUpdatedAt)
-  let upd: Res = await q.select(LOT_COLUMNS)
-  if (missingColumn(upd.error)) {
-    // The write landed; only the read-back named a column that is not there yet.
-    upd = await supabase.from('herd_lots').select(LOT_COLUMNS_BASE).eq('id', id).eq('ranch_id', who.ranchId)
-  }
+  // The returning list names only columns every database has: PostgREST
+  // refuses the WHOLE statement — the update included — when it names one
+  // that is not there, and the first local run showed a stale edit answered
+  // 200 with nothing written because of exactly that. place_id is re-read
+  // below, tolerantly, once the write has landed.
+  const upd: Res = await q.select(LOT_COLUMNS_BASE)
   const { error } = upd
   const data = upd.data as LotRow[] | null
   if (error) return { ok: false, status: 500, error: error.message ?? 'Could not save the bunch.' }
@@ -181,7 +190,7 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
       const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, id, before, l.head_count, 'edit')
       if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but the count could not be written to the record — set the count again.' }
     }
-    return { ok: true, lot: (await withPurpose(supabase, [rowToLot(data[0] as LotRow)]))[0] }
+    return { ok: true, lot: (await withPurpose(supabase, [await withPlace(supabase, data[0] as LotRow)]))[0] }
   }
   // Nothing moved: distinguish "gone" from "changed under you". The words for
   // both live in lib/stale-edit.ts now, so places inherits them verbatim
@@ -198,9 +207,8 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
 export async function retireLot(supabase: SupabaseClient, id: string): Promise<LotWrite> {
   const who = await ranchOf(supabase)
   if (!who) return { ok: false, status: 403, error: 'You are not on a ranch yet.' }
-  let ret: Res = await supabase.from('herd_lots').update({ retired_at: new Date().toISOString(), retired_by: who.uid, updated_by: who.uid })
-    .eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null).select(LOT_COLUMNS)
-  if (missingColumn(ret.error)) ret = await supabase.from('herd_lots').select(LOT_COLUMNS_BASE).eq('id', id).eq('ranch_id', who.ranchId).not('retired_at', 'is', null)
+  const ret: Res = await supabase.from('herd_lots').update({ retired_at: new Date().toISOString(), retired_by: who.uid, updated_by: who.uid })
+    .eq('id', id).eq('ranch_id', who.ranchId).is('retired_at', null).select(LOT_COLUMNS_BASE)
   const { error } = ret
   const data = ret.data as LotRow[] | null
   if (error) return { ok: false, status: 500, error: error.message ?? 'Could not save the bunch.' }

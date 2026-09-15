@@ -884,7 +884,7 @@ async function countChecks() {
 
   // 069 by capability: a bunch with no weight, of class pairs, at a place.
   const spot = await api(A, '/api/herd/lots', { name: `${PREFIX}spot`, class: 'pairs', head_count: 7, place_id: a.placeId })
-  if (spot.status === 500 || spot.status === 400 && /avg_weight|class must/.test(String(spot.json.error))) {
+  if (spot.status === 500 || (spot.status === 400 && /avg_weight|class must|update 069/.test(String(spot.json.error)))) {
     record('(skipped)', '14: bunch checks — migration 069 not applied', true, `${spot.status} ${String(spot.json.error ?? '').slice(0, 60)}`); return
   }
   const spotLot = (spot.json.lot ?? null) as { id: string; class: string; avg_weight: number | null; place_id?: string | null } | null
