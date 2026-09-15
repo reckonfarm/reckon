@@ -574,7 +574,7 @@ async function main() {
         await pageB.goto(`/ranch/activity/${eventId}`, { waitUntil: 'domcontentloaded' })
         await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
         const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
-        const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('sync'), place = await d('place')
+        const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('saved'), place = await d('place')
         record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Saved to the ranch/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
         await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       }
@@ -681,14 +681,16 @@ async function main() {
       const stripUp = (await undoStrip(page).count()) === 1
       for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) >= rowsBefore; i++) await page.waitForTimeout(250)
       const rowsAfter = await page.locator('[data-audit="lot-row"]').count()
-      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const stillNamed = await page.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      // The record, read from a SECOND tab: the strip lives in this tab's
+      // memory for ten seconds, and a full page load (which goto is) would
+      // drop it — a person tapping the bottom bar keeps it.
+      const look = await page.context().newPage()
+      await look.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await look.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      await look.close()
       record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as deleted',
         lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as deleted ${stillNamed}`)
-      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
-      // The strip died with the navigation? No — it is a module store, and the
-      // ten seconds are still running. Undo from here.
       const undone = await pressUndo(page)
       for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) === 0; i++) await page.waitForTimeout(250)
       const rowsBack = await page.locator('[data-audit="lot-row"]').count()
@@ -1369,7 +1371,7 @@ async function main() {
           let retiredLabel = ''
           await correct(page, h4.id, async p => { retiredLabel = await p.locator('[data-audit="correction-herd_lot_id"] option:checked').innerText().catch(() => ''); await p.getByLabel('Bales', { exact: true }).fill('1') }, '6A retired lot')
           const h5 = await head(o.id); const bad5 = preserved(h4, h5, ['bales'])
-          record('6A: a retired lot is named as retired on the form and a quantity-only correction keeps it', /retired/.test(retiredLabel) && h5.payload.herd_lot_id === lot2 && h5.payload.bales === 1 && bad5.length === 0, `option "${retiredLabel}" · ${describe(bad5, h5)}`)
+          record('6A/13: a lot that is off the list is named so on the form and a quantity-only correction keeps it', /off the list/.test(retiredLabel) && h5.payload.herd_lot_id === lot2 && h5.payload.bales === 1 && bad5.length === 0, `option "${retiredLabel}" · ${describe(bad5, h5)}`)
           // the explicit Clear is the only path to null: the lot goes, the place and the rest stay
           await correct(page, h5.id, async p => { await p.locator('[data-audit="correction-clear-herd_lot_id"]').click() }, '6A clear lot')
           const h6 = await head(o.id); const bad6 = preserved(h5, h6, ['herd_lot_id'])
@@ -2018,8 +2020,8 @@ async function main() {
         await page.goto(`/ranch/activity/${e0.id}`, { waitUntil: 'domcontentloaded' })
         await page.locator('[data-audit="correction-actions"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
         const labels = await page.locator('[data-audit="correction-actions"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-        record('11.13: an entry offers Correct and Delete — "void" is not a word on the screen',
-          labels.length === 2 && /correct/i.test(labels[0] ?? '') && /delete/i.test(labels[1] ?? '') && !labels.some(l => /void/i.test(l)),
+        record('11.13/13: an entry offers Fix and Delete — "void" is not a word on the screen',
+          labels.length === 2 && /fix/i.test(labels[0] ?? '') && /delete/i.test(labels[1] ?? '') && !labels.some(l => /void/i.test(l)),
           `[${labels.join(' | ')}]`)
         await admin.from('events').delete().eq('id', e0.id)
       }
@@ -2286,9 +2288,11 @@ async function main() {
       const { data: dv2 } = await admin.from('devices').select('place_id, deleted_at').eq('id', device13).maybeSingle()
       const entryKept = (ev2 as { payload?: { place_id?: string }; deleted_at?: string | null } | null)?.payload?.place_id === place13 && (ev2 as { deleted_at?: string | null } | null)?.deleted_at === null
       const deviceKept = (dv2 as { place_id?: string | null; deleted_at?: string | null } | null)?.place_id === place13 && (dv2 as { deleted_at?: string | null } | null)?.deleted_at === null
-      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const namesGone = await page.locator(`li[data-id="${entry13}"]`).innerText().catch(() => '')
+      const look2 = await page.context().newPage()
+      await look2.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await look2.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const namesGone = await look2.locator(`li[data-id="${entry13}"]`).innerText().catch(() => '')
+      await look2.close()
       const undone2 = await pressUndo(page)
       const { data: back2 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
       record('13 (place): hold → Delete with an entry and a device attached — no confirm, both survive and still name it, the entry shows it as deleted; Undo puts it back',
