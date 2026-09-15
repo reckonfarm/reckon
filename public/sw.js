@@ -35,6 +35,16 @@ self.addEventListener('activate', event => {
     const names = await caches.keys()
     await Promise.all(names.filter(n => n !== SHELL && n !== STATIC).map(n => caches.delete(n)))
     await self.clients.claim()
+    // The first open installs the worker but is not served by it, so seed the
+    // shell now: one signed-in Today, if the phone has one. A redirect to the
+    // sign-in page is not the app and is never kept.
+    try {
+      const res = await fetch('/today', { credentials: 'same-origin' })
+      if (res && res.ok && !res.redirected && res.headers.get('content-type')?.includes('text/html')) {
+        const cache = await caches.open(SHELL)
+        await cache.put(SHELL_KEY, res)
+      }
+    } catch { /* no signal at install: the next signed-in Today becomes the shell */ }
   })())
 })
 
@@ -76,7 +86,7 @@ async function navigationFirst(req, url) {
     const res = await fetch(req)
     // Keep the newest signed-in Today as the shell. Only a real 200 document,
     // and only a signed-in page — the landing and sign-in are not the app.
-    if (res && res.ok && res.headers.get('content-type')?.includes('text/html') && TODAY_RE.test(url.pathname + url.search)) {
+    if (res && res.ok && !res.redirected && res.headers.get('content-type')?.includes('text/html') && TODAY_RE.test(url.pathname + url.search)) {
       if (/^\/(today|home)/.test(url.pathname)) cache.put(SHELL_KEY, res.clone())
     }
     return res
@@ -90,5 +100,5 @@ async function navigationFirst(req, url) {
 function offlineHtml() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dryline</title>
 <style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#FDFBF7;color:#20392E;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}main{max-width:420px}h1{font-size:22px;margin:0 0 8px}p{font-size:17px;line-height:1.4;margin:0 0 16px}a{display:inline-block;min-height:48px;line-height:48px;padding:0 20px;border-radius:10px;background:#1B4332;color:#FDFBF7;text-decoration:none;font-weight:600}</style></head>
-<body><main><h1>No signal</h1><p>Dryline has not opened on this phone with signal yet, so there is nothing to show. Open it once with service and it will work without.</p><a href="/today">Try now</a></main></body></html>`
+<body><main><h1>No signal</h1><p>Dryline has not opened on this phone with signal yet, so there is nothing to show. Open it once with service and it will work without.</p><a href="/today">Open Dryline</a></main></body></html>`
 }

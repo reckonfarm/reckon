@@ -72,6 +72,22 @@ async function probe069(ranchId: string, userId: string): Promise<boolean> {
   has069 = !error
   return has069
 }
+// Block 15: 070 by capability — one preg check may carry its opens as a bunch
+// only once the migration has run. Probed on the smoke ranch's own scratch
+// bunch through the signed-in page (the way the phone does it); every row it
+// makes is removed at once. The chute checks skip, saying so, without it.
+let has070: boolean | null = null
+async function probe070(page: Page, ranchId: string, userId: string): Promise<boolean> {
+  if (has070 !== null) return has070
+  const { data: lot } = await admin.from('herd_lots').insert({ ranch_id: ranchId, class: 'cows', name: `${PREFIX} 070 probe`, head_count: 2, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId }).select('id').single()
+  if (!lot) { has070 = false; return false }
+  const id = randomUUID()
+  const r = await page.request.post('/api/log', { data: { id, type: 'group_action', action: 'preg_check', source_lot_id: (lot as { id: string }).id, expected_head: 2, counted: 2, stay: 1, results: [{ lot_id: null, name: `${PREFIX} 070 probe opens`, class: 'old_cows', head: 1 }], detail: { bred: 1, open: 1 } } })
+  has070 = r.status() === 201
+  await admin.from('events').delete().eq('id', id)
+  await admin.from('herd_lots').delete().like('name', `${PREFIX} 070 probe%`)
+  return has070
+}
 let userIdB = ''
 let ranchId = ''
 let placeId = ''
@@ -1716,6 +1732,8 @@ async function main() {
     // say why.
     if (!(await probe069(ranchId, userId))) {
       skip('10/15: preg check in the sheet', 'migration 069 not applied on this database')
+    } else if (!(await probe070(page, ranchId, userId))) {
+      skip('15: preg check in the sheet', 'migration 070 not applied on this database — the function still refuses a check that carries its opens')
     } else {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       const headOf = async (id: string) => {
@@ -1730,8 +1748,15 @@ async function main() {
       const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', chuteLotId).is('retired_at', null).is('deleted_at', null)
       const controls = ((otherLots ?? []) as { id: string; head_count: number }[])
 
-      // Open the app with signal once (the bunch list lands on the phone), then go dark.
+      // Open the app with signal once (the worker installs and keeps this
+      // Today as the shell; the bunch list lands on the phone), then go dark.
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const swReady = await page.evaluate(() => 'serviceWorker' in navigator
+        ? Promise.race([navigator.serviceWorker.ready.then(() => true), new Promise<boolean>(r => setTimeout(() => r(false), 8_000))])
+        : false).catch(() => false)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const shellCached = await page.evaluate(() => caches.open('dryline-shell-v1').then(c => c.match('/__shell__')).then(m => !!m).catch(() => false)).catch(() => false)
+      record('15 (ruling 1): the worker is up after one open with signal, and the last Today is kept as the shell', swReady && shellCached, `worker ${swReady} · shell cached ${shellCached}`)
       await recordControl(page).click()
       await page.locator('[data-audit="tile-preg-check"]').waitFor({ timeout: 15_000 })
       await page.locator('[data-audit="tile-preg-check"]').click()
