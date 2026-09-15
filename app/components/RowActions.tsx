@@ -118,7 +118,17 @@ export default function RowActions({ links, children, className = '' }: { links:
       return
     }
     setOpen(false)
-    if (a.href) router.push(a.href)
+    if (!a.href) return
+    // A Fix that lands on THIS page with a hash (#fix-<id> on the devices
+    // list) must reach the form that is already mounted: router.push only
+    // rewrites the URL, and no effect re-runs. Setting the hash fires
+    // hashchange, which the forms listen for.
+    const hashAt = a.href.indexOf('#')
+    if (hashAt > 0 && typeof window !== 'undefined' && a.href.slice(0, hashAt) === window.location.pathname) {
+      window.location.hash = a.href.slice(hashAt)
+      return
+    }
+    router.push(a.href)
   }
 
   return (

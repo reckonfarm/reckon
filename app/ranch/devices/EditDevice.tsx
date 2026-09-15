@@ -28,11 +28,14 @@ export default function EditDevice({ device }: { device: { id: string; name: str
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // A row held for Fix lands here with the form open (#fix-<id>).
+  // A row held for Fix lands here with the form open (#fix-<id>) — on a
+  // fresh page load, and on a hash change when the row is on this same page.
   useEffect(() => {
-    if (typeof window === 'undefined' || window.location.hash !== `#fix-${device.id}`) return
-    const t = setTimeout(() => setOpen(true), 0)
-    return () => clearTimeout(t)
+    const want = `#fix-${device.id}`
+    const check = () => { if (window.location.hash === want) { setOpen(true); document.getElementById(`device-${device.id}-fix`)?.scrollIntoView({ block: 'center' }) } }
+    const t = setTimeout(check, 0)
+    window.addEventListener('hashchange', check)
+    return () => { clearTimeout(t); window.removeEventListener('hashchange', check) }
   }, [device.id])
   useEffect(() => {
     if (!open || places !== null) return
@@ -76,7 +79,7 @@ export default function EditDevice({ device }: { device: { id: string; name: str
 
   const chip = (on: boolean) => `min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${on ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`
   return (
-    <Card className="mt-3 border-forest-green/20 p-4" data-audit="device-fix">
+    <Card className="mt-3 border-forest-green/20 p-4" data-audit="device-fix" id={`device-${device.id}-fix`}>
       <label className="block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor={`device-name-${device.id}`}>Name
         <input id={`device-name-${device.id}`} value={name} onChange={e => setName(e.target.value.slice(0, 60))} maxLength={60} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="device-fix-name" />
       </label>

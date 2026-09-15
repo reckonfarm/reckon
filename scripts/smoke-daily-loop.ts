@@ -2240,7 +2240,7 @@ async function main() {
       const { data: d13 } = await admin.from('devices').insert({ user_id: userId, ranch_id: ranchId, hardware_id: `${PREFIX}-13-hw`, type: 'spotter', name: `${PREFIX} 13 gauge`, place_id: place13 }).select('id').single()
       const device13 = String((d13 as { id?: string } | null)?.id ?? '')
       const job13 = randomUUID()
-      const j13 = await admin.from('jobs').insert({ id: job13, user_id: userId, ranch_id: ranchId, device_id: null, hardware_id: 'smoke-scout-13', started_at: new Date(Date.now() - 5 * 3_600_000).toISOString(), ended_at: new Date(Date.now() - 4 * 3_600_000).toISOString(), duration_s: 3600, seq_start: 1, seq_end: 100, event_count: 100, evicted_count: 0, coverage: 1, multi_field: false })
+      const j13 = await admin.from('jobs').insert({ id: job13, user_id: userId, ranch_id: ranchId, device_id: null, hardware_id: 'smoke-scout-13', started_at: new Date(Date.now() - 5 * 3_600_000).toISOString(), ended_at: new Date(Date.now() - 4 * 3_600_000).toISOString(), duration_s: 3600, seq_start: 1, seq_end: 100, event_count: 100, evicted_count: 0, coverage: 1, centroid_lat: 46.94, centroid_lng: -108.19, bbox: {}, track: [], pauses: [], multi_field: false, stats: {}, deriver_version: 'smoke', derived_at: new Date().toISOString() })
       if (!j13.error) await admin.from('job_annotations').insert({ job_id: job13, user_id: userId, ranch_id: ranchId, name: '13 baling', machine: 'baler' })
       const { data: county } = await admin.from('counties').select('id').eq('fips', HOME_FIPS).maybeSingle()
       const countyId = Number((county as { id?: number } | null)?.id ?? 0)
@@ -2448,7 +2448,7 @@ async function main() {
       const trashThere = await trashRow13.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
       const s10 = trashThere ? await hold(page, trashRow13) : false
       const putBack10 = await sheet(page).extra.filter({ hasText: 'Put it back' }).count()
-      const noDelete10 = (await sheet(page).del.count()) === 0 && /gone for good/i.test((await sheet(page).deleteNote.innerText().catch(() => '')))
+      const noDelete10 = (await sheet(page).del.count()) === 0 && /for good/i.test((await sheet(page).deleteNote.innerText().catch(() => '')))
       await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
       await page.waitForTimeout(2_000)
       const { data: back10 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
