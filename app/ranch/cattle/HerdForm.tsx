@@ -23,6 +23,7 @@ import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
 import Link from 'next/link'
 import RowActions from '@/app/components/RowActions'
+import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
 // make a valid lot, saved instantly. Frame / weaned / sale windows are pre-filled defaults
@@ -61,19 +62,23 @@ function formatMonth(ym: string): string {
 export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; what?: string | null; head?: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
+  // Block 13: the server's list is the truth after a refresh — an Undo puts a
+  // bunch back, router.refresh() re-renders the page with it, and this form
+  // must show it. Adjusting state from a changed prop DURING render is the
+  // React pattern for this (no effect, no extra commit).
+  const [seenLots, setSeenLots] = useState(initialLots)
+  if (initialLots !== seenLots) { setSeenLots(initialLots); if (initialLots) setLots(initialLots) }
   const [loading, setLoading] = useState(!initialLots)
   const [dPurpose, setDPurpose] = useState<LotPurpose | ''>('')
-  const [menuFor, setMenuFor] = useState<string | null>(null)
   const [loadError, setLoadError] = useState('')
 
   const [editing, setEditing] = useState<Editing>(null)
-  // Block 12 (12.3): a lot row held for Edit or Delete lands with the form
-  // (or the row menu, where Delete lives) already open.
+  // Block 12 (12.3): a lot row held for Fix lands with the form already open.
+  // Block 13: Delete no longer lands anywhere — it happens on the row.
   useEffect(() => {
     const h = typeof window !== 'undefined' ? window.location.hash : ''
-    const e = /^#edit-([0-9a-f-]{36})$/i.exec(h); const d = /^#delete-([0-9a-f-]{36})$/i.exec(h)
+    const e = /^#edit-([0-9a-f-]{36})$/i.exec(h)
     if (e) { const lot = (initialLots ?? []).find(l => l.id === e[1]); if (lot) openEdit(lot) }
-    else if (d) setMenuFor(d[1])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [status, setStatus] = useState<SaveStatus>('idle')
@@ -197,9 +202,14 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     if (ok) { setEditing(null); resetDraft() }
   }
 
-  async function removeLot(id: string) {
-    // Block 12 (12.4): Archive retires — its own route. DELETE on the lot is the trash now.
-    if (await write(`/api/herd/lots/${id}/retire`, 'POST') && editing === id) setEditing(null)
+  // Block 13: Delete is one tap to the trash, Undo on the strip for ten
+  // seconds. Archive (retire) is gone from the screen; the route stays.
+  async function removeLot(lot: Lot) {
+    const r = await deleteWithUndo({ label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`, run: () => callDelete(`/api/herd/lots/${lot.id}`, { method: 'DELETE' }), undo: restoreFromTrash('herd_lots', lot.id) })
+    if (!r.ok) { showNotice(r.error); return }
+    if (editing === lot.id) setEditing(null)
+    setLots(prev => prev.filter(l => l.id !== lot.id))
+    router.refresh()
   }
 
   function addWindow() {
@@ -213,7 +223,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     return (
       <Card shadow="soft" className="p-4 sm:p-5">
         <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">
-          {editing === 'new' ? 'Add a lot' : 'Edit lot'}
+          {editing === 'new' ? 'Add a lot' : 'Fix this lot'}
         </p>
 
         <div className="mt-3">
@@ -364,9 +374,8 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
   function renderRow(lot: Lot) {
     const work = lastWork[lot.id]
-    const menuOpen = menuFor === lot.id
     return (
-      <RowActions key={lot.id} links={{ openHref: `/ranch/cattle#${lot.id}`, editHref: `/ranch/cattle#edit-${lot.id}`, deleteHref: `/ranch/cattle#delete-${lot.id}`, label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}` }}>
+      <RowActions key={lot.id} links={{ label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`, openHref: `/ranch/cattle#${lot.id}`, fix: { onSelect: () => openEdit(lot) }, del: { onSelect: () => removeLot(lot) } }}>
       <Card shadow="sm" className="p-4" data-audit="lot-row">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -389,21 +398,9 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
             </p>
           </div>
           <div className="relative flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => openEdit(lot)} className="inline-flex min-h-[44px] items-center px-2 font-dm-sans text-[16px] font-medium text-accent hover:text-brand">
-              Edit
+            <button type="button" onClick={() => openEdit(lot)} className="inline-flex min-h-[44px] items-center px-2 font-dm-sans text-[16px] font-medium text-accent hover:text-brand" data-audit="lot-fix">
+              Fix
             </button>
-            <button type="button" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={`More for ${lotLabel(lot)}`} onClick={() => setMenuFor(menuOpen ? null : lot.id)} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg px-2 font-dm-sans text-[20px] leading-none text-secondary-ink hover:text-ink" data-audit="lot-more">
-              ···
-            </button>
-            {menuOpen && (
-              <div role="menu" className="absolute right-0 top-full z-10 mt-1 w-72 rounded-lg border border-control-border bg-surface p-3 shadow-lg" data-audit="lot-menu">
-                <p className="font-dm-sans text-[15px] text-secondary-ink">Archive this lot? History stays; the lot leaves current views.</p>
-                <div className="mt-2 flex gap-2">
-                  <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void removeLot(lot.id) }} disabled={status === 'saving'} className="inline-flex min-h-[44px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream disabled:opacity-50" data-audit="lot-archive">Archive</button>
-                  <button type="button" role="menuitem" onClick={() => setMenuFor(null)} className="inline-flex min-h-[44px] items-center px-3 font-dm-sans text-[16px] font-semibold text-ink">Cancel</button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </Card>

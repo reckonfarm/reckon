@@ -8,7 +8,7 @@ import { fmtDay } from '@/lib/jobs/format'
 import LogRainButton from './LogRainButton'
 import { weatherPlaces } from '@/lib/rain/weather-places'
 import WeatherPlacePicker from './WeatherPlacePicker'
-import WeatherPlaceActions from './WeatherPlaceActions'
+import HeldRow from '@/app/components/HeldRow'
 
 // ─── Rain on my places (Block 7, Part 3) ──────────────────────────────────────
 // The one thing no forecast app can copy: Haley read the gauge at the north
@@ -66,7 +66,14 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
           {rows.map(r => {
             const latest = r.rain?.latest ?? null
             return (
-              <li key={r.id ?? 'none'} className="py-3" data-audit="rain-place-row" data-place={r.id ?? 'none'} data-state={latest ? 'read' : 'none'}>
+              <li key={r.id ?? 'none'} data-audit="rain-place-row" data-place={r.id ?? 'none'} data-state={latest ? 'read' : 'none'}>
+              {/* Block 13: hold the row for Fix (name, kind, where it sits, and
+                  whether it shows here) · Delete. The Unpin and Delete links
+                  this row carried are gone; "Show on Weather" is a switch on
+                  the place's own form now. The "No place given" row is not a
+                  place and gets no gesture. */}
+              <HeldRow label={r.name} openHref={r.id ? `/ranch/places/${r.id}` : null} fixHref={r.id ? `/ranch/places/${r.id}#edit` : null} fixNote={r.id ? null : 'These readings were recorded with no place. Fix each entry to give it one.'} del={r.id ? { kind: 'place', id: r.id } : null} deleteNote={r.id ? null : 'There is no place here to delete.'}>
+              <div className="py-3">
                 <p className="font-dm-sans text-[17px] text-ink">
                   <span className="font-semibold">{r.name}</span>
                   {latest
@@ -94,8 +101,9 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
                     </Disclosure>
                   )}
                   {r.id && <LogRainButton placeId={r.id} placeName={r.name} compact />}
-                  {r.id && <WeatherPlaceActions id={r.id} name={r.name} pinned={r.pinned} />}
                 </div>
+              </div>
+              </HeldRow>
               </li>
             )
           })}

@@ -56,7 +56,7 @@ export default function InAppBrowserBanner() {
         </p>
         <button
           onClick={dismiss}
-          aria-label="Dismiss"
+          aria-label="Close"
           className="-mr-1 flex-shrink-0 rounded-lg p-1 text-secondary-ink hover:text-forest-green"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

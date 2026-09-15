@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase-browser'
 import SiteHeader from '@/app/components/SiteHeader'
 import type { WatchlistEntry } from '@/lib/concierge-service'
 import type { DroughtAlert } from '@/lib/alert-service'
+import RowActions from '@/app/components/RowActions'
+import { deleteWithUndo, callDelete, showNotice } from '@/lib/undo'
 
 export default function WatchlistPage() {
   const [authed, setAuthed]     = useState<boolean | null>(null)
@@ -70,18 +72,22 @@ export default function WatchlistPage() {
     setHomeBusy(false)
   }
 
-  async function remove(countyId: number) {
+  // Block 13: one tap off the list; the strip's Undo puts the county back.
+  async function remove(entry: WatchlistEntry) {
+    const countyId = entry.countyId
     setRemoving(prev => new Set(prev).add(countyId))
-
-    await fetch('/api/watchlist', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ countyId }),
-    }).catch(() => {})
-
+    const r = await deleteWithUndo({
+      label: `${entry.county.name}, ${entry.county.state}`,
+      run: () => callDelete('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ countyId }) }),
+      undo: async () => {
+        const back = await callDelete('/api/watchlist', { method: 'POST', body: JSON.stringify({ countyId }) })
+        if (back.ok) setEntries(prev => prev.some(e => e.countyId === countyId) ? prev : [...prev, entry])
+        return back
+      },
+    })
+    setRemoving(prev => { const n = new Set(prev); n.delete(countyId); return n })
+    if (!r.ok) { showNotice(r.error); return }
     setEntries(prev => prev.filter(e => e.countyId !== countyId))
-    setAlerts(prev  => prev.filter(a => a.countyId !== countyId))
-    setRemoving(prev => { const next = new Set(prev); next.delete(countyId); return next })
   }
 
   return (
@@ -123,11 +129,23 @@ export default function WatchlistPage() {
               {entries.map(entry => {
                 const alert   = alerts.find(a => a.countyId === entry.countyId) ?? null
                 const busy    = removing.has(entry.countyId)
+                void busy
                 const highest = alert?.triggered.at(-1) ?? null
 
+                const isHome = homeFips === entry.county.fips
                 return (
-                  <li
-                    key={entry.countyId}
+                  <li key={entry.countyId} data-audit="county-row" data-fips={entry.county.fips}>
+                  {/* Block 13: hold the county. Nothing to fix on a county; the
+                      one thing a person changes is which one is home. Delete
+                      takes it off the list, Undo puts it back. */}
+                  <RowActions links={{
+                    label: `${entry.county.name}, ${entry.county.state}`,
+                    openHref: `/dashboard?fips=${entry.county.fips}`,
+                    fixNote: 'A county has nothing to fix. Open it to see its drought.',
+                    extra: [{ label: isHome ? 'Not my home county' : 'Make it my home county', onSelect: () => setHome(entry.county.fips) }],
+                    del: { onSelect: () => remove(entry) },
+                  }}>
+                  <div
                     className="rounded-xl border border-forest-green/10 bg-white px-4 py-4 sm:px-5"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -183,13 +201,6 @@ export default function WatchlistPage() {
                         >
                           View Dashboard →
                         </Link>
-                        <button
-                          onClick={() => remove(entry.countyId)}
-                          disabled={busy}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-[14px] font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
-                        >
-                          {busy ? '…' : 'Remove'}
-                        </button>
                       </div>
                     </div>
 
@@ -205,6 +216,8 @@ export default function WatchlistPage() {
                         ))}
                       </ul>
                     )}
+                  </div>
+                  </RowActions>
                   </li>
                 )
               })}

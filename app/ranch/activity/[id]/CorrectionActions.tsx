@@ -7,6 +7,7 @@ import { newEventId } from '@/lib/outbox'
 import { LIMITS } from '@/lib/manual-log'
 import { warning } from '@/lib/brand-colors'
 import { forgetSynced } from '@/lib/outbox'
+import { deleteWithUndo, callDelete, restoreFromTrash } from '@/lib/undo'
 import { Select } from '@/app/components/ui/Field'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
@@ -37,6 +38,19 @@ export interface Editable {
 }
 
 const REF_KEYS = ['herd_lot_id', 'place_id', 'from_place_id', 'to_place_id'] as const
+// The entry in its own words for the undo strip: "Fed 4 bales", "Rain 0.35 in".
+function labelFor(e: Editable): string {
+  const v = e.values
+  switch (e.type) {
+    case 'hay_fed': return `Fed ${String(v.bales ?? '?')} bales`
+    case 'rain': return `Rain ${String(v.inches ?? '?')} in`
+    case 'bales_stacked': return `Stacked ${String(v.count ?? '?')} bales`
+    case 'hay_inventory': return `Counted ${String(v.bales ?? '?')} bales`
+    case 'cattle_moved': return `Moved ${String(v.head ?? '?')} head`
+    case 'cattle_worked': return `${String(v.what ?? 'Worked')} ${String(v.head ?? '?')} head`
+    default: return e.type.replace(/_/g, ' ')
+  }
+}
 type RefKey = typeof REF_KEYS[number]
 const NUM_KEYS = ['bales', 'inches', 'count', 'head'] as const
 type NumKey = typeof NUM_KEYS[number]
@@ -75,7 +89,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   // 7D: what deleting THIS entry would do, asked before the sheet can say it.
   // Loaded when the sheet opens, never guessed on the client — the answer
   // depends on whether another member has read the ledger since it landed.
-  const [plan, setPlan] = useState<{ state: 'loading' } | { state: 'failed' } | { state: 'ready'; mode: 'hard' | 'record'; reason: string | null; label: string }>({ state: 'loading' })
+  // Block 13: no plan, no confirm. Delete is one tap; the strip's Undo is the safety.
   const [draft, setDraft] = useState<Draft>(() => fromOriginal(event))
   // Block 12 (12.3): a row held for Edit or Delete arrives here with the mode
   // in the hash, so the person lands in the form rather than on the page.
@@ -93,22 +107,6 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   const initial = localParts(event.ts)
   const set = (k: keyof Draft, value: string) => setDraft(d => ({ ...d, [k]: value }))
 
-  useEffect(() => {
-    if (mode !== 'delete') return
-    let cancelled = false
-    // No synchronous setState here: the initial state is already 'loading',
-    // and on a re-open the previous answer holds for the moment the fetch
-    // takes rather than flashing back to "checking". The outcome does not
-    // depend on it either way — DELETE re-plans on the server.
-    fetch(`/api/activity/${event.id}/delete`)
-      .then(r => (r.ok ? r.json() : null))
-      .then((j: { plan?: { mode: 'hard' | 'record'; reason: string | null; label: string } } | null) => {
-        if (cancelled) return
-        setPlan(j?.plan ? { state: 'ready', ...j.plan } : { state: 'failed' })
-      })
-      .catch(() => { if (!cancelled) setPlan({ state: 'failed' }) })
-    return () => { cancelled = true }
-  }, [mode, event.id])
 
   useEffect(() => {
     if (mode !== 'correct') return
@@ -140,21 +138,31 @@ export default function CorrectionActions({ event }: { event: Editable }) {
 
   async function remove() {
     setError(null); setBusy(true)
-    try {
-      const res = await fetch(`/api/activity/${event.id}/delete`, { method: 'DELETE' })
-      const json = await res.json().catch(() => ({})) as { mode?: string; error?: string }
-      if (!res.ok) { setError(json.error ?? 'That entry could not be deleted just now'); setBusy(false); return }
-      // Block 11 (P0): the receipt for a deleted entry is a lie the moment the
-      // delete lands — it quotes a balance that no longer holds and offers to
-      // open a row that is gone. It goes with the entry.
-      forgetSynced(event.id)
-      // Gone from here either way, so there is nothing to return to.
-      router.push('/ranch/activity')
-      router.refresh()
-    } catch {
-      setError('That entry could not be deleted just now'); setBusy(false)
-    }
+    const label = labelFor(event)
+    const r = await deleteWithUndo({
+      label,
+      run: () => callDelete(`/api/activity/${event.id}/delete`, { method: 'DELETE' }),
+      undo: restoreFromTrash('events', event.id),
+      after: `/ranch/activity/${event.id}`,
+    })
+    if (!r.ok) { setError(r.error); setBusy(false); setMode('idle'); return }
+    // Block 11 (P0): the receipt for a deleted entry is a lie the moment the
+    // delete lands — it quotes a balance that no longer holds and offers to
+    // open a row that is gone. It goes with the entry.
+    forgetSynced(event.id)
+    // Gone from here, so there is nothing to return to; the strip's Undo
+    // brings the entry and this page back.
+    router.push('/ranch/activity')
+    router.refresh()
   }
+
+  // Block 13: a row held for Delete, or the page's own Delete, deletes NOW.
+  useEffect(() => {
+    if (mode !== 'delete') return
+    const t = setTimeout(() => { void remove() }, 0)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   async function submit(kind: 'correct' | 'void') {
     setError(null)
@@ -194,11 +202,11 @@ export default function CorrectionActions({ event }: { event: Editable }) {
             {held && value !== '' && <option value={value}>{options.state === 'loading' ? `Loading ${kind} names…` : `Stored ${kind} (names unavailable)`}</option>}
             {unresolved && <option value={value}>Unresolved {kind} · {value.slice(0, 8)}</option>}
             {(value === '' || held) && <option value="">No {kind}</option>}
-            {!held && list.map(o => <option key={o.id} value={o.id}>{o.name}{o.retired ? ' · retired' : ''}</option>)}
+            {!held && list.map(o => <option key={o.id} value={o.id}>{o.name}{o.retired ? ' · off the list' : ''}</option>)}
           </Select>
         </label>
         {unresolved && <p className={hintCls} data-audit={`correction-unresolved-${key}`}>This {kind} isn&apos;t on the ranch&apos;s list now (removed or renamed). It stays on the entry unless you clear it.</p>}
-        {resolved?.retired && <p className={hintCls}>A retired {kind}. It stays on the entry unless you clear it.</p>}
+        {resolved?.retired && <p className={hintCls}>This {kind} is off the list now. It stays on the entry unless you clear it.</p>}
         {value === '' && stored !== '' && <p className={hintCls} data-audit={`correction-cleared-${key}`}>Cleared — the correction will carry no {kind}.</p>}
         {value !== '' && !held && <button type="button" onClick={() => set(key, '')} className={clearCls} data-audit={`correction-clear-${key}`}>Clear {kind}</button>}
       </div>
@@ -217,62 +225,16 @@ export default function CorrectionActions({ event }: { event: Editable }) {
          "Voided:" on every timeline and still count for nothing, and the route
          still answers. Only the word is gone from the screen. */
       <div className="mt-5 flex flex-wrap gap-3" data-audit="correction-actions">
-        <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Correct this entry</button>
-        <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">Delete this entry</button>
+        <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Fix this entry</button>
+        <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">{busy ? 'Deleting…' : 'Delete this entry'}</button>
       </div>
     )
   }
 
-  // ── The delete confirm (7D.1) ───────────────────────────────────────────────
-  // It names WHAT is being deleted, and on the record path says in one plain
-  // sentence that the record keeps it. It never shows a database error: the
-  // route answers with a plan, and a plan that cannot be fetched disables the
-  // button rather than guessing which path a tap would take.
+  // Block 13: while the delete runs there is nothing to confirm and nothing to
+  // show — the strip says "Deleted · Undo" the moment it lands.
   if (mode === 'delete') {
-    const ready = plan.state === 'ready' ? plan : null
-    return (
-      <div className="mt-5 rounded-xl border p-4" style={{ borderColor: warning }} data-audit="delete-form">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="delete-title">
-          Delete {ready ? ready.label.toLowerCase() : 'this entry'}?
-        </p>
-
-        {plan.state === 'loading' && (
-          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-checking">Checking what this will do…</p>
-        )}
-        {plan.state === 'failed' && (
-          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-unknown">
-            This can&rsquo;t be checked just now, so it isn&rsquo;t offered. Try again in a moment.
-          </p>
-        )}
-
-        {ready?.mode === 'hard' && (
-          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="hard">
-            It will be gone, and every total recalculated without it. Nothing is kept.
-          </p>
-        )}
-        {ready?.mode === 'record' && (
-          <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="delete-consequence" data-mode="record">
-            It will be gone from your Activity. The record keeps that you deleted it, and when
-            {ready.reason ? ` — ${ready.reason}` : ''}.
-          </p>
-        )}
-
-        {error && <p className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} role="alert" data-audit="delete-error">{error}</p>}
-
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" disabled={busy || !ready} onClick={() => void remove()}
-            className="inline-flex min-h-[52px] items-center rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
-            style={{ backgroundColor: warning }} data-audit="delete-confirm">
-            {busy ? 'Deleting…' : 'Delete it'}
-          </button>
-          <button type="button" disabled={busy} onClick={() => { setMode('idle'); setError(null) }}
-            className="inline-flex min-h-[52px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink"
-            data-audit="delete-cancel">
-            Keep it
-          </button>
-        </div>
-      </div>
-    )
+    return error ? <p role="alert" className="mt-5 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="delete-error">{error}</p> : null
   }
 
   const holding = mode === 'correct' && options.state === 'loading'

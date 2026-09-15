@@ -163,16 +163,21 @@ export function quantityOf(r: ActivityRow): string | null {
 
 // ── Names for a set of rows ───────────────────────────────────────────────────
 async function namesFor(supabase: SupabaseClient, userId: string, rows: ActivityRow[]): Promise<Names> {
-  const placeIds = new Set<string>(); const userIds = new Set<string>()
-  for (const r of rows) { userIds.add(r.user_id); for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) { const v = str(r.payload[k]); if (v) placeIds.add(v) } }   // stock_place_id: the stack hay was taken from (6E)
-  const [places, profiles, lots] = await Promise.all([
-    placeIds.size ? supabase.from('places').select('id, name').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  const placeIds = new Set<string>(); const userIds = new Set<string>(); const lotIds = new Set<string>()
+  for (const r of rows) { userIds.add(r.user_id); for (const k of ['place_id', 'from_place_id', 'to_place_id', 'stock_place_id']) { const v = str(r.payload[k]); if (v) placeIds.add(v) }; const l = str(r.payload.herd_lot_id); if (l) lotIds.add(l) }   // stock_place_id: the stack hay was taken from (6E)
+  // Block 13: NEVER ORPHAN AN EVENT. A place or bunch in the trash still names
+  // itself on every entry that pointed at it — read without the live filter,
+  // and say "gone" beside the name rather than dropping it to a blank.
+  const [places, profiles, lots, trashedLots] = await Promise.all([
+    placeIds.size ? supabase.from('places').select('id, name, deleted_at').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string; deleted_at: string | null }[] }),
     userIds.size ? createServiceClient().from('profiles').select('id, display_name, email').in('id', [...userIds]) : Promise.resolve({ data: [] as { id: string; display_name: string | null; email: string | null }[] }),
     getRanchLotsIncludingRetired(supabase, userId),
+    lotIds.size ? supabase.from('herd_lots').select('id, name, class, deleted_at').in('id', [...lotIds]).not('deleted_at', 'is', null) : Promise.resolve({ data: [] as { id: string; name: string | null; class: string; deleted_at: string }[] }),
   ])
-  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, p.name as string]))
+  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, (p as { deleted_at?: string | null }).deleted_at ? `${p.name as string} (deleted)` : p.name as string]))
   const people = new Map((profiles.data ?? []).map(p => [p.id as string, ((p.display_name as string | null)?.trim() || (p.email as string | null) || 'Someone on the ranch')]))
   const lotNames = new Map((lots as Lot[]).map(l => [l.id, lotLabel(l)]))
+  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, `${l.name?.trim() || l.class} (deleted)`)
   return {
     place: id => { const s = str(id); return s ? placeNames.get(s) ?? null : null },
     lot: id => { const s = str(id); return s ? lotNames.get(s) ?? null : null },

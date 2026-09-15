@@ -1259,7 +1259,7 @@ async function placesChecks() {
     record('user A (owner)', 'but the correction picker still names it, flagged retired', !!opt && opt.retired === true && !!opt.name, `${opt ? `"${opt.name.slice(-10)}" retired=${opt.retired}` : 'ABSENT — history would lose its where'}`)
     // Every other edit is refused while it is retired.
     const blocked = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}while-retired` }, 'PATCH')
-    record('user A (owner)', 'a retired place refuses every edit but the way back', blocked.status === 404 && /retired while you had it open/.test(String(blocked.json.error)), `${blocked.status} · ${String(blocked.json.error).slice(0, 40)}`)
+    record('user A (owner)', 'a retired place refuses every edit but the way back', blocked.status === 404 && /taken off the list while you had it open/.test(String(blocked.json.error)), `${blocked.status} · ${String(blocked.json.error).slice(0, 40)}`)
     const back = await api(A, `/api/places/${createdId}`, { retired: false }, 'PATCH')
     const live = await readPlace(createdId)
     record('user A (owner)', 'PATCH { retired: false } puts it back and it is never gone', back.status === 200 && live!.retired_at === null, `${back.status}`)
@@ -1428,7 +1428,7 @@ async function placesChecks() {
       steal.status !== 200 && steal.status !== 201 && idOf(steal) === '', `${steal.status} · place ${idOf(steal) || 'none'}`)
   }
 
-  // ── Block 7D.3 — delete means delete, and a referenced place is not deleted ──
+  // ── Block 7D.3 / 13 — delete means the trash, referenced or not ──
   {
     // A place nothing points at: gone.
     const made = await api(A, '/api/places', { name: `${PREFIX}deletable`, kind: 'field' })
@@ -1440,16 +1440,26 @@ async function placesChecks() {
     const placeListed = ((placeTrash.json.items ?? []) as { id: string }[]).some(i => i.id === freeId)
     record('user A (owner)', '7D.3/12.4: an unreferenced place DELETEs to the trash — row kept with deleted_at, out of every live read, listed in the trash', gone.status === 200 && gone.json.deleted === true && !!(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at && (livePlace ?? []).length === 0 && placeListed, `${gone.status} · deleted_at ${(trashedPlace as { deleted_at?: string | null } | null)?.deleted_at ? 'set' : 'NULL'} · live reads ${(livePlace ?? []).length} · in trash ${placeListed}`)
 
-    // A place the ranch's own entries name: refused, counted, untouched.
+    // Block 13: a place the ranch's own entries name goes to the trash like any
+    // other — no refusal, no count, no cascade. NEVER ORPHAN AN EVENT: every
+    // entry keeps its place_id, nothing else is touched, and putting the place
+    // back leaves every one of them pointing where it always did.
+    const { count: namedBefore } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('payload->>place_id', a.placeId).is('deleted_at', null)
     const ref = await api(A, `/api/places/${a.placeId}`, undefined, 'DELETE')
     const stillThere = await readPlace(a.placeId)
-    const refs = (ref.json.refs ?? {}) as { entries?: number; total?: number }
-    record('user A (owner)', '7D.3: a referenced place is NOT deleted — 409, counted, row untouched', ref.status === 409 && (refs.total ?? 0) > 0 && stillThere !== null, `${ref.status} · ${String(ref.json.message ?? '').slice(0, 60)}`)
+    const { data: trashedRef } = await admin.from('places').select('deleted_at').eq('id', a.placeId).maybeSingle()
+    const { count: namedAfter } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('payload->>place_id', a.placeId).is('deleted_at', null)
+    const back = await api(A, '/api/trash', { table: 'places', id: a.placeId })
+    const { data: restoredRef } = await admin.from('places').select('deleted_at').eq('id', a.placeId).maybeSingle()
+    record('user A (owner)', '13: a referenced place goes to the trash — 200, row kept, every entry still names it — and comes back from the trash with them all still attached',
+      ref.status === 200 && ref.json.trashed === true && stillThere !== null && !!(trashedRef as { deleted_at?: string | null } | null)?.deleted_at
+        && (namedBefore ?? 0) > 0 && namedAfter === namedBefore && back.status === 200 && (restoredRef as { deleted_at?: string | null } | null)?.deleted_at === null,
+      `${ref.status} trashed=${String(ref.json.trashed)} · entries naming it ${namedBefore ?? 0} → ${namedAfter ?? 0} · put back ${back.status}`)
 
     // The count is the CALLER's ranch only. B's entries against B's place must
     // never be counted for A, and A must not be told anything about them.
     const bRef = await api(A, `/api/places/${b.placeId}`, undefined, 'DELETE')
-    record('user A (owner)', '7D.3: a cross-ranch delete says 404 and leaks no reference count', bRef.status === 404 && bRef.json.refs === undefined && bRef.json.message === undefined, `${bRef.status} · refs ${bRef.json.refs === undefined ? 'absent' : 'LEAKED'}`)
+    record('user A (owner)', '7D.3/13: a cross-ranch delete says 404 and nothing else', bRef.status === 404 && bRef.json.refs === undefined && bRef.json.message === undefined, `${bRef.status} · refs ${bRef.json.refs === undefined ? 'absent' : 'LEAKED'}`)
   }
 
   // ── Block 7D.1/7D.2 — deleting an entry, and the deletion record ─────────────

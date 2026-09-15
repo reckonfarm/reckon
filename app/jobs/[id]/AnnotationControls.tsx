@@ -1,15 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
 import { NAME_SUGGESTIONS } from '@/lib/jobs/annotations'
+import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
-// Name + dismiss controls for one job. Naming is chips-first — one tap covers
+// Name + delete controls for one job. Naming is chips-first — one tap covers
 // the common case, typing is the fallback, and the whole thing is a stopgap
-// until field boundaries let the place supply the name. The dismiss verb is
-// what it says: hides, never deletes — the job itself is a derived artifact
-// the cron rewrites every few minutes.
+// until field boundaries let the place supply the name.
+//
+// Block 13: DELETE MEANS ONE THING. The job row is derived and the cron
+// rewrites it, so "deleted" for a session is job_annotations.dismissed_at —
+// but the person sees the same thing they see everywhere: Delete, the strip's
+// Undo for ten seconds, and the session in /account/trash after that. The
+// word "dismiss" is gone from the screen.
 
 async function patch(jobId: string, body: Record<string, unknown>) {
   await fetch(`/api/jobs/${jobId}/annotation`, {
@@ -27,6 +32,12 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
+  // Block 13: a row held for Fix lands here with the name form open (#fix).
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hash !== '#fix') return
+    const t = setTimeout(() => { setEditing(true); document.getElementById('job-fix')?.scrollIntoView({ block: 'start' }) }, 0)
+    return () => clearTimeout(t)
+  }, [])
   const [customOpen, setCustomOpen] = useState(false)
   const [customText, setCustomText] = useState('')
 
@@ -93,20 +104,29 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
     </div>
   )
 
+  async function remove() {
+    setBusy(true)
+    const r = await deleteWithUndo({ label: name ?? 'this session', run: () => callDelete(`/api/jobs/${jobId}/annotation`, { method: 'PATCH', body: JSON.stringify({ dismissed: true }) }), undo: restoreFromTrash('jobs', jobId) })
+    setBusy(false)
+    if (!r.ok) { showNotice(r.error); return }
+    router.refresh()
+  }
+
   return (
-    <Card shadow="none" className="mt-5 px-5 py-4">
+    <Card shadow="none" className="mt-5 px-5 py-4" id="job-fix" data-audit="job-fix">
       {dismissed && (
-        <div className="mb-3 flex items-center justify-between gap-3 border-b border-forest-green/10 pb-3">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-forest-green/10 pb-3" data-audit="job-deleted">
           <p className="font-dm-sans text-[16px] text-secondary-ink">
-            Dismissed — hidden from the jobs list.
+            Deleted — it is in the trash.
           </p>
           <button
             type="button"
             disabled={busy}
             onClick={() => run({ dismissed: false })}
-            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+            className="min-h-[48px] rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+            data-audit="job-put-back"
           >
-            Restore
+            Put it back
           </button>
         </div>
       )}
@@ -150,13 +170,15 @@ export default function AnnotationControls({ jobId, name, dismissed }: {
           <button
             type="button"
             disabled={busy}
-            onClick={() => run({ dismissed: true })}
-            className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+            onClick={() => void remove()}
+            className="min-h-[48px] rounded-lg border px-3 py-1.5 font-dm-sans text-[16px] font-semibold disabled:opacity-50"
+            style={{ color: '#C2410C', borderColor: '#C2410C' }}
+            data-audit="job-delete"
           >
-            Dismiss this session
+            {busy ? 'Deleting…' : 'Delete this session'}
           </button>
           <span className="font-dm-sans text-[14px] text-secondary-ink">
-            Hides it from the list; find it again under “Show all sessions”.
+            It goes to the trash. Undo for ten seconds, or put it back from Account → Trash.
           </span>
         </div>
       )}

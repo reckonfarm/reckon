@@ -71,5 +71,5 @@ export async function staleEdit(
  * nothing of yours was written.
  */
 export function retiredWhileOpen(noun: string): string {
-  return `That ${noun} was retired while you had it open. Nothing of yours was written; it is off the live list now.`
+  return `That ${noun} was taken off the list while you had it open. Nothing of yours was written; it is off the list now.`
 }

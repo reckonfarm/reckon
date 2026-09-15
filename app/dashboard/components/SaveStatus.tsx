@@ -109,7 +109,7 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
           </div>
         )}
         {shown === 'queued' && !held && (
-          <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[16px] font-semibold text-amber-900 hover:bg-amber-100">Sync now</button>
+          <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[16px] font-semibold text-amber-900 hover:bg-amber-100">Send now</button>
         )}
       </div>
       )}

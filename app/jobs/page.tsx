@@ -8,6 +8,7 @@ import AutoRefresh from './AutoRefresh'
 import InProgressBadge from './InProgressBadge'
 import DeviceLiveness from './DeviceLiveness'
 import RestoreButton from './RestoreButton'
+import HeldRow from '@/app/components/HeldRow'
 import { isMinorJob, isInProgress } from '@/lib/jobs/display'
 import { fetchAnnotations } from '@/lib/jobs/annotations'
 import { fetchRunsForJobs } from '@/lib/detections/queries'
@@ -167,7 +168,7 @@ export default async function JobsPage({
               <p className="font-dm-sans text-[16px] text-secondary-ink">
                 {jobs.length === 0
                   ? 'No jobs yet. Put a Scout on a machine and go to work.'
-                  : 'Nothing to show — every session is minor or dismissed. Show all below.'}
+                  : 'Nothing to show — every session is short or deleted. Show all below.'}
               </p>
             </Card>
           )}
@@ -199,7 +200,8 @@ export default async function JobsPage({
                   const name = annotations.get(j.id)?.name ?? null
                   const dismissed = isDismissed(j)
                   return (
-                    <Link key={j.id} href={`/jobs/${j.id}`} className="block">
+                    <HeldRow key={j.id} label={name ?? `${fmtTime(j.started_at)} – ${fmtTime(j.ended_at)} MT`} openHref={`/jobs/${j.id}`} fixHref={`/jobs/${j.id}#fix`} del={dismissed ? null : { kind: 'job', id: j.id }} deleteNote={dismissed ? 'It is already in the trash. Put it back to keep it.' : null}>
+                    <Link href={`/jobs/${j.id}`} className="block">
                       <Card shadow="none" className={`px-5 py-4 transition-colors hover:bg-forest-green/[0.03] ${dismissed ? 'opacity-70' : ''}`}>
                         <div className="flex items-baseline justify-between gap-3">
                           <div className="min-w-0">
@@ -249,19 +251,20 @@ export default async function JobsPage({
                             </>
                           )}
                           {j.evicted_count > 0 && (
-                            <> · {j.evicted_count.toLocaleString()} lost before sync</>
+                            <> · {j.evicted_count.toLocaleString()} lost before it could send</>
                           )}
                         </p>
                         {dismissed && (
                           <div className="mt-3 flex items-center justify-between gap-3 border-t border-forest-green/10 pt-3">
                             <p className="font-dm-sans text-[14px] text-secondary-ink">
-                              Dismissed — hidden from the default list.
+                              Deleted — it is in the trash.
                             </p>
                             <RestoreButton jobId={j.id} />
                           </div>
                         )}
                       </Card>
                     </Link>
+                    </HeldRow>
                   )
                 })}
               </div>
