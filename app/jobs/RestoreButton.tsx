@@ -29,9 +29,9 @@ export default function RestoreButton({ jobId }: { jobId: string }) {
           setBusy(false)
         }
       }}
-      className="rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[14px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
+      className="min-h-[48px] rounded-lg border border-forest-green/20 px-3 py-1.5 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-50"
     >
-      {busy ? 'Restoring…' : 'Restore'}
+      {busy ? 'Putting it back…' : 'Put it back'}
     </button>
   )
 }

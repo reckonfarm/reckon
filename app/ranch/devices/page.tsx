@@ -7,9 +7,9 @@ import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import RecordHere from '../places/RecordHere'
-import DeleteDevice from './DeleteDevice'
+import EditDevice from './EditDevice'
 import { liveOnly } from '@/lib/trash'
-import RowActions from '@/app/components/RowActions'
+import HeldRow from '@/app/components/HeldRow'
 
 // ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
 // Empty: says you can record work now, and what will appear here. Populated:
@@ -30,6 +30,7 @@ interface DeviceRow {
   battery_pct: number | null
   last_seen: string | null
   fw_version: string | null
+  place_id: string | null
   places: { name: string } | null
 }
 
@@ -58,7 +59,7 @@ export default async function DevicesPage() {
   // Block 12 (12.4): a device in the trash is not on this list.
   const { data, error } = await liveOnly(supabase
     .from('devices')
-    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, places(name)'))
+    .select('id, hardware_id, type, name, battery_pct, last_seen, fw_version, place_id, places(name)'))
     .order('name', { ascending: true })
   const devices = (data ?? []) as unknown as DeviceRow[]
   return (
@@ -90,15 +91,16 @@ export default async function DevicesPage() {
               const lead = d.places?.name ?? d.name
               return (
                 <li key={d.id} id={d.id}>
-                  {/* Block 12 (12.3): hold the card for Open · Delete. No Edit — a
-                      device's name is set by the device and corrected nowhere. */}
-                  <RowActions links={{ openHref: `/ranch/devices#${d.id}`, editHref: null, deleteHref: `/ranch/devices#delete-${d.id}`, label: lead }}>
+                  {/* Block 13: hold the card for Fix (name, where it sits) · Delete.
+                      The name is a person's — the device writes it once at
+                      registration and never again. */}
+                  <HeldRow label={lead} openHref={`/ranch/devices#${d.id}`} fixHref={`/ranch/devices#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
                   <Card className="p-4 sm:p-5" data-audit="device-card">
                     <p className="font-dm-sans text-[17px] font-semibold text-ink">{lead} <span className="font-normal text-secondary-ink">· {role}</span></p>
                     <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">{product}{d.name !== lead ? ` · ${d.name}` : ''}</p>
                     <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-dm-sans text-[16px]">
                       <dt className="text-secondary-ink">Last observation</dt><dd className="text-ink">{d.last_seen ? `${fmtDay(d.last_seen)} · ${fmtTime(d.last_seen)}` : 'None yet'}</dd>
-                      <dt className="text-secondary-ink">Last sync</dt><dd className="text-ink" data-audit="device-status">{status.word}{status.detail ? ` · ${status.detail}` : ''}</dd>
+                      <dt className="text-secondary-ink">Last report</dt><dd className="text-ink" data-audit="device-status">{status.word}{status.detail ? ` · ${status.detail}` : ''}</dd>
                       {d.battery_pct != null && (<><dt className="text-secondary-ink">Battery</dt><dd className="text-ink tabular-nums">{d.battery_pct}%</dd></>)}
                     </dl>
                     <details className="mt-3">
@@ -110,10 +112,9 @@ export default async function DevicesPage() {
                         <dt>Raw voltage</dt><dd className="text-ink">Not reported</dd>
                       </dl>
                     </details>
-                    <DeleteDevice id={d.id} name={d.name} />
-
+                    <EditDevice device={{ id: d.id, name: d.name, placeId: d.place_id, hardwareId: d.hardware_id, type: d.type, fwVersion: d.fw_version, batteryPct: d.battery_pct, lastSeen: d.last_seen }} />
                   </Card>
-                  </RowActions>
+                  </HeldRow>
                 </li>
               )
             })}

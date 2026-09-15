@@ -12,11 +12,10 @@ import { kindLabel } from '@/lib/places/kinds'
 import { MANUAL_EVENT_LABELS, isManualEventType } from '@/lib/manual-log'
 import { fmtDay } from '@/lib/jobs/format'
 import RecordHere from './RecordHere'
-import Disclosure from '@/app/components/ui/Disclosure'
 import DrawPlace from './DrawPlace'
 import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
-import RowActions from '@/app/components/RowActions'
+import HeldRow from '@/app/components/HeldRow'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
 // The list first. Each row: name, type, acreage if the ground is drawn, last
@@ -102,31 +101,32 @@ export default async function PlacesPage() {
           </>
         )}
 
-        {/* Retired places are OFF the live list but never out of reach — the
-            standing rule is that every surface stays findable from where a
-            person would look, and "put it back" is unreachable if the place
-            itself is. Closed by default; the count is the answer on the row. */}
+        {/* Block 13: a place taken off the list (the old "retire") is still a
+            place and still names its entries, so it is still a row — held like
+            any other. Nothing on production is in this state; the section is
+            here so nothing can ever be hidden. Fix on one is the way back. */}
         {retired.length > 0 && (
-          <Disclosure
-            className="mt-4"
-            title="Retired places"
-            summary={`${retired.length} retired · still named in the entries that happened there`}
-            audit="retired-places"
-          >
-            <ul className="divide-y divide-rule" data-audit="retired-place-rows">
-              {retired.map(p => (
-                <li key={p.id}>
-                  <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 py-3 hover:bg-forest-green/[0.03]" data-audit="retired-place-row">
-                    <span className="min-w-0">
-                      <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span></span>
-                      <span className="block font-dm-sans text-[15px] text-secondary-ink">Retired {fmtDay(p.retiredAt!)}</span>
-                    </span>
-                    <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Disclosure>
+          <section className="mt-4" aria-labelledby="places-off">
+            <h2 id="places-off" className={`${EYEBROW} !text-ink`}>Off the list</h2>
+            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">Still named on the entries that happened there. Open one to put it back.</p>
+            <Card className="mt-2 p-0">
+              <ul className="divide-y divide-rule" data-audit="retired-place-rows">
+                {retired.map(p => (
+                  <li key={p.id}>
+                    <HeldRow label={p.name} openHref={`/ranch/places/${p.id}`} fixNote="This place is off the list. Open it and tap Put it back, then fix it." del={{ kind: 'place', id: p.id }}>
+                    <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="retired-place-row">
+                      <span className="min-w-0">
+                        <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span></span>
+                        <span className="block font-dm-sans text-[15px] text-secondary-ink">Off the list since {fmtDay(p.retiredAt!)}</span>
+                      </span>
+                      <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+                    </Link>
+                    </HeldRow>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </section>
         )}
 
         <div className="mt-4 space-y-3">
@@ -155,8 +155,8 @@ function PlaceBranch({ node }: { node: PlaceNode }) {
   const inside = childrenSummary(p.children, kindLabel)
   return (
     <li data-audit="place-branch" data-depth={p.depth} data-kind={p.kind}>
-      {/* Block 12 (12.3): hold the row for Open · Edit · Delete; the place page opens on the mode asked for. */}
-      <RowActions links={{ openHref: `/ranch/places/${p.id}`, editHref: `/ranch/places/${p.id}#edit`, deleteHref: `/ranch/places/${p.id}#delete`, label: p.name }}>
+      {/* Block 13: hold the row for Fix (the place page, form open) · Delete (to the trash, Undo on the strip). */}
+      <HeldRow label={p.name} openHref={`/ranch/places/${p.id}`} fixHref={`/ranch/places/${p.id}#edit`} del={{ kind: 'place', id: p.id }}>
       <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" style={{ paddingLeft: `${1 + Math.min(p.depth, 4) * 1.25}rem` }} data-audit="place-row" data-id={p.id}>
         <span className="min-w-0">
           <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.depth > 0 && <span aria-hidden className="mr-1 text-secondary-ink">·</span>}{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
@@ -168,7 +168,7 @@ function PlaceBranch({ node }: { node: PlaceNode }) {
         </span>
         <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
       </Link>
-      </RowActions>
+      </HeldRow>
       {p.children.length > 0 && (
         <ul className="divide-y divide-rule border-t border-rule" data-audit="place-children-rows">
           {p.children.map(c => <PlaceBranch key={c.id} node={c} />)}

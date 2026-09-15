@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import HeldRow from '@/app/components/HeldRow'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -71,6 +72,8 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
               <ol className="divide-y divide-rule" data-audit="work-list">
                 {g.rows.map(r => (
                   <li key={r.id} data-kind={r.kind} data-id={r.id}>
+                    {/* Block 13: hold for Fix (the session's name and machine, on its page) · Delete (to the trash; the cron never brings a deleted one back to the list). */}
+                    <HeldRow label={r.name ?? (r.kind === 'session' ? 'Machine session' : r.kind === 'baling' ? 'Baling' : 'Cutting')} openHref={`/jobs/${r.id}`} fixHref={`/jobs/${r.id}#fix`} del={{ kind: 'job', id: r.id }}>
                     <Link href={`/jobs/${r.id}`} className="block px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="work-row">
                       <p className="flex flex-wrap items-center gap-2 font-dm-sans text-[17px] font-semibold text-ink">
                         <span data-audit="work-type">{r.name ?? (r.kind === 'session' ? 'Machine session' : r.kind === 'baling' ? 'Baling' : 'Cutting')}</span>
@@ -84,6 +87,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
                         {r.quantity && <> · <span className="font-semibold text-ink" data-audit="work-quantity">{r.quantity.bales.toLocaleString('en-US')} {r.quantity.bales === 1 ? 'bale' : 'bales'} {r.quantity.basis}</span></>}
                       </p>
                     </Link>
+                    </HeldRow>
                   </li>
                 ))}
               </ol>

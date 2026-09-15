@@ -5,12 +5,21 @@ import { Card } from '@/app/components/ui/Card'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
+import RowActions from '@/app/components/RowActions'
+import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
 // ─── People on this ranch (Phase A2) ─────────────────────────────────────────
 // Members with their role; open invitations with who sent them and when they
 // expire; and, for an owner, "Add someone to this ranch". Every write goes to a
 // service-role route that re-checks the owner from the session — nothing here
-// touches ranch_members directly. Removal says plainly what the person loses.
+// touches ranch_members directly.
+//
+// Block 13: hold a person or an invitation. A person: Fix is the role (owner
+// or member); Delete removes them at once, and the strip's Undo puts them
+// back through /api/members/add for ten seconds — after that a new
+// invitation is the way, and the row's own sentence says so. An invitation:
+// nothing to fix (delete it and send a new one); Delete cancels it, Undo
+// un-cancels it, and it waits in the trash until it expires.
 
 type Role = 'owner' | 'member'
 type Person = { user_id: string; email: string | null; name: string | null; role: Role; since: string }
@@ -32,7 +41,6 @@ export default function RanchPeopleCard() {
   const [error, setError] = useState('')
   const [sent, setSent] = useState<{ email: string; acceptUrl: string; emailed: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
-  const [confirmRemove, setConfirmRemove] = useState<Person | null>(null)
 
   const load = useCallback(() => {
     return fetch('/api/invitations')
@@ -71,48 +79,69 @@ export default function RanchPeopleCard() {
     <Card shadow="none" className="mt-5 px-5 py-4" data-audit="ranch-people">
       <p className={EYEBROW}>People on this ranch</p>
       <ul className="mt-2 divide-y divide-forest-green/[0.08]" aria-label="Members">
-        {people.members.map(p => (
-          <li key={p.user_id} className={ROW} data-audit="member-row">
+        {people.members.map(p => {
+          const me = p.user_id === people.me!.user_id
+          const other = p.role === 'owner' ? 'member' : 'owner'
+          const canAct = isOwner && !me
+          return (
+          <li key={p.user_id} data-audit="member-row" data-user={p.user_id}>
+          <RowActions links={{
+            label: who(p),
+            fix: canAct ? { label: `Make ${first(p)} ${other === 'owner' ? 'an owner' : 'a member'}`, onSelect: async () => { await post('/api/members/role', { user_id: p.user_id, role: other }) } } : null,
+            fixNote: me ? 'This is you. Your name and email are on your account.' : !isOwner ? 'Only an owner can change who is on the ranch.' : null,
+            del: canAct ? { onSelect: async () => {
+              const r = await deleteWithUndo({
+                label: who(p),
+                run: () => callDelete('/api/members/remove', { method: 'POST', body: JSON.stringify({ user_id: p.user_id }) }),
+                undo: () => callDelete('/api/members/add', { method: 'POST', body: JSON.stringify({ user_id: p.user_id, role: p.role }) }),
+              })
+              if (!r.ok) { showNotice(r.error); return }
+              await load()
+            } } : null,
+            deleteNote: me ? 'You cannot remove yourself. Another owner can.' : !isOwner ? 'Only an owner can remove someone.' : null,
+          }}>
+          <div className={ROW}>
             <div className="min-w-0">
-              <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{who(p)}{p.user_id === people.me!.user_id ? ' (you)' : ''}</p>
+              <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{who(p)}{me ? ' (you)' : ''}</p>
               <p className="font-dm-sans text-[16px] text-ink">{p.role === 'owner' ? 'Owner' : 'Member'}{p.email && p.name ? ` · ${p.email}` : ''} · since {fmtDay(p.since)}</p>
             </div>
-            {isOwner && p.user_id !== people.me!.user_id && (
-              <div className="flex flex-wrap gap-1">
-                <button type="button" disabled={busy} className={LINK_BTN} onClick={() => post('/api/members/role', { user_id: p.user_id, role: p.role === 'owner' ? 'member' : 'owner' })}>
-                  {p.role === 'owner' ? 'Make member' : 'Make owner'}
-                </button>
-                <button type="button" disabled={busy} className={LINK_BTN} onClick={() => { setConfirmRemove(p); setError('') }}>Remove</button>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {confirmRemove && (
-        <div role="alertdialog" aria-labelledby="remove-title" className="mt-3 rounded-lg border border-rust/30 bg-rust/[0.04] px-4 py-3" data-audit="remove-confirm">
-          <p id="remove-title" className="font-dm-sans text-[16px] font-semibold text-forest-green">Remove {who(confirmRemove)} from {people.ranch.name}?</p>
-          <p className="mt-1 font-dm-sans text-[16px] leading-snug text-forest-green">
-            {first(confirmRemove)} will no longer see this ranch&rsquo;s records, including entries {first(confirmRemove)} made. Those entries stay in the ranch record.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button type="button" disabled={busy} onClick={async () => { const r = await post('/api/members/remove', { user_id: confirmRemove.user_id }); if (r) setConfirmRemove(null) }}>Remove {first(confirmRemove)}</Button>
-            <Button type="button" variant="secondary" onClick={() => setConfirmRemove(null)}>Keep {first(confirmRemove)}</Button>
+            {canAct && <span aria-hidden className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">hold</span>}
           </div>
-        </div>
-      )}
+          </RowActions>
+          </li>
+          )
+        })}
+      </ul>
+      {isOwner && <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">Hold a person to change their role or remove them. Removing someone takes their view of the ranch away at once; their entries stay in the record. Undo for ten seconds, or send a new invitation.</p>}
 
       {people.invites.length > 0 && (
         <>
           <p className={`${EYEBROW} mt-4`}>Invited, not yet joined</p>
           <ul className="mt-1 divide-y divide-forest-green/[0.08]" aria-label="Open invitations">
             {people.invites.map(i => (
-              <li key={i.id} className={ROW} data-audit="invite-row">
+              <li key={i.id} data-audit="invite-row" data-id={i.id}>
+              <RowActions links={{
+                label: `Invitation · ${i.invited_email}`,
+                fixNote: 'Nothing to fix on an invitation. Delete it and send a new one.',
+                del: isOwner ? { onSelect: async () => {
+                  const r = await deleteWithUndo({
+                    label: `invitation for ${i.invited_email}`,
+                    run: () => callDelete('/api/invitations/revoke', { method: 'POST', body: JSON.stringify({ id: i.id }) }),
+                    undo: restoreFromTrash('invitations', i.id),
+                  })
+                  if (!r.ok) { showNotice(r.error); return }
+                  await load()
+                } } : null,
+                deleteNote: isOwner ? null : 'Only an owner can delete an invitation.',
+              }}>
+              <div className={ROW}>
                 <div className="min-w-0">
                   <p className="font-dm-sans text-[16px] font-semibold text-forest-green">{i.invited_email}</p>
                   <p className="font-dm-sans text-[16px] text-ink">{i.role === 'owner' ? 'Owner' : 'Member'} · invited by {i.invited_by ?? 'an owner'} {fmtDay(i.created_at)} · expires in {daysLeft(i.expires_at)} day{daysLeft(i.expires_at) === 1 ? '' : 's'}</p>
                 </div>
-                {isOwner && <button type="button" disabled={busy} className={LINK_BTN} onClick={() => post('/api/invitations/revoke', { id: i.id })}>Revoke</button>}
+                {isOwner && <span aria-hidden className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">hold</span>}
+              </div>
+              </RowActions>
               </li>
             ))}
           </ul>

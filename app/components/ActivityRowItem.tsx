@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import RowActions from './RowActions'
+import HeldRow from './HeldRow'
 import type { ReactNode } from 'react'
 
 // ─── One activity row, everywhere (Block 6 · 6B) ──────────────────────────────
@@ -61,15 +61,19 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
   const greyed = marker === 'voided'
   return (
     <li data-marker={marker ?? 'none'} data-id={id}>
-      {/* Block 12 (12.3): hold the row (or right-click it) for Open · Edit ·
-          Delete. Edit and Delete land on the entry page with the mode already
-          open; a machine job (href to /jobs) has neither, because the record
-          of a machine is not a thing a person corrects. */}
-      <RowActions links={{ openHref: href ?? `/ranch/activity/${id}`, editHref: href ? null : `/ranch/activity/${id}#correct`, deleteHref: href ? null : `/ranch/activity/${id}#delete`, label: line }}>
-      {/* Block 7.10 — below 360px the two columns squeeze the sentence into a
-          ribbon two or three words wide. Under that width the row becomes one
-          full-width line with the time beneath it; from 360 up it is exactly
-          the two-column row it has always been, so 390 is untouched. */}
+      {/* Block 13: hold the row for Fix · Delete. Fix is offered only when it
+          will do something: a standing entry opens its correction form; a
+          machine session opens its own page with the name form open. A row
+          that was replaced or removed gets the sentence instead of a button.
+          Delete goes straight to the trash with a ten-second Undo. */}
+      <HeldRow
+        label={line}
+        openHref={href ?? `/ranch/activity/${id}`}
+        fixHref={href ? `${href}#fix` : marker === null || marker === 'corrected' ? `/ranch/activity/${id}#correct` : null}
+        fixNote={marker === 'replaced' ? 'This one was already replaced. Fix the newer entry instead.' : marker === 'voided' ? 'This one was removed. There is nothing left to fix.' : null}
+        del={href ? { kind: 'job', id } : marker === 'voided' ? null : { kind: 'event', id }}
+        deleteNote={!href && marker === 'voided' ? 'This one is already removed.' : null}
+      >
       <Link href={href ?? `/ranch/activity/${id}`} className={`flex min-h-[56px] flex-col items-start gap-0.5 min-[360px]:flex-row min-[360px]:items-center min-[360px]:justify-between min-[360px]:gap-3 hover:bg-forest-green/[0.03] ${rowClass}`} data-audit={audit}>
         <span className={`min-w-0 font-dm-sans text-[17px] leading-snug ${greyed ? 'text-secondary-ink' : 'text-ink'}`}>
           {who ? <><span className="font-semibold">{who}</span>{sep}</> : null}
@@ -78,7 +82,7 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
         </span>
         <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">{when}</span>
       </Link>
-      </RowActions>
+      </HeldRow>
       {aside}
       {(marker === 'corrected' || marker === 'voided') && chain && (
         <details className={`pb-3 ${rowClass.includes('px-4') ? 'px-4' : ''}`} data-audit="row-chain">

@@ -16,6 +16,7 @@ import EditPlace from '../EditPlace'
 import { placeRing, resolveMapCentre } from '@/lib/places/anchor'
 import { kindLabel } from '@/lib/places/kinds'
 import { childrenSummary } from '@/lib/places/rows'
+import HeldRow from '@/app/components/HeldRow'
 
 // ─── /ranch/places/[id] (Block 6A · the shape in slice 1) ─────────────────────
 // name / type → THE GROUND (its shape on satellite, with acreage, or the offer
@@ -81,7 +82,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         {/* Correcting what a place IS (057): name, kind, retire. A retired place
             shows only the way back — the route refuses every other edit on one,
             so offering more would be a button that can only fail. */}
-        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at, parentId: parent?.id ?? null, parentName: parent?.name ?? null }} />
+        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at, parentId: parent?.id ?? null, parentName: parent?.name ?? null, pinned: !!place.pinned_at }} />
 
         {!place.retired_at && <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>}
 
@@ -91,7 +92,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             {place.retired_at ? (
               ring
                 ? <DrawPlace place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }} initialCenter={centre} />
-                : <p className="font-dm-sans text-[15px] text-secondary-ink">This place was retired without a shape drawn.</p>
+                : <p className="font-dm-sans text-[15px] text-secondary-ink">This place went off the list without a shape drawn.</p>
             ) : (
               <>
                 <DrawPlace
@@ -115,10 +116,13 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
               <ul className="divide-y divide-rule" data-audit="place-children">
                 {children.map(c => (
                   <li key={c.id}>
+                    {/* Block 13: the same hold as the list. */}
+                    <HeldRow label={c.name} openHref={`/ranch/places/${c.id}`} fixHref={`/ranch/places/${c.id}#edit`} del={{ kind: 'place', id: c.id }}>
                     <Link href={`/ranch/places/${c.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-child-row">
                       <span className="font-dm-sans text-[17px] font-semibold text-ink">{c.name} <span className="font-normal text-secondary-ink">· {kindLabel(c.kind)}</span></span>
                       <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
                     </Link>
+                    </HeldRow>
                   </li>
                 ))}
               </ul>
@@ -173,10 +177,13 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
               <ul className="divide-y divide-rule">
                 {devices.map(d => (
                   <li key={d.id}>
-                    <Link href={`/ranch/devices#${d.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3">
+                    {/* Block 13: a device here is held like a device anywhere. */}
+                    <HeldRow label={d.name} openHref={`/ranch/devices#${d.id}`} fixHref={`/ranch/devices#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
+                    <Link href={`/ranch/devices#${d.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3" data-audit="place-device-row">
                       <span className="font-dm-sans text-[17px] text-ink">{d.name} <span className="text-secondary-ink">· {kindLabel(d.type)}</span></span>
                       <span className="font-dm-sans text-[15px] text-secondary-ink">{d.last_seen ? `Last collected ${fmtDay(d.last_seen)}` : 'Waiting for collection'}</span>
                     </Link>
+                    </HeldRow>
                   </li>
                 ))}
               </ul>

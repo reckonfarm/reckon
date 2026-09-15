@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
 import { PLACE_KINDS, MAX_NAME, allowedParentKinds, kindLabel, parentRule } from '@/lib/places/kinds'
 import { warning } from '@/lib/brand-colors'
+import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
 // ─── Correcting a place (057) ─────────────────────────────────────────────────
 //
@@ -40,11 +40,13 @@ export interface EditablePlace {
   /** Block 7A: the live parent, if any. */
   parentId: string | null
   parentName: string | null
+  /** Block 13: shown on Weather (7D.4's pin), now a switch on this form. */
+  pinned: boolean
 }
 
 interface PlaceOption { id: string; name: string; kind: string }
 
-type Mode = 'idle' | 'editing' | 'confirmRetire' | 'confirmDelete' | 'referenced'
+type Mode = 'idle' | 'editing'
 
 const inputCls = 'mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink'
 const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
@@ -52,13 +54,6 @@ const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
 export default function EditPlace({ place }: { place: EditablePlace }) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('idle')
-  // Block 12 (12.3): a row held for Edit or Delete lands here with the mode
-  // in the hash, so the person is in the form, not on the page.
-  useEffect(() => {
-    const h = typeof window !== 'undefined' ? window.location.hash : ''
-    if (h === '#edit') setMode('editing')
-    else if (h === '#delete') setMode('confirmDelete')
-  }, [])
   const [name, setName] = useState(place.name)
   const [kind, setKind] = useState(place.kind)
   // Block 7A: the parent. Candidates are the ranch's live places, loaded when
@@ -67,6 +62,7 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   // places inside it are never offered (a loop the route and 068 would refuse
   // anyway; better not to offer the chip).
   const [parentId, setParentId] = useState<string | null>(place.parentId)
+  const [pinned, setPinned] = useState(place.pinned)
   const [options, setOptions] = useState<PlaceOption[] | null>(null)
   useEffect(() => {
     if (mode !== 'editing' || options !== null) return
@@ -84,33 +80,38 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   const [expected, setExpected] = useState(place.updatedAt)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // 7D.3: what the route said still points at this place. Set only by a 409
-  // from DELETE, so the message is counted server-side, never guessed here.
-  const [refs, setRefs] = useState<{ message: string; entries: number; cascadeMessage?: string; hard?: number; record?: number } | null>(null)
+  // Block 13: DELETE MEANS ONE THING. One tap, to the trash, and the strip
+  // offers Undo for ten seconds; the entries that name this place keep naming
+  // it. No count, no cascade, no "are you sure".
+  const remove = async () => {
+    setBusy(true); setError(null)
+    const r = await deleteWithUndo({ label: place.name, run: () => callDelete(`/api/places/${place.id}`, { method: 'DELETE' }), undo: restoreFromTrash('places', place.id), after: `/ranch/places/${place.id}` })
+    setBusy(false)
+    if (!r.ok) { showNotice(r.error); return }
+    router.push('/ranch/places'); router.refresh()
+  }
 
-  const send = async (body: Record<string, unknown>, method: 'PATCH' | 'DELETE' = 'PATCH', qs = '') => {
+  // Block 12 (12.3): a row held for Fix lands here with the form open.
+  // Block 13: #delete deletes at once — the strip's Undo is the safety.
+  useEffect(() => {
+    const h = typeof window !== 'undefined' ? window.location.hash : ''
+    if (h !== '#edit' && h !== '#delete') return
+    const t = setTimeout(() => { if (h === '#edit') setMode('editing'); else void remove() }, 0)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const send = async (body: Record<string, unknown>) => {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetch(`/api/places/${place.id}${qs}`, {
-        method,
+      const res = await fetch(`/api/places/${place.id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        ...(method === 'DELETE' ? {} : { body: JSON.stringify(body) }),
+        body: JSON.stringify(body),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        // 7D.3: it is referenced. Not an error to apologise for — an answer.
-        if (res.status === 409 && json.error === 'still referenced') {
-          setRefs({
-            message: String(json.message ?? ''),
-            entries: Number(json.refs?.entries ?? 0),
-            cascadeMessage: typeof json.cascadeMessage === 'string' ? json.cascadeMessage : undefined,
-            hard: json.cascade?.hard, record: json.cascade?.record,
-          })
-          setMode('referenced')
-          setBusy(false)
-          return
-        }
         // A stale edit: keep their typing, show theirs, and let the next save win.
         if (res.status === 409 && json.code === 'stale') {
           if (typeof json.changed_at === 'string') setExpected(json.changed_at)
@@ -118,9 +119,6 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
         }
         throw new Error(json.error ?? 'That change could not be saved.')
       }
-      // 7D.3: it is actually gone — this page is about a row that no longer
-      // exists, so leave rather than re-render an empty shell.
-      if (json.deleted) { router.push('/ranch/places'); router.refresh(); return }
       const saved = json.place as { updated_at?: string } | undefined
       if (saved?.updated_at) setExpected(saved.updated_at)
       setMode('idle')
@@ -138,9 +136,9 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   if (place.retiredAt) {
     return (
       <Card className="mt-4 border-forest-green/25 p-4 sm:p-5" data-audit="place-retired">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">This place is retired.</p>
+        <p className="font-dm-sans text-[17px] font-semibold text-ink">This place is off the list.</p>
         <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          It is off every picker, so nothing new can be recorded here. It still names the entries that already happened here, and it always will.
+          Nothing new can be recorded here until it is back. It still names the entries that already happened here, and it always will.
         </p>
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
         <button
@@ -150,92 +148,8 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
           className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-forest-green/30 px-4 font-dm-sans text-[17px] font-semibold text-forest-green disabled:opacity-50 sm:w-auto"
           data-audit="place-unretire"
         >
-          {busy ? 'Putting it back…' : 'Put it back on the list'}
+          {busy ? 'Putting it back…' : 'Put it back'}
         </button>
-      </Card>
-    )
-  }
-
-  // ── It is referenced: not deleted, and told why (7D.3) ──────────────────────
-  // The count is the route's, taken across four untyped jsonb keys plus the
-  // real foreign keys. The offer is to GO AND LOOK — this screen will not
-  // decide for someone whether history should be detached from its place.
-  if (mode === 'referenced') {
-    return (
-      <Card className="mt-4 p-4 sm:p-5" data-audit="place-referenced">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">{place.name} wasn&rsquo;t deleted.</p>
-        {/* 8B.2 — the plain answer STAYS, and the way through it is offered in
-            the same breath. Both numbers are stated before the tap, so the
-            cascade is one decision rather than a refusal followed by a
-            second, differently-worded prompt. */}
-        <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink" data-audit="place-referenced-count">
-          {refs?.cascadeMessage || refs?.message || 'Something still points at it.'}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {refs?.cascadeMessage && (
-            <button type="button" disabled={busy} onClick={() => send({}, 'DELETE', '?cascade=1')}
-              className="min-h-[52px] w-full rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
-              style={{ backgroundColor: warning }} data-audit="place-cascade-delete">
-              {busy ? 'Deleting…' : `Delete ${place.name} and everything recorded there`}
-            </button>
-          )}
-          {(refs?.entries ?? 0) > 0 && (
-            <Link href={`/ranch/activity?place=${place.id}`} className="inline-flex min-h-[52px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="place-referenced-go">
-              See what points at it
-            </Link>
-          )}
-          <button type="button" onClick={() => { setRefs(null); setMode('confirmRetire') }} className="inline-flex min-h-[52px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="place-referenced-retire">
-            Retire it instead
-          </button>
-          <button type="button" onClick={() => { setRefs(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="place-referenced-cancel">
-            Leave it
-          </button>
-        </div>
-      </Card>
-    )
-  }
-
-  // ── Delete, explained (7D.3) ────────────────────────────────────────────────
-  if (mode === 'confirmDelete') {
-    return (
-      <Card className="mt-4 p-4 sm:p-5" data-audit="place-confirm-delete">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">Delete {place.name}?</p>
-        <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          If nothing points at it, it is gone for good. If anything still does, it won&rsquo;t be
-          deleted — you&rsquo;ll be told what, and can go and look.
-        </p>
-        {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={() => send({}, 'DELETE')} className="min-h-[52px] flex-1 rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" style={{ backgroundColor: warning }} data-audit="place-delete-confirm">
-            {busy ? 'Deleting…' : 'Delete it'}
-          </button>
-          <button type="button" disabled={busy} onClick={() => { setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-delete-cancel">
-            Keep it
-          </button>
-        </div>
-      </Card>
-    )
-  }
-
-  // ── Retire, explained ───────────────────────────────────────────────────────
-  if (mode === 'confirmRetire') {
-    return (
-      <Card className="mt-4 p-4 sm:p-5" data-audit="place-confirm-retire">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">Retire {place.name}?</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          <li>It leaves every picker — nothing new can be recorded here.</li>
-          <li>It keeps naming every entry that already happened here.</li>
-          <li>Nothing is deleted, and you can put it back any time.</li>
-        </ul>
-        {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={() => send({ retired: true })} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="place-retire-confirm">
-            {busy ? 'Retiring…' : 'Retire it'}
-          </button>
-          <button type="button" disabled={busy} onClick={() => { setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-retire-cancel">
-            Keep it
-          </button>
-        </div>
       </Card>
     )
   }
@@ -285,32 +199,33 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
           </>
         )}
 
+        {/* Block 13: the Weather list's pin, where a person would look for it —
+            on the place's own form, not a link on the Weather row. */}
+        <label className="mt-4 flex min-h-[48px] items-center gap-3 font-dm-sans text-[16px] text-ink" data-audit="place-edit-pinned">
+          <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="h-6 w-6 accent-forest-green" />
+          <span>Show on Weather <span className="text-secondary-ink">· even before any rain is recorded here</span></span>
+        </label>
+
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold leading-snug" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
 
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={busy || !name.trim()}
-            onClick={() => send({ name: name.trim(), kind, ...(effectiveParent !== place.parentId ? { parent_id: effectiveParent } : {}), expected_updated_at: expected })}
+            onClick={() => send({ name: name.trim(), kind, ...(effectiveParent !== place.parentId ? { parent_id: effectiveParent } : {}), ...(pinned !== place.pinned ? { pinned } : {}), expected_updated_at: expected })}
             className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
             data-audit="place-edit-save"
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" disabled={busy} onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-edit-cancel">
+          <button type="button" disabled={busy} onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setPinned(place.pinned); setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-edit-cancel">
             Cancel
           </button>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          <button type="button" disabled={busy} onClick={() => { setError(null); setMode('confirmRetire') }} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-retire-open">
-            Retire this place
-          </button>
-          {/* 7D.3: one tap. Whether it deletes or answers with what points at
-              it is the route's call, made against a real count — this screen
-              does not pre-judge it, so the button never lies about what it
-              will do by being absent or disabled on a guess. */}
-          <button type="button" disabled={busy} onClick={() => { setError(null); setMode('confirmDelete') }} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: warning }} data-audit="place-delete-open">
+          {/* Block 13: one tap. It goes to the trash, the strip offers Undo. */}
+          <button type="button" disabled={busy} onClick={() => void remove()} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: warning }} data-audit="place-delete-open">
             Delete this place
           </button>
         </div>
@@ -325,7 +240,7 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
       className="mt-3 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2"
       data-audit="place-edit-open"
     >
-      Edit name, kind or where it sits
+      Fix name, kind or where it sits
     </button>
   )
 }
