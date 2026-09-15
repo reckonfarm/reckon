@@ -116,9 +116,10 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
     return { lot_id, name: name || null, class: klass, head: head as number }
   })
 
-  // Block 14: a preg check records counts on the bunch checked, never a split.
-  // The database refuses this too; saying it here saves the round trip.
-  if (action === 'preg_check' && results.length > 0) bad('A preg check records the counts on the bunch you checked. Make a bunch from the opens afterward.')
+  // Block 15 (ruling 3): a preg check may carry its opens as a bunch again —
+  // one record, one Undo. Migration 070 lifts the rule in the database; the
+  // route no longer refuses ahead of it, so what the ranch answers is the
+  // answer (a database still on 069 refuses with its own sentence).
 
   let detail: GroupActionInput['detail'] = null
   if (body.detail && typeof body.detail === 'object') {
@@ -171,7 +172,7 @@ const STATUS: Record<string, number> = {
   source_not_found: 404,
   dest_not_found: 404,
   stale: 409,
-  preg_no_split: 400,
+  preg_no_split: 400,   // a database still on 069 (070 not run) answers this
 }
 
 export interface GroupActionResult {
