@@ -61,6 +61,17 @@ const skip = (check: string, detail: string) => { results.push({ check, pass: tr
 // stamped 'tomorrow' would make today's feeding read as before the count (seen 2026-09-07 05:10 UTC).
 const ranchDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
 let userId = ''
+// Block 14: 069 by capability — a bunch with no weight is accepted only once
+// the migration has run. Probed once on the smoke ranch (its own scratch
+// row, removed at once); the chute and count checks skip, saying so, without it.
+let has069: boolean | null = null
+async function probe069(ranchId: string, userId: string): Promise<boolean> {
+  if (has069 !== null) return has069
+  const { data, error } = await admin.from('herd_lots').insert({ ranch_id: ranchId, class: 'cows', name: `${PREFIX} 069 probe`, head_count: 1, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId }).select('id').single()
+  if (data) await admin.from('herd_lots').delete().eq('id', (data as { id: string }).id)
+  has069 = !error
+  return has069
+}
 let userIdB = ''
 let ranchId = ''
 let placeId = ''
@@ -1698,6 +1709,12 @@ async function main() {
     }
 
     // ── Block 10: preg check at the chute, driven end to end ────────────────
+    // Block 14: the check now rides on 069's function (p_detail, no split).
+    // Without 069 the app answers 503 and holds the entry; these checks would
+    // wait forever, so they skip and say why.
+    if (!(await probe069(ranchId, userId))) {
+      skip('10/14: preg check at the chute', 'migration 069 not applied on this database')
+    } else
     // The first screen in the app whose save MOVES ANOTHER TABLE. So this does
     // not stop at "the entry appeared": it taps the working out one animal at
     // a time the way PK will, then reads the head counts back off the Cattle
@@ -2493,6 +2510,7 @@ async function main() {
       const lot14 = randomUUID(), LOT14 = `${PREFIX} 14 count bunch`
       const { error: l14 } = await admin.from('herd_lots').insert({ id: lot14, ranch_id: ranchId, class: 'cows', name: LOT14, head_count: 275, avg_weight: 1200, weight_unit: 'lb', created_by: userId, updated_by: userId })
       if (l14) skip('14: count checks', `fixture: ${l14.message.slice(0, 80)}`)
+      else if (!(await probe069(ranchId, userId))) { skip('14: count and new-bunch checks', 'migration 069 not applied on this database'); await admin.from('herd_lots').delete().eq('id', lot14) }
       else {
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         const countOnce = async (n: number) => {
