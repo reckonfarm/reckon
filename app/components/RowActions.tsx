@@ -3,37 +3,79 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
-// ─── Tap-and-hold on any row → Open · Edit · Delete (Block 12, 12.3) ──────────
-// One gesture everywhere: an activity entry, a place, a lot, a device. Hold a
-// row for half a second and a sheet offers the three things a person does to
-// a row. The row itself still taps to open, exactly as before — this wraps a
-// row, it does not replace its link.
+// ─── Press and hold on any row → Fix · Delete (Block 12 12.3, Block 13) ───────
+// One gesture everywhere: an entry, a place, a bunch, a device, a machine
+// session, a county on the watchlist, a person, an invitation, a row in the
+// trash. Hold a row 400 ms and a sheet names the row and offers the things a
+// person does to it, in words. The row itself still taps to open — this wraps
+// a row, it does not replace its link.
 //
-// Desktop equivalent (PK asked): RIGHT-CLICK opens the same sheet, and a ⋯
-// button appears at the row's right edge on hover for people who never
-// right-click. The three entries are the same three, in the same order.
+// Desktop: RIGHT-CLICK opens the same sheet, and a ⋯ appears at the row's
+// right edge on hover for people who never right-click.
 //
-// The row says what Edit and Delete mean for it by passing hrefs; this
-// component owns the gesture and the sheet, nothing else. A row with no
-// editHref shows no Edit.
+// BLOCK 13 — three rules this component now holds for every row:
+//
+//   NEVER A DEAD END. Fix is shown only when it will do something. When it
+//   cannot, the row says why in one plain sentence where the button would be
+//   ("This one was already replaced.") — never a greyed button, never a route
+//   to a page with nothing open on it. The row decides; this renders.
+//
+//   A HOLD IS FELT. On phones that can, the hold buzzes once (navigator.
+//   vibrate) so it is felt through a glove. iOS Safari has no vibration API
+//   and gives nothing here; the sheet itself is the signal there.
+//
+//   A HOLD NEVER STARTS THE PHONE'S OWN MENU. Every row is a link, and iOS
+//   answers a long press on a link with its own callout and text selection —
+//   which is exactly what this gesture is not. The wrapper turns both off
+//   (-webkit-touch-callout: none, user-select: none) for the whole row. A hold
+//   that turns into a scroll cancels clean: the timer dies on the first ten
+//   pixels of movement.
+//
+// The row says what Fix and Delete mean for it by passing an href or a
+// callback per action; this component owns the gesture and the sheet, nothing
+// else.
 
-const HOLD_MS = 500
+const HOLD_MS = 400
 const MOVE_TOLERANCE_PX = 10
 
+export interface RowAction {
+  /** Words on the button: "Fix", "Delete", "Put it back", "Make it my home county". */
+  label?: string
+  href?: string
+  onSelect?: () => void | Promise<void>
+}
+
 export interface RowActionLinks {
-  openHref: string
-  editHref?: string | null
-  deleteHref?: string | null
   /** Names the row in the sheet: "Fed 4 bales", "Watergap", "Cull cows". */
   label: string
+  /** The row's own page. Absent = no Open (a row in the trash has no page). */
+  openHref?: string | null
+  /** Fix. Absent = no button; then `fixNote` says why, if there is a why. */
+  fix?: RowAction | null
+  /** One plain sentence in place of Fix when fixing will not do anything. */
+  fixNote?: string | null
+  /** Delete. Absent = no button; then `deleteNote` says why. */
+  del?: RowAction | null
+  deleteNote?: string | null
+  /** Other things this row can do: "Make it my home county", "Make owner". */
+  extra?: RowAction[]
+  /** Block 12 spellings, still honoured: editHref → fix, deleteHref → del. */
+  editHref?: string | null
+  deleteHref?: string | null
 }
+
+const BTN = 'min-h-[56px] w-full rounded-lg border px-4 text-left font-dm-sans text-[17px] font-semibold'
 
 export default function RowActions({ links, children, className = '' }: { links: RowActionLinks; children: ReactNode; className?: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   const timer = useRef<number | null>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
   const fired = useRef(false)
+
+  const fix = links.fix ?? (links.editHref ? { href: links.editHref } : null)
+  const del = links.del ?? (links.deleteHref ? { href: links.deleteHref } : null)
 
   const clear = () => { if (timer.current) { window.clearTimeout(timer.current); timer.current = null } }
 
@@ -43,7 +85,11 @@ export default function RowActions({ links, children, className = '' }: { links:
     fired.current = false
     start.current = { x: e.clientX, y: e.clientY }
     clear()
-    timer.current = window.setTimeout(() => { fired.current = true; setOpen(true) }, HOLD_MS)
+    timer.current = window.setTimeout(() => {
+      fired.current = true
+      try { (navigator as { vibrate?: (p: number) => boolean }).vibrate?.(30) } catch { /* not every phone */ }
+      setOpen(true)
+    }, HOLD_MS)
   }
   const onPointerMove = (e: React.PointerEvent) => {
     if (!start.current) return
@@ -62,11 +108,20 @@ export default function RowActions({ links, children, className = '' }: { links:
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  const go = (href: string) => { setOpen(false); router.push(href) }
+  const go = async (a: RowAction) => {
+    if (a.onSelect) {
+      setBusy(true)
+      try { await a.onSelect() } finally { setBusy(false); setOpen(false) }
+      return
+    }
+    setOpen(false)
+    if (a.href) router.push(a.href)
+  }
 
   return (
     <div
-      className={`group relative ${className}`}
+      className={`group relative select-none [-webkit-touch-callout:none] ${className}`}
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' } as React.CSSProperties}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onClickCapture={onClickCapture} onContextMenu={onContextMenu}
       data-audit="row-actions"
@@ -84,18 +139,27 @@ export default function RowActions({ links, children, className = '' }: { links:
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label={`Actions for ${links.label}`} data-audit="row-actions-sheet">
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => { if (!busy) setOpen(false) }} role="dialog" aria-modal="true" aria-label={`Actions for ${links.label}`} data-audit="row-actions-sheet">
           <div className="w-full max-w-md rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4 sm:rounded-2xl sm:pb-5" onClick={e => e.stopPropagation()}>
-            <p className="font-dm-sans text-[15px] text-secondary-ink">{links.label}</p>
+            <p className="font-dm-sans text-[16px] font-semibold text-ink" data-audit="row-actions-label">{links.label}</p>
             <div className="mt-3 grid gap-2">
-              <button type="button" onClick={() => go(links.openHref)} className="min-h-[56px] rounded-lg border border-control-border bg-surface px-4 text-left font-dm-sans text-[17px] font-semibold text-ink" data-audit="row-action-open">Open</button>
-              {links.editHref && (
-                <button type="button" onClick={() => go(links.editHref!)} className="min-h-[56px] rounded-lg border border-control-border bg-surface px-4 text-left font-dm-sans text-[17px] font-semibold text-ink" data-audit="row-action-edit">Edit</button>
+              {links.openHref && (
+                <button type="button" disabled={busy} onClick={() => void go({ href: links.openHref! })} className={`${BTN} border-control-border bg-surface text-ink disabled:opacity-50`} data-audit="row-action-open">Open</button>
               )}
-              {links.deleteHref && (
-                <button type="button" onClick={() => go(links.deleteHref!)} className="min-h-[56px] rounded-lg border border-rust/40 bg-surface px-4 text-left font-dm-sans text-[17px] font-semibold text-rust" data-audit="row-action-delete">Delete</button>
-              )}
-              <button type="button" onClick={() => setOpen(false)} className="min-h-[48px] px-4 font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="row-action-cancel">Cancel</button>
+              {fix ? (
+                <button type="button" disabled={busy} onClick={() => void go(fix)} className={`${BTN} border-control-border bg-surface text-ink disabled:opacity-50`} data-audit="row-action-fix">{fix.label ?? 'Fix'}</button>
+              ) : links.fixNote ? (
+                <p className="min-h-[56px] rounded-lg bg-forest-green/[0.06] px-4 py-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="row-action-fix-note">{links.fixNote}</p>
+              ) : null}
+              {(links.extra ?? []).map((a, i) => (
+                <button key={i} type="button" disabled={busy} onClick={() => void go(a)} className={`${BTN} border-control-border bg-surface text-ink disabled:opacity-50`} data-audit="row-action-extra">{a.label}</button>
+              ))}
+              {del ? (
+                <button type="button" disabled={busy} onClick={() => void go(del)} className={`${BTN} border-rust/40 bg-surface text-rust disabled:opacity-50`} data-audit="row-action-delete">{busy ? 'Deleting…' : (del.label ?? 'Delete')}</button>
+              ) : links.deleteNote ? (
+                <p className="min-h-[56px] rounded-lg bg-forest-green/[0.06] px-4 py-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="row-action-delete-note">{links.deleteNote}</p>
+              ) : null}
+              <button type="button" disabled={busy} onClick={() => setOpen(false)} className="min-h-[48px] px-4 font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="row-action-cancel">Cancel</button>
             </div>
           </div>
         </div>
