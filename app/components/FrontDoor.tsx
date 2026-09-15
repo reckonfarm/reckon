@@ -76,7 +76,7 @@ export default async function FrontDoor() {
             <Card shadow="soft" className="overflow-hidden p-0">
               <Image
                 src="/landing/ledger-answer.png"
-                alt="The Dryline ledger after a feeding is logged: the entry reads Synced to ranch, then the answer — 4 bales recorded, 196 bales on hand from the last count, 4 fed since."
+                alt="The Dryline ledger after a feeding is logged: the entry reads Saved to the ranch, then the answer — 4 bales recorded, 196 bales on hand from the last count, 4 fed since."
                 width={732}
                 height={475}
                 priority
@@ -84,7 +84,7 @@ export default async function FrontDoor() {
               />
             </Card>
             <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
-              A real screen from the ledger on an example ranch (Dry Creek Ranch): Saved on this phone → Waiting to sync → Synced to ranch, then the answer.
+              A real screen from the ledger on an example ranch (Dry Creek Ranch): Saved on this phone → Waiting to send → Saved to the ranch, then the answer.
             </p>
           </section>
 
@@ -105,7 +105,7 @@ export default async function FrontDoor() {
                 </div>
                 <ul className="space-y-3 font-dm-sans text-[16px] leading-relaxed text-forest-green sm:max-w-xs">
                   <li><span className="font-semibold">Who it&rsquo;s for.</span> Cow-calf and hay operations with more than one person doing chores.</li>
-                  <li><span className="font-semibold">What works today, no hardware.</span> Feed, hay, rain, cattle moved and worked — logged in two taps, saved on the phone first, synced when there&rsquo;s signal. Repeat yesterday&rsquo;s feeding. See what changed since you last checked. Every place keeps its own memory.</li>
+                  <li><span className="font-semibold">What works today, no hardware.</span> Feed, hay, rain, cattle moved and worked — logged in two taps, saved on the phone first, sent when there&rsquo;s signal. Repeat yesterday&rsquo;s feeding. See what changed since you last checked. Every place keeps its own memory.</li>
                   <li><span className="font-semibold">What isn&rsquo;t built yet.</span> Hay accounting beyond bales fed and on hand, and billing.</li>
                 </ul>
               </div>

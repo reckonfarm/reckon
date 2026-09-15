@@ -64,8 +64,8 @@ export interface OutboxItem {
 
 export const STATE_LABEL: Record<OutboxState, string> = {
   local:  'Saved on this phone',
-  queued: 'Waiting to sync',
-  synced: 'Synced to ranch',
+  queued: 'Waiting to send',
+  synced: 'Saved to the ranch',
   failed: "Couldn't save — try again",
 }
 
@@ -276,7 +276,7 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       return
     }
     if (res.status === 401) {
-      update(item.id, { state: 'queued', lastError: 'Signed out — sign in to sync' })
+      update(item.id, { state: 'queued', lastError: 'Signed out — sign in to send it' })
       return
     }
     update(item.id, { state: 'failed', lastError: message })

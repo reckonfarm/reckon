@@ -45,7 +45,7 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
     : "You'll be able to see and log feed, hay counts, rain, and ranch work."
 
   if (view.state !== 'open') {
-    const why = view.state === 'expired' ? 'This invitation has expired.' : view.state === 'revoked' ? 'This invitation was revoked.' : view.state === 'accepted' ? 'This invitation has already been used.' : 'This invitation link is not valid.'
+    const why = view.state === 'expired' ? 'This invitation has expired.' : view.state === 'revoked' ? 'This invitation was deleted.' : view.state === 'accepted' ? 'This invitation has already been used.' : 'This invitation link is not valid.'
     return (
       <Card shadow="soft" className="p-6" data-audit="invite-closed">
         <h1 className="font-fraunces text-2xl font-semibold text-forest-green">{why}</h1>
