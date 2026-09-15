@@ -759,7 +759,7 @@ async function groupActionChecks() {
     source_lot_id: '00000000-0000-0000-0000-0000000000fe',
     expected_head: null, counted: 1, stay: 1, results: [],
   })
-  if (probe.status === 503) { record('(skipped)', '10: group-action checks — migration 063 not applied', true, String(probe.json.error ?? '').slice(0, 70)); return }
+  if (probe.status === 503) { record('(skipped)', '10/14: group-action checks — migration 063 or 069 not applied', true, String(probe.json.error ?? '').slice(0, 70)); return }
   record('user A (owner)', '10: a working against a bunch that does not exist is refused by name, never a database error',
     probe.status === 404 && /not on your ranch/i.test(String(probe.json.error)), `${probe.status} · ${String(probe.json.error ?? '').slice(0, 60)}`)
 
