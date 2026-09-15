@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
-import { isTrashTable, listTrash, restoreRow, TRASH_DAYS } from '@/lib/trash'
+import { isTrashKind, isTrashTable, listTrash, restoreRow, restoreJob, restoreInvitation, TRASH_DAYS } from '@/lib/trash'
 
 // GET  /api/trash                    → { items, days }
 // POST /api/trash { table, id }      → { restored: true }
@@ -21,10 +21,14 @@ export async function POST(req: NextRequest) {
   const session = await sessionUser(req)
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   const body = await req.json().catch(() => null) as { table?: unknown; id?: unknown } | null
-  if (!body || !isTrashTable(body.table) || typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id)) {
+  if (!body || !isTrashKind(body.table) || typeof body.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.id)) {
     return NextResponse.json({ error: 'Say which row: { table, id }.' }, { status: 400 })
   }
-  const r = await restoreRow(session.supabase, session.user.id, body.table, body.id)
+  // Block 13: sessions and invitations put back by their own columns.
+  const r = body.table === 'jobs' ? await restoreJob(session.supabase, body.id)
+    : body.table === 'invitations' ? await restoreInvitation(session.supabase, session.user.id, body.id)
+    : isTrashTable(body.table) ? await restoreRow(session.supabase, session.user.id, body.table, body.id)
+    : { ok: false as const, status: 400 as const, error: 'Say which row.' }
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
   return NextResponse.json({ restored: true })
 }

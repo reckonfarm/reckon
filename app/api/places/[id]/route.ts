@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { sessionUser } from '@/lib/auth-user'
-import { createServiceClient } from '@/lib/supabase'
-import { placeReferences, refsSentence, planPlaceCascade, cascadeSentence } from '@/lib/places/references'
-import { applySplit } from '@/lib/cascade'
-import { resolveRanchId } from '@/lib/ranch-membership'
 import { normalizeKind, MAX_NAME, canContain, parentRule, kindLabel } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
@@ -17,7 +13,7 @@ import { trashRow, liveOnly } from '@/lib/trash'
 //                                pinned?, expected_updated_at? } → { place }
 //                              parent_id and kind are judged against each other
 //                              and against the kind table (Block 7A, below).
-//   DELETE /api/places/[id]  → { place }   RETIRES it. Nothing is deleted.
+//   DELETE /api/places/[id]  → { place }   to the trash; Undo / /account/trash brings it back.
 //
 // AUTH via lib/auth-user sessionUser(req) — cookies first, then a Bearer JWT,
 // both returning a user-scoped client. The older cookie-only pattern this
@@ -294,73 +290,34 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   return NextResponse.json({ error: 'That change could not be saved. Open the place again and retry.' }, { status: 409 })
 }
 
-// ─── DELETE = retire ──────────────────────────────────────────────────────────
-// ─── DELETE — a real delete when nothing points at it (Block 7D.3) ───────────
+// ─── DELETE — to the trash, always (Block 13) ─────────────────────────────────
 //
-// 057 made this verb mean RETIRE, because with no reference check a hard
-// delete would have orphaned entries silently. 7D.3 does the check, so the
-// verb means what it says:
+// 057 made this verb mean RETIRE; 7D.3 made it a real delete that refused when
+// anything pointed at the place; 8B.2 added a cascade that deleted the entries
+// too; 12.4 sent the row to the trash. Block 13 keeps only the last of those.
 //
-//   nothing points at it  → the row is removed. One tap, gone.
-//   something does        → 409, NOT deleted and NOT quietly retired, with a
-//                           count of what still points at it. The caller can
-//                           still retire it (PATCH { retired: true }); this
-//                           route will not decide that for them.
+//   DELETE → the row gets deleted_at, and that is all that happens.
 //
-// The counts come from lib/places/references.ts on the CALLER's client, so RLS
-// scopes them: a place can never read as free-to-delete because the rows
-// holding it belong to another ranch.
+// Nothing else is refused, counted, or cascaded. Every entry that named the
+// place keeps naming it — events.payload->>place_id has no foreign key and is
+// not touched — and every reader that resolves a place name now shows a
+// deleted one as gone rather than blank (lib/activity.ts namesFor). The undo
+// strip is the safety: ten seconds, one tap, and POST /api/trash puts the row
+// back with everything still pointing at it. /account/trash holds it seven days.
 //
-// The delete itself runs on the caller's client too. 062 revokes the client
-// DELETE policy on places, so this is a service-role write after the
-// membership check the caller's own read has already made — the same shape as
-// the ranch-name write.
+// The write is a service-role UPDATE after the caller's own client has read
+// the row (lib/trash.ts trashRow): RLS is the membership gate; 062 closed the
+// client delete door and it stays closed.
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const session = await sessionUser(req)
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   const { supabase } = session
 
-  // Read it through the caller's client first: RLS is the membership gate, and
-  // a place on another ranch must be indistinguishable from one that is gone.
   const { data: place } = await supabase.from('places').select(SELECT).eq('id', id).maybeSingle()
   if (!place) return NextResponse.json({ error: 'No such place' }, { status: 404 })
 
-  const refs = await placeReferences(supabase, id)
-  const cascade = req.nextUrl.searchParams.get('cascade') === '1'
-
-  if (refs.total > 0 && !cascade) {
-    // 8B.2 — the refusal carries the PLAN, so the confirm can state both
-    // numbers and offer the way through in the same breath. One tap, one
-    // decision, no second prompt.
-    const ranchId = await resolveRanchId(supabase, session.user.id)
-    const plan = ranchId ? await planPlaceCascade(supabase, session.user.id, ranchId, id) : null
-    return NextResponse.json({
-      error: 'still referenced',
-      place,
-      refs,
-      message: refsSentence(refs),
-      ...(plan ? {
-        cascade: { hard: plan.hard.length, record: plan.record.length, devices: plan.devices },
-        cascadeMessage: cascadeSentence(String((place as { name?: string }).name ?? 'this place'), refs, plan),
-      } : {}),
-    }, { status: 409 })
-  }
-
-  if (refs.total > 0 && cascade) {
-    const ranchId = await resolveRanchId(supabase, session.user.id)
-    if (!ranchId) return NextResponse.json({ error: 'No ranch' }, { status: 404 })
-    // The entries first, then the place — so nothing live points at it by the
-    // time it goes, and PK is never left with a place he cannot remove.
-    const plan = await planPlaceCascade(supabase, session.user.id, ranchId, id)
-    const applied = await applySplit(session.user.id, plan.hard, plan.record)
-    if (!applied.ok) return NextResponse.json({ error: 'Those entries could not be deleted just now' }, { status: 500 })
-  }
-
-  // Block 12 (12.4): into the trash, not gone. Restorable for TRASH_DAYS from
-  // /account/trash; purge_trash() removes it after. Its entries kept naming it
-  // all along, so restore is only clearing deleted_at.
   const t = await trashRow(supabase, session.user.id, 'places', id)
   if (!t.ok) return NextResponse.json({ error: t.error }, { status: t.status })
-  return NextResponse.json({ deleted: true, trashed: true, place, ...(cascade ? { cascaded: true } : {}) })
+  return NextResponse.json({ deleted: true, trashed: true, place })
 }
