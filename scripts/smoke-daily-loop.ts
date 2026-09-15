@@ -1778,18 +1778,37 @@ async function main() {
         new RegExp(`said ${before}`).test(disc) && /Going with the 12 you counted/.test(disc) && !saveDisabled,
         `"${disc.slice(0, 80)}" · save ${saveDisabled ? 'DISABLED' : 'enabled'}`)
 
-      const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
-      await page.locator('[data-audit="preg-dest-name"]').fill(destName)
+      // Block 14: no destination on the check. The opens stay on the record of
+      // the bunch checked; the split is offered after.
+      const noDest = (await page.locator('[data-audit="preg-destination"], [data-audit="preg-dest-name"]').count()) === 0
+      const opensNote = await text('[data-audit="preg-opens-note"]')
       await page.locator('[data-audit="preg-save"]').click()
       await watchStates(page, 'Saved to the ranch', 30_000, 'Preg check')
 
-      // THE LEDGER MOVED THE CATTLE, or this screen is a lie.
+      // THE CHECK RECORDED THE COUNTS, and moved nothing but the bunch to its count.
       const after = await headOf(chuteLotId)
+      const { data: checkRow } = await admin.from('events').select('id, payload').eq('ranch_id', ranchId).eq('type', 'group_action').eq('payload->>action', 'preg_check').eq('payload->>source_lot_id', chuteLotId).order('ts', { ascending: false }).limit(1).maybeSingle()
+      const cp = (checkRow as { payload?: Record<string, unknown> } | null)?.payload ?? {}
+      const { count: otherBunches } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).like('name', 'SMOKE opens%')
+      record('14: the preg check records lot, counted, bred and open on the bunch checked — it ends at what was counted, and no bunch is made',
+        noDest && /stay in/.test(opensNote) && after === 12 && cp.counted === 12 && cp.bred === 9 && cp.open === 3 && (otherBunches ?? 0) === 0,
+        `no destination ${noDest} · "${opensNote.slice(0, 50)}" · ${CHUTE_LOT} ${before} → ${after} (expected 12) · row counted ${String(cp.counted)} bred ${String(cp.bred)} open ${String(cp.open)} · bunches made ${otherBunches ?? 0}`)
+
+      // The follow-up: one tap makes a bunch from the opens, class asked, defaulted from the source (cows → old cows).
+      const offer = await page.locator('[data-audit="preg-sort-open"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const offerText = await text('[data-audit="preg-sort-open"]')
+      await page.locator('[data-audit="preg-sort-open"]').click().catch(() => {})
+      const defaultClass = await page.locator('[data-audit="preg-sort-class"] [aria-checked="true"]').innerText().catch(() => '')
+      const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
+      await page.locator('[data-audit="preg-sort-name"]').fill(destName)
+      await page.locator('[data-audit="preg-sort-save"]').click()
+      await watchStates(page, 'Saved to the ranch', 30_000, 'Sorted')
+      const afterSort = await headOf(chuteLotId)
       const { data: madeRows } = await admin.from('herd_lots').select('id, head_count, class, ranch_id').eq('name', destName)
       const made = ((madeRows ?? []) as { id: string; head_count: number; class: string; ranch_id: string }[])[0] ?? null
-      record('10: the working moved the head counts — the source ends at what stayed, the opens are a real bunch on this ranch',
-        after === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
-        `${CHUTE_LOT} ${before} → ${after} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
+      record('14: "Make a bunch from the 3 opens?" is offered after the check; the class defaults to old cows for a cow bunch; one tap makes it as its own working',
+        offer && /Make a bunch from the 3 opens/.test(offerText) && /Old cows/.test(defaultClass) && afterSort === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
+        `offer ${offer} "${offerText}" · default class "${defaultClass}" · ${CHUTE_LOT} 12 → ${afterSort} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
 
       // No other bunch on the ranch moved — a working touches the bunch it
       // names and nothing else.
@@ -1802,9 +1821,9 @@ async function main() {
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="activity-day"], [data-audit="ranch-tile"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
       const record10 = ((await page.locator('body').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
-      record('10: the working is in the Activity record, naming what was counted and where they went',
+      record('10/14: the check and the sort are both in the Activity record — what was counted, and where the opens went',
         new RegExp(`Preg check[^.]*12 counted`).test(record10) && record10.includes(destName),
-        `${/Preg check/.test(record10) ? 'row present' : 'NO ROW'} · names the group ${record10.includes(destName)}`)
+        `${/Preg check/.test(record10) ? 'row present' : 'NO ROW'} · names the bunch ${record10.includes(destName)}`)
 
       // Cleanup: the smoke ranch is torn down wholesale, but the destination
       // lot is created by the FUNCTION, not the fixture, so it is named here
@@ -2465,6 +2484,103 @@ async function main() {
       await admin.from('devices').delete().eq('id', device13)
       await admin.from('events').delete().eq('id', entry13)
       await admin.from('places').delete().eq('id', place13)
+    }
+
+    // ── Block 14 — Count cattle: tap the bunch, the number, save ──────────────
+    {
+      const text = async (sel: string) => (await page.locator(sel).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const headOf = async (id: string) => ((await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()).data as { head_count?: number } | null)?.head_count ?? null
+      const lot14 = randomUUID(), LOT14 = `${PREFIX} 14 count bunch`
+      const { error: l14 } = await admin.from('herd_lots').insert({ id: lot14, ranch_id: ranchId, class: 'cows', name: LOT14, head_count: 275, avg_weight: 1200, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (l14) skip('14: count checks', `fixture: ${l14.message.slice(0, 80)}`)
+      else {
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        const countOnce = async (n: number) => {
+          await recordControl(page).click()
+          await page.locator('[data-audit="tile-cattle_counted"]').waitFor({ timeout: 15_000 })
+          await page.locator('[data-audit="tile-cattle_counted"]').click()
+          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).waitFor({ timeout: 15_000 })
+          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).click()
+          await page.getByLabel('Counted', { exact: true }).fill(String(n))
+          const preview = await text('[data-audit="count-preview"]')
+          await page.locator('[data-audit="record-save"]').first().click()
+          return preview
+        }
+        // Below: 274 → −1, and the change is offered.
+        const pv1 = await countOnce(274)
+        const seq1 = await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 274 head')
+        const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+        const offer1 = await page.locator('[data-audit="follow-up-take"]').count()
+        const offer1Text = await text('[data-audit="follow-up-take"]')
+        const headAfter1 = await headOf(lot14)
+        record('14: counting below expected — the sheet previews "274 counted · 275 expected · −1", the receipt says the same, and "Change bunch to 274?" is offered — the head count itself unmoved',
+          /274 counted · 275 expected · −1/.test(pv1) && seq1.includes('Saved to the ranch') && /274 counted · 275 expected · −1/.test(strip1) && offer1 === 1 && /Change bunch to 274\?/.test(offer1Text) && headAfter1 === 275,
+          `preview "${pv1.slice(0, 40)}" · strip "${strip1.slice(0, 70)}" · offer ${offer1} "${offer1Text}" · head ${headAfter1}`)
+        // Ignore it. Count again, above: +1, still 275 stored — two rows, neither overwritten.
+        const pv2 = await countOnce(276)
+        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 276 head')
+        const { data: counts } = await admin.from('events').select('id, payload').eq('ranch_id', ranchId).eq('type', 'cattle_counted').eq('payload->>herd_lot_id', lot14).is('deleted_at', null).order('ts')
+        const cs = (counts ?? []) as { payload: { counted?: number; expected?: number } }[]
+        record('14: counting above expected — +1 — and two counts in a row are two rows, both with the expected they saw; nothing overwrote',
+          /276 counted · 275 expected · \+1/.test(pv2) && cs.length === 2 && cs[0].payload.counted === 274 && cs[1].payload.counted === 276 && cs.every(c => c.payload.expected === 275) && (await headOf(lot14)) === 275,
+          `preview "${pv2.slice(0, 40)}" · rows ${cs.length} [${cs.map(c => `${c.payload.counted}/${c.payload.expected}`).join(', ')}] · head ${await headOf(lot14)}`)
+        // Equal: same, and nothing offered.
+        const pv3 = await countOnce(275)
+        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 275 head')
+        const offer3 = await page.locator('[data-audit="follow-up-take"]').count()
+        record('14: counting equal to expected — "same" — and no change is offered', /275 counted · 275 expected · same/.test(pv3) && offer3 === 0, `preview "${pv3.slice(0, 40)}" · offers ${offer3}`)
+        // The bunch card: last count on one line, with the change button because the last count (275) equals… no: take the −1 path on the card.
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const card = page.locator('[data-audit="lot-row"]').filter({ hasText: LOT14 })
+        await card.waitFor({ timeout: 20_000 }).catch(() => {})
+        const lastCount = (await card.locator('[data-audit="lot-last-count"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        record('14: the bunch card shows the last count and how long ago, on one line', /Last count: 275 counted · 275 expected · same · today/.test(lastCount), `"${lastCount.slice(0, 80)}"`)
+        // Take the change from a fresh count of 274: the card's button.
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await countOnce(274)
+        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 274 head')
+        await page.locator('[data-audit="follow-up-take"]').click().catch(() => {})
+        await page.locator('[data-audit="follow-up-done"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        const changed = await headOf(lot14)
+        const { count: setRows } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'head_count_set').eq('payload->>lot_id', lot14).eq('payload->>head_after', '274')
+        record('14: tapping "Change bunch to 274?" sets the bunch to 274 through its own save, with a head_count_set row', changed === 274 && (setRows ?? 0) >= 1, `head ${changed} · head_count_set rows ${setRows ?? 0}`)
+
+        // New bunch mid-flow: from inside Feed hay's "Fed to", make one and land back with it picked.
+        await recordControl(page).click()
+        await page.getByRole('button', { name: /^Feed hay/ }).click()
+        await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 })
+        await page.locator('[data-audit="fed-to"]').selectOption('__new__')
+        const formUp = await page.locator('[data-audit="new-bunch"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+        const NEW14 = `${PREFIX} 14 spot bunch`
+        await page.locator('[data-audit="new-bunch-name"]').fill(NEW14)
+        await page.locator('[data-audit="new-bunch-head"]').fill('18')
+        await page.locator('[data-audit="new-bunch-class-pairs"]').click()
+        await page.locator('[data-audit="new-bunch-save"]').click()
+        await page.locator('[data-audit="new-bunch"]').waitFor({ state: 'detached', timeout: 15_000 }).catch(() => {})
+        const pickedLabel = (await page.locator('[data-audit="fed-to"] option:checked').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        const stillOnFeed = (await page.getByLabel('Hay fed').count()) === 1
+        const { data: newRow } = await admin.from('herd_lots').select('id, class, head_count, avg_weight').eq('name', NEW14).maybeSingle()
+        const nr = newRow as { id: string; class: string; head_count: number; avg_weight: number | null } | null
+        record('14: a bunch made from inside Feed hay — name, head, class — lands back on the feeding with it picked, and carries no weight',
+          formUp && stillOnFeed && pickedLabel === NEW14 && !!nr && nr.class === 'pairs' && nr.head_count === 18 && nr.avg_weight === null,
+          `form ${formUp} · still on Feed hay ${stillOnFeed} · picked "${pickedLabel}" · row ${nr ? `${nr.class} ${nr.head_count} head, weight ${String(nr.avg_weight)}` : 'MISSING'}`)
+        await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
+
+        // Offline count, then sync.
+        await page.context().setOffline(true)
+        await countOnce(270)
+        const seqOff = await watchStates(page, 'Saved to the ranch', 4_000, 'Counted 270 head')
+        await page.context().setOffline(false)
+        const seqOn = await watchStates(page, 'Saved to the ranch', 45_000, 'Counted 270 head')
+        const { data: offRow } = await admin.from('events').select('payload').eq('ranch_id', ranchId).eq('type', 'cattle_counted').eq('payload->>counted', '270').maybeSingle()
+        const op = (offRow as { payload?: { expected?: number } } | null)?.payload
+        record('14: a count made offline is Saved on this phone, then Saved to the ranch when signal returns — with the expected the bunch said at landing',
+          seqOff[0] === 'Saved on this phone' && !seqOff.includes('Saved to the ranch') && seqOn.includes('Saved to the ranch') && op?.expected === 274,
+          `${seqOff.join(' → ')} | ${seqOn.join(' → ')} · expected ${String(op?.expected)}`)
+
+        if (nr) await admin.from('herd_lots').delete().eq('id', nr.id)
+        await admin.from('herd_lots').delete().eq('id', lot14)
+      }
     }
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──

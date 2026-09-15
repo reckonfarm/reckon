@@ -777,51 +777,80 @@ async function groupActionChecks() {
   record('user A (owner)', '10: and no group was created anywhere by the attempt', (stolenLots ?? 0) === 0, `${stolenLots ?? 0} lot(s) named STOLEN`)
 
   // ── The real working, and the chute count beating the stored number ────────
-  const counted = aBefore + 2, open = 4, stay = counted - open
+  // Block 14: a preg check RECORDS COUNTS on the bunch checked — it ends at
+  // what was counted, bred and open are numbers on the row, and nothing is
+  // split. The split is a separate sort afterward, with a class of the
+  // person's choosing.
+  const counted = aBefore + 2, open = 4, bred = counted - open, stay = counted
   const workingId = randomUUID()
   const body = {
     id: workingId, type: 'group_action', action: 'preg_check',
     source_lot_id: a.lotId, expected_head: aBefore, counted, stay,
-    results: [{ lot_id: null, name: 'RLS-TEST opens', head: open }],
+    results: [], detail: { bred, open },
   }
   const done = await api(A, '/api/log', body)
+  if (done.status === 503) { record('(skipped)', '14: preg-check checks — migration 069 not applied', true, String(done.json.error ?? '').slice(0, 70)); return }
   const aAfter = await headOf(a.lotId)
-  const { data: madeRows } = await admin.from('herd_lots').select('id, ranch_id, head_count, class').eq('name', 'RLS-TEST opens')
-  const made = ((madeRows ?? []) as { id: string; ranch_id: string; head_count: number; class: string }[])[0] ?? null
-  record('user A (owner)', '10: the working lands, the source ends at what STAYED (the chute count, not stored minus movers), and the new group carries the rest',
-    done.status === 201 && aAfter === stay && !!made && made.head_count === open && made.ranch_id === a.ranchId && made.class === 'old_cows',
-    `${done.status} · source ${aBefore} → ${aAfter} (stay ${stay}) · new group ${made ? `${made.head_count} head on ${made.ranch_id === a.ranchId ? 'A' : 'ELSEWHERE'}, ${made.class}` : 'MISSING'}`)
+  const { count: madeByCheck } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', a.ranchId).neq('id', a.lotId).is('deleted_at', null)
+  record('user A (owner)', '14: a preg check lands with the bunch ending at what was COUNTED, and makes no other bunch',
+    done.status === 201 && aAfter === counted && (madeByCheck ?? 0) === 0,
+    `${done.status} · source ${aBefore} → ${aAfter} (counted ${counted}) · other bunches ${madeByCheck ?? 0}`)
 
   const { data: ev } = await admin.from('events').select('ranch_id, type, payload').eq('id', workingId).maybeSingle()
   const evRow = ev as { ranch_id: string; type: string; payload: Record<string, unknown> } | null
-  record('user A (owner)', '10: both numbers are on the record — what was counted, and what the bunch said before',
+  record('user A (owner)', '14: the row carries what was counted, what the bunch said before, and bred and open as numbers',
     !!evRow && evRow.type === 'group_action' && evRow.ranch_id === a.ranchId
-      && evRow.payload.counted === counted && evRow.payload.source_head_before === aBefore,
-    evRow ? `counted ${String(evRow.payload.counted)} · said ${String(evRow.payload.source_head_before)}` : 'NO EVENT')
+      && evRow.payload.counted === counted && evRow.payload.source_head_before === aBefore && evRow.payload.bred === bred && evRow.payload.open === open,
+    evRow ? `counted ${String(evRow.payload.counted)} · said ${String(evRow.payload.source_head_before)} · bred ${String(evRow.payload.bred)} · open ${String(evRow.payload.open)}` : 'NO EVENT')
+
+  // The function itself refuses a split on a preg check, whatever a caller sends.
+  const split = await api(A, '/api/log', {
+    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    source_lot_id: a.lotId, expected_head: counted, counted, stay: counted - 1,
+    results: [{ lot_id: null, name: 'RLS-TEST split', head: 1 }],
+  })
+  const { count: splitRows } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST split')
+  record('user A (owner)', '14: a preg check that tries to split is refused in a sentence, and nothing is made',
+    split.status === 400 && /Make a bunch from the opens afterward/i.test(String(split.json.error)) && (splitRows ?? 0) === 0 && (await headOf(a.lotId)) === counted,
+    `${split.status} · "${String(split.json.error ?? '').slice(0, 60)}" · rows ${splitRows ?? 0}`)
+
+  // The sort afterward: the opens out, into a bunch of the class named.
+  const sortId = randomUUID()
+  const sort = await api(A, '/api/log', {
+    id: sortId, type: 'group_action', action: 'sort',
+    source_lot_id: a.lotId, expected_head: counted, counted, stay: counted - open,
+    results: [{ lot_id: null, name: 'RLS-TEST opens', class: 'old_cows', head: open }],
+  })
+  const aSorted = await headOf(a.lotId)
+  const { data: madeRows } = await admin.from('herd_lots').select('id, ranch_id, head_count, class, place_id').eq('name', 'RLS-TEST opens')
+  const made = ((madeRows ?? []) as { id: string; ranch_id: string; head_count: number; class: string; place_id: string | null }[])[0] ?? null
+  record('user A (owner)', '14: the sort afterward moves the opens into a new bunch of the class named, on this ranch, and the source ends at what stayed',
+    sort.status === 201 && aSorted === counted - open && !!made && made.head_count === open && made.class === 'old_cows' && made.ranch_id === a.ranchId,
+    `${sort.status} · source ${counted} → ${aSorted} (stay ${counted - open}) · new bunch ${made ? `${made.head_count} head, ${made.class}, on ${made.ranch_id === a.ranchId ? 'A' : 'ELSEWHERE'}` : 'MISSING'}`)
 
   // ── A RETRY MUST NEVER DECREMENT TWICE. The outbox resends on any transient
   // failure, so this is not a theoretical case — it is the normal one on a
   // bad signal.
-  const retry = await api(A, '/api/log', body)
+  const retry = await api(A, '/api/log', { ...body })
   const aAfterRetry = await headOf(a.lotId)
   const { count: madeTwice } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST opens')
   const { count: eventsForId } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', workingId)
-  record('user A (owner)', '10: the same working sent twice moves nothing the second time — one event, one group, the count where it was',
-    retry.status === 200 && retry.json.duplicate === true && aAfterRetry === stay && (madeTwice ?? 0) === 1 && (eventsForId ?? 0) === 1,
-    `${retry.status} duplicate=${retry.json.duplicate} · source ${aAfterRetry} (was ${stay}) · groups ${madeTwice ?? 0} · events ${eventsForId ?? 0}`)
+  record('user A (owner)', '10: the same working sent twice moves nothing the second time — one event, one bunch, the count where it was',
+    retry.status === 200 && retry.json.duplicate === true && aAfterRetry === aSorted && (madeTwice ?? 0) === 1 && (eventsForId ?? 0) === 1,
+    `${retry.status} duplicate=${retry.json.duplicate} · source ${aAfterRetry} (was ${aSorted}) · bunches ${madeTwice ?? 0} · events ${eventsForId ?? 0}`)
 
   // ── The rules are in the database, so a caller that skips the screen still
   // meets them. These bodies would pass any client-side check that was only
   // in the browser.
-  const nowHead = aAfterRetry ?? stay
+  const nowHead = aAfterRetry ?? aSorted
   const badSum = await api(A, '/api/log', {
-    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    id: randomUUID(), type: 'group_action', action: 'sort',
     source_lot_id: a.lotId, expected_head: nowHead, counted: 100, stay: 90,
     results: [{ lot_id: null, name: 'RLS-TEST badsum', head: 5 }],
   })
   const stale = await api(A, '/api/log', {
     id: randomUUID(), type: 'group_action', action: 'preg_check',
-    source_lot_id: a.lotId, expected_head: (nowHead) + 999, counted: 1, stay: 1, results: [],
+    source_lot_id: a.lotId, expected_head: (nowHead ?? 0) + 999, counted: 1, stay: 1, results: [],
   })
   const aUnmoved = await headOf(a.lotId)
   record('user A (owner)', '10: numbers that do not add up are refused, in those words, and nothing moves',
@@ -835,7 +864,7 @@ async function groupActionChecks() {
   const Bc = await userClient('B')
   const bSeesEvent = await Bc.from('events').select('id').eq('id', workingId)
   const bSeesLot = made ? await Bc.from('herd_lots').select('id').eq('id', made.id) : { data: [] }
-  record('user B (other ranch)', '10: the working and the group it created are both invisible to the other ranch',
+  record('user B (other ranch)', '10: the working and the bunch it created are both invisible to the other ranch',
     (bSeesEvent.data ?? []).length === 0 && (bSeesLot.data ?? []).length === 0,
     `event ${(bSeesEvent.data ?? []).length} · group ${(bSeesLot.data ?? []).length}`)
 
@@ -845,6 +874,71 @@ async function groupActionChecks() {
     body: JSON.stringify({ id: randomUUID(), type: 'group_action', action: 'preg_check', source_lot_id: a.lotId, expected_head: null, counted: 1, stay: 1, results: [] }),
   })
   record('anonymous', '10: a signed-out caller cannot record a working', anon.status === 401, `${anon.status}`)
+}
+
+// ── Block 14 — count cattle; bunches made on the spot ─────────────────────────
+async function countChecks() {
+  const a = fx.A!, b = fx.B!
+  const A = await userClient('A')
+  const headOf = async (id: string) => ((await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()).data as { head_count?: number } | null)?.head_count ?? null
+
+  // 069 by capability: a bunch with no weight, of class pairs, at a place.
+  const spot = await api(A, '/api/herd/lots', { name: `${PREFIX}spot`, class: 'pairs', head_count: 7, place_id: a.placeId })
+  if (spot.status === 500 || spot.status === 400 && /avg_weight|class must/.test(String(spot.json.error))) {
+    record('(skipped)', '14: bunch checks — migration 069 not applied', true, `${spot.status} ${String(spot.json.error ?? '').slice(0, 60)}`); return
+  }
+  const spotLot = (spot.json.lot ?? null) as { id: string; class: string; avg_weight: number | null; place_id?: string | null } | null
+  record('user A (owner)', '14/069: a bunch made on the spot — name, head, class pairs, a place, NO weight — is accepted as it is',
+    spot.status === 201 && !!spotLot && spotLot.class === 'pairs' && spotLot.avg_weight === null && spotLot.place_id === a.placeId,
+    `${spot.status} · class ${String(spotLot?.class)} · weight ${String(spotLot?.avg_weight)} · place ${spotLot?.place_id === a.placeId ? 'A\'s' : String(spotLot?.place_id)}`)
+
+  const foreign = await api(A, '/api/herd/lots', { name: `${PREFIX}foreign-place`, class: 'cows', head_count: 3, place_id: b.placeId })
+  const { count: foreignRows } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', `${PREFIX}foreign-place`)
+  record('user A (owner)', '14: a bunch cannot be put at another ranch\'s place — refused as "no such place", no row',
+    foreign.status === 400 && /No such place/.test(String(foreign.json.error)) && (foreignRows ?? 0) === 0, `${foreign.status} · "${String(foreign.json.error ?? '').slice(0, 50)}" · rows ${foreignRows ?? 0}`)
+
+  // A count: its own row, expected read from the bunch, the head count untouched.
+  const before = await headOf(a.lotId)
+  if (before == null) { record('(skipped)', '14: count checks — seeded lot gone', true, ''); return }
+  const c1 = randomUUID()
+  const count1 = await api(A, '/api/log', { id: c1, type: 'cattle_counted', herd_lot_id: a.lotId, counted: before - 1, expected: 12345 })
+  const { data: row1 } = await admin.from('events').select('payload').eq('id', c1).maybeSingle()
+  const p1 = (row1 as { payload?: Record<string, unknown> } | null)?.payload ?? {}
+  const after1 = await headOf(a.lotId)
+  const fu = count1.json.follow_up as { kind?: string; head?: number; label?: string } | undefined
+  const line1 = ((count1.json.consequence as { lines?: string[] } | undefined)?.lines ?? [])[0] ?? ''
+  record('user A (owner)', '14: a count is its own row — counted, expected read from the bunch (never from the phone), who — and the bunch\'s head count does not move',
+    count1.status === 201 && p1.counted === before - 1 && p1.expected === before && after1 === before,
+    `${count1.status} · counted ${String(p1.counted)} · expected ${String(p1.expected)} (phone sent 12345) · head ${before} → ${after1}`)
+  record('user A (owner)', '14: the answer is "counted · expected · difference", and offers "Change bunch to N?" only when they differ',
+    new RegExp(`${before - 1} counted · ${before} expected · −1`).test(line1) && fu?.kind === 'set_head' && fu.head === before - 1 && /Change bunch to/.test(String(fu.label)),
+    `"${line1}" · follow-up ${fu ? `${fu.kind} → ${fu.head}` : 'none'}`)
+
+  const c2 = randomUUID()
+  const count2 = await api(A, '/api/log', { id: c2, type: 'cattle_counted', herd_lot_id: a.lotId, counted: before })
+  const line2 = ((count2.json.consequence as { lines?: string[] } | undefined)?.lines ?? [])[0] ?? ''
+  const { count: bothRows } = await admin.from('events').select('id', { count: 'exact', head: true }).in('id', [c1, c2]).is('deleted_at', null)
+  record('user A (owner)', '14: a second count is a second row — both survive — and an equal count offers no change',
+    count2.status === 201 && (bothRows ?? 0) === 2 && /same$/.test(line2) && count2.json.follow_up === undefined,
+    `${count2.status} · rows ${bothRows ?? 0} · "${line2}" · follow-up ${count2.json.follow_up === undefined ? 'none' : 'PRESENT'}`)
+
+  // Counting another ranch's bunch: refused, nothing written.
+  const cross = await api(A, '/api/log', { id: randomUUID(), type: 'cattle_counted', herd_lot_id: b.lotId, counted: 1 })
+  record('user A (owner)', '14: a count of another ranch\'s bunch is refused as "not on your ranch", and nothing lands',
+    cross.status === 400 && /not on your ranch/.test(String(cross.json.error)), `${cross.status} · "${String(cross.json.error ?? '').slice(0, 50)}"`)
+
+  // "Change bunch to N?" — through the bunch's own PATCH, writing a head_count_set row.
+  const { data: lotRow } = await admin.from('herd_lots').select('id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, updated_at').eq('id', a.lotId).maybeSingle()
+  const lot = lotRow as Record<string, unknown> | null
+  const change = await api(A, `/api/herd/lots/${a.lotId}`, { ...lot, head_count: before - 1, expected_updated_at: lot?.updated_at }, 'PATCH')
+  const afterChange = await headOf(a.lotId)
+  const { count: sets } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'head_count_set').eq('payload->>lot_id', a.lotId).eq('payload->>head_after', String(before - 1))
+  record('user A (owner)', '14: taking "Change bunch to N?" sets the head count through the bunch\'s own save, with a head_count_set row like any edit',
+    change.status === 200 && afterChange === before - 1 && (sets ?? 0) >= 1, `${change.status} · head ${before} → ${afterChange} · head_count_set rows ${sets ?? 0}`)
+  // put it back for the checks after this one
+  const { data: lotNow } = await admin.from('herd_lots').select('updated_at').eq('id', a.lotId).maybeSingle()
+  await api(A, `/api/herd/lots/${a.lotId}`, { ...lot, head_count: before, expected_updated_at: (lotNow as { updated_at?: string } | null)?.updated_at }, 'PATCH')
+  if (spotLot) await admin.from('herd_lots').delete().eq('id', spotLot.id)
 }
 
 // ── Block 12 (12.4) — the trash is ranch-scoped, restore included ─────────────
@@ -1539,6 +1633,7 @@ async function main() {
     await placesChecks()        // Places slice 1 — needs migration 056 (route checks skip without it)
     await turnoutChecks()       // Block 9 — /api/ranch/turnout, an events row inheriting 043
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
+    await countChecks()          // Block 14 — counts and bunches; needs 069 (skips without it)
     await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
     await projectionChecks()    // Block 12 — the head-count projection cannot be steered across ranches; needs 066 (skips without it); RED until 067
     await removedMemberChecks() // last — it removes A's membership
