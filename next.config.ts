@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // cards). Permanent = 301. Session-aware ones (signed-in / and /home → /today)
   // live in middleware.ts, which holds the refreshed session; a config redirect
   // cannot see one. /jobs/[id] and /dashboard?fips= are unchanged.
+  // Block 15: the service worker must never be cached by the browser or the
+  // CDN — a stale worker would pin a stale shell. Everything it serves is
+  // content-hashed; the worker file itself is fetched fresh.
+  async headers() {
+    return [{ source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }, { key: 'Service-Worker-Allowed', value: '/' }] }]
+  },
   async redirects() {
     return [
       { source: '/herd',          destination: '/ranch/cattle',                 permanent: true },
