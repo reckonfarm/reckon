@@ -764,13 +764,16 @@ async function groupActionChecks() {
     probe.status === 404 && /not on your ranch/i.test(String(probe.json.error)), `${probe.status} · ${String(probe.json.error ?? '').slice(0, 60)}`)
 
   // ── A cannot move B's cattle. The whole reason this suite exists. ───────────
+  // Block 14: a preg check cannot carry a result group any more (069 refuses
+  // the split before it looks anything up), so the theft is tried as a SORT —
+  // the working that CAN move cattle — and must still find no bunch to move.
   const steal = await api(A, '/api/log', {
-    id: randomUUID(), type: 'group_action', action: 'preg_check',
+    id: randomUUID(), type: 'group_action', action: 'sort',
     source_lot_id: b.lotId, expected_head: bBefore, counted: bBefore, stay: 0,
     results: [{ lot_id: null, name: 'STOLEN', head: bBefore }],
   })
   const bAfterSteal = await headOf(b.lotId)
-  record('user A (owner)', '10: a preg check can never move another ranch\'s bunch — refused, and B\'s head count untouched',
+  record('user A (owner)', '10/14: a working can never move another ranch\'s bunch — refused, and B\'s head count untouched',
     steal.status === 404 && bAfterSteal === bBefore,
     `${steal.status} · B was ${bBefore}, is ${bAfterSteal}`)
   const { count: stolenLots } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'STOLEN')
