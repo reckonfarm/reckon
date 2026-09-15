@@ -7,7 +7,7 @@ import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType, isManualEventType } from '@/lib/manual-log'
-import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass } from '@/lib/herd'
+import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass, bunchLabel, bunchDetail } from '@/lib/herd'
 import { discard } from '@/lib/outbox'
 import { warning } from '@/lib/brand-colors'
 import { todayKey as ranchToday } from '@/lib/jobs/format'
@@ -734,7 +734,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit="fed-to">
           <option value="">Not assigned to a bunch</option>
-          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
       )}
@@ -774,7 +774,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit={audit}>
           <option value="">Unassigned</option>
-          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
       )}
@@ -822,7 +822,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             {lots.map(l => (
               <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
                 className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="count-bunch-option" data-lot={l.id}>
-                {lotLabel(l)} <span className="font-normal opacity-80">· {l.head_count.toLocaleString()}</span>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {bunchDetail(l)}</span>
               </button>
             ))}
             <button type="button" onClick={() => setNewBunch(true)} disabled={busy} className="min-h-[48px] rounded-full border border-dashed border-forest-green/40 px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="count-new-bunch">New bunch…</button>
@@ -858,7 +858,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             {lots.map(l => (
               <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
                 className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="preg-lot-choice" data-lot={l.id}>
-                {lotLabel(l)} <span className="font-normal opacity-80">· {l.head_count.toLocaleString()}</span>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {bunchDetail(l)}</span>
               </button>
             ))}
             <button type="button" onClick={() => setNewBunch(true)} disabled={busy} className="min-h-[48px] rounded-full border border-dashed border-forest-green/40 px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="preg-new-bunch">New bunch…</button>

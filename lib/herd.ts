@@ -58,6 +58,21 @@ export function lotLabel(lot: Pick<Lot, 'class'> & { name?: string }): string {
   return name ? name : LOT_CLASS_LABELS[lot.class]
 }
 
+// ─── Block 15: a bunch is never just a name ───────────────────────────────────
+// Two bunches can share a name to within a capital letter ("Replacement
+// heifers" 40 head of heifers, "Replacement Heifers" 220 yearlings). Wherever a
+// bunch is offered — a chip, a dropdown, a row — it carries its class and head
+// beside the name, so a pick is never a coin flip. bunchDetail is the part
+// after the name (for a chip that sets the name in bold); bunchLabel is the
+// whole thing on one line (for a <option>).
+export function bunchDetail(lot: Pick<Lot, 'class' | 'head_count'> & { name?: string | null }): string {
+  const head = `${lot.head_count.toLocaleString('en-US')} head`
+  return lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ${head}` : head
+}
+export function bunchLabel(lot: Pick<Lot, 'class' | 'head_count'> & { name?: string | null }): string {
+  return `${lotLabel({ class: lot.class, name: lot.name ?? undefined })} · ${bunchDetail(lot)}`
+}
+
 export type MarsCommodity = 'Feeder Cattle' | 'Slaughter Cattle'
 export type MarsClass = 'Steers' | 'Heifers' | 'Cows' | 'Bulls'
 

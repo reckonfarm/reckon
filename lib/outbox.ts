@@ -344,6 +344,12 @@ export async function flush(): Promise<void> {
   }
 }
 
+/** Every refused record goes back in line once (state queued, its reason kept until the ranch answers again). */
+function retryRefused(): void {
+  const refused = read().filter(i => i.state === 'failed')
+  for (const i of refused) update(i.id, { state: 'queued' })
+}
+
 function scheduleFlush(delayMs: number): void {
   if (typeof window === 'undefined') return
   if (timer) clearTimeout(timer)
@@ -356,14 +362,22 @@ let wired = false
 function wire(): void {
   if (wired || typeof window === 'undefined') return
   wired = true
-  window.addEventListener('online', () => void flush())
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void flush() })
-  window.addEventListener('focus', () => void flush())
+  // Block 15 (ruling 2): retry is automatic and forever, with no button. A
+  // refused record is not retried every twenty seconds — the same body gets
+  // the same answer — but every time the app wakes (signal back, brought to
+  // the front) each refused record is offered once more, because the rule
+  // that refused it may have changed on the ranch. Refused again, it goes
+  // back to "Couldn't send" with the fresh reason; nothing is ever dropped.
+  const wake = () => { retryRefused(); void flush() }
+  window.addEventListener('online', wake)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake() })
+  window.addEventListener('focus', wake)
   window.addEventListener('storage', e => { if (e.key === KEY) { cache = null; for (const l of listeners) l() } })
   // Warn before leaving with anything unsynced. Browsers show their own text.
   window.addEventListener('beforeunload', e => {
     if (hasUnsynced()) { e.preventDefault(); e.returnValue = '' }
   })
+  retryRefused()
   if (pendingCount() > 0) scheduleFlush(0)
 }
 

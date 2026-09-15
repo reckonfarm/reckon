@@ -215,12 +215,28 @@ function recordControl(page: Page) {
   return page.locator('[data-audit="record-button"], [data-audit="record-fab"]').locator('visible=true').first()
 }
 
+// Block 15: a bunch option reads "Name · Class · N head", so a bunch is picked
+// by the name it starts with, never by the whole label.
+// One retry on a navigation the wire dropped (a preview's "fetch failed"), so a
+// hiccup between here and Vercel does not end the whole run.
+async function gotoTwice(page: Page, url: string) {
+  try { await page.goto(url, { waitUntil: 'domcontentloaded' }) }
+  catch { await page.waitForTimeout(2_000); await page.goto(url, { waitUntil: 'domcontentloaded' }) }
+}
+async function selectBunch(page: Page, selector: string, name: string) {
+  const value = await page.locator(`${selector} option`).evaluateAll((opts, n) => {
+    const hit = (opts as HTMLOptionElement[]).find(o => o.textContent?.trim().startsWith(n as string))
+    return hit ? hit.value : null
+  }, name)
+  if (!value) throw new Error(`no bunch option starting with "${name}" in ${selector}`)
+  await page.locator(selector).selectOption(value)
+}
 async function logFeed(page: Page, bales: number, opts: { doubleTap?: boolean; place?: string; lot?: string } = {}) {
   await recordControl(page).click()
   await page.getByRole('button', { name: /^Feed hay/ }).click()
   await page.getByLabel('Hay fed').fill(String(bales))
   if (opts.place) await page.getByLabel('Where').selectOption({ label: opts.place })
-  if (opts.lot) { await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {}); await page.locator('[data-audit="fed-to"]').selectOption({ label: opts.lot }) }
+  if (opts.lot) { await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {}); await selectBunch(page, '[data-audit="fed-to"]', opts.lot) }
   const save = page.getByRole('button', { name: 'Record feeding', exact: true })
   await save.waitFor({ timeout: 15_000 }).catch(() => {})   // Block 6A: Save waits for the lots to load
   if (opts.doubleTap) {
@@ -989,7 +1005,7 @@ async function main() {
       await page.getByLabel('Worked').fill('12')
       await page.getByLabel('What').fill('pregged')
       await page.locator('[data-audit="lot-for-work"]').waitFor({ timeout: 15_000 })
-      await page.locator('[data-audit="lot-for-work"]').selectOption({ label: LOT6G })
+      await selectBunch(page, '[data-audit="lot-for-work"]', LOT6G)
       await page.getByLabel('Where').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record work', exact: true }).click()
       await watchStates(page, 'Sent', 20_000, 'Pregged 12 head')
@@ -1008,7 +1024,7 @@ async function main() {
       await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
       const hintId = await page.locator('[data-audit="lot-for-move"]').getAttribute('aria-describedby')
       const moveHint = hintId ? (await page.locator(`#${hintId}`).innerText().catch(() => '')).replace(/\s+/g, ' ') : ''
-      await page.locator('[data-audit="lot-for-move"]').selectOption({ label: LOT6G })
+      await selectBunch(page, '[data-audit="lot-for-move"]', LOT6G)
       await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
       await watchStates(page, 'Sent', 20_000, 'Moved 5 head')
@@ -2070,8 +2086,8 @@ async function main() {
       const retryFound: string[] = []
       const backFailed: string[] = []
       for (const screen of SCREENS15) {
-        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-        await page.goto(screen, { waitUntil: 'domcontentloaded' })
+        await gotoTwice(page, `/today?fips=${HOME_FIPS}`)
+        await gotoTwice(page, screen)
         await page.waitForTimeout(800)
         const retry = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a[href], [role="button"]')]
           .map(b => (b.innerText || '').replace(/\s+/g, ' ').trim())
