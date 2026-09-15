@@ -683,7 +683,7 @@ async function main() {
       const lotRow = page.locator('[data-audit="lot-row"]').first()
       const lotSheet = await hold(page, lotRow)
       await sheet(page).fix.click().catch(() => {})
-      const lotFormOpen = await page.getByText('Fix this lot').waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+      const lotFormOpen = await page.getByText('Fix this bunch').waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
       record('13 (lot): hold → Fix opens the lot form', lotSheet && lotFormOpen, `sheet ${lotSheet} · form ${lotFormOpen}`)
       await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
       const lotSheet2 = await hold(page, page.locator('[data-audit="lot-row"]').first())
@@ -740,7 +740,7 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A/12.2: the sheet offers Work · Count · Ground, Count hay under Count; a feeding runs quantity → lot → place; "Not assigned to a lot"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a lot' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+      record('6A/12.2/14: the sheet offers Work · Count · Ground, Count cattle and Count hay under Count; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count cattle | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     }
 
     // ── Block 6A (9): the copy queue, as rendered ──
@@ -979,7 +979,7 @@ async function main() {
       await watchStates(page, 'Saved to the ranch', 20_000, 'Pregged 12 head')
       const { data: worked } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_worked').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${worked?.id}`, { waitUntil: 'domcontentloaded' })
-      const wLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), wWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const wLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), wWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6G: cattle work names a lot — stored, on the entry, and in the line', worked?.payload?.herd_lot_id === lot6g && wLot === LOT6G && /Pregged 12 head of SMOKE-DAILY-LOOP Pairs at .*West stack/.test(wWhat), `lot "${wLot}" · "${wWhat}"`)
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const lastWork = (await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-last-work"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -998,7 +998,7 @@ async function main() {
       await watchStates(page, 'Saved to the ranch', 20_000, 'Moved 5 head')
       const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
-      const mLot = (await page.locator('[data-audit="event-lot"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const mLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const head1 = await headBefore()
       record('6G: a move names a lot, says on the field that it never changes a head count, and the count stays', moved?.payload?.herd_lot_id === lot6g && mLot === LOT6G && /Moved 5 head of SMOKE-DAILY-LOOP Pairs to .*West stack/.test(mWhat) && /never changes a lot/.test(moveHint) && head1 === head0 && Number.isFinite(head0), `lot "${mLot}" · "${mWhat}" · head ${head0} → ${head1} · hint "${moveHint.slice(0, 60)}"`)
@@ -2078,8 +2078,8 @@ async function main() {
       const workTiles = await page.locator('[data-audit="record-picker"] [data-audit^="tile-"]:not([data-audit^="tile-place-"]):not([data-audit="tile-preg-check"])').count()
       const groundLinks = await page.locator('[data-audit^="tile-place-"]').count()
       const preg = await page.locator('[data-audit="tile-preg-check"]').count()
-      record('12.2: the pill opens Work · Count · Ground — six workings, Preg check under Count, three ways to mark ground',
-        groups.join('|') === 'Work|Count|Ground' && workTiles === 6 && preg === 1 && groundLinks === 3,
+      record('12.2/14: the pill opens Work · Count · Ground — seven workings with Count cattle and Count hay under Count, Preg check under Count, three ways to mark ground',
+        groups.join('|') === 'Work|Count|Ground' && workTiles === 7 && preg === 1 && groundLinks === 3,
         `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
       await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
 
