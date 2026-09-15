@@ -1259,7 +1259,7 @@ async function placesChecks() {
     record('user A (owner)', 'but the correction picker still names it, flagged retired', !!opt && opt.retired === true && !!opt.name, `${opt ? `"${opt.name.slice(-10)}" retired=${opt.retired}` : 'ABSENT — history would lose its where'}`)
     // Every other edit is refused while it is retired.
     const blocked = await api(A, `/api/places/${createdId}`, { name: `${PREFIX}while-retired` }, 'PATCH')
-    record('user A (owner)', 'a retired place refuses every edit but the way back', blocked.status === 404 && /retired while you had it open/.test(String(blocked.json.error)), `${blocked.status} · ${String(blocked.json.error).slice(0, 40)}`)
+    record('user A (owner)', 'a retired place refuses every edit but the way back', blocked.status === 404 && /taken off the list while you had it open/.test(String(blocked.json.error)), `${blocked.status} · ${String(blocked.json.error).slice(0, 40)}`)
     const back = await api(A, `/api/places/${createdId}`, { retired: false }, 'PATCH')
     const live = await readPlace(createdId)
     record('user A (owner)', 'PATCH { retired: false } puts it back and it is never gone', back.status === 200 && live!.retired_at === null, `${back.status}`)
