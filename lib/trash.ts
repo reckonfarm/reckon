@@ -106,11 +106,20 @@ export async function listTrash(supabase: SupabaseClient): Promise<TrashItem[]> 
       supabase.from('herd_lots').select('id, name, class, head_count, deleted_at').not('deleted_at', 'is', null),
       supabase.from('devices').select('id, name, deleted_at').not('deleted_at', 'is', null),
       supabase.from('events').select('id, type, ts, payload, deleted_at').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }).limit(200),
-      supabase.from('job_annotations').select('job_id, name, machine, dismissed_at, jobs(started_at)').not('dismissed_at', 'is', null).limit(200),
+      // No embedded join: job_annotations is keyed by the stable job id with
+      // NO foreign key (037's derived-layer rule), so PostgREST cannot embed
+      // jobs here. The start times are read in a second query below.
+      supabase.from('job_annotations').select('job_id, name, machine, dismissed_at').not('dismissed_at', 'is', null).limit(200),
       supabase.from('invitations').select('id, invited_email, revoked_at').not('revoked_at', 'is', null).is('accepted_at', null).limit(100),
     ])
-    for (const j of (jobs.data ?? []) as { job_id: string; name: string | null; machine: string | null; dismissed_at: string; jobs: { started_at: string } | { started_at: string }[] | null }[]) {
-      const started = Array.isArray(j.jobs) ? j.jobs[0]?.started_at : j.jobs?.started_at
+    const jobRows = (jobs.data ?? []) as { job_id: string; name: string | null; machine: string | null; dismissed_at: string }[]
+    const startedAt = new Map<string, string>()
+    if (jobRows.length > 0) {
+      const { data: js } = await supabase.from('jobs').select('id, started_at').in('id', jobRows.map(j => j.job_id))
+      for (const j of (js ?? []) as { id: string; started_at: string }[]) startedAt.set(j.id, j.started_at)
+    }
+    for (const j of jobRows) {
+      const started = startedAt.get(j.job_id)
       out.push({ table: 'jobs', id: j.job_id, label: `Machine session · ${j.name ?? j.machine ?? 'unnamed'}${started ? ` · ${started.slice(0, 10)}` : ''}`, deletedAt: j.dismissed_at, goneOn: gone(j.dismissed_at) })
     }
     for (const i of (invites.data ?? []) as { id: string; invited_email: string; revoked_at: string }[]) {
