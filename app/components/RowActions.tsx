@@ -11,7 +11,10 @@ import { useRouter } from 'next/navigation'
 // a row, it does not replace its link.
 //
 // Desktop: RIGHT-CLICK opens the same sheet, and a ⋯ appears at the row's
-// right edge on hover for people who never right-click.
+// right edge on hover for people who never right-click. Its accessible name
+// is plain "Actions" — the row's own words are the sheet's heading, and a
+// label that quoted them ("Actions for fed 1 bale to…") answered to every
+// form field called "To" on the same page.
 //
 // BLOCK 13 — three rules this component now holds for every row:
 //
@@ -131,7 +134,8 @@ export default function RowActions({ links, children, className = '' }: { links:
       <button
         type="button"
         onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}
-        aria-label={`Actions for ${links.label}`}
+        aria-label="Actions"
+        title={`Actions for ${links.label}`}
         data-audit="row-more"
         className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-secondary-ink hover:bg-forest-green/5 md:group-hover:inline-flex"
       >

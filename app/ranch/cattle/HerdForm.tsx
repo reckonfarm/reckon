@@ -62,6 +62,12 @@ function formatMonth(ym: string): string {
 export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, { ts: string; bales: number | null; what?: string | null; head?: number | null; eventId: string }>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
+  // Block 13: the server's list is the truth after a refresh — an Undo puts a
+  // bunch back, router.refresh() re-renders the page with it, and this form
+  // must show it. Adjusting state from a changed prop DURING render is the
+  // React pattern for this (no effect, no extra commit).
+  const [seenLots, setSeenLots] = useState(initialLots)
+  if (initialLots !== seenLots) { setSeenLots(initialLots); if (initialLots) setLots(initialLots) }
   const [loading, setLoading] = useState(!initialLots)
   const [dPurpose, setDPurpose] = useState<LotPurpose | ''>('')
   const [loadError, setLoadError] = useState('')
