@@ -2690,7 +2690,7 @@ async function main() {
       await page.locator('[data-audit="sign-out"]').first().click().catch(() => {})
       await page.waitForTimeout(2_500)
       const blockTxt = (await page.locator('[data-audit="signout-block"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('7.1: offline, sign-out is blocked by an in-app sheet naming the count', /haven\u2019t reached the ranch yet|hasn\u2019t reached the ranch yet/.test(blockTxt) && /^\d+ /.test(blockTxt), blockTxt.slice(0, 110))
+      record('7.1: offline, sign-out is blocked by an in-app sheet naming the count', /waiting for signal|couldn\u2019t send|couldn't send/i.test(blockTxt) && /^\d+ /.test(blockTxt), blockTxt.slice(0, 110))
       record('7.1: the block offers Stay signed in and a discard that shows the count', (await page.locator('[data-audit="signout-stay"]').count()) === 1 && /discard/i.test(await page.locator('[data-audit="signout-discard"]').innerText().catch(() => '')), (await page.locator('[data-audit="signout-discard"]').innerText().catch(() => '')).replace(/\s+/g, ' '))
       record('7.1: staying signed in keeps the session and the entry', await page.locator('[data-audit="signout-stay"]').click().then(async () => { await page.waitForTimeout(1_200); return page.url().includes('/account') }).catch(() => false), page.url().replace(BASE, ''))
       // Back online, the stay path syncs it rather than stranding it.
