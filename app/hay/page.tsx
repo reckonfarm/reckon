@@ -500,7 +500,7 @@ export default function HayPage() {
       setShowForm(false)
       await fetchListings()
     } catch {
-      setFormError('Network problem — your changes were not saved. Try again.')
+      setFormError('No signal — not saved.')
     } finally {
       setSubmitting(false)
     }
@@ -525,7 +525,7 @@ export default function HayPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildPayload()),
         }).catch(() => null)
-        if (!res) { setFormError('Network problem — listing not posted. Try again.'); return }
+        if (!res) { setFormError('No signal — not posted.'); return }
         if (!res.ok) {
           const json = await res.json().catch(() => ({}))
           setFormError((json as { error?: string }).error ?? 'Failed to post listing.')

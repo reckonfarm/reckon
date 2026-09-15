@@ -55,7 +55,7 @@ export async function runUndo(): Promise<boolean> {
   if (!item || item.state !== 'shown') return false
   current = { ...item, state: 'undoing' }; emit()
   let r: Awaited<ReturnType<UndoItem['undo']>>
-  try { r = await item.undo() } catch { r = { ok: false, error: 'No connection — it is still in the trash. Try again when you have signal.' } }
+  try { r = await item.undo() } catch { r = { ok: false, error: 'No signal — it is still in the trash.' } }
   if (current?.id !== item.id) return r.ok
   if (r.ok) {
     current = { ...item, state: 'undone' }; emit()
@@ -96,7 +96,7 @@ export async function deleteWithUndo(args: {
   after?: string | null
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   let r: Awaited<ReturnType<typeof args.run>>
-  try { r = await args.run() } catch { r = { ok: false, error: 'No connection — nothing was deleted. Try again when you have signal.' } }
+  try { r = await args.run() } catch { r = { ok: false, error: 'No signal — nothing was deleted.' } }
   if (r.ok) offerUndo(args.label, args.undo, args.after)
   return r
 }

@@ -13,8 +13,8 @@
 //   invariant — signed in; /home lands on the home county with the Today
 //   stack; /dashboard renders for 30069 and 30027; county search responds;
 //   a feed event saves through the Log it sheet.
-//   2A — the four states show in order (Saved on this phone → Waiting to
-//   sync → Saved to the ranch); exactly one row, under the client-minted id;
+//   2A — the four states show in order (Saved → Waiting to
+//   sync → Sent); exactly one row, under the client-minted id;
 //   airplane mode: saved on the phone, waits, syncs on reconnect; a replay
 //   of the same body is answered duplicate with no second row; force-quit
 //   mid-save (page killed while offline) → reopened → exactly one row;
@@ -170,7 +170,7 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
 
 // Watch the SaveStatus strip and collect the distinct sequence of state
 // labels it shows, until `until` appears or the time runs out.
-const STATES = ['Saved on this phone', 'Waiting to send', 'Saved to the ranch', "Couldn't save — try again"]
+const STATES = ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"]
 let lastWatch: string[] = []   // raw strip texts seen by the last watch, for FAIL details
 async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
@@ -326,8 +326,8 @@ async function main() {
     // ── 2A: online save, four states in order, one row under the client id ──
     await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     await logFeed(page, 4)
-    const seq1 = await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 4 bales')
-    record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved on this phone', 'Waiting to send', 'Saved to the ranch']), seq1.join(' → '))
+    const seq1 = await watchStates(page, 'Sent', 20_000, 'Fed 4 bales')
+    record('online save shows Saved → Waiting → Synced in order', JSON.stringify(seq1) === JSON.stringify(['Saved', 'Waiting for signal', 'Sent']), seq1.join(' → '))
     // Block 11 (11.12): the receipt leads with the balance and keeps the
     // arithmetic one tap away, so this reads textContent — a closed <details>
     // is the shape under test. "N bales recorded" no longer restates the label.
@@ -384,19 +384,19 @@ async function main() {
     await page.waitForTimeout(2500)   // let the post-sync refresh settle
     await ctx.setOffline(true)
     await logFeed(page, 3)
-    const seqOff = await watchStates(page, 'Saved to the ranch', 4_000, 'Fed 3 bales')   // must NOT reach synced
-    const stillLocal = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Saved on this phone')
-    record('airplane mode: Saved on this phone, and stays there', seqOff[0] === 'Saved on this phone' && !seqOff.includes('Saved to the ranch') && stillLocal, seqOff.join(' → ') + rawSeen())
+    const seqOff = await watchStates(page, 'Sent', 4_000, 'Fed 3 bales')   // must NOT reach synced
+    const stillLocal = (await page.locator('[role="status"]').first().innerText().catch(() => '')).includes('Saved')
+    record('airplane mode: Saved, and stays there', seqOff[0] === 'Saved' && !seqOff.includes('Sent') && stillLocal, seqOff.join(' → ') + rawSeen())
     await ctx.setOffline(false)
-    const seqOn = await watchStates(page, 'Saved to the ranch', 45_000, 'Fed 3 bales')
+    const seqOn = await watchStates(page, 'Sent', 45_000, 'Fed 3 bales')
     const ob2 = await outbox(page)
     const id2 = ob2.find(i => (i.body as { bales?: number }).bales === 3)?.id ?? ''
-    record('reconnect → Saved to the ranch, exactly one row', seqOn.includes('Saved to the ranch') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}` + rawSeen())
+    record('reconnect → Sent, exactly one row', seqOn.includes('Sent') && !!id2 && (await rowsFor(id2)) === 1 && (await feedRows()) === 2, `${seqOn.join(' → ')} feeds=${await feedRows()}` + rawSeen())
 
     // ── force-quit mid-save: kill the page while offline, reopen ──
     await ctx.setOffline(true)
     await logFeed(page, 5)
-    await watchStates(page, 'Saved on this phone', 8_000, 'Fed 5 bales')
+    await watchStates(page, 'Saved', 8_000, 'Fed 5 bales')
     const ob3 = await outbox(page)
     const id3 = ob3.find(i => (i.body as { bales?: number }).bales === 5)?.id ?? ''
     await page.close()                               // the "force quit"
@@ -404,13 +404,13 @@ async function main() {
     page = await ctx.newPage()
     page.on('dialog', d => void d.accept())
     await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    const seqFq = await watchStates(page, 'Saved to the ranch', 45_000, 'Fed 5 bales')
-    record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Saved to the ranch') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
+    const seqFq = await watchStates(page, 'Sent', 45_000, 'Fed 5 bales')
+    record('force-quit mid-save → reopen → exactly one row', !!id3 && seqFq.includes('Sent') && (await rowsFor(id3)) === 1 && (await feedRows()) === 3, `${seqFq.join(' → ')} feeds=${await feedRows()}`)
 
     // ── double-tap Save → one row ──
     const before = await feedRows()
     await logFeed(page, 6, { doubleTap: true })
-    await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 6 bales')
+    await watchStates(page, 'Sent', 20_000, 'Fed 6 bales')
     await page.waitForTimeout(1000)
     record('double-tap Save → one row', (await feedRows()) === before + 1, `feeds ${before} → ${await feedRows()}`)
 
@@ -480,7 +480,7 @@ async function main() {
     // ── 2F: a feeding AT the place, then the place page answers ──
     const placeName = `${PREFIX} West stack`
     await logFeed(page, 2, { place: placeName })
-    await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
+    await watchStates(page, 'Sent', 20_000, 'Fed 2 bales')
     await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
     const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
     record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
@@ -511,8 +511,8 @@ async function main() {
     await same.click()                                                   // tap 2
     const undo = page.getByRole('button', { name: /^Undo/ })
     const sawUndo = await undo.waitFor({ timeout: 5_000 }).then(() => true).catch(() => false)
-    const seqRepeat = await watchStates(page, 'Saved to the ranch', 30_000, 'Fed 2 bales')
-    record('2B: Same today → Saved on this phone with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved on this phone' && seqRepeat.includes('Saved to the ranch') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
+    const seqRepeat = await watchStates(page, 'Sent', 30_000, 'Fed 2 bales')
+    record('2B: Same today → Saved with Undo, then Synced — one row', sawUndo && seqRepeat[0] === 'Saved' && seqRepeat.includes('Sent') && (await feedRows()) === beforeRepeat + 1, `${seqRepeat.join(' → ')} feeds ${beforeRepeat} → ${await feedRows()}`)
     // Undo within the window: nothing leaves the phone.
     const beforeUndo = await feedRows()
     await page.getByRole('button', { name: /^Record \d+ bales? now$/ }).click()
@@ -544,9 +544,9 @@ async function main() {
     record('4A: the hand sees the ranch\'s lots in the Fed-to control', fedToShown && lotOptions.includes(LOT_NAME), fedToShown ? lotOptions.join(' | ') : 'no Fed-to control')
     await pageB.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
     await logFeed(pageB, 1, { lot: fedToShown ? LOT_NAME : undefined })
-    const seqB = await watchStates(pageB, 'Saved to the ranch', 20_000, 'Fed 1 bale')
+    const seqB = await watchStates(pageB, 'Sent', 20_000, 'Fed 1 bale')
     const afterB = (await admin.from('events').select('id', { count: 'exact', head: true }).eq('user_id', userIdB).eq('type', 'hay_fed')).count ?? 0
-    record('no home county: a feed event saves and syncs', seqB.includes('Saved to the ranch') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
+    record('no home county: a feed event saves and syncs', seqB.includes('Sent') && afterB === beforeB + 1, `${seqB.join(' → ')} rows ${beforeB} → ${afterB}`)
 
     // After a feed syncs the ledger page re-renders and its "visit" ping re-arms (4 s dwell),
     // so a ping can be IN FLIGHT when this fixture reset runs and land after it (seen
@@ -586,7 +586,7 @@ async function main() {
         await pageB.locator('[data-audit="event-detail"]').waitFor({ timeout: 30_000 }).catch(() => {})
         const d = async (k: string) => (await pageB.locator(`[data-audit="event-${k}"]`).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         const who = await d('who'), what = await d('what'), work = await d('work-time'), rec = await d('recorded'), sync = await d('saved'), place = await d('place')
-        record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Saved to the ranch/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
+        record('5A: the event states actor + role, what, place, work time, recording time, sync state', /Smoke A/.test(who) && /owner/.test(who) && /Fed 2 bales/.test(what) && /West stack/.test(place) && /\d{4}/.test(work) && /\d{4}/.test(rec) && /Sent/.test(sync), `${who} · ${what} · ${place} · work ${work} · recorded ${rec} · ${sync}`)
         await pageB.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
       }
       // The place's entry count is a door into the place's record (gate 2).
@@ -740,7 +740,7 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A/12.2/14: the sheet offers Work · Count · Ground, Count cattle and Count hay under Count; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count cattle | Count hay' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+      record('6A/12.2/14: the sheet offers Work · Count · Ground, Count cattle and Count hay under Count; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count cattle | Count hay | Preg check' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     }
 
     // ── Block 6A (9): the copy queue, as rendered ──
@@ -976,7 +976,7 @@ async function main() {
       await page.locator('[data-audit="lot-for-work"]').selectOption({ label: LOT6G })
       await page.getByLabel('Where').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record work', exact: true }).click()
-      await watchStates(page, 'Saved to the ranch', 20_000, 'Pregged 12 head')
+      await watchStates(page, 'Sent', 20_000, 'Pregged 12 head')
       const { data: worked } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_worked').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${worked?.id}`, { waitUntil: 'domcontentloaded' })
       const wLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), wWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -995,7 +995,7 @@ async function main() {
       await page.locator('[data-audit="lot-for-move"]').selectOption({ label: LOT6G })
       await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
-      await watchStates(page, 'Saved to the ranch', 20_000, 'Moved 5 head')
+      await watchStates(page, 'Sent', 20_000, 'Moved 5 head')
       const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
       const mLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -1016,13 +1016,13 @@ async function main() {
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 6)
-        const seq6 = await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 6 bales')
+        const seq6 = await watchStates(page, 'Sent', 20_000, 'Fed 6 bales')
         // The answer lines follow the sync by a beat; read the strip until they are there (≤ 8 s).
         let strip6 = ''
         for (let i = 0; i < 32 && !/bales? on hand/.test(strip6); i++) { strip6 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip6)) await page.waitForTimeout(250) }
         const onHand6 = parseInt((strip6.match(/(\d+) bales? on hand/) ?? ['', 'NaN'])[1], 10)
         const { data: six } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '6').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
-        record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Saved to the ranch') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
+        record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Sent') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
         if (six) {
           await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
           await page.locator('[data-audit="correct-entry"]').click()
@@ -1058,7 +1058,7 @@ async function main() {
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_000)
         await logFeed(page, 1)
-        await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 1 bale')
+        await watchStates(page, 'Sent', 20_000, 'Fed 1 bale')
         let strip = ''
         // textContent, not innerText: the equation sits behind "How that adds up" (11.12).
         for (let i = 0; i < 32 && !/bales? on hand/.test(strip); i++) { strip = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/bales? on hand/.test(strip)) await page.waitForTimeout(250) }
@@ -1532,8 +1532,8 @@ async function main() {
       await logFeed(page, 2)
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
-      for (let i = 0; i < 80 && !/Saved to the ranch/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Saved to the ranch/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Saved to the ranch', /Saved to the ranch/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      for (let i = 0; i < 80 && !/Sent/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Sent/.test(stripText)) await page.waitForTimeout(250) }
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
       for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
       record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
@@ -1708,144 +1708,147 @@ async function main() {
         /May 15/.test(again) && again === expected, `"${again.slice(0, 80)}"`)
     }
 
-    // ── Block 10: preg check at the chute, driven end to end ────────────────
-    // Block 14: the check now rides on 069's function (p_detail, no split).
-    // Without 069 the app answers 503 and holds the entry; these checks would
-    // wait forever, so they skip and say why.
+    // ── Block 10 → Block 15: the preg check, in the record sheet, with no service ──
+    // The chute is a sheet now. Every check here runs the way PK will: Record,
+    // Preg check, the bunch, −/+ for checked and open, Save at the bottom —
+    // OFFLINE — then signal returns and the ranch gets one record that made
+    // two bunches. Without 070 the function refuses the split; these skip and
+    // say why.
     if (!(await probe069(ranchId, userId))) {
-      skip('10/14: preg check at the chute', 'migration 069 not applied on this database')
-    } else
-    // The first screen in the app whose save MOVES ANOTHER TABLE. So this does
-    // not stop at "the entry appeared": it taps the working out one animal at
-    // a time the way PK will, then reads the head counts back off the Cattle
-    // page and checks the ledger actually moved them.
-    //
-    // Tally mode is the default and the one being driven, because it is the
-    // one that will be used at a chute. A mis-tap and an Undo are part of the
-    // path, not an edge case.
-    {
+      skip('10/15: preg check in the sheet', 'migration 069 not applied on this database')
+    } else {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       const headOf = async (id: string) => {
         const { data } = await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()
         return (data as { head_count?: number } | null)?.head_count ?? null
       }
-      // THE SEEDED LOT IS ARCHIVED BY 6A, two thousand lines above this — which
-      // is why the first two runs of this block opened on "Pairs" and measured
-      // the wrong cattle. The app was right both times. A block that moves head
-      // counts seeds its own bunch and does not borrow one whose life it does
-      // not control.
       const chuteLotId = randomUUID()
-      const CHUTE_LOT = `${PREFIX} Chute cows`
-      const { error: cErr } = await admin.from('herd_lots').insert({ id: chuteLotId, ranch_id: ranchId, class: 'cows', name: CHUTE_LOT, head_count: 60, avg_weight: 1250, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      const CHUTE_LOT = `${PREFIX} Chute heifers`
+      const { error: cErr } = await admin.from('herd_lots').insert({ id: chuteLotId, ranch_id: ranchId, class: 'heifers', name: CHUTE_LOT, head_count: 60, avg_weight: 900, weight_unit: 'lb', created_by: userId, updated_by: userId })
       if (cErr) throw new Error(`chute lot: ${cErr.message}`)
       const before = await headOf(chuteLotId)
-      // Every OTHER live bunch is a control: none of them may move.
-      const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', chuteLotId).is('retired_at', null)
+      const { data: otherLots } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).neq('id', chuteLotId).is('retired_at', null).is('deleted_at', null)
       const controls = ((otherLots ?? []) as { id: string; head_count: number }[])
 
-      await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="preg-check"], [data-audit="preg-pick-lot"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
+      // Open the app with signal once (the bunch list lands on the phone), then go dark.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="tile-preg-check"]').waitFor({ timeout: 15_000 })
+      await page.locator('[data-audit="tile-preg-check"]').click()
+      await page.locator(`[data-audit="preg-lot-choice"][data-lot="${chuteLotId}"]`).waitFor({ timeout: 15_000 })
+      await page.getByRole('button', { name: 'Cancel' }).click()
+      await page.locator('[data-audit="preg-bunch"]').waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {})
+      await page.context().setOffline(true)
 
-      // ADDRESS THE BUNCH, do not take the first one offered. 6G seeds a
-      // second lot before this runs, so `.first()` picked "SMOKE-DAILY-LOOP
-      // Pairs" and this whole block then measured the wrong cattle — the app
-      // was right and the check was wrong, which is the failure mode the
-      // post-Block-10 suite audit exists for. The screen emits data-lot for
-      // exactly this reason.
-      let choices = await page.locator('[data-audit="preg-lot-choice"]').count()
-      if (choices === 0 && !(await text('[data-audit="preg-source"]')).startsWith(CHUTE_LOT) && (await page.locator('[data-audit="preg-change-lot"]').count()) > 0) {
-        // Opened on a different bunch — take the path a person would.
-        await page.locator('[data-audit="preg-change-lot"]').click()
-        choices = await page.locator('[data-audit="preg-lot-choice"]').count()
-      }
-      if (choices > 0) await page.locator(`[data-audit="preg-lot-choice"][data-lot="${chuteLotId}"]`).click()
-      const source = await text('[data-audit="preg-source"]')
-      // Evidence either way: what the database holds live vs what the page offered.
-      const { data: liveLots } = await admin.from('herd_lots').select('name, head_count').eq('ranch_id', ranchId).is('retired_at', null)
-      const liveNames = ((liveLots ?? []) as { name: string; head_count: number }[]).map(l => `${l.name} ${l.head_count}`).join(', ')
-      record('10: the chute screen opens on the bunch it was asked for, naming it and its head count',
-        source.startsWith(CHUTE_LOT) && new RegExp(`${before} head`).test(source),
-        `${choices} bunch(es) offered · "${source.slice(0, 60)}" · live in db: [${liveNames}]`)
-
-      // Tally: 9 bred, 3 open — with a mis-tap and an Undo in the middle.
-      const mode = await page.locator('[data-audit="preg-check"]').first().getAttribute('data-mode')
-      for (let i = 0; i < 9; i++) await page.locator('[data-audit="preg-tap-bred"]').click()
-      await page.locator('[data-audit="preg-tap-open"]').click()
-      await page.locator('[data-audit="preg-tap-open"]').click()
-      await page.locator('[data-audit="preg-tap-open"]').click()
-      await page.locator('[data-audit="preg-tap-bred"]').click()          // the mis-tap
-      const undoLabel = await text('[data-audit="preg-undo"]')
-      await page.locator('[data-audit="preg-undo"]').click()              // take it back
-      const counted = await text('[data-audit="preg-counted-value"]')
-      const bredV = await text('[data-audit="preg-bred-value"]')
-      const openV = await text('[data-audit="preg-open-value"]')
-      record('10: tapping builds the count, and Undo names what it takes back and takes back exactly that',
-        mode === 'tally' && /bred/i.test(undoLabel) && counted === '12' && bredV === '9' && openV === '3',
-        `mode ${mode} · undo "${undoLabel}" · ${counted} counted · ${bredV} bred · ${openV} open`)
-
+      // Ruling 10: the taps, counted. 1 Record · 2 Preg check · 3 the bunch · then −/+ · 4 Save.
+      let taps = 0
+      await recordControl(page).click(); taps++
+      await page.locator('[data-audit="tile-preg-check"]').click(); taps++
+      const sheetUp = await page.locator('[data-audit="preg-bunch"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      await page.locator(`[data-audit="preg-lot-choice"][data-lot="${chuteLotId}"]`).click(); taps++
+      // 12 checked, 3 open → 9 bred. Twelve presses and three presses.
+      for (let i = 0; i < 12; i++) await page.locator('[data-audit="preg-checked-plus"]').click()
+      for (let i = 0; i < 3; i++) await page.locator('[data-audit="preg-open-plus"]').click()
+      const presses = 15
+      const bredShown = await page.locator('[data-audit="preg-bred-input"]').inputValue().catch(() => '')
       const equation = await text('[data-audit="preg-equation"]')
-      const reconciles = await page.locator('[data-audit="preg-equation"]').first().getAttribute('data-reconciles')
-      record('10: the arithmetic is on screen and adds up before Record it is ever pressed',
-        reconciles === 'true' && /9 bred \+ 3 open = 12 counted/.test(equation), `"${equation.slice(0, 70)}"`)
+      const splitOn = await page.locator('[data-audit="preg-split-toggle"]').isChecked().catch(() => false)
+      const splitName = await page.locator('[data-audit="preg-split-name"]').inputValue().catch(() => '')
+      const splitClass = await page.locator('[data-audit="preg-split-class"] [aria-checked="true"]').innerText().catch(() => '')
+      const saveBtn = page.locator('[data-audit="record-save"]')
+      const saveLabel = (await saveBtn.innerText().catch(() => '')).trim()
+      const saveBox = await saveBtn.boundingBox().catch(() => null)
+      const vp = page.viewportSize()
+      record('15 (ruling 10): the chute opens as a sheet with no service — bunch, −/+ for checked and open, bred worked out, the split on by default with its name and class shown, Save full width at the bottom saying what it does',
+        sheetUp && bredShown === '9' && /9 bred \+ 3 open = 12 checked/.test(equation) && splitOn && /^Open heifers /.test(splitName) && /Heifers/.test(splitClass) && saveLabel === 'Record preg check' && !!saveBox && !!vp && saveBox.width > vp.width * 0.8 && saveBox.y + saveBox.height <= vp.height + 2,
+        `sheet ${sheetUp} · bred "${bredShown}" · "${equation}" · split ${splitOn} "${splitName}" ${splitClass} · save "${saveLabel}" ${saveBox ? `${Math.round(saveBox.width)}px wide, bottom at ${Math.round(saveBox.y + saveBox.height)} of ${vp?.height}` : 'NO BOX'}`)
+      await saveBtn.click(); taps++
+      record('15 (ruling 10): a preg check is four taps plus the presses — under five', taps <= 5, `${taps} taps + ${presses} presses`)
 
-      // The chute count disagrees with the stored 60 — it must say so and NOT block.
-      const disc = await text('[data-audit="preg-discrepancy"]')
-      const saveDisabled = await page.locator('[data-audit="preg-save"]').isDisabled()
-      record('10: a chute count that disagrees with the stored number is stated, not refused',
-        new RegExp(`said ${before}`).test(disc) && /Going with the 12 you counted/.test(disc) && !saveDisabled,
-        `"${disc.slice(0, 80)}" · save ${saveDisabled ? 'DISABLED' : 'enabled'}`)
+      // Saved on the phone, waiting for signal; nothing on the ranch yet.
+      const seqOff = await watchStates(page, 'Sent', 4_000, 'Preg check')
+      const waitingLine = await text('[data-audit="waiting-line"]')
+      const retryButtons = await page.locator('button:has-text("Try again"), button:has-text("Send now"), button:has-text("Send it now"), [data-audit="needs-attention-sync"]').count()
+      const headDark = await headOf(chuteLotId)
+      record('15 (rulings 1, 2, 4, 5): offline, the check is Saved then Waiting for signal, one line says how many are waiting, no retry button exists, and the ranch has not moved',
+        seqOff[0] === 'Saved' && !seqOff.includes('Sent') && /1 waiting for signal/.test(waitingLine) && retryButtons === 0 && headDark === before,
+        `${seqOff.join(' → ')} · line "${waitingLine}" · retry buttons ${retryButtons} · head ${headDark}` + rawSeen())
 
-      // Block 14: no destination on the check. The opens stay on the record of
-      // the bunch checked; the split is offered after.
-      const noDest = (await page.locator('[data-audit="preg-destination"], [data-audit="preg-dest-name"]').count()) === 0
-      const opensNote = await text('[data-audit="preg-opens-note"]')
-      await page.locator('[data-audit="preg-save"]').click()
-      await watchStates(page, 'Saved to the ranch', 30_000, 'Preg check')
+      // Force-quit while dark, reopen while dark: the shell opens the app.
+      const ob = await outbox(page)
+      const checkId = ob.find(i => (i.body as { action?: string }).action === 'preg_check')?.id ?? ''
+      await page.close()
+      page = await ctx.newPage()
+      page.on('dialog', d => void d.accept())
+      const reopened = await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' }).then(r => r?.status() ?? 0).catch(() => 0)
+      const shellHasApp = await page.locator('[data-audit="record-button"], [data-audit="record-fab"], [data-audit="waiting-line"]').first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      record('15 (ruling 1): force-quit and reopened with no service — the app shell opens, and the check is still waiting on the phone',
+        shellHasApp && ((await outbox(page)).some(i => i.id === checkId && i.state !== 'synced')),
+        `reopen ${reopened} · app ${shellHasApp} · still waiting ${(await outbox(page)).some(i => i.id === checkId && i.state !== 'synced')}`)
 
-      // THE CHECK RECORDED THE COUNTS, and moved nothing but the bunch to its count.
+      // Signal returns: it sends itself. One record; two bunches.
+      await page.context().setOffline(false)
+      const seqOn = await watchStates(page, 'Sent', 60_000, 'Preg check')
       const after = await headOf(chuteLotId)
-      const { data: checkRow } = await admin.from('events').select('id, payload').eq('ranch_id', ranchId).eq('type', 'group_action').eq('payload->>action', 'preg_check').eq('payload->>source_lot_id', chuteLotId).order('ts', { ascending: false }).limit(1).maybeSingle()
-      const cp = (checkRow as { payload?: Record<string, unknown> } | null)?.payload ?? {}
-      const { count: otherBunches } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).like('name', 'SMOKE opens%')
-      record('14: the preg check records lot, counted, bred and open on the bunch checked — it ends at what was counted, and no bunch is made',
-        noDest && /stay in/.test(opensNote) && after === 12 && cp.counted === 12 && cp.bred === 9 && cp.open === 3 && (otherBunches ?? 0) === 0,
-        `no destination ${noDest} · "${opensNote.slice(0, 50)}" · ${CHUTE_LOT} ${before} → ${after} (expected 12) · row counted ${String(cp.counted)} bred ${String(cp.bred)} open ${String(cp.open)} · bunches made ${otherBunches ?? 0}`)
-
-      // The follow-up: one tap makes a bunch from the opens, class asked, defaulted from the source (cows → old cows).
-      const offer = await page.locator('[data-audit="preg-sort-open"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
-      const offerText = await text('[data-audit="preg-sort-open"]')
-      await page.locator('[data-audit="preg-sort-open"]').click().catch(() => {})
-      const defaultClass = await page.locator('[data-audit="preg-sort-class"] [aria-checked="true"]').innerText().catch(() => '')
-      const destName = `SMOKE opens ${Date.now().toString().slice(-6)}`
-      await page.locator('[data-audit="preg-sort-name"]').fill(destName)
-      await page.locator('[data-audit="preg-sort-save"]').click()
-      await watchStates(page, 'Saved to the ranch', 30_000, 'Sorted')
-      const afterSort = await headOf(chuteLotId)
-      const { data: madeRows } = await admin.from('herd_lots').select('id, head_count, class, ranch_id').eq('name', destName)
-      const made = ((madeRows ?? []) as { id: string; head_count: number; class: string; ranch_id: string }[])[0] ?? null
-      record('14: "Make a bunch from the 3 opens?" is offered after the check; the class defaults to old cows for a cow bunch; one tap makes it as its own working',
-        offer && /Make a bunch from the 3 opens/.test(offerText) && /Old cows/.test(defaultClass) && afterSort === 9 && !!made && made.head_count === 3 && made.class === 'old_cows' && made.ranch_id === ranchId,
-        `offer ${offer} "${offerText}" · default class "${defaultClass}" · ${CHUTE_LOT} 12 → ${afterSort} (expected 9) · "${destName}" ${made ? `${made.head_count} head, ${made.class}` : 'NOT CREATED'}`)
-
-      // No other bunch on the ranch moved — a working touches the bunch it
-      // names and nothing else.
+      const { data: row } = await admin.from('events').select('payload, deleted_at').eq('id', checkId).maybeSingle()
+      const cp = (row as { payload?: Record<string, unknown> } | null)?.payload ?? {}
+      const results = (cp.results ?? []) as { lot_id?: string; name?: string; head?: number; created?: boolean; class?: string }[]
+      const madeId = results[0]?.lot_id ?? ''
+      const { data: made } = madeId ? await admin.from('herd_lots').select('id, head_count, class, name, deleted_at').eq('id', madeId).maybeSingle() : { data: null }
+      const m = made as { head_count: number; class: string; name: string; deleted_at: string | null } | null
+      record('15 (rulings 1, 3): signal back — it sends on its own; ONE record; the checked bunch keeps the bred (9) and a new bunch of heifers holds the 3 opens',
+        seqOn.includes('Sent') && after === 9 && cp.counted === 12 && cp.bred === 9 && cp.open === 3 && results.length === 1 && !!m && m.head_count === 3 && m.class === 'heifers' && /^Open heifers /.test(m.name) && m.deleted_at === null,
+        `${seqOn.join(' → ')} · ${CHUTE_LOT} ${before} → ${after} · row counted ${String(cp.counted)} bred ${String(cp.bred)} open ${String(cp.open)} · new bunch ${m ? `${m.head_count} ${m.class} "${m.name}"` : 'MISSING'}`)
       const moved: string[] = []
       for (const c of controls) { const h = await headOf(c.id); if (h !== c.head_count) moved.push(`${c.id.slice(0, 8)} ${c.head_count} → ${h}`) }
-      record('10: no other bunch moved — a working touches the bunch it names and nothing else',
-        moved.length === 0, moved.length ? moved.join(' · ') : `${controls.length} other bunch(es) unmoved`)
+      record('10: no other bunch moved — a working touches the bunch it names and nothing else', moved.length === 0, moved.length ? moved.join(' · ') : `${controls.length} other bunch(es) unmoved`)
 
-      // And it is in the record, in one line, like everything else.
-      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="activity-day"], [data-audit="ranch-tile"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
-      const record10 = ((await page.locator('body').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
-      record('10/14: the check and the sort are both in the Activity record — what was counted, and where the opens went',
-        new RegExp(`Preg check[^.]*12 counted`).test(record10) && record10.includes(destName),
-        `${/Preg check/.test(record10) ? 'row present' : 'NO ROW'} · names the bunch ${record10.includes(destName)}`)
+      // The same record landing twice counts once: replay the phone's own body.
+      const replay = await page.request.post('/api/log', { data: ob.find(i => i.id === checkId)?.body ?? {} })
+      const rj = await replay.json().catch(() => ({})) as { duplicate?: boolean }
+      const { count: bunchesNamed } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).like('name', 'Open heifers %').is('deleted_at', null)
+      record('15: the same preg check landing twice counts once — duplicate, head still 9, one new bunch', replay.status() === 200 && rj.duplicate === true && (await headOf(chuteLotId)) === 9 && (bunchesNamed ?? 0) === 1,
+        `${replay.status()} duplicate=${String(rj.duplicate)} · head ${await headOf(chuteLotId)} · bunches ${bunchesNamed ?? 0}`)
 
-      // Cleanup: the smoke ranch is torn down wholesale, but the destination
-      // lot is created by the FUNCTION, not the fixture, so it is named here
-      // to keep teardown's promise that nothing SMOKE-* survives.
-      if (made) await admin.from('herd_lots').delete().eq('id', made.id)
+      // ONE Undo takes it all back: heads back, the new bunch gone; Undo again brings it back.
+      await page.locator('[data-audit="take-back"]').first().click().catch(() => {})
+      await undoStrip(page).waitFor({ timeout: 10_000 }).catch(() => {})
+      await page.waitForTimeout(1_500)
+      const headUndone = await headOf(chuteLotId)
+      const { data: madeAfter } = await admin.from('herd_lots').select('deleted_at').eq('id', madeId).maybeSingle()
+      const { data: rowAfter } = await admin.from('events').select('deleted_at').eq('id', checkId).maybeSingle()
+      record('15 (ruling 3): Undo this — the working goes to the trash, the checked bunch is back at 60, and the bunch it made goes with it',
+        headUndone === before && !!(madeAfter as { deleted_at?: string | null } | null)?.deleted_at && !!(rowAfter as { deleted_at?: string | null } | null)?.deleted_at,
+        `head ${headUndone} (was ${before}) · new bunch trashed ${!!(madeAfter as { deleted_at?: string | null } | null)?.deleted_at} · record trashed ${!!(rowAfter as { deleted_at?: string | null } | null)?.deleted_at}`)
+      const restored = await pressUndo(page)
+      await page.waitForTimeout(1_500)
+      const { data: madeBack } = await admin.from('herd_lots').select('deleted_at, head_count').eq('id', madeId).maybeSingle()
+      record('15 (ruling 3): and the strip\'s Undo puts the working back — heads as the check left them, the new bunch live again',
+        restored && (await headOf(chuteLotId)) === 9 && (madeBack as { deleted_at?: string | null; head_count?: number } | null)?.deleted_at === null && (madeBack as { head_count?: number } | null)?.head_count === 3,
+        `undo ${restored} · head ${await headOf(chuteLotId)} · bunch back ${(madeBack as { deleted_at?: string | null } | null)?.deleted_at === null} at ${String((madeBack as { head_count?: number } | null)?.head_count)}`)
+
+      // Split off: one bunch at the bred number; the opens a number on the row.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="tile-preg-check"]').click()
+      await page.locator(`[data-audit="preg-lot-choice"][data-lot="${chuteLotId}"]`).click()
+      for (let i = 0; i < 9; i++) await page.locator('[data-audit="preg-checked-plus"]').click()
+      for (let i = 0; i < 2; i++) await page.locator('[data-audit="preg-open-plus"]').click()
+      await page.locator('[data-audit="preg-split-toggle"]').click()
+      const noSplitPreview = await text('[data-audit="preg-nosplit-preview"]')
+      await page.locator('[data-audit="record-save"]').click()
+      await watchStates(page, 'Sent', 60_000, 'Preg check')
+      const ob2 = await outbox(page)
+      const check2 = ob2.filter(i => (i.body as { action?: string }).action === 'preg_check').sort((x, y) => (y as unknown as { createdAt: number }).createdAt - (x as unknown as { createdAt: number }).createdAt)[0]
+      const { data: row2 } = check2 ? await admin.from('events').select('payload').eq('id', check2.id).maybeSingle() : { data: null }
+      const p2 = (row2 as { payload?: Record<string, unknown> } | null)?.payload ?? {}
+      const { count: bunchesNow } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).like('name', 'Open heifers %').is('deleted_at', null)
+      record('15 (ruling 3): split off — the checked bunch goes to the bred number (7), the 2 opens are recorded on the row and moved nowhere, no bunch is made',
+        /goes to 7/.test(noSplitPreview) && (await headOf(chuteLotId)) === 7 && p2.bred === 7 && p2.open === 2 && (Array.isArray(p2.results) ? (p2.results as unknown[]).length : -1) === 0 && (bunchesNow ?? 0) === 1,
+        `preview "${noSplitPreview.slice(0, 60)}" · head ${await headOf(chuteLotId)} · row bred ${String(p2.bred)} open ${String(p2.open)} results ${Array.isArray(p2.results) ? (p2.results as unknown[]).length : '?'} · open bunches ${bunchesNow ?? 0}`)
+
+      // Cleanup: the smoke ranch is torn down wholesale; the bunch the function made is named here.
+      if (madeId) await admin.from('herd_lots').delete().eq('id', madeId)
       await admin.from('herd_lots').delete().eq('id', chuteLotId)
     }
 
@@ -1861,11 +1864,11 @@ async function main() {
     // still crosses a reload, because that is the offline promise and not a
     // receipt.
     {
-      const strip = () => page.locator('[role="status"]').filter({ hasText: 'Saved to the ranch' })
+      const strip = () => page.locator('[role="status"]').filter({ hasText: 'Sent' })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 2)
-      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
+      await watchStates(page, 'Sent', 20_000, 'Fed 2 bales')
       const showedAtAll = await strip().count()
 
       // 11.1 — it must not survive a reload.
@@ -1879,7 +1882,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 2)
-      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 2 bales')
+      await watchStates(page, 'Sent', 20_000, 'Fed 2 bales')
       await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(2_500)
       const onOtherPage = await strip().count()
@@ -1891,7 +1894,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
       await logFeed(page, 5)
-      await watchStates(page, 'Saved to the ranch', 20_000, 'Fed 5 bales')
+      await watchStates(page, 'Sent', 20_000, 'Fed 5 bales')
       const ob = await outbox(page)
       const doomed = ob.find(i => (i.body as { bales?: number }).bales === 5)
       const doomedId = doomed?.id ?? ''
@@ -1941,7 +1944,7 @@ async function main() {
       const pending = ((await page.locator('[role="status"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       const stillQueued = (await outbox(page)).some(i => i.state === 'local' || i.state === 'queued')
       record('11.1: unsynced work still crosses a reload — a warning is not a receipt',
-        stillQueued && /Saved on this phone|Waiting to send/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
+        stillQueued && /Saved|Waiting for signal/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
       await page.unroute('**/api/log')
       await page.waitForTimeout(4_000)
     }
@@ -2032,6 +2035,30 @@ async function main() {
         room.bar > 0 && room.pad >= room.bar + 56, `bar ${room.bar}px · body padding ${room.pad}px (needs ≥ bar + 56)`)
 
       if (prior) await page.setViewportSize(prior)
+    }
+
+    // ── Block 15 (rulings 2, 6): no retry button anywhere; back from every screen returns you ──
+    {
+      const prior15 = page.viewportSize()
+      await page.setViewportSize({ width: 390, height: 844 })
+      const SCREENS15 = ['/ranch', '/ranch/cattle', '/ranch/hay', '/ranch/places', '/ranch/activity', '/markets', '/weather', '/account', '/account/trash', '/ranch/devices', '/ranch/work']
+      const retryFound: string[] = []
+      const backFailed: string[] = []
+      for (const screen of SCREENS15) {
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await page.goto(screen, { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(800)
+        const retry = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a[href], [role="button"]')]
+          .map(b => (b.innerText || '').replace(/\s+/g, ' ').trim())
+          .filter(t => /^(Try again|Retry|Send now|Send it now|Sync now)$/i.test(t)))
+        if (retry.length) retryFound.push(`${screen}: ${retry.join(', ')}`)
+        await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {})
+        await page.waitForTimeout(400)
+        if (!/\/today\b/.test(page.url())) backFailed.push(`${screen} → ${new URL(page.url()).pathname}`)
+      }
+      record('15 (ruling 2): no retry button exists on any screen — a record sends itself, forever', retryFound.length === 0, retryFound.length ? retryFound.join(' · ') : `${SCREENS15.length} screens clean`)
+      record('15 (ruling 6): back from every screen returns you to where you were', backFailed.length === 0, backFailed.length ? backFailed.join(' · ') : `${SCREENS15.length} screens return to Today`)
+      if (prior15) await page.setViewportSize(prior15)
     }
 
     // ── Block 11 (11.5): one Record control on a phone, and it is the bar ────
@@ -2203,13 +2230,13 @@ async function main() {
       const pinMapAtName = await page.locator('[data-audit="capture-pin-map"] [data-audit="map-pin"]').count()
       await ctx7a.setOffline(true)
       await page.locator('[data-audit="capture-save"]').click().catch(() => {})
-      const seqOff7a = await watchStates(page, 'Saved to the ranch', 4_000, '7A stack')
+      const seqOff7a = await watchStates(page, 'Sent', 4_000, '7A stack')
       const strips = await page.locator('[role="status"]').count()
-      record('7A: offline, the place is Saved on this phone and stays there — one strip on the page, not two',
-        seqOff7a[0] === 'Saved on this phone' && !seqOff7a.includes('Saved to the ranch') && strips === 1 && pinMapAtName === 1,
+      record('7A: offline, the place is Saved and stays there — one strip on the page, not two',
+        seqOff7a[0] === 'Saved' && !seqOff7a.includes('Sent') && strips === 1 && pinMapAtName === 1,
         `${seqOff7a.join(' → ')} · strips ${strips} · pin at name step ${pinMapAtName}` + rawSeen())
       await ctx7a.setOffline(false)
-      const seqOn7a = await watchStates(page, 'Saved to the ranch', 45_000, '7A stack')
+      const seqOn7a = await watchStates(page, 'Sent', 45_000, '7A stack')
       const ob7a = await outbox(page)
       const placeItem = ob7a.find(i => (i.body as { name?: string }).name === '7A stack')
       const newId = placeItem?.id ?? ''
@@ -2218,7 +2245,7 @@ async function main() {
       const receipt = (await page.locator('[data-audit="capture-saved"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const openHref = await page.locator('[data-audit="capture-saved"] [data-audit="receipt-open-entry"]').getAttribute('href').catch(() => null)
       record('7A: back online it syncs under its client id — a stack, in the stackyard, a polygon with the fix in provenance and adjusted: false',
-        seqOn7a.includes('Saved to the ranch') && !!r7 && r7.kind === 'stack' && r7.parent_id === placeId && !!r7.geometry
+        seqOn7a.includes('Sent') && !!r7 && r7.kind === 'stack' && r7.parent_id === placeId && !!r7.geometry
           && r7.geometry_provenance?.source === 'dropped' && r7.geometry_provenance?.adjusted === false && !!r7.geometry_provenance?.fix,
         `${seqOn7a.join(' → ')} · row ${r7 ? `${r7.kind} in ${r7.parent_id === placeId ? 'the stackyard' : String(r7.parent_id)} · ${String(r7.geometry_provenance?.source)} adjusted=${String(r7.geometry_provenance?.adjusted)}` : 'MISSING'}`)
       record('7A: the receipt is an answer — what was added, where it sits, how many are in there now, and the place one tap away',
@@ -2526,17 +2553,17 @@ async function main() {
         }
         // Below: 274 → −1, and the change is offered.
         const pv1 = await countOnce(274)
-        const seq1 = await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 274 head')
+        const seq1 = await watchStates(page, 'Sent', 30_000, 'Counted 274 head')
         const strip1 = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
         const offer1 = await page.locator('[data-audit="follow-up-take"]').count()
         const offer1Text = await text('[data-audit="follow-up-take"]')
         const headAfter1 = await headOf(lot14)
         record('14: counting below expected — the sheet previews "274 counted · 275 expected · −1", the receipt says the same, and "Change bunch to 274?" is offered — the head count itself unmoved',
-          /274 counted · 275 expected · −1/.test(pv1) && seq1.includes('Saved to the ranch') && /274 counted · 275 expected · −1/.test(strip1) && offer1 === 1 && /Change bunch to 274\?/.test(offer1Text) && headAfter1 === 275,
+          /274 counted · 275 expected · −1/.test(pv1) && seq1.includes('Sent') && /274 counted · 275 expected · −1/.test(strip1) && offer1 === 1 && /Change bunch to 274\?/.test(offer1Text) && headAfter1 === 275,
           `preview "${pv1.slice(0, 40)}" · strip "${strip1.slice(0, 70)}" · offer ${offer1} "${offer1Text}" · head ${headAfter1}`)
         // Ignore it. Count again, above: +1, still 275 stored — two rows, neither overwritten.
         const pv2 = await countOnce(276)
-        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 276 head')
+        await watchStates(page, 'Sent', 30_000, 'Counted 276 head')
         const { data: counts } = await admin.from('events').select('id, payload').eq('ranch_id', ranchId).eq('type', 'cattle_counted').eq('payload->>herd_lot_id', lot14).is('deleted_at', null).order('ts')
         const cs = (counts ?? []) as { payload: { counted?: number; expected?: number } }[]
         record('14: counting above expected — +1 — and two counts in a row are two rows, both with the expected they saw; nothing overwrote',
@@ -2544,7 +2571,7 @@ async function main() {
           `preview "${pv2.slice(0, 40)}" · rows ${cs.length} [${cs.map(c => `${c.payload.counted}/${c.payload.expected}`).join(', ')}] · head ${await headOf(lot14)}`)
         // Equal: same, and nothing offered.
         const pv3 = await countOnce(275)
-        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 275 head')
+        await watchStates(page, 'Sent', 30_000, 'Counted 275 head')
         const offer3 = await page.locator('[data-audit="follow-up-take"]').count()
         record('14: counting equal to expected — "same" — and no change is offered', /275 counted · 275 expected · same/.test(pv3) && offer3 === 0, `preview "${pv3.slice(0, 40)}" · offers ${offer3}`)
         // The bunch card: last count on one line, with the change button because the last count (275) equals… no: take the −1 path on the card.
@@ -2556,7 +2583,7 @@ async function main() {
         // Take the change from a fresh count of 274: the card's button.
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         await countOnce(274)
-        await watchStates(page, 'Saved to the ranch', 30_000, 'Counted 274 head')
+        await watchStates(page, 'Sent', 30_000, 'Counted 274 head')
         await page.locator('[data-audit="follow-up-take"]').click().catch(() => {})
         await page.locator('[data-audit="follow-up-done"]').waitFor({ timeout: 15_000 }).catch(() => {})
         const changed = await headOf(lot14)
@@ -2587,13 +2614,13 @@ async function main() {
         // Offline count, then sync.
         await page.context().setOffline(true)
         await countOnce(270)
-        const seqOff = await watchStates(page, 'Saved to the ranch', 4_000, 'Counted 270 head')
+        const seqOff = await watchStates(page, 'Sent', 4_000, 'Counted 270 head')
         await page.context().setOffline(false)
-        const seqOn = await watchStates(page, 'Saved to the ranch', 45_000, 'Counted 270 head')
+        const seqOn = await watchStates(page, 'Sent', 45_000, 'Counted 270 head')
         const { data: offRow } = await admin.from('events').select('payload').eq('ranch_id', ranchId).eq('type', 'cattle_counted').eq('payload->>counted', '270').maybeSingle()
         const op = (offRow as { payload?: { expected?: number } } | null)?.payload
-        record('14: a count made offline is Saved on this phone, then Saved to the ranch when signal returns — with the expected the bunch said at landing',
-          seqOff[0] === 'Saved on this phone' && !seqOff.includes('Saved to the ranch') && seqOn.includes('Saved to the ranch') && op?.expected === 274,
+        record('14: a count made offline is Saved, then Sent when signal returns — with the expected the bunch said at landing',
+          seqOff[0] === 'Saved' && !seqOff.includes('Sent') && seqOn.includes('Sent') && op?.expected === 274,
           `${seqOff.join(' → ')} | ${seqOn.join(' → ')} · expected ${String(op?.expected)}`)
 
         if (nr) await admin.from('herd_lots').delete().eq('id', nr.id)
@@ -2650,8 +2677,8 @@ async function main() {
       const keysAfter = await page.evaluate((ks: string[]) => ks.filter(k => localStorage.getItem(k) !== null), PRIVATE_KEYS)
       const signIn = await page.locator('a[href^="/signin"]').count() + (/sign in/i.test(afterText) ? 1 : 0)   // the public page offers a way in, in whatever words
       // The receipt is checked by ELEMENT, not by text: the public landing page's
-      // own marketing copy contains the words "Saved on this phone → Waiting to
-      // sync → Saved to the ranch", so a body-text match for that phrase was testing
+      // own marketing copy contains the words "Saved → Waiting to
+      // sync → Sent", so a body-text match for that phrase was testing
       // Dryline's sales pitch, not whether a private receipt survived. It passed
       // only while the assertion happened to run before the landing finished
       // rendering; a slower sign-out (7.1 flushes first) exposed it.

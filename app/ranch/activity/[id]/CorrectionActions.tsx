@@ -184,7 +184,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
       forgetSynced(event.id)
       navigateTo(router, `/ranch/activity/${json.event.id}?saved=1`)
     } catch {
-      setError('No connection — the entry is unchanged. Try again when you have signal.'); setBusy(false)
+      setError('No signal — nothing changed.'); setBusy(false)
     }
   }
 

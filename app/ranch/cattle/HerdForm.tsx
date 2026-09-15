@@ -200,7 +200,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         setStatus('error')
-        setErrorMsg((json as { error?: string }).error ?? 'Could not save. Try again.')
+        setErrorMsg((json as { error?: string }).error ?? 'Could not save.')
         if (res.status === 409 || res.status === 404) await reload()   // show the ranch's current version, never write over it
         return false
       }

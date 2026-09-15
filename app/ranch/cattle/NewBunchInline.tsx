@@ -57,7 +57,7 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
       if (!res.ok || !j.lot) { setError(j.error ?? 'That bunch could not be saved just now.'); return }
       onMade(j.lot)
     } catch {
-      setError('No connection — a new bunch needs one. Pick an existing bunch, or try again when you have signal.')
+      setError('No signal. A new bunch needs one — pick an existing bunch.')
     } finally { setBusy(false) }
   }
 

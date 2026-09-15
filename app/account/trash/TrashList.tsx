@@ -27,7 +27,7 @@ export default function TrashList({ items }: { items: TrashItem[] }) {
       if (!res.ok) { setError(j.error ?? 'That could not be put back just now.'); return }
       router.refresh()
     } catch {
-      setError('No connection — nothing changed. Try again when you have signal.')
+      setError('No signal — nothing changed.')
     }
   }
 

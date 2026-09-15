@@ -36,7 +36,7 @@ export default function FollowUpButton({ itemId, followUp }: { itemId: string; f
       settleFollowUp(itemId)
       setDone(`Bunch changed to ${followUp.head.toLocaleString()}.`)
       router.refresh()
-    } catch { setError('No connection — the bunch was not changed. Try again when you have signal.') }
+    } catch { setError('No signal — nothing changed.') }
     finally { setBusy(false) }
   }
 

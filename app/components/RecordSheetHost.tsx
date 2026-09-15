@@ -9,6 +9,7 @@ import { useOutbox } from '@/lib/outbox'
 import { setRecordAvailable } from '@/lib/record-sheet-state'
 import RecordFab from './RecordFab'
 import UndoStrip from './UndoStrip'
+import WaitingLine from './WaitingLine'
 import { takeDiscardedNotice } from '@/lib/private-state'
 import { warning } from '@/lib/brand-colors'
 
@@ -105,6 +106,8 @@ export default function RecordSheetHost() {
       <GlobalSaveStatus />
       {/* Block 13: the ten-second Undo after any delete. */}
       <UndoStrip />
+      {/* Block 15 (ruling 5): one line for whatever is waiting. */}
+      <WaitingLine />
       <RecordFab />
     </>
   )

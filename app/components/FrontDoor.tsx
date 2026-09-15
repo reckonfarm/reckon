@@ -76,7 +76,7 @@ export default async function FrontDoor() {
             <Card shadow="soft" className="overflow-hidden p-0">
               <Image
                 src="/landing/ledger-answer.png"
-                alt="The Dryline ledger after a feeding is logged: the entry reads Saved to the ranch, then the answer — 4 bales recorded, 196 bales on hand from the last count, 4 fed since."
+                alt="The Dryline ledger after a feeding is logged: the entry reads Sent, then the answer — 4 bales recorded, 196 bales on hand from the last count, 4 fed since."
                 width={732}
                 height={475}
                 priority
@@ -84,7 +84,7 @@ export default async function FrontDoor() {
               />
             </Card>
             <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">
-              A real screen from the ledger on an example ranch (Dry Creek Ranch): Saved on this phone → Waiting to send → Saved to the ranch, then the answer.
+              A real screen from the ledger on an example ranch (Dry Creek Ranch): Saved → Waiting for signal → Sent, then the answer.
             </p>
           </section>
 

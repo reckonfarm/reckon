@@ -69,10 +69,11 @@ export interface OutboxItem {
 export type FollowUp = { kind: 'set_head'; lot_id: string; head: number; label: string; done?: boolean }
 
 export const STATE_LABEL: Record<OutboxState, string> = {
-  local:  'Saved on this phone',
-  queued: 'Waiting to send',
-  synced: 'Saved to the ranch',
-  failed: "Couldn't save — try again",
+  // Block 15 (ruling 4): four words, never a sentence.
+  local:  'Saved',
+  queued: 'Waiting for signal',
+  synced: 'Sent',
+  failed: "Couldn't send",
 }
 
 const KEY = 'dryline_outbox_v1'
@@ -111,9 +112,15 @@ function read(): OutboxItem[] {
 // must say so; a save that did not reach the phone is not "saved".
 function write(items: OutboxItem[]): void {
   const now = Date.now()
-  const kept = items
-    .filter(i => !(i.state === 'synced' && i.syncedAt && now - i.syncedAt > SYNCED_TTL_MS))
-    .slice(-MAX_ITEMS)
+  // Block 15 (ruling 2): NOTHING UNSYNCED IS EVER DROPPED — not by age, not by
+  // the cap. Only sent items fall off, and only the oldest of those beyond the
+  // cap. A record made Tuesday in a coulee is still here Friday in town.
+  const fresh = items.filter(i => !(i.state === 'synced' && i.syncedAt && now - i.syncedAt > SYNCED_TTL_MS))
+  const unsynced = fresh.filter(i => i.state !== 'synced')
+  const synced = fresh.filter(i => i.state === 'synced')
+  const room = Math.max(0, MAX_ITEMS - unsynced.length)
+  const keptSet = new Set([...unsynced, ...synced.slice(-room)])
+  const kept = fresh.filter(i => keptSet.has(i))
   localStorage.setItem(KEY, JSON.stringify(kept))
   cache = kept
   for (const l of listeners) l()
@@ -169,6 +176,16 @@ export function hasUnsynced(): boolean { return unsyncedCount() > 0 }
 export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0, opts: { endpoint?: string; link?: { href: string; label: string } } = {}): OutboxItem {
   const id = typeof body.id === 'string' && body.id ? body.id : newEventId()
   const hold = Math.max(holdMs, MIN_DWELL_MS)
+  // Block 15 (ruling 2): a FIX re-saves under the same id. The refused item is
+  // replaced in place — same id, new body, back to Saved — so the ranch sees
+  // one record and a retry after a landed fix is still a duplicate, never two.
+  const existing = read().find(i => i.id === id)
+  if (existing) {
+    const fixed: OutboxItem = { ...existing, body: { ...body, id }, label, state: 'local', attempts: 0, lastError: undefined, holdUntil: Date.now() + hold, undoable: false, consequence: undefined, followUp: undefined, ...(opts.endpoint ? { endpoint: opts.endpoint } : {}), ...(opts.link ? { link: opts.link } : {}) }
+    write(read().map(i => (i.id === id ? fixed : i)))
+    scheduleFlush(hold)
+    return fixed
+  }
   const item: OutboxItem = {
     id,
     body: { ...body, id },
@@ -289,13 +306,13 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       return
     }
     if (res.status === 401) {
-      update(item.id, { state: 'queued', lastError: 'Signed out — sign in to send it' })
+      update(item.id, { state: 'queued', lastError: 'Sign in to send it' })
       return
     }
     update(item.id, { state: 'failed', lastError: message })
   } catch (err) {
     // No network, DNS, aborted — the phone still has it.
-    update(item.id, { state: 'queued', lastError: err instanceof Error && err.message ? 'No connection' : 'No connection' })
+    update(item.id, { state: 'queued', lastError: undefined })
   } finally {
     inFlight = null
   }
