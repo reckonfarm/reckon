@@ -2389,15 +2389,17 @@ async function main() {
       const memberThere = await memberRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
       const s7 = memberThere ? await hold(page, memberRow) : false
       const fixLabel7 = (await sheet(page).fix.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      // The one delete that is not the trash says so on the sheet, before the tap.
+      const warn7 = (await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete-warning"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       await sheet(page).del.click().catch(() => {})
       await undoStrip(page).waitFor({ timeout: 8_000 }).catch(() => {})
       const { count: goneB } = await admin.from('ranch_members').select('user_id', { count: 'exact', head: true }).eq('ranch_id', ranchId).eq('user_id', userIdB)
       const undone7 = await pressUndo(page)
       await page.waitForTimeout(1_000)
       const { data: backB } = await admin.from('ranch_members').select('role').eq('ranch_id', ranchId).eq('user_id', userIdB).maybeSingle()
-      record('13 (person): hold → Fix is the role, Delete removes them with no confirm, Undo puts them back as a member',
-        memberThere && s7 && /Make .* an owner/.test(fixLabel7) && goneB === 0 && undone7 && (backB as { role?: string } | null)?.role === 'member',
-        `there ${memberThere} · sheet ${s7} · fix "${fixLabel7}" · removed ${goneB === 0} · undo ${undone7} · role back ${String((backB as { role?: string } | null)?.role)}`)
+      record('13 (person): hold → Fix is the role; the sheet says before the tap that removing is for good after ten seconds; Delete removes them with no confirm; Undo puts them back as a member',
+        memberThere && s7 && /Make .* an owner/.test(fixLabel7) && /for good after ten seconds/.test(warn7) && /new invitation/.test(warn7) && goneB === 0 && undone7 && (backB as { role?: string } | null)?.role === 'member',
+        `there ${memberThere} · sheet ${s7} · fix "${fixLabel7}" · warning "${warn7.slice(0, 50)}" · removed ${goneB === 0} · undo ${undone7} · role back ${String((backB as { role?: string } | null)?.role)}`)
       if (invId) {
         await page.goto('/account', { waitUntil: 'domcontentloaded' })
         const inviteRow = page.locator(`[data-audit="invite-row"][data-id="${invId}"] [data-audit="row-actions"]`).first()

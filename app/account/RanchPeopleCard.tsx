@@ -99,6 +99,9 @@ export default function RanchPeopleCard() {
               await load()
             } } : null,
             deleteNote: me ? 'You cannot remove yourself. Another owner can.' : !isOwner ? 'Only an owner can remove someone.' : null,
+            // Block 13: the one delete in the app that is not the trash. Said
+            // before the tap, on the sheet, in plain words.
+            deleteWarning: canAct ? `Removing ${first(p)} is for good after ten seconds. There is no trash for a person — after that, the only way back is a new invitation. ${first(p)}'s entries stay in the record.` : null,
           }}>
           <div className={ROW}>
             <div className="min-w-0">

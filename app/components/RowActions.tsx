@@ -60,6 +60,8 @@ export interface RowActionLinks {
   /** Delete. Absent = no button; then `deleteNote` says why. */
   del?: RowAction | null
   deleteNote?: string | null
+  /** One plain sentence ABOVE Delete, before the tap, when this delete is not like the others (a removed person is not in the trash). */
+  deleteWarning?: string | null
   /** Other things this row can do: "Make it my home county", "Make owner". */
   extra?: RowAction[]
   /** Block 12 spellings, still honoured: editHref → fix, deleteHref → del. */
@@ -168,6 +170,9 @@ export default function RowActions({ links, children, className = '' }: { links:
               {(links.extra ?? []).map((a, i) => (
                 <button key={i} type="button" disabled={busy} onClick={() => void go(a)} className={`${BTN} border-control-border bg-surface text-ink disabled:opacity-50`} data-audit="row-action-extra">{a.label}</button>
               ))}
+              {del && links.deleteWarning && (
+                <p className="rounded-lg bg-rust/[0.08] px-4 py-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="row-action-delete-warning">{links.deleteWarning}</p>
+              )}
               {del ? (
                 <button type="button" disabled={busy} onClick={() => void go(del)} className={`${BTN} border-rust/40 bg-surface text-rust disabled:opacity-50`} data-audit="row-action-delete">{busy ? 'Deleting…' : (del.label ?? 'Delete')}</button>
               ) : links.deleteNote ? (
