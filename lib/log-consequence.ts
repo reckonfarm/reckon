@@ -93,9 +93,25 @@ export async function consequenceFor(
         lines.push(`${head.toLocaleString()} head ${what || 'worked'}${at}`)
         return { lines }
       }
+      // Block 14: counted, expected, and the difference — the whole answer in
+      // one line. The bunch's stored number does NOT move here.
+      case 'cattle_counted': {
+        const counted = num('counted'), expected = num('expected')
+        if (counted == null) return { lines }
+        lines.push(countLine(counted, expected))
+        return { lines }
+      }
     }
   } catch {
     // The row is saved; a failed read of the ledgers costs the answer, not the entry.
   }
   return { lines }
+}
+
+/** "274 counted · 275 expected · −1" — the count, what the bunch said, the difference. */
+export function countLine(counted: number, expected: number | null): string {
+  if (expected == null) return `${counted.toLocaleString()} counted`
+  const d = counted - expected
+  const diff = d === 0 ? 'same' : d > 0 ? `+${d.toLocaleString()}` : `−${Math.abs(d).toLocaleString()}`
+  return `${counted.toLocaleString()} counted · ${expected.toLocaleString()} expected · ${diff}`
 }

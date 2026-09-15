@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { GROUP_ACTIONS, MAX_GROUP_NAME, MAX_HEAD, isGroupAction, type GroupAction } from './kinds'
+import { LOT_CLASSES, type LotClass } from '@/lib/herd'
 
 // ─── Group actions — one event, named result groups (Block 10) ────────────────
 //
@@ -25,6 +26,8 @@ export interface ResultGroupIn {
   lot_id?: string | null
   /** Required when lot_id is null. */
   name?: string | null
+  /** Block 14: the class of a bunch this creates. Absent = the source's class. */
+  class?: LotClass | null
   head: number
 }
 
@@ -51,6 +54,9 @@ export interface GroupActionPayload {
   source_head_before: number
   source_head_after: number
   results: AppliedGroup[]
+  /** Block 14: a preg check records these on the bunch checked (069 p_detail). */
+  bred?: number
+  open?: number
 }
 
 export class GroupActionError extends Error {
@@ -70,6 +76,8 @@ export interface GroupActionInput {
   stay: number
   results: ResultGroupIn[]
   placeId: string | null
+  /** Block 14: bred and open for a preg check; nothing else carries a detail yet. */
+  detail: { bred?: number; open?: number } | null
 }
 
 /**
@@ -103,8 +111,25 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
       : typeof o.lot_id === 'string' && UUID_RE.test(o.lot_id) ? o.lot_id : bad(`group ${i + 1} has a bad lot id`)
     const name = typeof o.name === 'string' ? o.name.trim().slice(0, MAX_GROUP_NAME) : ''
     if (!lot_id && !name) bad(`group ${i + 1} is new, so it needs a name`)
-    return { lot_id, name: name || null, head: head as number }
+    const klass = o.class == null || o.class === '' ? null
+      : typeof o.class === 'string' && (LOT_CLASSES as readonly string[]).includes(o.class) ? o.class as LotClass : bad(`group ${i + 1} names a class of cattle this app does not know`)
+    return { lot_id, name: name || null, class: klass, head: head as number }
   })
+
+  // Block 14: a preg check records counts on the bunch checked, never a split.
+  // The database refuses this too; saying it here saves the round trip.
+  if (action === 'preg_check' && results.length > 0) bad('A preg check records the counts on the bunch you checked. Make a bunch from the opens afterward.')
+
+  let detail: GroupActionInput['detail'] = null
+  if (body.detail && typeof body.detail === 'object') {
+    const d = body.detail as Record<string, unknown>
+    const bred = d.bred == null ? undefined : int(d.bred)
+    const open = d.open == null ? undefined : int(d.open)
+    if (bred === null || (bred !== undefined && bred < 0)) bad('bred must be a whole number, 0 or more')
+    if (open === null || (open !== undefined && open < 0)) bad('open must be a whole number, 0 or more')
+    if (bred != null && open != null && bred + open !== counted) bad(`${bred} bred and ${open} open do not add up to the ${counted} counted`)
+    detail = { ...(bred != null ? { bred } : {}), ...(open != null ? { open } : {}) }
+  }
 
   // The reconciliation, said in the words the chute needs. The database says
   // the same thing in the same shape; this one just arrives sooner.
@@ -127,6 +152,7 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
     stay: stay as number,
     results,
     placeId,
+    detail,
   }
 }
 
@@ -145,6 +171,7 @@ const STATUS: Record<string, number> = {
   source_not_found: 404,
   dest_not_found: 404,
   stale: 409,
+  preg_no_split: 400,
 }
 
 export interface GroupActionResult {
@@ -168,15 +195,19 @@ export async function recordGroupAction(supabase: SupabaseClient, input: GroupAc
     p_expected_head: input.expectedHead,
     p_counted: input.counted,
     p_stay: input.stay,
-    p_results: input.results.map(r => ({ lot_id: r.lot_id, name: r.name, head: r.head })),
+    p_results: input.results.map(r => ({ lot_id: r.lot_id, name: r.name, head: r.head, ...(r.class ? { class: r.class } : {}) })),
     p_place_id: input.placeId,
+    p_detail: input.detail ?? {},
   })
 
   if (error) {
-    // 42883 = the function is not there yet, i.e. 063/064 unrun. Say that as
-    // something a person can act on, never as a missing-function error.
-    if (error.code === '42883') {
-      throw new GroupActionError(503, 'Recording a working is not switched on for this ranch yet.')
+    // 42883 = the function is not there yet (063/064 unrun); PGRST202 = it is
+    // there without p_detail (069 unrun). Both are "not yet", said as something
+    // a person can act on, and both are 503 so the outbox keeps the entry and
+    // retries rather than marking it failed — nothing is lost while the
+    // migration waits.
+    if (error.code === '42883' || error.code === 'PGRST202') {
+      throw new GroupActionError(503, 'Recording a working needs a database update on this ranch first. It is saved on this phone and will send when that is done.')
     }
     throw new GroupActionError(500, 'That working could not be recorded just now.')
   }
@@ -207,8 +238,13 @@ export function groupActionConsequence(p: GroupActionPayload): { lines: string[]
   const head = (n: number) => `${n.toLocaleString()} head`
   const lines: string[] = [
     `${p.counted.toLocaleString()} counted through${p.source_head_before !== p.counted ? ` · ${p.source_name} said ${p.source_head_before.toLocaleString()}` : ''}`,
-    `${head(p.stayed)} stay in ${p.source_name}`,
   ]
+  // Block 14: a preg check's numbers, on the bunch checked.
+  if (typeof p.bred === 'number' || typeof p.open === 'number') {
+    lines.push(`${(p.bred ?? 0).toLocaleString()} bred · ${(p.open ?? 0).toLocaleString()} open · ${p.source_name} is ${head(p.source_head_after)} now`)
+  } else {
+    lines.push(`${head(p.stayed)} stay in ${p.source_name}`)
+  }
   for (const r of p.results) {
     lines.push(`${head(r.head)} to ${r.name}${r.created ? ' (new)' : ` · now ${r.head_after.toLocaleString()}`}`)
   }

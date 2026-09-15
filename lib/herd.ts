@@ -18,7 +18,7 @@
 // migration. The enum covers the vernacular set the producer named and maps each onto the
 // MARS price vocabulary (commodity / class) so a lot joins cleanly to auction + LRP data.
 
-export const LOT_CLASSES = ['steers', 'heifers', 'yearlings', 'cows', 'bulls', 'old_cows'] as const
+export const LOT_CLASSES = ['steers', 'heifers', 'yearlings', 'cows', 'bulls', 'old_cows', 'pairs'] as const
 export type LotClass = (typeof LOT_CLASSES)[number]
 
 export const LOT_CLASS_LABELS: Record<LotClass, string> = {
@@ -28,6 +28,9 @@ export const LOT_CLASS_LABELS: Record<LotClass, string> = {
   cows:      'Cows',
   bulls:     'Bulls',
   old_cows:  'Old cows (cull)',
+  // Block 14 (069): a cow-calf pair, priced as cows. Not "calves" — a calf
+  // lives in a cow bunch or a weaned bunch; it is not a sale class of its own.
+  pairs:     'Pairs',
 }
 
 // Optional free-text lot name ("Replacement heifers", "The bulls at Watergap").
@@ -91,6 +94,10 @@ export const LOT_CLASS_TO_MARS: Record<LotClass, MarsClassMapping> = {
     commodity: 'Slaughter Cattle', marsClass: 'Cows', lrpFeederEligible: false,
     note: 'Cull cows → Slaughter Cattle / Cows. NO feeder LRP.',
   },
+  pairs: {
+    commodity: 'Slaughter Cattle', marsClass: 'Cows', lrpFeederEligible: false,
+    note: 'Pairs price as cows (PK, Block 14). NO feeder LRP.',
+  },
 }
 
 // ─── Lot facets ──────────────────────────────────────────────────────────────────────────
@@ -120,8 +127,13 @@ export interface Lot {
   // REQUIRED — entry invalid until present + well-typed.
   class: LotClass
   head_count: number   // positive integer
-  avg_weight: number   // > 0, expressed in `weight_unit`
+  // Block 14 (069): NULL when nobody has set one — a bunch made on the spot
+  // has no weight, and the market and LRP readers say so rather than price air.
+  avg_weight: number | null   // > 0 when set, expressed in `weight_unit`
   weight_unit: WeightUnit
+  // Block 14 (069): where the bunch is. Set when made; moved by a real move
+  // event only. Absent/null = not said.
+  place_id?: string | null
 
   // DEFAULTED — editable, never block entry.
   frame: LotFrame
@@ -156,7 +168,7 @@ export interface MarsLotKey {
   commodity: MarsCommodity
   marsClass: MarsClass
   frame: LotFrame
-  avgWeightLb: number
+  avgWeightLb: number | null
   lotDesc: 'weaned' | 'unweaned' | null
   lrpFeederEligible: boolean
 }
@@ -167,7 +179,7 @@ export function lotToMarsKey(lot: Lot): MarsLotKey {
     commodity: m.commodity,
     marsClass: m.marsClass,
     frame: lot.frame,
-    avgWeightLb: lot.weight_unit === 'cwt' ? lot.avg_weight * 100 : lot.avg_weight,
+    avgWeightLb: lot.avg_weight == null ? null : lot.weight_unit === 'cwt' ? lot.avg_weight * 100 : lot.avg_weight,
     lotDesc: m.commodity === 'Feeder Cattle' ? (lot.weaned ? 'weaned' : 'unweaned') : null,
     lrpFeederEligible: m.lrpFeederEligible,
   }
@@ -199,6 +211,7 @@ export function lotToLrpType(lot: Lot): LrpTypeMatch {
   // Eligible classes are steers/heifers/yearlings; their marsClass is Steers or Heifers.
   const lrp_class: 'Steers' | 'Heifers' = m.marsClass === 'Heifers' ? 'Heifers' : 'Steers'
   const wLb = lotToMarsKey(lot).avgWeightLb
+  if (wLb == null) return { lrp_class, weight_code: null, reason: 'no weight set' }
   if (wLb < 600)   return { lrp_class, weight_code: 'Weight 1' }
   if (wLb <= 1000) return { lrp_class, weight_code: 'Weight 2' }
   return { lrp_class, weight_code: null, reason: 'above LRP feeder weight range (> 1000 lb)' }
@@ -264,12 +277,16 @@ export function normalizeLot(
   }
   const head_count = raw.head_count
   if (!isPosInt(head_count)) return { ok: false, error: `${label}: head_count must be a positive integer` }
-  const avg_weight = raw.avg_weight
-  if (!isPosNum(avg_weight)) return { ok: false, error: `${label}: avg_weight must be a positive number` }
-  const weight_unit = raw.weight_unit
+  // Block 14: weight is optional. Absent, empty or null = no weight set; a
+  // weight that IS given must be positive. The unit defaults to lb.
+  const rawWeight = raw.avg_weight
+  const avg_weight: number | null = rawWeight == null || rawWeight === '' ? null : isPosNum(rawWeight) ? rawWeight : NaN
+  if (Number.isNaN(avg_weight)) return { ok: false, error: `${label}: avg_weight must be a positive number, or left out` }
+  const weight_unit = raw.weight_unit == null ? 'lb' : raw.weight_unit
   if (weight_unit !== 'lb' && weight_unit !== 'cwt') {
     return { ok: false, error: `${label}: weight_unit must be 'lb' or 'cwt'` }
   }
+  const place_id = typeof raw.place_id === 'string' && raw.place_id ? raw.place_id : null
 
   // DEFAULTED (never block entry).
   const frame: LotFrame = (LOT_FRAMES as readonly string[]).includes(raw.frame as string)
@@ -296,6 +313,7 @@ export function normalizeLot(
       frame,
       weaned,
       sale_windows: sw.windows,
+      ...(place_id ? { place_id } : {}),
       ...(purpose ? { purpose } : {}),
       ...(name ? { name } : {}),
       // Lot edit timestamps are client-supplied (preserved if valid, else now()) — fine for

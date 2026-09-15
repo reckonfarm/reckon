@@ -137,6 +137,7 @@ function labelOf(row: EventRow): string {
     case 'bales_stacked': { const b = n('bales'); return b != null ? `Stacked ${b} ${b === 1 ? 'bale' : 'bales'}` : 'A stacking entry' }
     case 'cattle_moved': return 'A cattle move'
     case 'cattle_worked': return 'Cattle work'
+    case 'cattle_counted': { const c = n('counted'); return c != null ? `Counted ${c} head` : 'A cattle count' }
     default: return 'This entry'
   }
 }

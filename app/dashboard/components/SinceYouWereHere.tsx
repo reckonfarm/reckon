@@ -46,6 +46,7 @@ function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
       return `moved ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
     }
     case 'cattle_worked': { const h = num(p.head); const w = str(p.what); return `${w ?? 'worked'} ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${suffix}` }
+    case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); return `counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${e != null && c != null ? ` (${e.toLocaleString()} expected)` : ''}${suffix}` }
     case 'alert': return `LFP alert for ${str(p.county_name) ?? 'a county'}${num(p.tier) ? ` — tier ${p.tier}` : ''}`
     default: return (isManualEventType(r.type) ? MANUAL_EVENT_LABELS[r.type] : r.type) + suffix
   }

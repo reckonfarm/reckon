@@ -38,6 +38,9 @@ const MATCH_STRATEGY: Record<LotClass, Array<{ commodity: string; classes: strin
   cows:      [{ commodity: 'Replacement Cattle', classes: ['Stock Cows', 'Bred Cows'] },
               { commodity: 'Slaughter Cattle',   classes: ['Cows'] }],
   old_cows:  [{ commodity: 'Slaughter Cattle',   classes: ['Cows'] }],
+  // Block 14: pairs price as cows (PK's ruling).
+  pairs:     [{ commodity: 'Replacement Cattle', classes: ['Stock Cows', 'Bred Cows', 'Cow-Calf Pairs', 'Pairs'] },
+              { commodity: 'Slaughter Cattle',   classes: ['Cows'] }],
   bulls:     [{ commodity: 'Slaughter Cattle',   classes: ['Bulls'] }],
 }
 
@@ -96,7 +99,7 @@ export interface LotValuation {
   source: ValuationSource | null
   // Block 2.5 — the lot's own facts, for the sensitivity line (exact arithmetic).
   head_count: number
-  avg_weight_lb: number
+  avg_weight_lb: number | null
   thin: boolean          // priced off fewer reported head than THIN_HEAD_THRESHOLD → range, not a figure
   value_low: number | null   // thin lots: the reported price range applied to the lot
   value_high: number | null
@@ -118,7 +121,7 @@ export interface HerdEstimate {
 // The lot's display line: its name (lib/herd lotLabel — the producer's name,
 // else the class label) plus the head and weight that price it.
 function lotLabel(lot: Lot): string {
-  return `${lotName(lot)} · ${lot.head_count} head · ${lot.avg_weight} ${lot.weight_unit}`
+  return `${lotName(lot)} · ${lot.head_count} head · ${lot.avg_weight == null ? 'no weight set' : `${lot.avg_weight} ${lot.weight_unit}`}`
 }
 
 interface Match { value: number; source: ValuationSource; exact: boolean }
@@ -127,6 +130,7 @@ interface Match { value: number; source: ValuationSource; exact: boolean }
 // else the class-level average over the commodity's dominant basis. null = no usable row.
 function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
   const w = lotToMarsKey(lot).avgWeightLb // unit-normalized to lb (handles cwt entry)
+  if (w == null) return null   // Block 14: no weight set — estimateHerd says so before reaching here
 
   for (const step of MATCH_STRATEGY[lot.class]) {
     const usable: Array<{ row: MarsPriceRow; barn: RankedBarn; basis: PriceBasis }> = []
@@ -208,6 +212,12 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
   for (const lot of lots) {
     const label = lotLabel(lot)
     const wLb = lotToMarsKey(lot).avgWeightLb
+    // Block 14: a bunch with no weight set cannot be priced per cwt, and a
+    // per-head price without a weight bracket is a guess. Say so.
+    if (wLb == null) {
+      perLot.push({ lotId: lot.id, label, value: null, reason: 'No weight set — set one on the bunch to price it', source: null, head_count: lot.head_count, avg_weight_lb: null, thin: false, value_low: null, value_high: null })
+      continue
+    }
     if (pricingBarns.length === 0) {
       const reason = resolved.tier === 'nearest-comp' && resolved.nearest_comp
         ? `No reporting auction within ${DISCOVERY_RADIUS_MI} ${DISTANCE_BASIS} — regional reference ${resolved.nearest_comp.town} ~${resolved.nearest_comp.miles} mi`

@@ -13,10 +13,11 @@ import { liveOnly } from './trash'
 // name forever. Every read and write here runs on the USER-SCOPED client — the
 // policy is the gate; user ids are recorded as authorship, never as grants.
 
-const LOT_COLUMNS = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at, updated_by'
+const LOT_COLUMNS = 'id, ranch_id, class, name, head_count, avg_weight, weight_unit, frame, weaned, sale_windows, created_at, updated_at, retired_at, updated_by, place_id'
 
 interface LotRow {
-  id: string; ranch_id: string; class: Lot['class']; name: string | null; head_count: number; avg_weight: number | string
+  id: string; ranch_id: string; class: Lot['class']; name: string | null; head_count: number; avg_weight: number | string | null
+  place_id?: string | null
   weight_unit: Lot['weight_unit']; frame: Lot['frame']; weaned: boolean; sale_windows: Lot['sale_windows'] | null
   created_at: string; updated_at: string; retired_at: string | null; updated_by?: string | null
   purpose?: string | null
@@ -24,7 +25,8 @@ interface LotRow {
 
 function rowToLot(r: LotRow): Lot {
   return {
-    id: r.id, class: r.class, head_count: r.head_count, avg_weight: Number(r.avg_weight), weight_unit: r.weight_unit,
+    id: r.id, class: r.class, head_count: r.head_count, avg_weight: r.avg_weight == null ? null : Number(r.avg_weight), weight_unit: r.weight_unit,
+    ...(r.place_id ? { place_id: r.place_id } : {}),
     frame: r.frame, weaned: r.weaned, sale_windows: Array.isArray(r.sale_windows) ? r.sale_windows : [],
     ...(r.name ? { name: r.name } : {}), ...(isLotPurpose(r.purpose) ? { purpose: r.purpose } : {}), created_at: r.created_at, updated_at: r.updated_at,
     ...(r.retired_at ? { retired_at: r.retired_at } : {}),
@@ -101,9 +103,19 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const n = normalizeLot(raw)
   if (!n.ok) return { ok: false, status: 400, error: n.error }
   const l = n.lot
+  // Block 14: where the bunch is — a live place this person can see, or none.
+  // Under RLS a place on another ranch is simply not found.
+  let placeId: string | null = null
+  if (l.place_id) {
+    const { data: pl } = await liveOnly(supabase.from('places').select('id, retired_at').eq('id', l.place_id)).maybeSingle()
+    const row = pl as { id: string; retired_at: string | null } | null
+    if (!row || row.retired_at) return { ok: false, status: 400, error: 'No such place to put the bunch at.' }
+    placeId = row.id
+  }
   const { data, error } = await supabase.from('herd_lots').insert({
     ranch_id: who.ranchId, class: l.class, name: l.name ?? null, head_count: l.head_count, avg_weight: l.avg_weight,
     weight_unit: l.weight_unit, frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, created_by: who.uid, updated_by: who.uid,
+    ...(placeId ? { place_id: placeId } : {}),
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }).select(LOT_COLUMNS).single()
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? 'Could not save the lot.' }
@@ -150,9 +162,9 @@ export async function updateLot(supabase: SupabaseClient, id: string, raw: unkno
   // both live in lib/stale-edit.ts now, so places inherits them verbatim
   // instead of growing a second dialect of the same sentence.
   const { data: current } = await supabase.from('herd_lots').select(LOT_COLUMNS).eq('id', id).maybeSingle()
-  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: retiredWhileOpen('lot') }
+  if (!current || (current as LotRow).retired_at) return { ok: false, status: 404, error: retiredWhileOpen('bunch') }
   const row = current as LotRow
-  return { ok: false, ...(await staleEdit('lot', row)) }
+  return { ok: false, ...(await staleEdit('bunch', row)) }
 }
 
 // Retire — the lot leaves the pickers and the estimate; its name still resolves.

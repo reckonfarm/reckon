@@ -86,6 +86,21 @@ export async function POST(req: NextRequest) {
     throw err
   }
 
+  // Block 14: a count's EXPECTED is what the bunch says right now, read here —
+  // never trusted from the phone, which may have opened the sheet an hour ago.
+  // The bunch must be this ranch's (RLS: another ranch's is not found). The
+  // count moves nothing; "Change bunch to N?" is a separate act the answer offers.
+  let countFollowUp: { kind: 'set_head'; lot_id: string; head: number; label: string } | null = null
+  if (body.type === 'cattle_counted') {
+    const lotId = (payload as { herd_lot_id: string }).herd_lot_id
+    const { data: lotRow } = await supabase.from('herd_lots').select('id, head_count, name, class, retired_at, deleted_at').eq('id', lotId).maybeSingle()
+    const lot = lotRow as { id: string; head_count: number; name: string | null; class: string; retired_at: string | null; deleted_at: string | null } | null
+    if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })
+    payload = { ...payload, expected: lot.head_count } as typeof payload
+    const counted = (payload as { counted: number }).counted
+    if (counted !== lot.head_count) countFollowUp = { kind: 'set_head', lot_id: lot.id, head: counted, label: `Change bunch to ${counted.toLocaleString()}?` }
+  }
+
   const ranch_id = await resolveRanchId(supabase, user.id)
   // Answered here, not by the database. Without this the person gets a 500
   // carrying a row-level-security message, which tells them nothing they can
@@ -131,11 +146,11 @@ export async function POST(req: NextRequest) {
     // 23505 on the primary key = this exact entry already landed. Return it.
     if (error.code === '23505' && id) {
       const { data: existing } = await supabase.from('events').select(EVENT_COLS).eq('id', id).maybeSingle()
-      if (existing) return NextResponse.json({ event: existing, duplicate: true, consequence: await answer() }, { status: 200 })
+      if (existing) return NextResponse.json({ event: existing, duplicate: true, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 200 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  return NextResponse.json({ event: row, consequence: await answer() }, { status: 201 })
+  return NextResponse.json({ event: row, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 201 })
 }
 
 const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, payload, schema_version, ingested_at'

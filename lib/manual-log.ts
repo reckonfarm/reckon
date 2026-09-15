@@ -14,6 +14,7 @@ export const MANUAL_EVENT_TYPES = [
   'cattle_moved',
   'cattle_worked',
   'hay_inventory',
+  'cattle_counted',
 ] as const
 export type ManualEventType = (typeof MANUAL_EVENT_TYPES)[number]
 
@@ -28,6 +29,7 @@ export const MANUAL_EVENT_LABELS: Record<ManualEventType, string> = {
   cattle_moved: 'Cattle moved',
   cattle_worked: 'Cattle worked',
   hay_inventory: 'Bales on hand',
+  cattle_counted: 'Cattle counted',
 }
 
 export const MANUAL_SCHEMA_VERSION = 1
@@ -42,6 +44,7 @@ export const LIMITS = {
   what:   { maxLen: 80 },
   note:   { maxLen: 200 },
   onHand: { min: 0, max: 100000 }, // 0 is honest ("stack's empty")
+  counted: { min: 0, max: 20000 }, // 0 is honest ("counted the pen, nobody in it")
 } as const
 
 export type ManualPayload = {
@@ -55,6 +58,11 @@ export type ManualPayload = {
   | { head: number; from_place_id: string | null; to_place_id: string | null }
   | { head: number; what: string }
   | { bales: number; as_of: string }
+  // Block 14: a count of a bunch. `expected` is what the bunch said at the
+  // time (the route fills it from the row; a correction keeps the original's).
+  // A count NEVER changes the bunch's head count — nothing reads this type
+  // for that; "Change bunch to N?" is a separate head_count_set.
+  | { counted: number; expected: number | null; herd_lot_id: string }
 )
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -134,6 +142,17 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         head: boundedNumber(body.head, 'head', LIMITS.head.min, LIMITS.head.max, true),
         what,
         herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch was worked — optional
+      }
+    }
+    case 'cattle_counted': {
+      const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')
+      if (!lot) throw new ValidationError('Pick the bunch you counted.')
+      const expected = body.expected == null ? null : boundedNumber(body.expected, 'expected', 0, LIMITS.head.max, true)
+      return {
+        ...base,
+        counted: boundedNumber(body.counted, 'counted', LIMITS.counted.min, LIMITS.counted.max, true),
+        expected,
+        herd_lot_id: lot,
       }
     }
     // A counted baseline: "N bales on hand as of D". The hay ledger
