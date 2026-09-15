@@ -15,6 +15,7 @@ import DrawPlace from '../DrawPlace'
 import EditPlace from '../EditPlace'
 import { placeRing, resolveMapCentre } from '@/lib/places/anchor'
 import { kindLabel } from '@/lib/places/kinds'
+import { childrenSummary } from '@/lib/places/rows'
 
 // ─── /ranch/places/[id] (Block 6A · the shape in slice 1) ─────────────────────
 // name / type → THE GROUND (its shape on satellite, with acreage, or the offer
@@ -45,7 +46,8 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
     supabase.from('devices').select('id, name, type, last_seen').eq('place_id', id).order('name'),
   ])
   if (!history.place) notFound()
-  const { place, memory, counts } = history
+  const { place, memory, counts, parent, children } = history
+  const inside = childrenSummary(children, kindLabel)
   const ring = placeRing(place.geometry)
   const centre = await resolveMapCentre(supabase, user.id, ring ? [ring] : [])
   const rows = activity ? standingRows(activity.rows).slice(0, 10) : []
@@ -60,11 +62,26 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         </p>
         <p className={EYEBROW}>{kindLabel(place.kind)}{place.retired_at ? ' · retired' : ''}</p>
         <h1 className="mt-1 type-page-heading text-ink">{place.name}</h1>
+        {/* Block 7A: where it sits, and what sits in it. The parent is a link
+            only when it is live; a parent that is retired or in the trash is
+            not a place anyone can open, so it is not named here. */}
+        {(parent || inside) && (
+          <p className="mt-2 font-dm-sans text-[17px] text-ink" data-audit="place-hierarchy">
+            {parent && (
+              <span data-audit="place-parent">
+                In <Link href={`/ranch/places/${parent.id}`} className="font-semibold text-brand underline underline-offset-2">{parent.name}</Link>
+                <span className="text-secondary-ink"> · {kindLabel(parent.kind).toLowerCase()}</span>
+              </span>
+            )}
+            {parent && inside && <span className="text-secondary-ink"> · </span>}
+            {inside && <span data-audit="place-children-count">{parent ? inside : inside[0].toUpperCase() + inside.slice(1)}</span>}
+          </p>
+        )}
 
         {/* Correcting what a place IS (057): name, kind, retire. A retired place
             shows only the way back — the route refuses every other edit on one,
             so offering more would be a button that can only fail. */}
-        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at }} />
+        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at, parentId: parent?.id ?? null, parentName: parent?.name ?? null }} />
 
         {!place.retired_at && <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>}
 
@@ -90,6 +107,24 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             )}
           </div>
         </section>
+
+        {children.length > 0 && (
+          <section className="mt-6" aria-labelledby="place-inside">
+            <h2 id="place-inside" className={`${EYEBROW} !text-ink`}>Inside {place.name}</h2>
+            <Card className="mt-2 p-0">
+              <ul className="divide-y divide-rule" data-audit="place-children">
+                {children.map(c => (
+                  <li key={c.id}>
+                    <Link href={`/ranch/places/${c.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="place-child-row">
+                      <span className="font-dm-sans text-[17px] font-semibold text-ink">{c.name} <span className="font-normal text-secondary-ink">· {kindLabel(c.kind)}</span></span>
+                      <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </section>
+        )}
 
         <section className="mt-6" aria-labelledby="place-recent">
           <h2 id="place-recent" className={`${EYEBROW} !text-ink`}>Recorded here</h2>

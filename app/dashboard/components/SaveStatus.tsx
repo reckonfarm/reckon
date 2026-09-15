@@ -78,7 +78,7 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
         <div className="flex items-start gap-3">
           <Dot state={shown} />
           <div className="min-w-0 flex-1">
-            <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} tone="strip" />
+            <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} href={item.link?.href} eventLabel={item.link?.label} tone="strip" />
           </div>
         </div>
       ) : (

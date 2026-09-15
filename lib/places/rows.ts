@@ -19,6 +19,8 @@ export interface PlaceRow {
   name: string
   kind: string
   retiredAt: string | null
+  /** Block 7A: the place this one sits inside, or null. Resolved against the LIVE list by the page. */
+  parentId: string | null
   lastWork: { ts: string; type: string } | null
   lastRain: { ts: string; inches: number } | null
   ring: LatLng[] | null
@@ -54,6 +56,7 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
   const rows: PlaceRow[] = shaped.map(pl => ({
     id: pl.id, name: pl.name, kind: pl.kind, ring: pl.ring, acres: pl.acres,
     retiredAt: pl.retired_at ?? null,
+    parentId: pl.parent_id ?? null,
     lastWork: work.get(pl.id) ?? null,
     lastRain: rain.get(pl.id) ?? null,
   }))
@@ -74,9 +77,77 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
 // yet, ask again without it. The acreage simply stays invisible until the
 // migration runs; nothing else on the page changes.
 async function selectPlaces(supabase: SupabaseClient) {
-  type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null; retired_at: string | null }
-  const full = await liveOnly(supabase.from('places').select('id, name, kind, geometry, acres, retired_at')).order('name', { ascending: true })
+  type Row = { id: string; name: string; kind: string; geometry: unknown; acres: number | null; retired_at: string | null; parent_id: string | null }
+  const full = await liveOnly(supabase.from('places').select('id, name, kind, geometry, acres, retired_at, parent_id')).order('name', { ascending: true })
   if (!full.error) return (full.data ?? []) as Row[]
   const legacy = await supabase.from('places').select('id, name, kind, geometry').order('name', { ascending: true })
-  return ((legacy.data ?? []) as Omit<Row, 'acres' | 'retired_at'>[]).map(r => ({ ...r, acres: null, retired_at: null }))
+  return ((legacy.data ?? []) as Omit<Row, 'acres' | 'retired_at' | 'parent_id'>[]).map(r => ({ ...r, acres: null, retired_at: null, parent_id: null }))
+}
+
+// ─── The hierarchy (Block 7A) ─────────────────────────────────────────────────
+//
+// pastures at the top, fields and stacks nested under whatever holds them, and
+// everything that stands on its own in "Unplaced" at the bottom. NEVER HIDE A
+// PLACE: a row whose parent is not on the live list (retired, trashed, or
+// simply not visible) is shown at the top level rather than lost under a
+// parent that is not there. A visited set bounds the walk, so even a loop that
+// somehow reached the table (068 refuses one) renders every row once.
+//
+// "Top" is any live place that is a pasture OR holds other places — a
+// parentless field with three stacks in it is a hierarchy of its own, and it
+// belongs with the pastures, not in Unplaced. Unplaced = parentless, childless,
+// not a pasture. Within every group the rows keep placeRows' order: most
+// recently used first, then by name.
+
+export interface PlaceNode extends PlaceRow {
+  children: PlaceNode[]
+  depth: number
+}
+
+export interface PlaceTree {
+  /** Pastures and any other place that holds others, each with its subtree. */
+  top: PlaceNode[]
+  /** Parentless, childless, not a pasture. */
+  unplaced: PlaceNode[]
+}
+
+export function placeTree(live: PlaceRow[]): PlaceTree {
+  const byId = new Map(live.map(r => [r.id, r]))
+  const kids = new Map<string, PlaceRow[]>()
+  for (const r of live) {
+    const pid = r.parentId && byId.has(r.parentId) && r.parentId !== r.id ? r.parentId : null
+    if (pid) kids.set(pid, [...(kids.get(pid) ?? []), r])
+  }
+  const seen = new Set<string>()
+  const build = (r: PlaceRow, depth: number): PlaceNode => {
+    seen.add(r.id)
+    const children = (kids.get(r.id) ?? []).filter(c => !seen.has(c.id)).map(c => build(c, depth + 1))
+    return { ...r, children, depth }
+  }
+  const roots = live.filter(r => !(r.parentId && byId.has(r.parentId) && r.parentId !== r.id))
+  const top: PlaceNode[] = []
+  const unplaced: PlaceNode[] = []
+  for (const r of roots) {
+    if (seen.has(r.id)) continue
+    const node = build(r, 0)
+    if (r.kind === 'pasture' || node.children.length > 0) top.push(node)
+    else unplaced.push(node)
+  }
+  // Anything a loop kept out of both lists (unreachable from any root) still
+  // gets a row. 068 makes this impossible; the rule is "never hide a place".
+  for (const r of live) if (!seen.has(r.id)) unplaced.push(build(r, 0))
+  return { top, unplaced }
+}
+
+/** "3 stacks and a field in it" — what a parent holds, counted by kind, for a row or a page. */
+export function childrenSummary(children: { kind: string }[], kindLabel: (k: string) => string): string | null {
+  if (children.length === 0) return null
+  const counts = new Map<string, number>()
+  for (const c of children) counts.set(c.kind, (counts.get(c.kind) ?? 0) + 1)
+  const parts = [...counts.entries()].map(([k, n]) => {
+    const label = kindLabel(k).toLowerCase()
+    return n === 1 ? `a ${label}` : `${n} ${label}s`
+  })
+  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+  return `${list} in it`
 }

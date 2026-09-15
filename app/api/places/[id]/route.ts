@@ -5,16 +5,18 @@ import { createServiceClient } from '@/lib/supabase'
 import { placeReferences, refsSentence, planPlaceCascade, cascadeSentence } from '@/lib/places/references'
 import { applySplit } from '@/lib/cascade'
 import { resolveRanchId } from '@/lib/ranch-membership'
-import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
+import { normalizeKind, MAX_NAME, canContain, parentRule, kindLabel } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { staleEdit, retiredWhileOpen } from '@/lib/stale-edit'
-import { trashRow } from '@/lib/trash'
+import { trashRow, liveOnly } from '@/lib/trash'
 
 // One place (places, slice 1).
 //
 //   GET    /api/places/[id]  → { place }
 //   PATCH  /api/places/[id]  → { name?, kind?, geometry?, parent_id?, retired?,
-//                                expected_updated_at? } → { place }
+//                                pinned?, expected_updated_at? } → { place }
+//                              parent_id and kind are judged against each other
+//                              and against the kind table (Block 7A, below).
 //   DELETE /api/places/[id]  → { place }   RETIRES it. Nothing is deleted.
 //
 // AUTH via lib/auth-user sessionUser(req) — cookies first, then a Bearer JWT,
@@ -165,31 +167,75 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
   }
 
-  if ('parent_id' in body) {
-    const parent = body.parent_id
-    if (parent === null) {
-      patch.parent_id = null
-    } else if (typeof parent !== 'string') {
-      return NextResponse.json({ error: 'parent_id must be an id or null' }, { status: 400 })
-    } else if (parent === id) {
-      return NextResponse.json({ error: 'A place cannot contain itself.' }, { status: 400 })
-    } else {
-      // Two levels, enforced here rather than in the schema (056's header
-      // says why). The parent must be visible to this person — RLS decides
-      // that — and must itself be top-level.
-      const { data: p } = await supabase.from('places').select('id, parent_id').eq('id', parent).maybeSingle()
-      if (!p) return NextResponse.json({ error: 'No such place to sit inside.' }, { status: 400 })
-      if (p.parent_id) {
-        return NextResponse.json({ error: 'Places go two deep: that one is already inside another.' }, { status: 400 })
+  // ── Block 7A: the parent, and the kind — checked against each other ────────
+  //
+  // 056 capped the hierarchy at two levels here. Block 7A replaces that with
+  // the kind table in lib/places/kinds.ts (pasture → field → stackyard →
+  // stack; gate / tank / yard inside a pasture or a field), so depth is
+  // whatever the kinds allow and nothing else. Three things can go wrong and
+  // each gets its own sentence:
+  //   · the parent is not visible, not live, or of a kind this place cannot
+  //     sit inside;
+  //   · the parent is this place or one of its own descendants (068's trigger
+  //     also refuses this; the walk here is so the answer is a sentence, not
+  //     a 500);
+  //   · the KIND is changing to one its current parent cannot hold, or one
+  //     that cannot hold the places already inside it — "a field with three
+  //     stacks in it cannot become a stack".
+  // The current row is read first, on the caller's client, so every rule is
+  // judged against what is actually there rather than what the body claims.
+  const wantsParent = 'parent_id' in body
+  const wantsKind = 'kind' in body
+  if (wantsParent || wantsKind) {
+    const { data: curRow } = await supabase.from('places').select('id, kind, parent_id').eq('id', id).maybeSingle()
+    const cur = curRow as { id: string; kind: string; parent_id: string | null } | null
+    if (!cur) return NextResponse.json({ error: 'No such place' }, { status: 404 })
+    const nextKind = wantsKind ? (patch.kind as string) : cur.kind
+
+    let nextParentId: string | null = cur.parent_id
+    if (wantsParent) {
+      const parent = body.parent_id
+      if (parent === null) {
+        nextParentId = null
+      } else if (typeof parent !== 'string' || !parent) {
+        return NextResponse.json({ error: 'parent_id must be an id or null' }, { status: 400 })
+      } else if (parent === id) {
+        return NextResponse.json({ error: 'A place cannot contain itself.' }, { status: 400 })
+      } else {
+        nextParentId = parent
       }
-      // …and this row must have no children of its own, or the pair would
-      // make three levels.
-      const { data: kids } = await supabase.from('places').select('id').eq('parent_id', id).limit(1)
-      if ((kids ?? []).length > 0) {
-        return NextResponse.json({ error: 'This place already contains others, so it cannot sit inside one.' }, { status: 400 })
-      }
-      patch.parent_id = parent
     }
+
+    if (nextParentId && (wantsParent || wantsKind)) {
+      const { data: p } = await liveOnly(supabase.from('places').select('id, name, kind, parent_id, retired_at').eq('id', nextParentId)).maybeSingle()
+      const par = p as { id: string; name: string; kind: string; parent_id: string | null; retired_at: string | null } | null
+      if (!par) return NextResponse.json({ error: 'No such place to sit inside.' }, { status: 400 })
+      if (par.retired_at) return NextResponse.json({ error: `${par.name} is retired, so nothing can sit inside it.` }, { status: 400 })
+      if (!canContain(par.kind, nextKind)) {
+        return NextResponse.json({ error: `${parentRule(nextKind)} ${par.name} is a ${kindLabel(par.kind).toLowerCase()}.` }, { status: 400 })
+      }
+      // No loops: walk up from the parent; reaching this row means the parent
+      // is inside it already.
+      let cursor: string | null = par.parent_id
+      for (let steps = 0; cursor && steps < 64; steps++) {
+        if (cursor === id) return NextResponse.json({ error: `${par.name} is already inside this place, so this place cannot sit inside it.` }, { status: 400 })
+        const { data: up } = await supabase.from('places').select('parent_id').eq('id', cursor).maybeSingle()
+        cursor = (up as { parent_id: string | null } | null)?.parent_id ?? null
+      }
+    }
+
+    if (wantsKind && nextKind !== cur.kind) {
+      // The places already inside this one must still be allowed inside its new kind.
+      const { data: kidRows } = await liveOnly(supabase.from('places').select('kind').eq('parent_id', id)).is('retired_at', null)
+      const kids = (kidRows ?? []) as { kind: string }[]
+      const blocked = kids.filter(k => !canContain(nextKind, k.kind))
+      if (blocked.length > 0) {
+        const n = blocked.length
+        return NextResponse.json({ error: `${n} ${n === 1 ? 'place' : 'places'} inside it cannot sit inside a ${kindLabel(nextKind).toLowerCase()}. Move ${n === 1 ? 'it' : 'them'} out first.` }, { status: 400 })
+      }
+    }
+
+    if (wantsParent) patch.parent_id = nextParentId
   }
 
   if (Object.keys(patch).length === 1) {
@@ -215,6 +261,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!unretiring) write = write.is('retired_at', null)
 
   const { data, error } = await write.select(SELECT).maybeSingle()
+  // 068's guard refuses in a sentence; pass it through as a refusal, not a fault.
+  if (error && error.code === '23514') return NextResponse.json({ error: error.message }, { status: 400 })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (data) return NextResponse.json({ place: data })
 

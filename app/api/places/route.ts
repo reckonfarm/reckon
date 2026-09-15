@@ -2,7 +2,7 @@ import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { normalizeKind, MAX_NAME } from '@/lib/places/kinds'
+import { normalizeKind, MAX_NAME, canContain, parentRule } from '@/lib/places/kinds'
 import { validateGeoJSONPolygon, ringToGeoJSON, storableAcres } from '@/lib/places/geo'
 import { MAX_LOOP_SELF_CROSSINGS } from '@/lib/jobs/boundary'
 import { live } from '@/lib/ledger-effective'
@@ -11,7 +11,8 @@ import { liveOnly } from '@/lib/trash'
 // Places — the named spots on the outfit (031).
 //
 // GET  /api/places   → { places: [{id, name, kind}] } for the ranch
-// POST /api/places   → { name, kind?, geometry? } → { place } (201)
+// POST /api/places   → { id?, name, kind?, geometry?, parent_id?, capture? }
+//                      → { place, parent, siblings, consequence } (201; 200 on a replayed id)
 //
 // AUTH via lib/auth-user sessionUser(req): cookies first, then a Bearer JWT.
 // Both come back as a USER-SCOPED client, so the 043 membership policies stay
@@ -91,6 +92,12 @@ export async function POST(req: NextRequest) {
   }
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME) : ''
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  // Block 7A: a captured place carries a CLIENT-MINTED id, the same way every
+  // entry through /api/log does, so a retry after a timed-out-but-landed save
+  // can never make two places. A second arrival of the same id is answered
+  // 200 with the row that already landed (see the insert below).
+  const clientId = typeof body.id === 'string' && UUID.test(body.id) ? body.id : null
+  if (body.id != null && !clientId) return NextResponse.json({ error: 'id must be a UUID' }, { status: 400 })
   if (body.kind != null && typeof body.kind !== 'string') {
     return NextResponse.json({ error: 'kind must be a string' }, { status: 400 })
   }
@@ -136,6 +143,11 @@ export async function POST(req: NextRequest) {
           ...(c.snapped === true ? { snapped: true } : {}),
           ...(c.closedByHand === true ? { closed_by_hand: true } : {}),
           ...(typeof c.accuracyM === 'number' ? { accuracy_m: Math.round(c.accuracyM * 10) / 10 } : {}),
+          // Block 7A — a dropped pin may have been DRAGGED. Provenance says so
+          // plainly: the fix the phone gave (never moved), where the pin ended
+          // up, how far that is, and adjusted: true. An undragged pin records
+          // adjusted: false with the same fix, so the two are never confused.
+          ...(src === 'dropped' ? pinRecord(c) : {}),
           ...(typeof c.rejected === 'number' ? { rejected_fixes: c.rejected } : {}),
           ...(Array.isArray(c.gaps) ? { gaps: c.gaps.slice(0, 50) } : {}),
           ...(Array.isArray(c.track) ? { track: (c.track as unknown[]).slice(0, 5000) } : {}),
@@ -146,17 +158,37 @@ export async function POST(req: NextRequest) {
 
   const ranch_id = await resolveRanchId(supabase, user.id)
 
+  // Block 7A — the parent, checked BEFORE the insert, on the caller's client.
+  // Three questions, three refusals:
+  //   · visible to this person? Under the membership policies a place on
+  //     another ranch is simply not there, and the answer never says which —
+  //     migration 068's trigger holds the same line at the database.
+  //   · live? A retired or trashed place is off every picker, this one too.
+  //   · may a place of THIS kind sit inside a place of THAT kind? The table in
+  //     lib/places/kinds.ts (pasture → field → stackyard → stack) decides, and
+  //     the refusal quotes its rule.
+  let parent: { id: string; name: string; kind: string } | null = null
+  if (body.parent_id != null) {
+    if (typeof body.parent_id !== 'string' || !body.parent_id) {
+      return NextResponse.json({ error: 'parent_id must be an id' }, { status: 400 })
+    }
+    const { data: p } = await liveOnly(supabase.from('places').select('id, name, kind, retired_at').eq('id', body.parent_id)).maybeSingle()
+    const row = p as { id: string; name: string; kind: string; retired_at: string | null } | null
+    if (!row) return NextResponse.json({ error: 'No such place to sit inside.' }, { status: 400 })
+    if (row.retired_at) return NextResponse.json({ error: `${row.name} is retired, so nothing new can sit inside it.` }, { status: 400 })
+    if (!canContain(row.kind, kind)) {
+      return NextResponse.json({ error: `${parentRule(kind)} ${row.name} is a ${row.kind.replace(/_/g, ' ')}.` }, { status: 400 })
+    }
+    parent = { id: row.id, name: row.name, kind: row.kind }
+  }
+
   // The slice-1 columns are touched ONLY when a shape came with the request.
   // A place named from the record sheet inserts exactly the row it always did,
   // so that path keeps working on a deploy that lands before migration 056 is
   // run by hand. Drawing, which genuinely needs the columns, fails loudly.
   const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
-
-  // Field systems (Aug 10, and PK's ruling): a named area can contain fields,
-  // and 056 already carries parent_id. Threaded through capture now with NO UI
-  // in this block — cheap insurance against designing it out, which is exactly
-  // what a flat capture flow would have done.
-  if (typeof body.parent_id === 'string' && body.parent_id) row.parent_id = body.parent_id
+  if (clientId) row.id = clientId
+  if (parent) row.parent_id = parent.id
 
   // 7D.4 — a ranch's FIRST place is pinned to Weather as it is created.
   // Without this a new ranch draws its first pasture, opens Weather and finds
@@ -180,6 +212,58 @@ export async function POST(req: NextRequest) {
     .insert(row)
     .select(cols)
     .single()
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ place }, { status: 201 })
+  if (error) {
+    // The replay: this id already landed (a retry after a save that timed out
+    // on the way back). Answer with what is there, and say it is a replay.
+    if (error.code === '23505' && clientId) {
+      const { data: existing } = await supabase.from('places').select(cols).eq('id', clientId).maybeSingle()
+      if (existing) return NextResponse.json({ place: existing, duplicate: true, ...(await answerFor(supabase, ranch_id, parent)) }, { status: 200 })
+    }
+    // 068's guard says no in a sentence a person can read; pass it through as
+    // the refusal it is, not as a server fault.
+    if (error.code === '23514') return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ place, ...(await answerFor(supabase, ranch_id, parent)) }, { status: 201 })
+}
+
+// The pin's record, taken from the client's capture but re-typed here: only
+// finite numbers survive, and only the keys named. Nothing else the client
+// sends about the pin is stored.
+function pinRecord(c: Record<string, unknown>): Record<string, unknown> {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const fix = c.fix as Record<string, unknown> | undefined
+  const pos = c.position as Record<string, unknown> | undefined
+  const fLat = num(fix?.lat), fLng = num(fix?.lng), fAcc = num(fix?.accuracy_m)
+  const pLat = num(pos?.lat), pLng = num(pos?.lng)
+  const out: Record<string, unknown> = { adjusted: c.adjusted === true }
+  if (fLat != null && fLng != null) out.fix = { lat: +fLat.toFixed(6), lng: +fLng.toFixed(6), ...(fAcc != null ? { accuracy_m: Math.round(fAcc * 10) / 10 } : {}) }
+  if (pLat != null && pLng != null) out.position = { lat: +pLat.toFixed(6), lng: +pLng.toFixed(6) }
+  const moved = num(c.moved_m)
+  if (moved != null) out.moved_m = Math.round(moved * 10) / 10
+  return out
+}
+
+type SessionClient = NonNullable<Awaited<ReturnType<typeof sessionUser>>>['supabase']
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+// Block 7A — THE ANSWER, NOT A RECEIPT. A saved place is answered with what it
+// changed: "in North Pasture · 4 places in it now", or "12 places on the
+// ranch now" when it stands on its own. The count is taken AFTER the insert on
+// the caller's client, so it is the count this person can see, and it includes
+// the place just made. The shape matches /api/log's consequence so the outbox
+// receipt prints it with no special case.
+async function answerFor(supabase: SessionClient, ranchId: string | null, parent: { id: string; name: string; kind: string } | null) {
+  let siblings = 0
+  try {
+    const q = parent
+      ? liveOnly(supabase.from('places').select('id', { count: 'exact', head: true }).eq('parent_id', parent.id)).is('retired_at', null)
+      : liveOnly(supabase.from('places').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId ?? '')).is('retired_at', null)
+    const { count } = await q
+    siblings = count ?? 0
+  } catch { siblings = 0 }
+  const line = parent
+    ? `${siblings} ${siblings === 1 ? 'place' : 'places'} in ${parent.name} now`
+    : `${siblings} ${siblings === 1 ? 'place' : 'places'} on the ranch now`
+  return { parent: parent ? { id: parent.id, name: parent.name, kind: parent.kind } : null, siblings, consequence: { lines: [line] } }
 }

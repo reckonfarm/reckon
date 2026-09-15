@@ -54,6 +54,12 @@ export interface OutboxItem {
   consequence?: Consequence         // what the server said it meant (2C)
   serverId?: string
   owner?: string                    // the signed-in user id this entry was saved under (Block 5D)
+  // Block 7A: a place captured in the field goes through this same outbox.
+  // `endpoint` is where the body is POSTed (default /api/log — every entry
+  // before 7A); `link` is where the receipt's "Open …" goes, when the thing
+  // recorded is not an entry on the activity record.
+  endpoint?: string
+  link?: { href: string; label: string }
 }
 
 export const STATE_LABEL: Record<OutboxState, string> = {
@@ -154,7 +160,7 @@ export function hasUnsynced(): boolean { return unsyncedCount() > 0 }
  * phone's storage refused — nothing was saved, and the caller must say so.
  * `holdMs` defers the first upload (undo window).
  */
-export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0): OutboxItem {
+export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0, opts: { endpoint?: string; link?: { href: string; label: string } } = {}): OutboxItem {
   const id = typeof body.id === 'string' && body.id ? body.id : newEventId()
   const hold = Math.max(holdMs, MIN_DWELL_MS)
   const item: OutboxItem = {
@@ -167,6 +173,8 @@ export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0
     holdUntil: Date.now() + hold,
     undoable: holdMs > 0,
     owner: ownerNow() ?? undefined,
+    ...(opts.endpoint ? { endpoint: opts.endpoint } : {}),
+    ...(opts.link ? { link: opts.link } : {}),
   }
   write([...read(), item])            // throws → caller shows "Couldn't save"
   scheduleFlush(hold)
@@ -243,7 +251,10 @@ async function uploadOne(item: OutboxItem): Promise<void> {
   const queuedAt = Date.now()
   update(item.id, { state: 'queued', attempts: item.attempts + 1, holdUntil: undefined })
   try {
-    const res = await fetch('/api/log', {
+    // Block 7A: the endpoint is the item's, so a place and an entry share one
+    // queue, one retry loop and one set of words. Both routes answer a replayed
+    // id with 200 and the row that already landed.
+    const res = await fetch(item.endpoint ?? '/api/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item.body),
@@ -253,7 +264,8 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       const consequence = json && typeof json === 'object' && Array.isArray((json as { consequence?: { lines?: unknown } }).consequence?.lines)
         ? { lines: ((json as { consequence: { lines: unknown[] } }).consequence.lines).filter((l): l is string => typeof l === 'string') }
         : undefined
-      const serverId = (json as { event?: { id?: string } }).event?.id
+      const j = json as { event?: { id?: string }; place?: { id?: string } }
+      const serverId = j.event?.id ?? j.place?.id
       await sleep(Math.max(0, MIN_DWELL_MS - (Date.now() - queuedAt)))   // 'queued' is seen before 'synced'
       update(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId })
       return

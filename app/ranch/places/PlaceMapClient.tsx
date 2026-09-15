@@ -1,7 +1,8 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { BASEMAPS, type Basemap } from '@/lib/map-basemaps'
 import { cream, forestGreen, warning } from '@/lib/brand-colors'
@@ -57,6 +58,27 @@ const TAP_SLOP_PX = 12
 // high contrast against green ground, and what worked ground looks like from
 // the air.
 const DRAFT_COLOR = '#D4A017'
+
+// ─── The pin (Block 7A) ───────────────────────────────────────────────────────
+// A dropped point is shown three ways at once, because they are three facts:
+//   · the FIX — a small dot exactly where the phone said, never moved;
+//   · the ACCURACY — a circle in real metres around the fix (a Leaflet Circle,
+//     not a CircleMarker: a CircleMarker's radius is pixels and would claim a
+//     different accuracy at every zoom);
+//   · the PIN — where the place will be recorded. It starts on the fix and
+//     goes where the thumb drags it. The drag is recorded in provenance as
+//     what it is: original fix, final position, distance moved.
+// The pin is a DivIcon — plain HTML, no image assets to bundle — with a 44 px
+// hit box around a 22 px head, so a thumb can pick it up on a 390 px phone.
+const PIN_SIZE = 44
+const pinIcon = (draggable: boolean) => L.divIcon({
+  className: '',
+  iconSize: [PIN_SIZE, PIN_SIZE],
+  iconAnchor: [PIN_SIZE / 2, PIN_SIZE / 2],
+  html: `<div data-audit="map-pin" style="width:${PIN_SIZE}px;height:${PIN_SIZE}px;display:flex;align-items:center;justify-content:center;cursor:${draggable ? 'grab' : 'default'}">
+    <div style="width:22px;height:22px;border-radius:9999px;background:${DRAFT_COLOR};border:3px solid ${cream};box-shadow:0 0 0 2px #111827, 0 2px 6px rgba(0,0,0,.5)"></div>
+  </div>`,
+})
 
 // SAVED shapes are styled PER BASEMAP, for the reason JobMapClient already
 // learned the hard way ("grey-green over green ground was mush"): forest green
@@ -166,6 +188,7 @@ export default function PlaceMapClient({
   initialCenter,
   height = 420,
   drawing = false,
+  pin,
   onShape,
   onCancel,
   useLabel = 'Use this shape',
@@ -183,7 +206,9 @@ export default function PlaceMapClient({
   // would re-fit the view one render after the operator's first tap, which is
   // exactly the yank this rule exists to prevent. The parent gives the map a
   // fresh key per step, so a draft never survives leaving draw mode.
-  const following = !drawing && followUser
+  // Pin mode is the same rule: the pin is the subject, and a re-fit to the
+  // ranch's shapes would pull the ground out from under it.
+  const following = !drawing && !pin && followUser
 
   // Fight #6: while the screen belongs to the map, the page behind it must not
   // scroll under the operator's finger. Syncing one bit of React state to the
@@ -252,7 +277,9 @@ export default function PlaceMapClient({
       aria-modal={drawing || undefined}
     >
       <MapContainer
-        {...(initialBounds
+        {...(pin
+          ? { center: [pin.position.lat, pin.position.lng] as LL, zoom: 18 }
+          : initialBounds
           ? { bounds: initialBounds, boundsOptions: { padding: [30, 30] as [number, number] } }
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
         preferCanvas
@@ -318,6 +345,31 @@ export default function PlaceMapClient({
             pathOptions={{ color: cream, weight: 2, fillColor: DRAFT_COLOR, fillOpacity: 1 }}
           />
         ))}
+
+        {pin && (
+          <>
+            {/* The accuracy, in metres, around the fix — the phone's own claim. */}
+            <Circle
+              center={[pin.fix.lat, pin.fix.lng]}
+              radius={Math.max(1, pin.accuracyM)}
+              interactive={false}
+              pathOptions={{ color: '#2563EB', weight: 1.5, fillColor: '#2563EB', fillOpacity: 0.12 }}
+            />
+            <CircleMarker
+              center={[pin.fix.lat, pin.fix.lng]}
+              radius={5}
+              interactive={false}
+              pathOptions={{ color: cream, weight: 2, fillColor: '#2563EB', fillOpacity: 1 }}
+            />
+            <Marker
+              position={[pin.position.lat, pin.position.lng]}
+              icon={pinIcon(!!pin.onMove)}
+              draggable={!!pin.onMove}
+              interactive={!!pin.onMove}
+              eventHandlers={pin.onMove ? { dragend: e => { const ll = (e.target as L.Marker).getLatLng(); pin.onMove!({ lat: ll.lat, lng: ll.lng }) } } : {}}
+            />
+          </>
+        )}
 
         {here && (
           <CircleMarker
