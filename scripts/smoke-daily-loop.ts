@@ -1988,7 +1988,7 @@ async function main() {
     for (const width of [390, 320]) {
       const prior = page.viewportSize()
       await page.setViewportSize({ width, height: 844 })
-      const SCREENS = ['/today?fips=' + HOME_FIPS, '/ranch', '/ranch/cattle', '/ranch/hay', '/ranch/places', '/ranch/activity', '/markets', '/weather', '/account', '/ranch/preg-check']
+      const SCREENS = ['/today?fips=' + HOME_FIPS, '/ranch', '/ranch/cattle', '/ranch/hay', '/ranch/places', '/ranch/activity', '/markets', '/weather', '/account']
       const blocked: string[] = []
       const floaters = new Set<string>()
 
@@ -2083,6 +2083,12 @@ async function main() {
       }
       record('15 (ruling 2): no retry button exists on any screen — a record sends itself, forever', retryFound.length === 0, retryFound.length ? retryFound.join(' · ') : `${SCREENS15.length} screens clean`)
       record('15 (ruling 6): back from every screen returns you to where you were', backFailed.length === 0, backFailed.length ? backFailed.join(' · ') : `${SCREENS15.length} screens return to Today`)
+      // The old chute address still lands somewhere useful: Today, with the preg sheet open.
+      await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
+      const pregSheetUp = await page.locator('[data-audit="preg-bunch"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      record('15 (ruling 1): /ranch/preg-check lands on Today with the preg check sheet open — the old address is not a dead end', /\/today/.test(page.url()) && pregSheetUp, `${new URL(page.url()).pathname} · sheet ${pregSheetUp}`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.evaluate(() => { try { localStorage.removeItem('manual_log_draft_v1') } catch { /* fine */ } })
       if (prior15) await page.setViewportSize(prior15)
     }
 
@@ -2137,7 +2143,7 @@ async function main() {
 
       // 12.11 — every dropdown looks like one: a chevron beside every select.
       let bare = 0, total = 0
-      for (const screen of ['/ranch/activity', '/ranch/preg-check', '/markets']) {
+      for (const screen of ['/ranch/activity', '/markets']) {
         await page.goto(screen, { waitUntil: 'domcontentloaded' })
         await page.waitForTimeout(1_200)
         const r = await page.evaluate(() => {
