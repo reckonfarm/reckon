@@ -159,7 +159,7 @@ export async function deleteEvent(supabase: SupabaseClient, userId: string, id: 
     // the RECORD must keep a note — but the row itself goes to the trash like
     // everything else, restorable for TRASH_DAYS, removed by purge_trash().
     const { error } = await db.from('events').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).eq('id', id).is('deleted_at', null)
-    if (!error) return { ok: true, mode: 'hard', label }
+    if (!error) { await trashCreatedBunches(db, userId, id); return { ok: true, mode: 'hard', label } }
     // The FK backstop. Nothing above should reach it, but if it does the
     // person gets the honest outcome rather than a database code: fall through
     // and keep the row with a deletion record.
@@ -170,7 +170,28 @@ export async function deleteEvent(supabase: SupabaseClient, userId: string, id: 
     .update({ deleted_at: new Date().toISOString(), deleted_by: userId })
     .eq('id', id).is('deleted_at', null)
   if (upErr) return { ok: false, status: 500, error: 'That entry could not be deleted just now' }
+  await trashCreatedBunches(db, userId, id)
   return { ok: true, mode: 'record', label }
+}
+
+// ─── Block 15 (ruling 3): the check and the split are ONE record, ONE Undo ────
+// A working that CREATED a bunch (a preg check's opens, a sort's new group)
+// takes that bunch to the trash with it: 066 rebuilds the created bunch's head
+// to zero the moment the working is deleted, and a zero-head bunch left live
+// on the list is the half-undo PK described. Restore (lib/trash.ts) brings
+// the bunch back with the working. Only bunches the working itself created
+// (results[].created === true) — a bunch that already existed and merely
+// received head is not touched, because it is not the working's to remove.
+export async function createdBunchIds(db: SupabaseClient, eventId: string): Promise<string[]> {
+  const { data } = await db.from('events').select('type, payload').eq('id', eventId).maybeSingle()
+  const row = data as { type?: string; payload?: { results?: { lot_id?: string; created?: boolean }[] } } | null
+  if (!row || row.type !== 'group_action' || !Array.isArray(row.payload?.results)) return []
+  return row.payload!.results!.filter(r => r.created === true && typeof r.lot_id === 'string').map(r => r.lot_id as string)
+}
+async function trashCreatedBunches(db: SupabaseClient, userId: string, eventId: string): Promise<void> {
+  const ids = await createdBunchIds(db, eventId)
+  if (ids.length === 0) return
+  await db.from('herd_lots').update({ deleted_at: new Date().toISOString(), deleted_by: userId }).in('id', ids).is('deleted_at', null)
 }
 
 /** Postgres 23503 — foreign_key_violation. The one error we expect and absorb. */

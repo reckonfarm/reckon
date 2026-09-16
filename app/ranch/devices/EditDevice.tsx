@@ -52,7 +52,7 @@ export default function EditDevice({ device }: { device: { id: string; name: str
       if (!res.ok) { setError(j.error ?? 'That could not be saved just now.'); return }
       setOpen(false)
       router.refresh()
-    } catch { setError('No connection — nothing changed. Try again when you have signal.') }
+    } catch { setError('No signal — nothing changed.') }
     finally { setBusy(false) }
   }
 

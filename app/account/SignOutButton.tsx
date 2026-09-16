@@ -45,12 +45,10 @@ export default function SignOutButton() {
     return (
       <Card className="mt-3 p-4 sm:p-5" role="dialog" aria-modal="true" aria-label="Entries not yet synced" data-audit="signout-block">
         <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="signout-block-count">
-          {n} {n === 1 ? 'entry hasn’t' : 'entries haven’t'} reached the ranch yet.
+          {n} waiting for signal.
         </p>
         <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          {n === 1
-            ? 'It is on this phone only. Signing out clears the phone, so it would be gone for good.'
-            : 'They are on this phone only. Signing out clears the phone, so they would be gone for good.'}
+          {n === 1 ? 'It is on this phone only. Signing out would lose it.' : 'They are on this phone only. Signing out would lose them.'}
         </p>
         <button
           type="button"
@@ -81,7 +79,7 @@ export default function SignOutButton() {
       className="mt-3 inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink hover:bg-forest-green/5 disabled:opacity-60"
       data-audit="sign-out"
     >
-      {mode === 'syncing' ? 'Sending what’s left…' : mode === 'going' ? 'Signing out…' : 'Sign out'}
+      {mode === 'syncing' ? 'Sending…' : mode === 'going' ? 'Signing out…' : 'Sign out'}
     </button>
   )
 }

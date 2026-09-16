@@ -780,63 +780,61 @@ async function groupActionChecks() {
   record('user A (owner)', '10: and no group was created anywhere by the attempt', (stolenLots ?? 0) === 0, `${stolenLots ?? 0} lot(s) named STOLEN`)
 
   // ── The real working, and the chute count beating the stored number ────────
-  // Block 14: a preg check RECORDS COUNTS on the bunch checked — it ends at
-  // what was counted, bred and open are numbers on the row, and nothing is
-  // split. The split is a separate sort afterward, with a class of the
-  // person's choosing.
-  const counted = aBefore + 2, open = 4, bred = counted - open, stay = counted
+  // Block 15 (070): a preg check CARRIES its opens group — one record, one
+  // Undo. The checked bunch ends at what is bred; the opens become a bunch of
+  // the class named; bred and open are numbers on the row.
+  const counted = aBefore + 2, open = 4, bred = counted - open, stay = bred
   const workingId = randomUUID()
   const body = {
     id: workingId, type: 'group_action', action: 'preg_check',
     source_lot_id: a.lotId, expected_head: aBefore, counted, stay,
-    results: [], detail: { bred, open },
+    results: [{ lot_id: null, name: 'RLS-TEST opens', class: 'old_cows', head: open }], detail: { bred, open },
   }
   const done = await api(A, '/api/log', body)
-  if (done.status === 503) { record('(skipped)', '14: preg-check checks — migration 069 not applied', true, String(done.json.error ?? '').slice(0, 70)); return }
+  if (done.status === 503) { record('(skipped)', '15: preg-check checks — migration 069/070 not applied', true, String(done.json.error ?? '').slice(0, 70)); return }
+  if (done.status === 400 && /Make a bunch from the opens afterward/.test(String(done.json.error))) { record('(skipped)', '15: preg-check checks — migration 070 not applied (069 still refuses the split)', true, String(done.json.error ?? '').slice(0, 70)); return }
   const aAfter = await headOf(a.lotId)
-  const { count: madeByCheck } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('ranch_id', a.ranchId).neq('id', a.lotId).is('deleted_at', null)
-  record('user A (owner)', '14: a preg check lands with the bunch ending at what was COUNTED, and makes no other bunch',
-    done.status === 201 && aAfter === counted && (madeByCheck ?? 0) === 0,
-    `${done.status} · source ${aBefore} → ${aAfter} (counted ${counted}) · other bunches ${madeByCheck ?? 0}`)
+  const { data: madeRows } = await admin.from('herd_lots').select('id, ranch_id, head_count, class, place_id, deleted_at').eq('name', 'RLS-TEST opens')
+  const made = ((madeRows ?? []) as { id: string; ranch_id: string; head_count: number; class: string; place_id: string | null; deleted_at: string | null }[])[0] ?? null
+  record('user A (owner)', '15: a preg check lands as ONE record — the checked bunch ends at the bred, the opens become a new bunch of the class named, on this ranch',
+    done.status === 201 && aAfter === bred && !!made && made.head_count === open && made.class === 'old_cows' && made.ranch_id === a.ranchId,
+    `${done.status} · source ${aBefore} → ${aAfter} (bred ${bred}) · new bunch ${made ? `${made.head_count} head, ${made.class}, on ${made.ranch_id === a.ranchId ? 'A' : 'ELSEWHERE'}` : 'MISSING'}`)
 
   const { data: ev } = await admin.from('events').select('ranch_id, type, payload').eq('id', workingId).maybeSingle()
   const evRow = ev as { ranch_id: string; type: string; payload: Record<string, unknown> } | null
-  record('user A (owner)', '14: the row carries what was counted, what the bunch said before, and bred and open as numbers',
+  record('user A (owner)', '15: the row carries what was counted, what the bunch said before, and bred and open as numbers',
     !!evRow && evRow.type === 'group_action' && evRow.ranch_id === a.ranchId
       && evRow.payload.counted === counted && evRow.payload.source_head_before === aBefore && evRow.payload.bred === bred && evRow.payload.open === open,
     evRow ? `counted ${String(evRow.payload.counted)} · said ${String(evRow.payload.source_head_before)} · bred ${String(evRow.payload.bred)} · open ${String(evRow.payload.open)}` : 'NO EVENT')
 
-  // The function itself refuses a split on a preg check, whatever a caller sends.
-  const split = await api(A, '/api/log', {
+  // The bred stay: a preg check whose stay is not the bred is refused in a sentence.
+  const wrongStay = await api(A, '/api/log', {
     id: randomUUID(), type: 'group_action', action: 'preg_check',
-    source_lot_id: a.lotId, expected_head: counted, counted, stay: counted - 1,
-    results: [{ lot_id: null, name: 'RLS-TEST split', head: 1 }],
+    source_lot_id: a.lotId, expected_head: bred, counted: 10, stay: 3, results: [], detail: { bred: 8, open: 2 },
   })
-  const { count: splitRows } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST split')
-  record('user A (owner)', '14: a preg check that tries to split is refused in a sentence, and nothing is made',
-    split.status === 400 && /Make a bunch from the opens afterward/i.test(String(split.json.error)) && (splitRows ?? 0) === 0 && (await headOf(a.lotId)) === counted,
-    `${split.status} · "${String(split.json.error ?? '').slice(0, 60)}" · rows ${splitRows ?? 0}`)
+  record('user A (owner)', '15: the bred are the ones that stay — a check where they differ is refused, and nothing moves',
+    wrongStay.status === 400 && /bred ones are the ones that stay/i.test(String(wrongStay.json.error)) && (await headOf(a.lotId)) === bred,
+    `${wrongStay.status} · "${String(wrongStay.json.error ?? '').slice(0, 60)}" · head ${await headOf(a.lotId)}`)
 
-  // The sort afterward: the opens out, into a bunch of the class named.
-  const sortId = randomUUID()
-  const sort = await api(A, '/api/log', {
-    id: sortId, type: 'group_action', action: 'sort',
-    source_lot_id: a.lotId, expected_head: counted, counted, stay: counted - open,
-    results: [{ lot_id: null, name: 'RLS-TEST opens', class: 'old_cows', head: open }],
-  })
-  const aSorted = await headOf(a.lotId)
-  const { data: madeRows } = await admin.from('herd_lots').select('id, ranch_id, head_count, class, place_id').eq('name', 'RLS-TEST opens')
-  const made = ((madeRows ?? []) as { id: string; ranch_id: string; head_count: number; class: string; place_id: string | null }[])[0] ?? null
-  record('user A (owner)', '14: the sort afterward moves the opens into a new bunch of the class named, on this ranch, and the source ends at what stayed',
-    sort.status === 201 && aSorted === counted - open && !!made && made.head_count === open && made.class === 'old_cows' && made.ranch_id === a.ranchId,
-    `${sort.status} · source ${counted} → ${aSorted} (stay ${counted - open}) · new bunch ${made ? `${made.head_count} head, ${made.class}, on ${made.ranch_id === a.ranchId ? 'A' : 'ELSEWHERE'}` : 'MISSING'}`)
+  // ONE Undo: deleting the working puts the head back and takes the bunch it made to the trash; restore brings both back.
+  const undo = await api(A, `/api/activity/${workingId}/delete`, undefined, 'DELETE')
+  const { data: madeGone } = made ? await admin.from('herd_lots').select('deleted_at, head_count').eq('id', made.id).maybeSingle() : { data: null }
+  const headUndone = await headOf(a.lotId)
+  const back = await api(A, '/api/trash', { table: 'events', id: workingId })
+  const { data: madeBack } = made ? await admin.from('herd_lots').select('deleted_at, head_count').eq('id', made.id).maybeSingle() : { data: null }
+  const headBack = await headOf(a.lotId)
+  record('user A (owner)', '15 (ruling 3): one Undo — deleting the check puts the head back and trashes the bunch it made; putting it back restores both',
+    undo.status === 200 && headUndone === aBefore && !!(madeGone as { deleted_at?: string | null } | null)?.deleted_at
+      && back.status === 200 && headBack === bred && (madeBack as { deleted_at?: string | null; head_count?: number } | null)?.deleted_at === null && (madeBack as { head_count?: number } | null)?.head_count === open,
+    `delete ${undo.status} · head ${headUndone} (was ${aBefore}) · bunch trashed ${!!(madeGone as { deleted_at?: string | null } | null)?.deleted_at} · restore ${back.status} · head ${headBack} · bunch back at ${String((madeBack as { head_count?: number } | null)?.head_count)}`)
+  const aSorted = headBack
 
   // ── A RETRY MUST NEVER DECREMENT TWICE. The outbox resends on any transient
   // failure, so this is not a theoretical case — it is the normal one on a
   // bad signal.
   const retry = await api(A, '/api/log', { ...body })
   const aAfterRetry = await headOf(a.lotId)
-  const { count: madeTwice } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST opens')
+  const { count: madeTwice } = await admin.from('herd_lots').select('id', { count: 'exact', head: true }).eq('name', 'RLS-TEST opens').is('deleted_at', null)
   const { count: eventsForId } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', workingId)
   record('user A (owner)', '10: the same working sent twice moves nothing the second time — one event, one bunch, the count where it was',
     retry.status === 200 && retry.json.duplicate === true && aAfterRetry === aSorted && (madeTwice ?? 0) === 1 && (eventsForId ?? 0) === 1,

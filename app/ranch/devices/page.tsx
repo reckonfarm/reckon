@@ -45,7 +45,7 @@ function roleOf(type: string): { role: string; product: string } {
 
 // Collection status from last_seen alone (the honest thing the model holds).
 function statusOf(lastSeen: string | null): { word: string; detail: string } {
-  if (!lastSeen) return { word: 'Waiting for collection', detail: 'No readings have reached the ranch yet.' }
+  if (!lastSeen) return { word: 'Waiting for collection', detail: 'No readings yet.' }
   const day = dayKey(lastSeen), today = dayKey(Date.now()), yesterday = dayKey(Date.now() - 86_400_000)
   if (day === today) return { word: 'Last collected today', detail: fmtTime(lastSeen) }
   if (day === yesterday) return { word: 'Last collected yesterday', detail: fmtTime(lastSeen) }

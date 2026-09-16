@@ -4,7 +4,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import type { HerdEstimate, LotValuation } from '@/lib/herd-estimate'
 import type { TrendData } from '@/lib/trend'
 import type { Lot } from '@/lib/herd'
-import { LOT_CLASS_LABELS, lotLabel } from '@/lib/herd'
+import { LOT_CLASS_LABELS, lotLabel, bunchLabel } from '@/lib/herd'
 import { sensitivityLine, STALE_MARKER, THIN_HEAD_THRESHOLD } from '@/lib/market-scope'
 import LotSelector from './LotSelector'
 import { LotCard } from './HerdEstimatePanel'
@@ -172,7 +172,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
 
             {/* The select, directly under the number it changes. */}
             <div className="mt-3">
-              <LotSelector lots={estimate.perLot.map(l => ({ id: l.lotId, label: byId.get(l.lotId) ? lotLabel(byId.get(l.lotId)!) : l.label }))} selectedId={sel.lotId} />
+              <LotSelector lots={estimate.perLot.map(l => ({ id: l.lotId, label: byId.get(l.lotId) ? bunchLabel(byId.get(l.lotId)!) : l.label }))} selectedId={sel.lotId} />
             </div>
             {noGross && <p className="mt-1.5 font-dm-sans text-[15px] text-secondary-ink" data-audit="no-gross">{noGross}</p>}
 

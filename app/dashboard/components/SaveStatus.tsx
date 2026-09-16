@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useOutbox, cancel, retry, discard, flush, STATE_LABEL, type OutboxState } from '@/lib/outbox'
+import { useOutbox, cancel, STATE_LABEL, type OutboxState } from '@/lib/outbox'
 import SaveReceipt from '@/app/components/SaveReceipt'
 import FollowUpButton from '@/app/components/FollowUpButton'
+import TakeBackButton from '@/app/components/TakeBackButton'
 
 // ─── Save status — the honest answer to "did that save?" (Block 2A) ───────────
 // Sits directly under Log it. Shows the most recent entry's state in the four
@@ -64,12 +65,14 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
   const held = item && item.undoable && item.holdUntil && now > 0 && item.holdUntil > now && item.state === 'local' ? item : null
 
   if (!item || !shown) return null
+  // Block 15 (ruling 2): a refused record is shown ONCE, in the waiting list
+  // with its reason and Fix — never also here.
+  if (item.state === 'failed') return null
   // Synced before this view existed → it is history, not a receipt.
   if (item.state === 'synced' && (!item.syncedAt || item.syncedAt < viewOpenedAt)) return null
   // And even within a view, a receipt has said its piece after a while.
   if (item.state === 'synced' && item.syncedAt && now > 0 && now - item.syncedAt > fadeAfterMs) return null
 
-  const waiting = items.filter(i => i.state === 'local' || i.state === 'queued').length
   const secondsLeft = held ? Math.ceil((held.holdUntil! - now) / 1000) : 0
 
   return (
@@ -82,6 +85,8 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
             <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} href={item.link?.href} eventLabel={item.link?.label} tone="strip" />
             {/* Block 14: the one thing the server offered after the entry landed. */}
             {item.followUp && <div className="pointer-events-auto"><FollowUpButton itemId={item.id} followUp={item.followUp} /></div>}
+            {/* Block 15 (ruling 3): a working — the check and its split — is one record with one Undo. */}
+            {item.body.type === 'group_action' && <div className="pointer-events-auto"><TakeBackButton eventId={item.serverId ?? item.id} label={item.label} /></div>}
           </div>
         </div>
       ) : (
@@ -89,12 +94,7 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
         <Dot state={shown} />
         <div className="min-w-0 flex-1">
           <p className="text-[17px] font-semibold leading-snug">{STATE_LABEL[shown]}</p>
-          <p className="mt-0.5 text-[16px] leading-snug opacity-80">
-            {item.label}
-            {shown === 'queued' && item.lastError ? ` · ${item.lastError}` : ''}
-            {shown === 'failed' && item.lastError ? ` · ${item.lastError}` : ''}
-            {waiting > 1 ? ` · ${waiting} waiting` : ''}
-          </p>
+          <p className="mt-0.5 text-[16px] leading-snug opacity-80">{item.label}</p>
         </div>
         {held && (
           <button
@@ -104,15 +104,6 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
           >
             Undo · {secondsLeft}s
           </button>
-        )}
-        {shown === 'failed' && (
-          <div className="flex shrink-0 flex-col gap-1">
-            <button type="button" onClick={() => retry(item.id)} className="min-h-[48px] rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-white hover:bg-forest-green/90">Try again</button>
-            <button type="button" onClick={() => discard(item.id)} className="px-2 font-dm-sans text-[14px] font-semibold text-red-900/70 hover:text-red-900">Discard</button>
-          </div>
-        )}
-        {shown === 'queued' && !held && (
-          <button type="button" onClick={() => void flush()} className="min-h-[48px] shrink-0 rounded-lg border border-amber-300 px-4 font-dm-sans text-[16px] font-semibold text-amber-900 hover:bg-amber-100">Send now</button>
         )}
       </div>
       )}

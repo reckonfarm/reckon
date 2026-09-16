@@ -63,7 +63,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ...(note ? [['Note', note] as [string, React.ReactNode]] : []),
     ['Work time', when(row.ts)],
     ['Recorded', when(row.ingested_at)],
-    ['Saved', row.device_id ? 'Received from a device' : 'Saved to the ranch'],
+    ['Saved', row.device_id ? 'Received from a device' : 'Sent'],
     ...(original ? [[isVoid ? 'Voids' : 'Corrects', <Link key="o" href={`/ranch/activity/${original.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-corrects-link"><s>{describeEvent(original, names)}</s></Link>] as [string, React.ReactNode]] : []),
     ...(row.supersedes_event_id ? [['Reason', row.correction_reason?.trim() || <span className="text-secondary-ink">No reason given</span>] as [string, React.ReactNode]] : []),
   ]

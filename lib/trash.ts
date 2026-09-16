@@ -63,10 +63,17 @@ export async function restoreRow(supabase: SupabaseClient, userId: string, table
   const { data } = await supabase.from(table).select('id, ranch_id').eq('id', id).maybeSingle()
   const row = data as { id: string; ranch_id: string | null } | null
   if (!row || row.ranch_id !== ranchId) return { ok: false, status: 404, error: 'That is not in your trash.' }
-  const { error } = await createServiceClient().from(table)
+  const service = createServiceClient()
+  const { error } = await service.from(table)
     .update({ deleted_at: null, deleted_by: null })
     .eq('id', id).not('deleted_at', 'is', null)
   if (error) return { ok: false, status: 500, error: 'That could not be restored just now.' }
+  // Block 15 (ruling 3): a working comes back with the bunch it created.
+  if (table === 'events') {
+    const { createdBunchIds } = await import('./deletion')
+    const ids = await createdBunchIds(service, id)
+    if (ids.length > 0) await service.from('herd_lots').update({ deleted_at: null, deleted_by: null }).in('id', ids).not('deleted_at', 'is', null)
+  }
   return { ok: true }
 }
 

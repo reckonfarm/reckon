@@ -40,7 +40,6 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
-import NeedsAttention from './components/NeedsAttention'
 import ProgramAlerts from './components/ProgramAlerts'
 import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/program-alerts'
 import SinceYouWereHere from './components/SinceYouWereHere'
@@ -672,7 +671,6 @@ export async function DashboardShell({
                             changed, dismissible per person and per change. */}
                         <ProgramAlerts alerts={programAlerts} />
                         {/* 4. Needs attention — only real state, nothing when there is none. */}
-                        <NeedsAttention />
                         {/* 4. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new.
 
                             Block 7.7 — RESERVED HEIGHT, not `fallback={null}`. These two

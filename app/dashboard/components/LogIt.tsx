@@ -6,8 +6,11 @@ import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
-import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType } from '@/lib/manual-log'
-import { lotLabel, type Lot } from '@/lib/herd'
+import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType, isManualEventType } from '@/lib/manual-log'
+import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass, bunchLabel, bunchDetail } from '@/lib/herd'
+import { discard } from '@/lib/outbox'
+import { warning } from '@/lib/brand-colors'
+import { todayKey as ranchToday } from '@/lib/jobs/format'
 import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
@@ -49,8 +52,11 @@ const DRAFT_KEY = 'manual_log_draft_v1'
 // dispatching this event with a Draft — no prop plumbing across the server
 // boundary. `open: true` opens the sheet; without it the draft just waits.
 export const LOGIT_OPEN_EVENT = 'dryline:logit-open'
+// Block 15: the sheet records every manual entry AND the preg check — the
+// chute is a sheet now, not a page, so it opens with no signal.
+export type SheetType = ManualEventType | 'preg_check'
 export interface Draft {
-  type: ManualEventType | null
+  type: SheetType | null
   n1?: string
   what?: string
   place?: string        // existing place id
@@ -59,6 +65,35 @@ export interface Draft {
   lot?: string
   when?: string
   asOf?: string
+  // Block 15: the preg check's numbers and its split.
+  checked?: string
+  open?: string
+  split?: boolean
+  splitName?: string
+  splitClass?: string
+  // Block 15 (ruling 2): a refused record being FIXED — the sheet re-saves
+  // under this same outbox id, replacing the refused item in place.
+  outboxId?: string
+}
+
+// Block 15 (ruling 2): a Draft from a refused record's own body, so Fix opens
+// the sheet with the numbers already in it. Anything the sheet cannot show
+// (a place capture, say) comes back null and the waiting list says so.
+export function draftFromBody(body: Record<string, unknown>, outboxId: string): Draft | null {
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : undefined)
+  const when = typeof body.ts === 'string' ? toLocalInput(new Date(body.ts)) : undefined
+  if (body.type === 'group_action' && body.action === 'preg_check') {
+    const results = Array.isArray(body.results) ? body.results as { name?: unknown; class?: unknown; head?: unknown }[] : []
+    const detail = (body.detail && typeof body.detail === 'object' ? body.detail : {}) as { bred?: unknown; open?: unknown }
+    const counted = typeof body.counted === 'number' ? body.counted : 0
+    const stay = typeof body.stay === 'number' ? body.stay : counted
+    const open = typeof detail.open === 'number' ? detail.open : results.reduce((n, r) => n + (typeof r.head === 'number' ? r.head : 0), 0) || Math.max(0, counted - stay)
+    return { type: 'preg_check', lot: str(body.source_lot_id), checked: String(counted), open: String(open), split: results.length > 0, splitName: str(results[0]?.name), splitClass: str(results[0]?.class), when, outboxId }
+  }
+  if (!isManualEventType(body.type)) return null
+  const n1 = num(body.bales) ?? num(body.inches) ?? num(body.count) ?? num(body.head) ?? num(body.counted)
+  return { type: body.type as ManualEventType, n1, what: str(body.what), place: str(body.place_id) ?? undefined, fromPlace: str(body.from_place_id), toPlace: str(body.to_place_id), lot: str(body.herd_lot_id), when, asOf: str(body.as_of), outboxId }
 }
 export function openLogIt(draft: Draft) {
   try { window.dispatchEvent(new CustomEvent(LOGIT_OPEN_EVENT, { detail: draft })) } catch { /* SSR */ }
@@ -100,7 +135,8 @@ function useHasDraft(): boolean {
 type Place = { id: string; name: string; kind: string }
 
 // Block 6A: the tiles are verbs. Count is its own group — it never reads as adding stock.
-const TILE_VERB: Record<ManualEventType, string> = {
+const TILE_VERB: Record<SheetType, string> = {
+  preg_check: 'Preg check',
   rain: 'Record rain',
   hay_fed: 'Feed hay',
   bales_stacked: 'Add bales to a stack',
@@ -109,7 +145,8 @@ const TILE_VERB: Record<ManualEventType, string> = {
   hay_inventory: 'Count hay',
   cattle_counted: 'Count cattle',
 }
-const SAVE_LABEL: Record<ManualEventType, string> = {
+const SAVE_LABEL: Record<SheetType, string> = {
+  preg_check: 'Record preg check',
   rain: 'Record rain',
   hay_fed: 'Record feeding',
   bales_stacked: 'Add bales',
@@ -120,8 +157,9 @@ const SAVE_LABEL: Record<ManualEventType, string> = {
 }
 const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
-const LOT_TYPES: readonly ManualEventType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted']
-const TILE_HINT: Record<ManualEventType, string> = {
+const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check']
+const TILE_HINT: Record<SheetType, string> = {
+  preg_check: 'checked, bred, open — the opens become a bunch',
   rain: 'inches in the gauge',
   hay_fed: 'bales put out',
   bales_stacked: 'bales into the stack',
@@ -129,6 +167,17 @@ const TILE_HINT: Record<ManualEventType, string> = {
   cattle_worked: 'head and what you did',
   hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
   cattle_counted: 'head you counted in one bunch \u2014 the bunch\u2019s number does not change',
+}
+
+// Block 15 (ruling 3): the split's defaults come from the source. Cows, old
+// cows and pairs checked → the opens are old cows (culls); any other class
+// keeps its class (open yearling heifers are still heifers, sale-bound).
+function defaultSplitClass(source: LotClass): LotClass {
+  return source === 'cows' || source === 'old_cows' || source === 'pairs' ? 'old_cows' : source
+}
+function defaultSplitName(source: Lot): string {
+  const what = source.class === 'cows' || source.class === 'old_cows' || source.class === 'pairs' ? 'cows' : LOT_CLASS_LABELS[source.class].toLowerCase()
+  return `Open ${what} ${ranchToday()}`
 }
 
 // The day a form is recording, in the words a person would use. '' means now.
@@ -248,6 +297,8 @@ function NumberField({ label, unit, value, onChange, step = '1', max, placeholde
   max?: number
   placeholder?: string
 }) {
+  // Block 15 (ruling 6): a whole number gets − and +; a decimal (inches) keeps the keyboard.
+  if (step === '1') return <Counter label={label} unit={unit} value={value} onChange={onChange} audit={`num-${label.toLowerCase().replace(/[^a-z]+/g, '-')}`} max={max ?? 20000} />
   return (
     <Field label={label}>
       <UnitInput
@@ -284,7 +335,7 @@ function UnitInput({ unit, id, invalid, className = '', ...rest }: React.InputHT
 
 // One plain line for the status strip and the outbox: what was saved.
 function describe(
-  type: ManualEventType, n: number, what: string,
+  type: SheetType, n: number, what: string,
   lot: string | null, place: string | null, from: string | null, to: string | null,
 ): string {
   const at = place ? ` at ${place}` : ''
@@ -297,7 +348,30 @@ function describe(
     case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
     case 'hay_inventory': return `${bales(n)} on hand${at}`
     case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
+    case 'preg_check': return `Preg check · ${n} checked${lot ? ` · ${lot}` : ''}`
   }
+}
+
+// ─── −/+ at 56 px (Block 15, ruling 6) ────────────────────────────────────────
+// Any small number is set by thumb: head, bales, bred, open. The number stays
+// an input, so a big one can still be typed.
+function Counter({ label, value, onChange, unit, audit, min = 0, max = 20000 }: { label: string; value: string; onChange: (v: string) => void; unit?: string; audit: string; min?: number; max?: number }) {
+  const n = value.trim() === '' ? 0 : Math.max(min, Math.floor(Number(value) || 0))
+  const set = (k: number) => onChange(String(Math.max(min, Math.min(max, k))))
+  const btn = 'inline-flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-xl border border-control-border bg-surface font-dm-sans text-[26px] leading-none text-ink active:bg-forest-green/10 disabled:opacity-40'
+  return (
+    <div data-audit={audit}>
+      <p id={`${audit}-label`} className="font-dm-sans text-[16px] font-medium text-ink">{label}</p>
+      <div className="mt-1 flex items-center gap-2">
+        {/* The buttons' names carry no field name: a label lookup for "Head" must find the input, not three controls. */}
+        <button type="button" onClick={() => set(n - 1)} disabled={n <= min} className={btn} aria-label="Minus one" aria-describedby={`${audit}-label`} data-audit={`${audit}-minus`}>−</button>
+        <input type="number" inputMode="numeric" min={min} max={max} value={value} placeholder="0" onChange={e => onChange(e.target.value)}
+          className="min-h-[56px] w-full rounded-xl border border-control-border bg-surface px-3 text-center font-dm-sans text-[24px] tabular-nums text-ink" aria-label={label} data-audit={`${audit}-input`} />
+        <button type="button" onClick={() => set(n + 1)} className={btn} aria-label="Plus one" aria-describedby={`${audit}-label`} data-audit={`${audit}-plus`}>+</button>
+        {unit && <span className="shrink-0 font-dm-sans text-[16px] text-secondary-ink">{unit}</span>}
+      </div>
+    </div>
+  )
 }
 
 // Block 6A: one sheet is mounted for the whole app (RecordSheetHost); any
@@ -305,7 +379,15 @@ function describe(
 // `launcher` instances only ask.
 export default function LogIt({ launcher = true, sheet = true }: { launcher?: boolean; sheet?: boolean } = {}) {
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState<ManualEventType | null>(null)
+  const [type, setType] = useState<SheetType | null>(null)
+  // Block 15: the preg check — checked and open are set; bred is the rest.
+  const [pcChecked, setPcChecked] = useState('')
+  const [pcOpen, setPcOpen] = useState('')
+  const [split, setSplit] = useState(true)
+  const [splitName, setSplitName] = useState('')
+  const [splitClass, setSplitClass] = useState<LotClass | ''>('')
+  // Block 15 (ruling 2): the refused record this sheet is fixing, if any.
+  const [fixingId, setFixingId] = useState<string | null>(null)
   const [places, setPlaces] = useState<Place[]>([])
   // Herd lots for the hay_fed picker: null = not fetched yet (fetched once, the
   // first time Hay fed is picked — the other tiles never pay for it).
@@ -352,6 +434,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
     setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT); setMore(false)
+    setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
     writeDraft(null)
   }, [])
 
@@ -364,6 +447,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setFromPlace(d.fromPlace ? { id: d.fromPlace, newName: null } : EMPTY_SLOT)
     setToPlace(d.toPlace ? { id: d.toPlace, newName: null } : EMPTY_SLOT)
     setLot(d.lot ?? ''); setWhen(d.when ?? ''); setEditWhen(!!d.when); setAsOf(d.asOf ?? '')
+    setPcChecked(d.checked ?? ''); setPcOpen(d.open ?? ''); setSplit(d.split ?? true); setSplitName(d.splitName ?? ''); setSplitClass((d.splitClass as LotClass | undefined) ?? '')
+    setFixingId(d.outboxId ?? null)
     setError(null)
     if (andOpen) setOpen(true)
   }, [])
@@ -381,6 +466,16 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     return () => window.removeEventListener(LOGIT_OPEN_EVENT, onOpen)
   }, [applyDraft, sheet])
 
+  // Block 15: /ranch/preg-check redirects to /today?record=preg_check — the
+  // chute is this sheet now. Read once, on a task; the query is a request.
+  useEffect(() => {
+    if (!sheet || typeof window === 'undefined') return
+    const want = new URLSearchParams(window.location.search).get('record')
+    if (want !== 'preg_check') return
+    const t = setTimeout(() => { applyDraft({ type: 'preg_check' }, true); window.history.replaceState(null, '', window.location.pathname) }, 0)
+    return () => clearTimeout(t)
+  }, [sheet, applyDraft])
+
   // The FAB and anything else that must get out of the way read this (Block 6A).
   useEffect(() => { if (sheet) setRecordSheetOpen(open); return () => { if (sheet) setRecordSheetOpen(false) } }, [open, sheet])
 
@@ -393,8 +488,9 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       fromPlace: fromPlace.newName === null ? fromPlace.id : undefined,
       toPlace: toPlace.newName === null ? toPlace.id : undefined,
       lot, when: editWhen ? when : undefined, asOf,
+      checked: pcChecked, open: pcOpen, split, splitName, splitClass: splitClass || undefined, outboxId: fixingId ?? undefined,
     })
-  }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf])
+  }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf, pcChecked, pcOpen, split, splitName, splitClass, fixingId])
 
   const openSheet = () => {
     if (!sheet) { openLogIt({ type: null }); return }   // a launcher alone asks the mounted sheet
@@ -465,7 +561,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   // backdrop: on a phone that's the accidental path, and a prompt there is
   // one more tap in the way.
   const dirty =
-    n1.trim() !== '' ||
+    n1.trim() !== '' || pcChecked.trim() !== '' || pcOpen.trim() !== '' ||
     what.trim() !== '' ||
     editWhen ||
     asOf !== '' ||
@@ -538,6 +634,36 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       const fromId = type === 'cattle_moved' ? await resolveSlot(fromPlace, setFromPlace) : null
       const toId = type === 'cattle_moved' ? await resolveSlot(toPlace, setToPlace) : null
 
+      // Block 15 (ruling 3, ruling 10): THE PREG CHECK. One record: the bunch,
+      // checked, bred, open, and — split on — the opens as a new bunch of the
+      // class shown. Saved on the phone at once; the server function runs when
+      // it lands. A fix re-saves under the refused record's own id.
+      if (type === 'preg_check') {
+        const source = lots?.find(l => l.id === lot) ?? null
+        if (!source) { setError('Pick the bunch you checked.'); setBusy(false); return }
+        const checked = Math.floor(Number(pcChecked) || 0), openN = Math.floor(Number(pcOpen) || 0)
+        if (checked <= 0) { setError('How many did you check?'); setBusy(false); return }
+        if (openN > checked) { setError(`${openN} open is more than the ${checked} checked.`); setBusy(false); return }
+        const bred = checked - openN
+        const name = (splitName.trim() || defaultSplitName(source)).slice(0, 40)
+        const klass = splitClass || defaultSplitClass(source.class)
+        const doSplit = split && openN > 0
+        const id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
+        const pbody: Record<string, unknown> = {
+          id, type: 'group_action', action: 'preg_check',
+          source_lot_id: source.id, expected_head: source.head_count,
+          counted: checked, stay: bred,
+          results: doSplit ? [{ lot_id: null, name, class: klass, head: openN }] : [],
+          detail: { bred, open: openN },
+          ...(when ? { ts: new Date(when).toISOString() } : {}),
+        }
+        const label = `Preg check · ${checked} checked · ${bred} bred · ${openN} open${doSplit ? ` · ${openN} to ${name}` : ''}`
+        try { enqueue(pbody, label) } catch { setError("Couldn't save. This phone refused to store it."); setBusy(false); return }
+        writeLastLot(lot)
+        close()
+        return
+      }
+
       const num = n1.trim() === '' ? NaN : Number(n1)
       // Block 7.4 — an empty field used to travel as NaN, become null in JSON,
       // and be rejected by the server AFTER the entry had already landed in the
@@ -567,12 +693,12 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       // A refused local write is the one failure that means "not saved".
       const placeName = (id: string | null) => places.find(p => p.id === id)?.name ?? null
       const lotName = lots?.find(l => l.id === lot)
-      body.id = eventId.current ?? (eventId.current = newEventId())
+      body.id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
       const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId))
       try {
         enqueue(body, label)
       } catch {
-        setError("Couldn't save — try again. This phone refused to store the entry.")
+        setError("Couldn't save. This phone refused to store it.")
         return
       }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
@@ -581,7 +707,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     } catch (err) {
       const msg = err instanceof Error && err.message ? err.message : ''
       // Creating a NEW place needs the server; an existing place saves offline.
-      setError(msg && !/fetch|network|load failed/i.test(msg) ? msg : 'No connection — a new place needs one. Pick an existing place, or try again.')
+      setError(msg && !/fetch|network|load failed/i.test(msg) ? msg : 'No signal. A new place needs one — pick an existing place.')
     } finally {
       submitting.current = false
       setBusy(false)
@@ -608,7 +734,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit="fed-to">
           <option value="">Not assigned to a bunch</option>
-          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
       )}
@@ -648,7 +774,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit={audit}>
           <option value="">Unassigned</option>
-          {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
       )}
@@ -696,7 +822,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             {lots.map(l => (
               <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
                 className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="count-bunch-option" data-lot={l.id}>
-                {lotLabel(l)} <span className="font-normal opacity-80">· {l.head_count.toLocaleString()}</span>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {bunchDetail(l)}</span>
               </button>
             ))}
             <button type="button" onClick={() => setNewBunch(true)} disabled={busy} className="min-h-[48px] rounded-full border border-dashed border-forest-green/40 px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="count-new-bunch">New bunch…</button>
@@ -712,6 +838,72 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             : <>{lotLabel(chosen)} says <span className="font-semibold">{chosen.head_count.toLocaleString()} head</span>. Counting never changes that number by itself.</>}
         </p>
       )}
+    </>)
+  }
+  // Block 15 — THE CHUTE, in the sheet. Bunch, checked, bred, open by thumb;
+  // the split on by default with its name and class shown and changeable.
+  if (type === 'preg_check') {
+    const source = lots?.find(l => l.id === lot) ?? null
+    const checked = Math.floor(Number(pcChecked) || 0), openN = Math.floor(Number(pcOpen) || 0)
+    const bred = Math.max(0, checked - openN)
+    const nameShown = splitName || (source ? defaultSplitName(source) : '')
+    const classShown = splitClass || (source ? defaultSplitClass(source.class) : 'old_cows')
+    fields = (<>
+      <div>
+        <p className="font-dm-sans text-[16px] font-medium text-ink" id="preg-bunch-label">Which bunch</p>
+        {lots === null ? (
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="lots-loading">Loading bunches…</p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="preg-bunch-label" data-audit="preg-bunch">
+            {lots.map(l => (
+              <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
+                className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="preg-lot-choice" data-lot={l.id}>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {bunchDetail(l)}</span>
+              </button>
+            ))}
+            <button type="button" onClick={() => setNewBunch(true)} disabled={busy} className="min-h-[48px] rounded-full border border-dashed border-forest-green/40 px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="preg-new-bunch">New bunch…</button>
+          </div>
+        )}
+        {newBunch && <div className="mt-2"><NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} /></div>}
+      </div>
+      <Counter label="Checked" value={pcChecked} onChange={v => { setPcChecked(v); const c = Math.floor(Number(v) || 0); if (openN > c) setPcOpen(String(c)) }} unit="head" audit="preg-checked" />
+      <Counter label="Bred" value={String(bred)} onChange={v => { const b = Math.max(0, Math.min(checked, Math.floor(Number(v) || 0))); setPcOpen(String(checked - b)) }} unit="head" audit="preg-bred" max={checked} />
+      <Counter label="Open" value={pcOpen} onChange={v => { const o = Math.max(0, Math.min(checked, Math.floor(Number(v) || 0))); setPcOpen(String(o)) }} unit="head" audit="preg-open" max={checked} />
+      {source && checked > 0 && (
+        <p className="font-dm-sans text-[17px] text-ink" data-audit="preg-equation">
+          <span className="font-semibold">{bred.toLocaleString()} bred</span> + <span className="font-semibold">{openN.toLocaleString()} open</span> = {checked.toLocaleString()} checked
+          {checked !== source.head_count && <span className="text-secondary-ink"> · {lotLabel(source)} said {source.head_count.toLocaleString()}</span>}
+        </p>
+      )}
+      <div className="rounded-xl border border-forest-green/20 p-4" data-audit="preg-split">
+        <label className="flex min-h-[48px] items-center gap-3 font-dm-sans text-[17px] font-semibold text-ink">
+          <input type="checkbox" checked={split} onChange={e => setSplit(e.target.checked)} className="h-6 w-6 accent-forest-green" data-audit="preg-split-toggle" />
+          <span>Opens become a new bunch</span>
+        </label>
+        {split ? (
+          <div className="mt-3">
+            <label className="block font-dm-sans text-[16px] font-medium text-ink" htmlFor="preg-split-name">Name
+              <input id="preg-split-name" value={nameShown} onChange={e => setSplitName(e.target.value.slice(0, 40))} maxLength={40} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="preg-split-name" />
+            </label>
+            <p className="mt-3 font-dm-sans text-[16px] font-medium text-ink" id="preg-split-class-label">Class</p>
+            <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="preg-split-class-label" data-audit="preg-split-class">
+              {LOT_CLASSES.map(c => (
+                <button key={c} type="button" role="radio" aria-checked={classShown === c} onClick={() => setSplitClass(c)}
+                  className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${classShown === c ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit={`preg-split-class-${c}`}>
+                  {LOT_CLASS_LABELS[c]}
+                </button>
+              ))}
+            </div>
+            {source && checked > 0 && (
+              <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="preg-split-preview">
+                {lotLabel(source)} keeps <span className="font-semibold">{bred.toLocaleString()}</span> · <span className="font-semibold">{openN.toLocaleString()}</span> to {nameShown}
+              </p>
+            )}
+          </div>
+        ) : (
+          source && checked > 0 ? <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="preg-nosplit-preview">{lotLabel(source)} goes to <span className="font-semibold">{bred.toLocaleString()}</span> · {openN.toLocaleString()} open recorded, not moved</p> : null
+        )}
+      </div>
     </>)
   }
   if (type === 'cattle_worked') fields = (<>
@@ -799,9 +991,9 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                   <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
                   <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>
                 </button>
-                <Link href="/ranch/preg-check" onClick={close} className="mt-2 flex min-h-[56px] w-full items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit="tile-preg-check">
-                  <span>Preg check</span><span className="font-normal text-secondary-ink">count them through</span>
-                </Link>
+                <button type="button" onClick={() => setType('preg_check')} className="mt-2 flex min-h-[56px] w-full items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit="tile-preg-check">
+                  <span>Preg check</span><span className="font-normal text-secondary-ink">{TILE_HINT.preg_check}</span>
+                </button>
                 {/* Ground: a place is recorded with the phone already in your hand,
                     standing in it — the same moment as recording work (8B.1). */}
                 <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-ground">Ground</p>
@@ -867,18 +1059,30 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                   <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>
                 )}
 
-                <div className="flex items-center gap-3">
-                  <Button type="submit" disabled={busy || (LOT_TYPES.includes(type) && lots === null)} className="flex-1 min-h-[56px] text-[17px]" data-audit="record-save">
-                    {busy ? 'Saving…' : LOT_TYPES.includes(type) && lots === null ? 'Loading lots…' : SAVE_LABEL[type]}
+                {/* Block 15 (ruling 2): a refused record being fixed says so,
+                    and the way to throw it away is HERE, behind the numbers —
+                    never one tap on the strip beside a real count. */}
+                {fixingId && (
+                  <div className="rounded-lg bg-forest-green/[0.06] px-4 py-3" data-audit="fixing-record">
+                    <p className="font-dm-sans text-[16px] text-ink">Fixing a record that couldn’t send. Save to send it again.</p>
+                    <button type="button" onClick={() => { if (window.confirm('Throw this record away? It is not on the ranch.')) { discard(fixingId); close() } }} className="mt-2 min-h-[44px] font-dm-sans text-[15px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="fixing-discard">
+                      Throw this record away
+                    </button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }}
+                  disabled={busy}
+                  className="self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                {/* Block 15 (ruling 6): Save at the bottom, full width, thumb height, saying what it does. */}
+                <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-rule bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] pt-3">
+                  <Button type="submit" disabled={busy || (LOT_TYPES.includes(type) && lots === null)} className="w-full min-h-[60px] text-[18px]" data-audit="record-save">
+                    {busy ? 'Saving…' : LOT_TYPES.includes(type) && lots === null ? 'Loading bunches…' : SAVE_LABEL[type]}
                   </Button>
-                  <button
-                    type="button"
-                    onClick={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }}
-                    disabled={busy}
-                    className="min-h-[48px] px-3 font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
                 </div>
               </form>
             )}

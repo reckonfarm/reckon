@@ -27,7 +27,7 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
       if (!res.ok) { const j = await res.json().catch(() => ({})); setError(j.error ?? 'Could not save'); return }
       router.refresh()
     } catch {
-      setError('No connection — the barn was not changed. Try again when you have signal.')
+      setError('No signal — nothing changed.')
     } finally {
       setBusy(false)
     }
