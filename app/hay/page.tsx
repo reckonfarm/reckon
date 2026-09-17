@@ -12,6 +12,8 @@ import type { HayListing, HayCounty } from '@/lib/types/hay'
 import { deliveredCost } from '@/lib/freight'
 import { trackEvent } from '@/lib/analytics'
 import { Select } from '@/app/components/ui/Field'
+import RowActions from '@/app/components/RowActions'
+import { deleteWithUndo, showNotice } from '@/lib/undo'
 
 type SortKey = 'delivered' | 'newest' | 'price'
 
@@ -597,15 +599,33 @@ export default function HayPage() {
     setFresh(id, false)
   }
 
-  async function removeListing(id: string) {
+  // Block 15 (ruling 8): a listing is removed the way any row is — one tap
+  // from the held row, Undo on the strip for ten seconds. Removing sets the
+  // listing inactive; Undo sets it active again.
+  async function removeListing(l: HayListing) {
+    const id = l.id
     setRemoving(prev => new Set(prev).add(id))
-    await fetch('/api/hay', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    }).catch(() => {})
-    setListings(prev => prev.filter(l => l.id !== id))
+    const r = await deleteWithUndo({
+      label: `${l.hay_type ?? 'Hay'} listing${l.counties?.name ? ` · ${l.counties.name}` : ''}`,
+      run: async () => {
+        try {
+          const res = await fetch('/api/hay', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+          const json = await res.json().catch(() => ({})) as { error?: string }
+          return res.ok ? { ok: true } : { ok: false, error: json.error ?? 'Could not remove the listing.' }
+        } catch { return { ok: false, error: 'No signal — nothing was removed.' } }
+      },
+      undo: async () => {
+        try {
+          const res = await fetch(`/api/hay/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: true }) })
+          if (!res.ok) return { ok: false, error: 'Could not put the listing back.' }
+          await fetchListings()
+          return { ok: true }
+        } catch { return { ok: false, error: 'No signal — it is still removed.' } }
+      },
+    })
     setRemoving(prev => { const n = new Set(prev); n.delete(id); return n })
+    if (!r.ok) { showNotice(r.error); return }
+    setListings(prev => prev.filter(x => x.id !== id))
   }
 
   // Effective buyer county: explicit deliver-to override, else watchlist county.
@@ -723,7 +743,7 @@ export default function HayPage() {
               onClick={() => { if (showForm) { resetForm(); setShowForm(false) } else { setShowForm(true) } }}
               className="rounded-lg bg-forest-green px-4 py-2 font-dm-sans text-sm font-medium text-cream hover:bg-forest-green/90 transition-colors"
             >
-              {showForm ? 'Cancel' : '+ Post a listing'}
+              {showForm ? 'Cancel' : 'New listing'}
             </button>
           ) : (
             <Link
@@ -1325,12 +1345,24 @@ export default function HayPage() {
 
                 const contactLabel = l.listing_type === 'want' ? 'Contact' : 'Message'
 
+                const detailHref = `/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`
                 return (
+                  <li key={l.id}>
+                  {/* Block 15 (ruling 8): a listing row holds like any row — Fix and Delete for the seller, Open for anyone. */}
+                  <RowActions links={{
+                    label: `${l.hay_type ?? 'Hay'}${county?.name ? ` · ${county.name}` : ''}`,
+                    openHref: detailHref,
+                    fix: l.mine ? { onSelect: () => loadIntoForm(l) } : null,
+                    fixNote: l.mine ? null : 'Only the seller can change a listing.',
+                    del: l.mine ? { onSelect: () => removeListing(l) } : null,
+                    deleteNote: l.mine ? null : 'Only the seller can remove a listing.',
+                  }}>
                   <Card
-                    as="li"
-                    key={l.id}
-                    onClick={() => router.push(`/hay/${l.id}${buyerCounty ? `?deliverTo=${buyerCounty.fips}` : ''}`)}
+                    as="div"
+                    onClick={() => router.push(detailHref)}
                     className="cursor-pointer"
+                    data-audit="hay-listing-row"
+                    data-mine={l.mine ? 'true' : undefined}
                   >
                     {l.photo_urls && l.photo_urls.length > 0 && (
                       <div className="relative h-32 w-full overflow-hidden rounded-t-xl">
@@ -1485,23 +1517,6 @@ export default function HayPage() {
                           {contactLabel}
                         </button>
 
-                        {l.mine && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={e => { e.stopPropagation(); loadIntoForm(l) }}
-                              className="rounded-lg border border-forest-green/20 px-3 py-1.5 text-xs font-medium text-forest-green font-dm-sans hover:bg-cream transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={e => { e.stopPropagation(); removeListing(l.id) }}
-                              disabled={removing.has(l.id)}
-                              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 font-dm-sans hover:bg-red-50 disabled:opacity-40"
-                            >
-                              {removing.has(l.id) ? '…' : 'Remove'}
-                            </button>
-                          </div>
-                        )}
                       </div>
 
                       {/* Trust strip */}
@@ -1530,6 +1545,8 @@ export default function HayPage() {
                       )}
                     </div>
                   </Card>
+                  </RowActions>
+                  </li>
                 )
               })}
             </ul>

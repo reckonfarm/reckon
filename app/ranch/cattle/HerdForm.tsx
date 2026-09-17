@@ -21,6 +21,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Button } from '@/app/components/ui/Button'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
+import Counter from '@/app/components/ui/Counter'
 import Link from 'next/link'
 import type { LastWork } from '@/lib/ranch-summary'
 import RowActions from '@/app/components/RowActions'
@@ -116,6 +117,16 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   const [dWindows, setDWindows] = useState<string[]>([])
   const [dMonth, setDMonth] = useState('')
   const [showDetail, setShowDetail] = useState(false)
+  // Block 15 (ruling 7): after a save the list does not jump to the top — the
+  // row you touched is scrolled into view and lit for a moment.
+  const [litId, setLitId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!litId) return
+    const el = document.getElementById(`lot-${litId}`)
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const t = setTimeout(() => setLitId(null), 2_500)
+    return () => clearTimeout(t)
+  }, [litId])
 
   useEffect(() => {
     if (initialLots) return   // Block 6A: the page hands the rows in; writes reload from /api/herd/lots
@@ -219,10 +230,16 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   async function saveDraft() {
     if (!draftValid) return
     const lot = buildPayloadLot()
+    const before = new Set(lots.map(l => l.id))
+    const was = editing
     const ok = editing === 'new'
       ? await write('/api/herd/lots', 'POST', lot)
       : await write(`/api/herd/lots/${editing}`, 'PATCH', { ...lot, expected_updated_at: lots.find(l => l.id === editing)?.updated_at ?? null })
-    if (ok) { setEditing(null); resetDraft() }
+    if (ok) {
+      setEditing(null); resetDraft()
+      const now = await reload()
+      setLitId(was === 'new' ? (now.find(l => !before.has(l.id))?.id ?? null) : was)
+    }
   }
 
   // Block 13: Delete is one tap to the trash, Undo on the strip for ten
@@ -281,7 +298,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
         </div>
 
         <div className="mt-4">
-          <Field label="Name" hint="Optional — what you call this bunch. Left blank, it goes by its class.">
+          <Field label="Name">
             <Input
               value={dName}
               maxLength={LOT_NAME_MAX}
@@ -291,23 +308,24 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
           </Field>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {purposeSupported && (
-            <Field label="Purpose" hint="What this bunch is for. A market comparison states its basis from this.">
+        {/* Block 15 (ruling 9): a NEW bunch is name, head, class, place. Purpose,
+            weight, frame, weaned and sale windows are on Fix — the row is made
+            in the corral; it is sharpened at the kitchen table. */}
+        <div className="mt-6">
+          <Counter label="Head count" value={dHead} onChange={setDHead} audit="lot-head-count" min={0} max={20000} />
+        </div>
+
+        <div className={`mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 ${editing === 'new' ? 'hidden' : ''}`}>
+          {purposeSupported && editing !== 'new' && (
+            <Field label="Purpose">
               <Select value={dPurpose} onChange={e => setDPurpose(e.target.value as LotPurpose | '')} data-audit="lot-purpose">
                 <option value="">Not set</option>
                 {LOT_PURPOSES.map(v => <option key={v} value={v}>{LOT_PURPOSE_LABELS[v]}</option>)}
               </Select>
             </Field>
           )}
-          <Field label="Head count">
-            <Input
-              type="number" inputMode="numeric" min={1} step={1} placeholder="e.g. 120"
-              value={dHead} onChange={e => setDHead(e.target.value)}
-            />
-          </Field>
-          <div>
-            <Field label="Average weight" hint="Optional. Blank = no weight set; the market cards say so.">
+          <div className={editing === 'new' ? 'hidden' : ''}>
+            <Field label="Average weight">
               <Input
                 type="number" inputMode="decimal" min={0} step="any"
                 placeholder={dUnit === 'cwt' ? 'e.g. 5.5' : 'e.g. 550'}
@@ -334,11 +352,10 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
                 <button key={pl.id} type="button" role="radio" aria-checked={dPlace === pl.id} onClick={() => setDPlace(pl.id)} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === pl.id ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`} data-audit="lot-place-option">{pl.name}</button>
               ))}
             </div>
-            <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">After this, a bunch moves only by recording a move.</p>
           </div>
         )}
 
-        <div className="mt-4">
+        <div className={`mt-6 ${editing === 'new' ? 'hidden' : ''}`}>
           <button
             type="button"
             onClick={() => setShowDetail(s => !s)}
@@ -349,7 +366,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
           {showDetail && (
             <div className="mt-3 space-y-4 border-t border-line/10 pt-4">
-              <Field label="Frame" hint="USDA frame size — most bunches are Medium and Large.">
+              <Field label="Frame">
                 <Select value={dFrame} onChange={e => setDFrame(e.target.value as LotFrame)}>
                   {LOT_FRAMES.map(f => <option key={f} value={f}>{f}</option>)}
                 </Select>
@@ -403,11 +420,11 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
 
         {errorMsg && <p className="mt-3 font-dm-sans text-[16px] font-medium text-warning">{errorMsg}</p>}
 
-        <div className="mt-4 flex items-center gap-4">
-          <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'}>
-            {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add bunch' : 'Save changes'}
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'} className="w-full min-h-[56px] text-[18px]" data-audit="lot-save">
+            {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add the bunch' : 'Save the bunch'}
           </Button>
-          <button type="button" onClick={cancel} className="font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
+          <button type="button" onClick={cancel} className="min-h-[44px] font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
             Cancel
           </button>
         </div>
@@ -419,7 +436,7 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     const work = lastWork[lot.id]
     return (
       <RowActions key={lot.id} links={{ label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`, openHref: `/ranch/cattle#${lot.id}`, fix: { onSelect: () => openEdit(lot) }, del: { onSelect: () => removeLot(lot) } }}>
-      <Card shadow="sm" className="p-4" data-audit="lot-row">
+      <Card shadow="sm" className={`p-4 transition-shadow ${litId === lot.id ? 'ring-2 ring-forest-green' : ''}`} data-audit="lot-row" id={`lot-${lot.id}`} data-lit={litId === lot.id ? 'true' : undefined}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-dm-sans text-[17px] font-semibold text-ink">
@@ -497,21 +514,22 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
             seconds a lot, and you can sharpen the details later.
           </p>
           <div className="mt-5">
-            <Button variant="primary" onClick={openAdd}>Add a bunch</Button>
+            <Button variant="primary" onClick={openAdd} className="w-full min-h-[56px]" data-audit="new-bunch-button">New bunch</Button>
           </div>
         </Card>
       )}
 
-      {lots.length > 0 && (
-        <div className="space-y-3">
-          {lots.map(lot => (editing === lot.id ? <div key={lot.id}>{renderEditor()}</div> : renderRow(lot)))}
-        </div>
+      {/* Block 15 (ruling 8): Add is one button, at the top, saying what it makes. */}
+      {editing === null && lots.length > 0 && (
+        <Button variant="primary" onClick={openAdd} className="w-full min-h-[56px]" data-audit="new-bunch-button">New bunch</Button>
       )}
 
       {editing === 'new' && renderEditor()}
 
-      {editing === null && lots.length > 0 && (
-        <Button variant="secondary" onClick={openAdd}>Add another bunch</Button>
+      {lots.length > 0 && (
+        <div className="space-y-4">
+          {lots.map(lot => (editing === lot.id ? <div key={lot.id}>{renderEditor()}</div> : renderRow(lot)))}
+        </div>
       )}
     </div>
   )

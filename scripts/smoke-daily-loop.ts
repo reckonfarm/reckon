@@ -113,6 +113,7 @@ async function teardown(label: string) {
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('hay_listings').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
@@ -230,6 +231,11 @@ function recordControl(page: Page) {
 async function gotoTwice(page: Page, url: string) {
   try { await page.goto(url, { waitUntil: 'domcontentloaded' }) }
   catch { await page.waitForTimeout(2_000); await page.goto(url, { waitUntil: 'domcontentloaded' }) }
+}
+// Block 15b: the place page folds Activity and Devices shut. A check that reads
+// what is under a fold opens it first — the way a person would.
+async function openFolds(page: Page) {
+  await page.evaluate(() => { for (const d of document.querySelectorAll<HTMLDetailsElement>('details[data-audit$="-fold"]')) d.open = true })
 }
 async function selectBunch(page: Page, selector: string, name: string) {
   const value = await page.locator(`${selector} option`).evaluateAll((opts, n) => {
@@ -391,12 +397,9 @@ async function main() {
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
       const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
-      const yNews = await pos('[data-audit="news-hook"]')
-      // Block 11 (11.5): "Log it" is no longer a step in this order — Record
-      // is in the bar (or the header), reachable from anywhere, and is not
-      // something Today has to make room for. The order 7.7 was protecting is
-      // otherwise intact, and headlines are still last.
-      record('7.7: Today order — since you checked · repeat last · hay (open on Hay), headlines last (7B.1)', ySince < yRepeat && yRepeat < yTabs && yTabs < yNews && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · ledgers ${Math.round(yTabs)} · news ${Math.round(yNews)} · active tab "${activeTab}"`)
+      // Block 15b (ruling 9): headlines left Today. The order 7.7 protected is
+      // otherwise intact — the ranch's own business, then the ledgers.
+      record('7.7: Today order — since you checked · repeat last · hay (open on Hay); headlines are gone (15b)', ySince < yRepeat && yRepeat < yTabs && (await page.locator('[data-audit="news-hook"]').count()) === 0 && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · ledgers ${Math.round(yTabs)} · news ${Math.round(0)} · active tab "${activeTab}"`)
       const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
@@ -1477,6 +1480,7 @@ async function main() {
           return { ok, detail: `rows ${rows.length} · the replaced original as a row: ${original.length} · replaced/voided rows: ${replaced.length} · the correction → ${fourRow ? `"${fourRow.text.slice(0, 40)}" ${fourRow.marker}, chain "${fourRow.chain.slice(0, 70)}"` : 'MISSING'}` }
         }
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+        await openFolds(page)
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
         flaky('6B place timeline', '6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
         // Block 12 (12.8): the hub no longer lists rows; the record below is the surface.
@@ -1542,6 +1546,7 @@ async function main() {
         const after = await onHandNow()
         const readRows = async (sel: string) => page.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({ id: li.getAttribute('data-id') ?? '', marker: li.getAttribute('data-marker') ?? 'none', text: (li.querySelector('a')?.textContent ?? '').replace(/\s+/g, ' ').trim(), grey: !!li.querySelector('a span.text-secondary-ink'), chain: (li.querySelector('[data-audit="row-chain"]')?.textContent ?? '').replace(/\s+/g, ' ') })))
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+        await openFolds(page)
         const pl = (await readRows('[data-audit="place-activity"]')).find(r => r.id === voidId)
         const plOrig = (await readRows('[data-audit="place-activity"]')).filter(r => r.id === v0.id)
         record('6B-2/12.5: the removed feeding stands on the place timeline — marked removed, greyed, what it removed one tap away; the original not a second row', !!pl && pl.marker === 'voided' && /removed/i.test(pl.text) && pl.grey && /Fed 7 bales/.test(pl.chain) && plOrig.length === 0, pl ? `"${pl.text.slice(0, 50)}" · grey ${pl.grey} · chain "${pl.chain.slice(0, 60)}" · original rows ${plOrig.length}` : `void row ${voidId.slice(0, 8)} MISSING`)
@@ -1609,76 +1614,14 @@ async function main() {
         routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
     }
 
-    // ── Block 7B.1: headlines last on Today, and only as expensive as shown ──
-    // The card was gated to the signed-out county page, and when it did render
-    // it pulled 147 items and 75,601 bytes to show three. Both are tested here:
-    // WHERE it sits (last — news never appears above work) and WHAT it costs.
-    for (const width of [390, 320]) {
-      const prior = page.viewportSize()
-      await page.setViewportSize({ width, height: 844 })
-      const seen: { url: string; bytes: number }[] = []
-      const onRes = async (res: { url(): string; body(): Promise<Buffer> }) => {
-        if (!res.url().includes('/api/news')) return
-        try { seen.push({ url: res.url().replace(BASE, ''), bytes: (await res.body()).length }) } catch { /* body gone */ }
-      }
-      page.on('response', onRes)
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(9_000)
-
-      const order: string[] = await page.evaluate(`[...document.querySelectorAll('main [data-audit]')].map(e => e.getAttribute('data-audit'))`)
-      const hookAt = order.indexOf('news-hook')
-      // "Last" is asserted as an ABSENCE OF ANYTHING ELSE below, not against a
-      // list of section names: NeedsAttention and ProgramAlerts render nothing
-      // when there is nothing to say, so a hardcoded roster would be a check
-      // that passes because the names never appeared. Anything on Today that is
-      // not part of the news card itself must sort above it.
-      const below = order.slice(hookAt + 1).filter(a => a && !a.startsWith('news-'))
-      // And the ledger strip — hay — must be above it, positively.
-      const hayAt = order.findIndex(a => a === 'hay-details')   // 12.13: logged-row / whole-record no longer exist
-      record(`7B.1 (${width}): headlines are on Today, last, below hay`,
-        hookAt >= 0 && below.length === 0 && hayAt >= 0 && hayAt < hookAt,
-        hookAt < 0 ? 'news-hook ABSENT from Today' : `position ${hookAt + 1} of ${order.length} · ledger at ${hayAt + 1} · below it: ${below.join(', ') || 'nothing'}`)
-
-      const first = seen.find(r => /\/api\/news/.test(r.url))
-      record(`7B.1 (${width}): it asks for the three it shows, not the whole river`,
-        !!first && /limit=3/.test(first.url) && first.bytes < 20_000,
-        first ? `${first.url} → ${first.bytes} B` : 'no /api/news request seen')
-
-      const rendered = await page.locator('[data-audit="news-list"] a').count()
-      const moreBtn = page.locator('[data-audit="news-more"]')
-      const hasMore = await moreBtn.count()
-      record(`7B.1 (${width}): three headlines render, and "More headlines" survives the smaller payload`,
-        rendered === 3 && hasMore === 1,
-        `${rendered} headline(s) · more button ${hasMore}`)
-
-      if (hasMore === 1) {
-        const urlBefore = page.url()
-        await moreBtn.click()
-        await page.waitForTimeout(5_000)
-        const expanded = await page.locator('[data-audit="news-list"] a').count()
-        const second = seen.filter(r => /limit=10/.test(r.url))
-        record(`7B.1 (${width}): expanding pays for ten, in place, once`,
-          expanded === 10 && second.length === 1 && page.url() === urlBefore,
-          `${rendered} → ${expanded} headline(s) · ${second[0]?.bytes ?? '—'} B · url ${page.url() === urlBefore ? 'unchanged' : 'CHANGED'}`)
-      }
-      page.off('response', onRes)
-      if (prior) await page.setViewportSize(prior)
-    }
-
-    // ── Block 7B.1: a broken feed is never "no news" ───────────────────────
-    // The distinction the three states exist for. An error must read as a claim
-    // about the network; "No cattle-country headlines right now" is a claim
-    // about the world, and a failed fetch must never be allowed to make it.
+    // ── Block 15b (ruling 9): Today keeps what needs attention and the ledger strip; headlines are gone ──
     {
-      await page.route('**/api/news**', r => r.abort())
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(6_000)
-      const err = await page.locator('[data-audit="news-error"]').count()
-      const empty = await page.locator('[data-audit="news-empty"]').count()
-      record('7B.1: with the feed unreachable the card says so — never "no headlines right now"',
-        err === 1 && empty === 0,
-        `error state ${err} · empty state ${empty}`)
-      await page.unroute('**/api/news**')
+      await page.waitForTimeout(1_500)
+      const hook = await page.locator('[data-audit="news-hook"]').count()
+      const ledgers = await page.locator('[role="tablist"][aria-label="Ledgers"]').count()
+      const newsCalls = (await page.evaluate(() => performance.getEntriesByType('resource').map(e => e.name).filter(n => /\/api\/news/.test(n)).length)) as number
+      record('15b (ruling 9): Today has no headlines and asks the news feed for nothing; the ledger strip stays', hook === 0 && ledgers === 1 && newsCalls === 0, `news-hook ${hook} · ledgers ${ledgers} · news requests ${newsCalls}`)
     }
 
     // ── Block 9: hay to turnout — the runway gets an end ───────────────────
@@ -2123,6 +2066,146 @@ async function main() {
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.evaluate(() => { try { localStorage.removeItem('manual_log_draft_v1') } catch { /* fine */ } })
       if (prior15) await page.setViewportSize(prior15)
+    }
+
+    // ── Block 15b (rulings 6–9): the app feels like an app ──────────────────
+    {
+      // A phone with a thumb: its own context, touch on, signed in.
+      const ctxT = await browser.newContext({ baseURL: BASE, hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const pt = await signIn(ctxT)
+      pt.on('dialog', d => void d.accept())
+      // Synthetic touches, dispatched where React and the window listeners hear them.
+      const touch = (sel: string | null, seq: { type: 'touchstart' | 'touchmove' | 'touchend'; x: number; y: number }[]) => pt.evaluate(({ sel, seq }) => {
+        const el = sel ? document.querySelector<HTMLElement>(sel) : document.body
+        if (!el) return false
+        for (const st of seq) {
+          const t = new Touch({ identifier: 7, target: el, clientX: st.x, clientY: st.y, pageX: st.x, pageY: st.y })
+          const live = st.type === 'touchend' ? [] : [t]
+          el.dispatchEvent(new TouchEvent(st.type, { bubbles: true, cancelable: true, touches: live, targetTouches: live, changedTouches: [t] }))
+        }
+        return true
+      }, { sel, seq })
+
+      // 6: the record sheet slides over the page, has a handle, and closes by a pull down.
+      await pt.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(pt).click()
+      const sheet = pt.locator('[data-audit="record-sheet"]')
+      const sheetUp = await sheet.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const slides = sheetUp && await sheet.evaluate(el => el.classList.contains('sheet-in') && getComputedStyle(el).animationName === 'sheet-up')
+      await touch('[data-audit="record-sheet"]', [{ type: 'touchstart', x: 195, y: 300 }, { type: 'touchmove', x: 195, y: 420 }, { type: 'touchend', x: 195, y: 420 }])
+      const closedBySwipe = await sheet.waitFor({ state: 'hidden', timeout: 5_000 }).then(() => true).catch(() => false)
+      record('15b (ruling 6): the record sheet slides up over the page and a pull down closes it', sheetUp && slides && closedBySwipe, `up ${sheetUp} · slides ${slides} · closed by swipe ${closedBySwipe}`)
+
+      // 6: pull to refresh on a list; edge-swipe back everywhere.
+      await pt.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await pt.waitForTimeout(800)
+      await touch(null, [{ type: 'touchstart', x: 195, y: 120 }, { type: 'touchmove', x: 195, y: 210 }])
+      const pullText = await pt.locator('[data-audit="pull-refresh"]').innerText().catch(() => '')
+      await touch(null, [{ type: 'touchend', x: 195, y: 210 }])
+      const refreshing = await pt.locator('[data-audit="pull-refresh"]').innerText().catch(() => '')
+      record('15b (ruling 6): a pull down from the top of a list refreshes it', /Let go to refresh/.test(pullText) && /Refreshing/.test(refreshing), `"${pullText}" → "${refreshing}"`)
+      await pt.waitForTimeout(1_200)
+      await pt.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await pt.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await pt.waitForTimeout(500)
+      await touch(null, [{ type: 'touchstart', x: 8, y: 400 }, { type: 'touchmove', x: 70, y: 402 }])
+      const chevron = await pt.locator('[data-audit="edge-back"]').count()
+      await touch(null, [{ type: 'touchmove', x: 110, y: 404 }, { type: 'touchend', x: 110, y: 404 }])
+      const wentBack = await pt.waitForURL(/\/today/, { timeout: 8_000 }).then(() => true).catch(() => false)
+      record('15b (ruling 6): a swipe in from the left edge shows a chevron and goes back a page', chevron === 1 && wentBack, `chevron ${chevron} · back to ${new URL(pt.url()).pathname}`)
+
+      // 8 + 9: the bunch list — one "New bunch" at the top; the form is name, head, class, place; no helper text; Save full width saying what it does; the saved row lit.
+      await pt.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const newBtn = pt.locator('[data-audit="new-bunch-button"]')
+      const oneNew = await newBtn.count()
+      const newAbove = oneNew === 1 && await pt.evaluate(() => { const b = document.querySelector('[data-audit="new-bunch-button"]'); const r = document.querySelector('[data-audit="lot-row"]'); return !!b && (!r || !!(b.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING)) })
+      await newBtn.first().click()
+      await pt.locator('[data-audit="lot-save"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const formText = ((await pt.locator('[data-audit="lot-save"]').locator('xpath=ancestor::*[contains(@class,"p-4")][1]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const hints = await pt.locator('main [id$="-hint"]').count()
+      const plus = await pt.locator('[data-audit="lot-head-count-plus"]').count()
+      const saveBox = await pt.locator('[data-audit="lot-save"]').boundingBox().catch(() => null)
+      const saveText = (await pt.locator('[data-audit="lot-save"]').innerText().catch(() => '')).trim()
+      record('15b (rulings 8, 9): New bunch is one button at the top; the form asks class, name, head, place and nothing else; no helper text; head by −/+; Save is full width and says what it does',
+        oneNew === 1 && newAbove && /Class/.test(formText) && /Name/.test(formText) && /Head count/.test(formText) && !/Purpose|Average weight|Sharpen/.test(formText) && hints === 0 && plus === 1 && !!saveBox && saveBox.width > 300 && saveText === 'Add the bunch',
+        `buttons ${oneNew} top ${newAbove} · fields "${formText.slice(0, 80)}" · hints ${hints} · plus ${plus} · save ${saveBox ? Math.round(saveBox.width) : '?'}px "${saveText}"`)
+      const B15 = `${PREFIX} 15b bunch`
+      await pt.locator('[aria-label="Class"] button', { hasText: 'Heifers' }).first().click()
+      await pt.getByLabel('Name').fill(B15)
+      await pt.locator('[data-audit="lot-head-count-input"]').fill('12')
+      await pt.locator('[data-audit="lot-save"]').click()
+      const lit = pt.locator('[data-audit="lot-row"][data-lit="true"]')
+      const litUp = await lit.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const litText = litUp ? ((await lit.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') : ''
+      const litInView = litUp && await lit.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })
+      record('15b (ruling 7): after a save the list stays put — the row you made is scrolled into view and lit', litUp && litText.includes(B15) && litInView, `lit ${litUp} · in view ${litInView} · "${litText.slice(0, 60)}"`)
+      await admin.from('herd_lots').delete().eq('ranch_id', ranchId).eq('name', B15)
+
+      // 6: the hold sheet slides too.
+      await pt.reload({ waitUntil: 'domcontentloaded' })
+      await pt.locator('[data-audit="lot-row"]').first().click({ button: 'right' })
+      const holdSheet = pt.locator('[data-audit="row-actions-label"]').locator('xpath=..')
+      const holdSlides = await holdSheet.waitFor({ timeout: 8_000 }).then(() => holdSheet.evaluate(el => el.classList.contains('sheet-in'))).catch(() => false)
+      record('15b (ruling 6): the hold sheet slides up like the record sheet', holdSlides, `sheet-in ${holdSlides}`)
+      await pt.keyboard.press('Escape')
+
+      // 9: Feed hay has no More section; the sheet's fields carry no helper text.
+      await pt.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(pt).click()
+      await pt.getByRole('button', { name: /^Feed hay/ }).click()
+      await pt.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const more = await pt.locator('[data-audit="feed-more"]').count()
+      const sheetText = ((await pt.locator('[data-audit="record-sheet"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sheetHints = await pt.locator('[data-audit="record-sheet"] [id$="-hint"]').count()
+      record('15b (ruling 9): Feed hay is bales, bunch, where, when — no More section, no helper text', more === 0 && !/Stock source|Note/.test(sheetText) && sheetHints === 0, `more ${more} · hints ${sheetHints}`)
+      await pt.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+
+      // 9: the place page keeps boundary and recorded-here open and folds activity and devices.
+      await pt.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      await pt.waitForTimeout(800)
+      const folds = await pt.evaluate(() => [...document.querySelectorAll<HTMLDetailsElement>('details[data-audit$="-fold"]')].map(d => `${d.getAttribute('data-audit')}:${d.open ? 'open' : 'closed'}`))
+      const openHeads = await pt.evaluate(() => [...document.querySelectorAll('main h2')].map(h => (h.textContent ?? '').trim()))
+      record('15b (ruling 9): the place page opens on boundary and recorded-here; activity and devices are folded shut', folds.length >= 1 && folds.every(f => f.endsWith(':closed')) && openHeads.some(h => /Boundary/.test(h)) && openHeads.some(h => /Recorded here/.test(h)),
+        `folds ${folds.join(', ') || 'none'} · open headings ${openHeads.join(' | ')}`)
+
+      // 8: hay listings hold like any row; Add is "New listing". The marketplace
+      // is behind a build flag: with it off this check FAILS and says so — PK's
+      // rule, not a skip. With it on, the smoke user's own listing is made if
+      // there is none, held, deleted from the sheet, and put back by Undo.
+      const hayApi = await pt.request.get('/api/hay').then(r => r.status()).catch(() => 0)
+      if (hayApi === 404) {
+        record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"', false, 'the hay marketplace is flagged off on this build (/api/hay 404) — nothing to hold')
+      } else {
+        await pt.goto('/hay', { waitUntil: 'domcontentloaded' })
+        await pt.locator('[data-audit="hay-listing-row"], [data-audit="hay-empty"], main').first().waitFor({ timeout: 15_000 }).catch(() => {})
+        await pt.waitForTimeout(1_000)
+        if ((await pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').count()) === 0) {
+          const { data: county } = await admin.from('counties').select('id').eq('fips', HOME_FIPS).maybeSingle()
+          const made = await pt.request.post('/api/hay', { data: { county_id: (county as { id?: number } | null)?.id, listing_type: 'sell', hay_type: `${PREFIX} grass`, quantity_tons: 20, price_per_ton: 150 } })
+          if (made.status() >= 300) console.log(`  (hay fixture: POST /api/hay ${made.status()} ${(await made.text()).slice(0, 120)})`)
+          await pt.reload({ waitUntil: 'domcontentloaded' })
+          await pt.waitForTimeout(1_500)
+        }
+        const smallBtns = await pt.locator('[data-audit="hay-listing-row"] button:has-text("Remove"), [data-audit="hay-listing-row"] button:has-text("Edit")').count()
+        const newListing = await pt.getByRole('button', { name: 'New listing' }).count()
+        const mine = pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').first()
+        const mineRows = await mine.count()
+        await mine.click({ button: 'right' }).catch(() => {})
+        const sheetTxt = ((await pt.locator('[data-audit="row-actions-label"]').locator('xpath=..').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+        record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"; a held listing offers Open, Fix and Delete',
+          smallBtns === 0 && newListing === 1 && mineRows === 1 && /Open/.test(sheetTxt) && /Fix/.test(sheetTxt) && /Delete/.test(sheetTxt),
+          `small buttons ${smallBtns} · New listing ${newListing} · own rows ${mineRows} · held: "${sheetTxt.slice(0, 80)}"`)
+        await pt.locator('[data-audit="row-action-delete"]').click().catch(() => {})
+        const gone = await mine.waitFor({ state: 'hidden', timeout: 8_000 }).then(() => true).catch(() => false)
+        const strip = await undoStrip(pt).waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+        const back = await pressUndo(pt)
+        await pt.waitForTimeout(1_500)
+        const backRows = await pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').count()
+        record('15b (ruling 8): Delete on a held listing takes it off the list with Undo on the strip, and Undo puts it back', gone && strip && back && backRows === 1, `gone ${gone} · strip ${strip} · undo ${back} · back rows ${backRows}`)
+        await admin.from('hay_listings').delete().eq('user_id', userId).like('hay_type', `${PREFIX}%`)
+      }
+
+      await ctxT.close()
     }
 
     // ── Block 11 (11.5): one Record control on a phone, and it is the bar ────
@@ -2662,7 +2745,7 @@ async function main() {
         const formUp = await page.locator('[data-audit="new-bunch"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
         const NEW14 = `${PREFIX} 14 spot bunch`
         await page.locator('[data-audit="new-bunch-name"]').fill(NEW14)
-        await page.locator('[data-audit="new-bunch-head"]').fill('18')
+        await page.locator('[data-audit="new-bunch-head-input"]').fill('18')
         await page.locator('[data-audit="new-bunch-class-pairs"]').click()
         await page.locator('[data-audit="new-bunch-save"]').click()
         await page.locator('[data-audit="new-bunch"]').waitFor({ state: 'detached', timeout: 15_000 }).catch(() => {})

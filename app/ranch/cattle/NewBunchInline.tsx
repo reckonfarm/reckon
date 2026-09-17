@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Counter from '@/app/components/ui/Counter'
 import { LOT_CLASSES, LOT_CLASS_LABELS, LOT_NAME_MAX, type Lot, type LotClass } from '@/lib/herd'
 import { warning } from '@/lib/brand-colors'
 
@@ -69,9 +70,9 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
         <input id="new-bunch-name" value={name} onChange={e => setName(e.target.value.slice(0, LOT_NAME_MAX))} maxLength={LOT_NAME_MAX} placeholder="Optional — what you call them" className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="new-bunch-name" />
       </label>
 
-      <label className="mt-3 block font-dm-sans text-[14px] font-medium text-secondary-ink" htmlFor="new-bunch-head">Head count
-        <input id="new-bunch-head" type="number" inputMode="numeric" min={1} max={20000} step={1} value={head} onChange={e => setHead(e.target.value)} placeholder="e.g. 120" className="mt-1 block w-full min-h-[52px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[20px] tabular-nums text-ink" data-audit="new-bunch-head" />
-      </label>
+      <div className="mt-3">
+        <Counter label="Head count" value={head} onChange={setHead} audit="new-bunch-head" min={0} max={20000} />
+      </div>
 
       <p className="mt-3 font-dm-sans text-[14px] font-medium text-secondary-ink" id="new-bunch-class">Class</p>
       <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="new-bunch-class" data-audit="new-bunch-class">

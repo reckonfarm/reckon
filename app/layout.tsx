@@ -5,6 +5,8 @@ import BottomTabBar from '@/app/components/BottomTabBar'
 import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
 import RecordSheetHost from '@/app/components/RecordSheetHost'
 import ServiceWorkerRegistration from '@/app/components/ServiceWorkerRegistration'
+import EdgeSwipeBack from '@/app/components/EdgeSwipeBack'
+import PullToRefresh from '@/app/components/PullToRefresh'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { flagEnabled } from '@/lib/flags'
@@ -81,6 +83,8 @@ export default function RootLayout({
         {children}
         <RecordSheetHost />
         <ServiceWorkerRegistration />
+        <EdgeSwipeBack />
+        <PullToRefresh />
         <SiteFooter />
         <BottomTabBar />
         <Analytics />

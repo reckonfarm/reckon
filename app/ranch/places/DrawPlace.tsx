@@ -6,7 +6,6 @@ import PlaceMapLoader, { type MapShape } from './PlaceMapLoader'
 import { Card } from '@/app/components/ui/Card'
 import { fmtAcres, ringToGeoJSON, type LatLng } from '@/lib/places/geo'
 import { PLACE_KINDS, DEFAULT_KIND, MAX_NAME } from '@/lib/places/kinds'
-import { navigateTo } from '@/lib/standalone-nav'
 import { warning } from '@/lib/brand-colors'
 
 // ─── Draw a place (places, slice 1) ───────────────────────────────────────────
@@ -95,8 +94,12 @@ export default function DrawPlace({
         setDraft(null)
         router.refresh()
       } else {
-        // A new place has its own page and the operator should land on it.
-        navigateTo(router, `/ranch/places/${json.place.id}`)
+        // Block 15 (ruling 7): never lose your place — a new place lands back
+        // on the list, scrolled to its row and lit for a moment.
+        setStep('idle')
+        setDraft(null)
+        window.location.hash = `place-${json.place.id}`
+        router.refresh()
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save the shape.')
@@ -182,10 +185,10 @@ export default function DrawPlace({
               type="button"
               onClick={save}
               disabled={saving}
-              className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
+              className="w-full min-h-[56px] text-[18px] min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
               data-audit="place-save"
             >
-              {saving ? 'Saving…' : place ? 'Save shape' : 'Save place'}
+              {saving ? 'Saving…' : place ? 'Save the boundary' : 'Save the place'}
             </button>
             <button
               type="button"

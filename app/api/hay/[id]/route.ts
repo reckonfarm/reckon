@@ -249,6 +249,11 @@ export async function PATCH(
 
   // photo_urls — used by the photo-upload flow; pass straight through.
   if ('photo_urls' in body) update.photo_urls = body.photo_urls
+  // Block 15: Undo of a removal puts the listing back (the seller's own row only).
+  if ('active' in body) {
+    if (typeof body.active !== 'boolean') return Response.json({ error: 'active must be true or false' }, { status: 400 })
+    update.active = body.active
+  }
 
   // Editable listing fields (only those actually present in the body).
   if ('listing_type' in body) {

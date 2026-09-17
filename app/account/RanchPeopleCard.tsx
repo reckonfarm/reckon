@@ -157,7 +157,7 @@ export default function RanchPeopleCard() {
           <Field label="Their email">
             <Input type="email" inputMode="email" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" />
           </Field>
-          <Field label="Role" hint="Members see and log everything on the ranch. Owners can also add and remove people.">
+          <Field label="Role">
             <Select value={role} onChange={e => setRole(e.target.value as Role)}>
               <option value="member">Member</option>
               <option value="owner">Owner</option>
