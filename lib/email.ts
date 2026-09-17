@@ -1,6 +1,6 @@
 import 'server-only'
 import { Resend } from 'resend'
-import { droughtClassWords, USDM_WORDS, type UsdmSummary } from './drought-words'
+import { droughtAlertEmail, type UsdmSummary } from './drought-words'
 
 // Kill-switch: when EMAILS_DISABLED=1, every sender no-ops and returns immediately.
 // Defaults to sending — only non-production environments (e.g. the e2e preview
@@ -39,26 +39,8 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)
 
-  const { to, countyName, state, fips, validDate, usdm } = params
-  const classLine = usdm ? droughtClassWords(usdm) : 'The drought class for this release was not on file when this was sent'
-  const short = usdm ? `${USDM_WORDS[usdm.level]} (D${usdm.level})` : 'drought update'
-
-  const subject = `${countyName}, ${state}: ${short} — U.S. Drought Monitor, valid ${formatDate(validDate)}`
-
-  const body = [
-    `U.S. Drought Monitor — ${countyName}, ${state}`,
-    `Valid ${formatDate(validDate)}`,
-    '',
-    `${classLine}.`,
-    '',
-    `This county on Dryline: https://dryline.farm/dashboard?fips=${fips}`,
-    '',
-    '─'.repeat(60),
-    'Source: U.S. Drought Monitor, National Drought Mitigation Center. Any program determination is FSA\'s to make.',
-    '',
-    'You are receiving this alert because you added this county to your Dryline watchlist.',
-    'Manage your counties: https://dryline.farm/watchlist',
-  ].join('\n')
+  const { to, ...alert } = params
+  const { subject, body } = droughtAlertEmail(alert)
 
   const { error } = await resend.emails.send({
     from: 'Dryline Alerts <alerts@dryline.farm>',

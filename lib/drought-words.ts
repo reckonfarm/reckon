@@ -68,3 +68,36 @@ export function droughtAlertLine(p: Record<string, unknown>): string | null {
   if (!s) return `U.S. Drought Monitor: ${p.county_name}${when} — the drought class was not kept on this alert`
   return `U.S. Drought Monitor: ${p.county_name} — ${droughtClassWords(s)}${when}`
 }
+
+// ─── The Thursday email, as text ─────────────────────────────────────────────
+// The subject and body live HERE, beside the words they are made of, because
+// lib/email.ts is server-only and nothing could check it. Pure in, pure out:
+// scripts/drought-words-harness.ts holds it to ruling 2 on every run.
+
+export interface DroughtAlertEmail { subject: string; body: string }
+
+/** Words for the class on a line of its own; the honest fallback when the reading is missing. */
+export function droughtClassSentence(usdm: UsdmSummary | null): string {
+  return usdm ? `${droughtClassWords(usdm)}.` : 'The drought class for this release was not on file when this was sent.'
+}
+
+export function droughtAlertEmail(a: { countyName: string; state: string; fips: string; validDate: string; usdm: UsdmSummary | null }): DroughtAlertEmail {
+  const short = a.usdm ? `${USDM_WORDS[a.usdm.level]} (D${a.usdm.level})` : 'drought update'
+  return {
+    subject: `${a.countyName}, ${a.state}: ${short} — U.S. Drought Monitor, valid ${fmtValidDate(a.validDate)}`,
+    body: [
+      `U.S. Drought Monitor — ${a.countyName}, ${a.state}`,
+      `Valid ${fmtValidDate(a.validDate)}`,
+      '',
+      droughtClassSentence(a.usdm),
+      '',
+      `This county on Dryline: https://dryline.farm/dashboard?fips=${a.fips}`,
+      '',
+      '─'.repeat(60),
+      "Source: U.S. Drought Monitor, National Drought Mitigation Center. Any program determination is FSA's to make.",
+      '',
+      'You are receiving this alert because you added this county to your Dryline watchlist.',
+      'Manage your counties: https://dryline.farm/watchlist',
+    ].join('\n'),
+  }
+}
