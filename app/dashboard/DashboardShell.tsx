@@ -28,6 +28,7 @@ import DeadlineCountdownCard from './components/DeadlineCountdownCard'
 import ProgramStatusRow, { deadlineQuietPreview } from './components/ProgramStatusRow'
 import LfpAlertCard, { LfpAlertSkeleton } from './components/LfpAlertCard'
 import LfpCard from './components/LfpCard'
+import TodayHeadlines from '@/app/components/TodayHeadlines'
 import LfpHero from './components/LfpHero'
 import ProgramStatus from './components/ProgramStatusLoader'
 import type { LfpEligibilityResult } from '@/lib/lfp-eligibility'
@@ -731,7 +732,15 @@ export async function DashboardShell({
                       </>
                     )}
 
-                    {/* Block 15 (ruling 9): headlines left Today — it keeps what needs attention and the ledger strip. */}
+                    {/* Block 16 (ruling 1): headlines are back on Today as the
+                        LAST section, below the strips — headline-only, a tap
+                        opens the source. Nothing sits beneath this, so the
+                        reserved floor keeps the page still when the card
+                        arrives; 15b's reason for cutting it (it pushed the
+                        ranch down the page) cannot recur from the bottom. */}
+                    <div className="mt-8 min-h-[360px]" data-audit="today-headlines">
+                      <TodayHeadlines fips={selectedCounty.fips} />
+                    </div>
                   </>
                 ) }),
                 ...(view === 'jobs'

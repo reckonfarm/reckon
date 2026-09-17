@@ -397,11 +397,17 @@ async function main() {
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
       const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
-      // Block 15b (ruling 9): headlines left Today. The order 7.7 protected is
-      // otherwise intact — the ranch's own business, then the ledgers.
-      record('7.7: Today order — since you checked · repeat last · hay (open on Hay); headlines are gone (15b)', ySince < yRepeat && yRepeat < yTabs && (await page.locator('[data-audit="news-hook"]').count()) === 0 && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · ledgers ${Math.round(yTabs)} · news ${Math.round(0)} · active tab "${activeTab}"`)
+      // Block 16 (ruling 1): headlines are BACK on Today — and the order 7.7
+      // protects is unchanged, because they sit below everything: the ranch's
+      // own business, the ledgers, the strips, then the headlines, last.
+      const yHead = await pos('[data-audit="today-headlines"]')
+      record('7.7 + 16: Today order — since you checked · repeat last · hay (open on Hay) · headlines LAST', ySince < yRepeat && yRepeat < yTabs && yTabs < yHead && (await page.locator('[data-audit="news-hook"]').count()) === 1 && activeTab === 'Hay', `order: since ${Math.round(ySince)} · repeat ${Math.round(yRepeat)} · ledgers ${Math.round(yTabs)} · news ${Math.round(0)} · active tab "${activeTab}"`)
       const body7 = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
-      record('7.7: the LFP card, the drought designation and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && !/U\.S\. Drought Monitor/i.test(body7), (body7.match(/LFP status|Next USDA deadline|U\.S\. Drought Monitor/i) ?? ['all gone'])[0])
+      // The drought designation is checked by its own panels, not by the words
+      // "U.S. Drought Monitor" — Block 16 gives those words to the Thursday
+      // alert, which is a ledger row and may honestly appear on Today.
+      const droughtPanels = (await page.locator('[data-audit="county-drought"], [data-audit="drought-ribbon"], [data-audit="lfp-alert"]').count())
+      record('7.7: the LFP card, the drought designation panels and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && droughtPanels === 0, `${(body7.match(/LFP status|Next USDA deadline/i) ?? ['no program text'])[0]} · drought panels ${droughtPanels}`)
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
     }
     // Block 5C — one receipt: the strip's link opens the exact entry it just made.
@@ -1614,14 +1620,61 @@ async function main() {
         routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
     }
 
-    // ── Block 15b (ruling 9): Today keeps what needs attention and the ledger strip; headlines are gone ──
+    // ── Block 16 — headlines back on Today, last; the Thursday alert in USDM's words ──
     {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1_500)
-      const hook = await page.locator('[data-audit="news-hook"]').count()
+      await page.locator('[data-audit="news-list"], [data-audit="news-error"], [data-audit="news-empty"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
       const ledgers = await page.locator('[role="tablist"][aria-label="Ledgers"]').count()
-      const newsCalls = (await page.evaluate(() => performance.getEntriesByType('resource').map(e => e.name).filter(n => /\/api\/news/.test(n)).length)) as number
-      record('15b (ruling 9): Today has no headlines and asks the news feed for nothing; the ledger strip stays', hook === 0 && ledgers === 1 && newsCalls === 0, `news-hook ${hook} · ledgers ${ledgers} · news requests ${newsCalls}`)
+      const rows = page.locator('[data-audit="news-row"]')
+      const nRows = await rows.count()
+      const listState = await page.locator('[data-audit="news-error"]').count() ? 'unavailable' : await page.locator('[data-audit="news-empty"]').count() ? 'empty' : `${nRows} headlines`
+      // Headline only: no image, no summary paragraph, no source logo anywhere in a row.
+      const rowShape = nRows === 0 ? { imgs: 0, lines: 0 } : await rows.evaluateAll(els => ({
+        imgs: els.reduce((n, e) => n + e.querySelectorAll('img, svg, picture').length, 0),
+        lines: Math.max(...els.map(e => (e.textContent ?? '').trim().split('\n').filter(Boolean).length)),
+      }))
+      const linksOut = nRows === 0 ? true : await rows.evaluateAll(els => els.every(e => {
+        const a = e as HTMLAnchorElement
+        return a.tagName === 'A' && /^https?:\/\//.test(a.href) && !a.href.includes(location.host) && a.target === '_blank'
+      }))
+      const tall = await page.locator('[data-audit="today-headlines"]').evaluate(e => e.getBoundingClientRect().height).catch(() => 0)
+      // LAST means last in Today's own panel: nothing painted sits after it.
+      // Measured off the panel's children, never a word search — the other
+      // views stay mounted and hidden, and a hidden box has no height.
+      const below = await page.evaluate(() => {
+        const h = document.querySelector('[data-audit="today-headlines"]')
+        if (!h?.parentElement) return -1
+        const painted = Array.from(h.parentElement.children).filter(e => e.getBoundingClientRect().height > 0)
+        return painted.length - 1 - painted.indexOf(h)
+      })
+      record('16 (ruling 1): headlines are back on Today as the last section — headline only, no images or summaries, and every one links out to its source',
+        (await page.locator('[data-audit="news-hook"]').count()) === 1 && ledgers === 1 && rowShape.imgs === 0 && rowShape.lines <= 2 && linksOut && below === 0 && tall > 0,
+        `${listState} · images ${rowShape.imgs} · max lines per row ${rowShape.lines} · links out ${linksOut} · sections below ${below}`)
+
+      // Ruling 2 — the Thursday alert, as a person reads it. A real alert event
+      // on the smoke ranch, in the shape lib/alert-service writes today.
+      const alertId = randomUUID()
+      const validDate = '2026-09-15'
+      await admin.from('events').insert({
+        id: alertId, user_id: userId, ranch_id: ranchId, device_id: null, type: 'alert',
+        ts: new Date().toISOString(), schema_version: 1,
+        payload: {
+          kind: 'lfp_drought_alert', county_fips: HOME_FIPS, county_name: `${PREFIX} County`, state: 'MT',
+          tier: 3, payments: 3, week_date: validDate, source: 'usdm', valid_date: validDate,
+          usdm: { level: 3, pct: 12, d0: 100, d1: 88, d2: 61, d3: 12, d4: 0 },
+        },
+      })
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-row"], [data-audit="since-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const alertText = (await page.locator(`text=U.S. Drought Monitor`).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const namesSource = /U\.S\. Drought Monitor/.test(alertText)
+      const saysClass = /Extreme drought \(D3\) across 12% of the county/.test(alertText) && /severe drought or worse across 61%/.test(alertText)
+      const saysValid = /valid Sep 15, 2026/.test(alertText)
+      const noProgram = !/\bLFP\b|\btier\b|\bpayment/i.test(alertText)
+      record('16 (ruling 2): the Thursday alert names the U.S. Drought Monitor, states the class in plain words with the valid-through date, and says nothing about eligibility or payments',
+        namesSource && saysClass && saysValid && noProgram,
+        `"${alertText.slice(0, 150)}" · source ${namesSource} · class ${saysClass} · valid ${saysValid} · no program words ${noProgram}`)
+      await admin.from('events').delete().eq('id', alertId)
     }
 
     // ── Block 9: hay to turnout — the runway gets an end ───────────────────

@@ -9,6 +9,7 @@ import { GROUP_ACTION_LABELS, GROUP_ACTION_TYPE, isGroupAction } from './cattle/
 import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
 import { live } from './ledger-effective'
 import { liveOnly } from './trash'
+import { droughtAlertLine } from './drought-words'
 
 // ─── The activity record (Block 5A) ───────────────────────────────────────────
 // Everything a person recorded on the ranch, findable by stable id forever.
@@ -108,11 +109,9 @@ export function chainWithin(rows: ActivityRow[], head: ActivityRow, names: Names
 export function alertLine(p: Record<string, unknown>): string | null {
   const title = str(p.title)
   if (title) return title
-  if (p.kind === 'lfp_drought_alert' && typeof p.county_name === 'string' && typeof p.tier === 'number') {
-    const payments = typeof p.payments === 'number' ? p.payments : null
-    return `LFP alert — ${p.county_name} County at Tier ${p.tier}${payments != null ? ` · ${payments} payment${payments === 1 ? '' : 's'}` : ''}`
-  }
-  return null
+  // Block 16 (ruling 2): the Thursday alert reads as the U.S. Drought
+  // Monitor's — source, valid date, class in plain words, no LFP language.
+  return droughtAlertLine(p)
 }
 
 export function describeEvent(r: ActivityRow, names: Names): string {

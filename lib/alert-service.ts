@@ -4,6 +4,7 @@ import { computeLfpEligibility, defaultGrazingPeriod, type GrazingPeriod } from 
 import { getGrazingPeriods } from './grazing-periods'
 import { sendDroughtAlert } from './email'
 import { resolveRanchId } from './ranch-membership'
+import { summarizeUsdm, type UsdmSummary } from './drought-words'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,19 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
     }),
   )
 
+  // Block 16 (ruling 2): the alert a person reads names the U.S. Drought
+  // Monitor, the date the release is valid for, and the class in plain words.
+  // The reading is the county's own row for this release — one query for
+  // every watched county, kept beside the eligibility it triggers.
+  const countyIds = [...new Set(watchlistData.map(w => (w.counties as unknown as { id: number }).id))]
+  const { data: readings } = await db
+    .from('drought_data')
+    .select('county_id, d0, d1, d2, d3, d4')
+    .in('county_id', countyIds)
+    .eq('week_date', weekDate)
+  const usdmByCounty: Record<number, UsdmSummary | null> = {}
+  for (const r of readings ?? []) usdmByCounty[r.county_id as number] = summarizeUsdm(r as { d0: number | null; d1: number | null; d2: number | null; d3: number | null; d4: number | null })
+
   // 4. Fan out — one alert per user/county if tier > 0 and not already sent this week
   let sent    = 0
   let skipped = 0
@@ -245,17 +259,14 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
     if ((count ?? 0) > 0) { skipped++; continue }
 
     try {
+      const usdm = usdmByCounty[county.id] ?? null
       await sendDroughtAlert({
-        to:                 email,
-        countyName:         elig.countyName,
-        state:              elig.state,
-        fips:               elig.fips,
-        tier:               elig.maxTier,
-        payments:           elig.payments,
-        tierLabel:          elig.tiers[elig.maxTier - 1].label,
-        grazingPeriodStart: (gpByFips[county.fips] ?? defaultGrazingPeriod()).startDate,
-        grazingPeriodEnd:   (gpByFips[county.fips] ?? defaultGrazingPeriod()).endDate,
-        weekDate,
+        to:         email,
+        countyName: elig.countyName,
+        state:      elig.state,
+        fips:       elig.fips,
+        validDate:  weekDate,
+        usdm,
       })
 
       await db.from('alert_sent').insert({
@@ -286,9 +297,16 @@ export async function checkAndSendAlerts(weekDate: string): Promise<AlertSendRes
           county_fips: county.fips,
           county_name: elig.countyName,
           state:       elig.state,
+          // The trigger, kept as data for the record — never printed in the
+          // alert (Block 16, ruling 2): FSA's determination has its own screen.
           tier:        elig.maxTier,
           payments:    elig.payments,
           week_date:   weekDate,
+          // Block 16: what the alert SAYS — source, the release's valid date,
+          // the class in numbers the words are built from.
+          source:      'usdm',
+          valid_date:  weekDate,
+          ...(usdm ? { usdm } : {}),
         },
         schema_version: 1,
         dedup_key: `alert:lfp:${county.fips}:${weekDate}`,
