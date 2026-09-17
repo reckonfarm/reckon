@@ -2597,14 +2597,20 @@ async function main() {
       // merely nearly full proves nothing — the write would simply succeed.
       const fillToEdge = async () => page.evaluate(() => {
         let n = 0
-        for (const size of [512 * 1024, 64 * 1024, 8 * 1024, 1024]) {
+        for (const size of [512 * 1024, 64 * 1024, 8 * 1024, 1024, 64]) {
           for (;;) {
-            if (n > 600) break
+            if (n > 3000) break
             try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(size)); n++ } catch { break }
           }
         }
+        // The outbox does not add a key — it REWRITES its own, bigger. So the
+        // proof of a full shelf is that a 64-byte growth of a key already
+        // there is refused. Restore the value when it is not.
         let full = false
-        try { localStorage.setItem('__probe__', 'y'.repeat(1024)); localStorage.removeItem('__probe__') } catch { full = true }
+        const k = '__fill_0'
+        const v = localStorage.getItem(k)
+        if (v == null) return { n, full: false }
+        try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
         return { n, full }
       })
       const clearFill = async () => page.evaluate(() => {
@@ -2648,7 +2654,8 @@ async function main() {
         filled2.full && saysStorage && !blamesNetwork,
         `${filled2.n} filler keys, shelf full ${filled2.full} · storage words ${saysStorage} · network words present ${blamesNetwork} · said "${said.slice(0, 120) || '(nothing)'}"`)
       await clearFill()
-      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
+      await page.evaluate(() => { for (const k of ['manual_log_draft_v1', 'dryline_ride_v1']) localStorage.removeItem(k) })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
     }
 
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
