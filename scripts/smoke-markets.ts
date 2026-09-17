@@ -538,6 +538,12 @@ async function main() {
       if (thinN === 0) skip('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', 'the selected lot is not priced off a thin sample this week')
       else {
         const about = (await page.locator('[data-audit="thin-about"]').first().innerText().catch(() => '')).trim()
+        // "One tap away" is literal: the arithmetic sits inside the closed
+        // "How this is figured" details, and a closed details paints nothing,
+        // so innerText read an empty string and this went red on a page that
+        // was right. Make the tap, then read what is painted.
+        const calc = page.locator('[data-audit="lot-calculation"]').first()
+        if (await calc.count() && !(await calc.evaluate(e => (e as HTMLDetailsElement).open))) await calc.locator('summary').click()
         const exact = (await page.locator('[data-audit="thin-exact"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         record('6I: a thin-sample headline reads "about $Nk" with the exact arithmetic one tap away', /^about \$[\d,]+k?$/.test(about) && /\$[\d,]+ = [\d,]+ head ×/.test(exact), `"${about}" · "${exact.slice(0, 90)}"`)
       }
