@@ -1,4 +1,5 @@
 import type { CaptureFix } from '@/lib/places/capture'
+import { RIDE_DRAFT_KEY, draftDroppedForRecord, forgetDraftDropped } from '@/lib/local-space'
 
 // ─── The ride draft (Block 21, ruling 1) ─────────────────────────────────────
 //
@@ -15,7 +16,7 @@ import type { CaptureFix } from '@/lib/places/capture'
 // the receiver ticks once a second. Every fifth fix, or after three seconds,
 // and always on demand (stop, hide, finish).
 
-const KEY = 'dryline_ride_v1'
+const KEY = RIDE_DRAFT_KEY
 const EVERY_N = 5
 const EVERY_MS = 3_000
 // The outbox lives on this same shelf, and an unsent feeding that cannot be
@@ -36,7 +37,7 @@ let lastWriteAt = 0
 let lastWriteN = 0
 
 /** What the phone did with the last write — the screen says so when it is not 'kept'. */
-export type DraftWrite = 'kept' | 'too_big' | 'refused'
+export type DraftWrite = 'kept' | 'too_big' | 'refused' | 'yielded'
 
 export function loadRideDraft(): RideDraft | null {
   try {
@@ -51,6 +52,11 @@ export function loadRideDraft(): RideDraft | null {
 /** Write the ride; `force` skips the throttle. Never throws — it reports. */
 export function saveRideDraft(fixes: CaptureFix[], startedAt: number, force = false): DraftWrite {
   if (fixes.length === 0) return 'kept'
+  // Ruling 4: this draft has already been given up so a record could be
+  // written. It stands down for the rest of the ride rather than racing the
+  // outbox for the space it just freed. The ride goes on; only the crash-copy
+  // is gone, and the screen says so.
+  if (draftDroppedForRecord()) return 'yielded'
   const now = Date.now()
   if (!force && fixes.length - lastWriteN < EVERY_N && now - lastWriteAt < EVERY_MS) return 'kept'
   const json = JSON.stringify({ startedAt, savedAt: now, fixes } satisfies RideDraft)
@@ -64,5 +70,6 @@ export function saveRideDraft(fixes: CaptureFix[], startedAt: number, force = fa
 
 export function clearRideDraft(): void {
   try { localStorage.removeItem(KEY) } catch { /* private mode */ }
+  forgetDraftDropped()
   lastWriteAt = 0; lastWriteN = 0
 }

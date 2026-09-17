@@ -639,7 +639,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           ...(when ? { ts: new Date(when).toISOString() } : {}),
         }
         const label = `Preg check · ${checked} checked · ${bred} bred · ${openN} open${doSplit ? ` · ${openN} to ${name}` : ''}`
-        try { enqueue(pbody, label) } catch { setError("Couldn't save. This phone refused to store it."); setBusy(false); return }
+        try { enqueue(pbody, label) } catch { setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
         writeLastLot(lot)
         close()
         return
@@ -679,7 +679,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       try {
         enqueue(body, label)
       } catch {
-        setError("Couldn't save. This phone refused to store it.")
+        setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
         return
       }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')
@@ -1029,7 +1029,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 </div>
 
                 {error && (
-                  <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>
+                  <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert" data-audit="record-error">{error}</p>
                 )}
 
                 {/* Block 15 (ruling 2): a refused record being fixed says so,

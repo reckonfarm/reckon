@@ -2528,6 +2528,62 @@ async function main() {
       if (rideId) await admin.from('places').delete().eq('id', rideId)
     }
 
+    // ── Block 21 (rulings 4 + 5) — the outbox outranks the draft; a full phone is not a lost signal ──
+    // The shelf is filled for real. A ride draft and a wall of filler are put
+    // on it until the phone is genuinely out of room, and then a feeding is
+    // recorded through the sheet like any other. Nothing here is mocked: the
+    // browser's own quota does the refusing.
+    {
+      const fill = async (mb: number) => page.evaluate((n: number) => {
+        const chunk = 'x'.repeat(512 * 1024)
+        let put = 0
+        try { for (let i = 0; i < n * 2; i++) { localStorage.setItem(`__fill_${i}`, chunk); put++ } } catch { /* full is the point */ }
+        return put
+      }, mb)
+      const clearFill = async () => page.evaluate(() => {
+        for (const k of Object.keys(localStorage)) if (k.startsWith('__fill_')) localStorage.removeItem(k)
+      })
+      const draftLen = () => page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })
+
+      // Ruling 4 — a big ride draft, the shelf filled around it, then a record.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await clearFill()
+      const seeded = await page.evaluate(() => {
+        const fixes = Array.from({ length: 20_000 }, (_, i) => ({ t: 1_700_000_000_000 + i * 1000, lat: 47.12 + i * 1e-6, lng: -108.43, acc: 3 }))
+        try { localStorage.setItem('dryline_ride_v1', JSON.stringify({ startedAt: 1_700_000_000_000, savedAt: Date.now(), fixes })); return fixes.length } catch { return 0 }
+      })
+      const filled = await fill(3)
+      const before = await outbox(page)
+      await logFeed(page, 3)
+      const seq = await watchStates(page, 'Saved', 10_000)
+      const after = await outbox(page)
+      const draftAfter = await draftLen()
+      const kept = after.length > before.length
+      record('21 (ruling 4): with the phone out of room, the record is written and the ride draft is what goes — never the other way round',
+        seeded > 0 && filled > 0 && kept && draftAfter === 0,
+        `draft seeded ${seeded} fixes · filler ${filled} × 512 KB · outbox ${before.length} → ${after.length} · draft after ${draftAfter} · ${seq.join(' → ') || 'no strip'}`)
+      await clearFill()
+      await page.evaluate(() => localStorage.removeItem('dryline_ride_v1'))
+
+      // Ruling 5 — no draft to give up, the shelf full: the save must fail in
+      // STORAGE's words. "Couldn't send" is the network's word and must not
+      // appear, because the network is not what went wrong.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const filled2 = await fill(6)
+      await logFeed(page, 4)
+      await page.waitForTimeout(1_500)
+      await page.locator('[data-audit="record-error"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const said = (await page.locator('[data-audit="record-error"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const sheet = `${said} ${(await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')}`
+      const saysStorage = /This phone is full, so nothing was saved\. Free some space on the phone, then record it again\./.test(sheet)
+      const blamesNetwork = /Couldn't send|Waiting for signal/.test(sheet)
+      record('21 (ruling 5): a phone that will not keep the record says so in storage\'s own words — what is wrong and what to do — and never blames the signal',
+        filled2 > 0 && saysStorage && !blamesNetwork,
+        `filler ${filled2} × 512 KB · storage words ${saysStorage} · network words present ${blamesNetwork} · said "${said.slice(0, 120) || '(nothing)'}"`)
+      await clearFill()
+      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
+    }
+
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything

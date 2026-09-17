@@ -292,7 +292,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     try {
       enqueue(body, label, 0, { endpoint: '/api/places', link: { href: `/ranch/places/${id}`, label: 'Open this place' } })
     } catch {
-      setSaveErr('This phone would not keep the place. Nothing was saved — free some space and try again.')
+      setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
       return
     }
     if (pending.kind === 'ring') { clearRideDraft(); setDraft(null) }
@@ -354,7 +354,9 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
       )}
       {held !== 'kept' && (
         <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-not-held">
-          {held === 'too_big'
+          {held === 'yielded'
+            ? 'The phone made room for a record you saved, so this ride is no longer being kept here. It is still recording, and everything you have ridden still saves with the place — close it before you shut the app.'
+            : held === 'too_big'
             ? 'This ride is longer than the phone will hold. It is still recording, and everything so far is still here — close it before you shut the app.'
             : 'This phone is full, so it has stopped keeping the ride. It is still recording — close it before you shut the app.'}
         </p>

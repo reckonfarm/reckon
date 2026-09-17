@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useOutbox, STATE_LABEL, type OutboxItem } from '@/lib/outbox'
+import { useOutbox, useStorageFull, STATE_LABEL, type OutboxItem } from '@/lib/outbox'
 import { openLogIt, draftFromBody } from '@/app/dashboard/components/LogIt'
 
 // ─── "3 waiting for signal" (Block 15, ruling 5) ──────────────────────────────
@@ -12,12 +12,18 @@ import { openLogIt, draftFromBody } from '@/app/dashboard/components/LogIt'
 // one away is inside Fix, behind the numbers.
 export default function WaitingLine() {
   const items = useOutbox()
+  // Block 21 (ruling 5): a full phone is not a lost signal. It gets its own
+  // line, ahead of the count, because what a person does about it is
+  // different — free some space, not find a hilltop.
+  const full = useStorageFull()
   const [open, setOpen] = useState(false)
   const waiting = items.filter(i => i.state !== 'synced')
   if (waiting.length === 0) return null
   const failed = waiting.filter(i => i.state === 'failed')
   const n = waiting.length
-  const line = failed.length === n
+  const line = full
+    ? `${n} waiting · this phone is full`
+    : failed.length === n
     ? `${n} couldn't send`
     : failed.length > 0 ? `${n} waiting · ${failed.length} couldn't send` : `${n} waiting for signal`
 
@@ -32,6 +38,11 @@ export default function WaitingLine() {
         <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Waiting to send" data-audit="waiting-sheet">
           <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
             <p className="font-dm-sans text-[17px] font-semibold text-ink">{line}</p>
+            {full && (
+              <p className="mt-2 rounded-lg border border-rust/40 bg-rust/5 p-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="waiting-storage">
+                This phone is full, so it cannot keep anything new. Everything below is still here and still goes when there is room. Free some space on the phone — photos or an app you do not use — and it carries on by itself.
+              </p>
+            )}
             <ul className="mt-3 divide-y divide-rule" data-audit="waiting-list">
               {waiting.slice().reverse().map(item => <WaitingRow key={item.id} item={item} onFix={() => setOpen(false)} />)}
             </ul>
