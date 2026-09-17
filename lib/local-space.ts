@@ -57,6 +57,28 @@ export function makeRoomForRecords(): boolean {
   return freed
 }
 
+/**
+ * The room a record must always find. Ruling 4 says to RESERVE the outbox's
+ * space, not merely to win the fight when it happens — so a draft checks that
+ * this much is still free after every write, and gives way the moment it is
+ * not. 64 KB is far more than any one record needs and more than the whole
+ * outbox's growth; a ride's crash-copy is never worth sitting on it.
+ */
+export const RECORD_RESERVE_BYTES = 64 * 1024
+const PROBE_KEY = '__dryline_reserve__'
+
+/** True while a record could still be written. Leaves nothing behind either way. */
+export function roomLeftForRecords(): boolean {
+  try {
+    localStorage.setItem(PROBE_KEY, 'r'.repeat(RECORD_RESERVE_BYTES))
+    localStorage.removeItem(PROBE_KEY)
+    return true
+  } catch {
+    try { localStorage.removeItem(PROBE_KEY) } catch { /* nothing more to do */ }
+    return false
+  }
+}
+
 /** True once a draft has been given up so a record could be written. */
 export function draftDroppedForRecord(): boolean {
   return droppedForRecord

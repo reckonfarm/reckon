@@ -1,5 +1,5 @@
 import type { CaptureFix } from '@/lib/places/capture'
-import { RIDE_DRAFT_KEY, draftDroppedForRecord, forgetDraftDropped } from '@/lib/local-space'
+import { RIDE_DRAFT_KEY, draftDroppedForRecord, forgetDraftDropped, makeRoomForRecords, roomLeftForRecords } from '@/lib/local-space'
 
 // ─── The ride draft (Block 21, ruling 1) ─────────────────────────────────────
 //
@@ -35,6 +35,11 @@ export interface RideDraft {
 
 let lastWriteAt = 0
 let lastWriteN = 0
+// The reserve probe writes and removes 64 KB, so it is not run on every fix:
+// a ride draft grows by a few dozen bytes a second, and ten seconds cannot
+// take a phone from comfortable to out of room.
+const PROBE_EVERY_MS = 10_000
+let lastProbeAt = 0
 
 /** What the phone did with the last write — the screen says so when it is not 'kept'. */
 export type DraftWrite = 'kept' | 'too_big' | 'refused' | 'yielded'
@@ -63,13 +68,23 @@ export function saveRideDraft(fixes: CaptureFix[], startedAt: number, force = fa
   if (json.length > MAX_BYTES) return 'too_big'
   try {
     localStorage.setItem(KEY, json)
-    lastWriteAt = now; lastWriteN = fixes.length
-    return 'kept'
   } catch { return 'refused' }
+  // Ruling 4, the reserve: the draft may not sit on the room a record needs.
+  // If this write has taken the last of it, the draft gives way at once and
+  // stands down for the rest of the ride — before any record has to ask.
+  if (force || now - lastProbeAt >= PROBE_EVERY_MS) {
+    lastProbeAt = now
+    if (!roomLeftForRecords()) {
+      makeRoomForRecords()
+      return 'yielded'
+    }
+  }
+  lastWriteAt = now; lastWriteN = fixes.length
+  return 'kept'
 }
 
 export function clearRideDraft(): void {
   try { localStorage.removeItem(KEY) } catch { /* private mode */ }
   forgetDraftDropped()
-  lastWriteAt = 0; lastWriteN = 0
+  lastWriteAt = 0; lastWriteN = 0; lastProbeAt = 0
 }
