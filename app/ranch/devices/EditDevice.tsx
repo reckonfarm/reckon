@@ -110,7 +110,7 @@ export default function EditDevice({ device }: { device: { id: string; name: str
       {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="device-fix-error">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="device-fix-save">
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? 'Saving…' : 'Save the device'}
         </button>
         <button type="button" disabled={busy} onClick={() => { setName(device.name); setPlaceId(device.placeId); setError(null); setOpen(false) }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="device-fix-cancel">
           Cancel

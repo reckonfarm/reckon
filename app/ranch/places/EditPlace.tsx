@@ -216,7 +216,7 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
             className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50"
             data-audit="place-edit-save"
           >
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? 'Saving…' : 'Save the place'}
           </button>
           <button type="button" disabled={busy} onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setPinned(place.pinned); setError(null); setMode('idle') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50" data-audit="place-edit-cancel">
             Cancel

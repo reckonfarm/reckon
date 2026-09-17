@@ -16,6 +16,7 @@ import DrawPlace from './DrawPlace'
 import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
 import HeldRow from '@/app/components/HeldRow'
+import LitOnHash from '@/app/components/LitOnHash'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
 // The list first. Each row: name, type, acreage if the ground is drawn, last
@@ -45,6 +46,7 @@ export default async function PlacesPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <LitOnHash prefix="place-" />
         <p className={EYEBROW}>Ranch · Places</p>
         <h1 className="mt-1 type-page-heading text-ink">Places</h1>
         {/* Block 12 (12.7): Devices fold under Ground — a device is AT a place and
@@ -154,7 +156,7 @@ function PlaceBranch({ node }: { node: PlaceNode }) {
   const p = node
   const inside = childrenSummary(p.children, kindLabel)
   return (
-    <li data-audit="place-branch" data-depth={p.depth} data-kind={p.kind}>
+    <li data-audit="place-branch" data-depth={p.depth} data-kind={p.kind} id={`place-${p.id}`}>
       {/* Block 13: hold the row for Fix (the place page, form open) · Delete (to the trash, Undo on the strip). */}
       <HeldRow label={p.name} openHref={`/ranch/places/${p.id}`} fixHref={`/ranch/places/${p.id}#edit`} del={{ kind: 'place', id: p.id }}>
       <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" style={{ paddingLeft: `${1 + Math.min(p.depth, 4) * 1.25}rem` }} data-audit="place-row" data-id={p.id}>

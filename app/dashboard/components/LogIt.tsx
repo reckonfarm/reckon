@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
+import { useSwipeDown } from '@/lib/swipe-down'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
@@ -545,6 +546,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     asOf !== '' ||
     [place, fromPlace, toPlace].some(s => s.newName !== null && s.newName.trim() !== '')
   const dismiss = dirty ? undefined : close
+  // Block 15 (ruling 6): a pull down on the sheet closes it — asking first if something was typed.
+  const swipe = useSwipeDown(() => { if (!dirty || window.confirm('Discard what you typed?')) close() }, open)
 
   useEffect(() => {
     if (!open) return
@@ -920,9 +923,12 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         >
           <Card
             shadow="soft"
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-b-none px-5 py-5 sm:rounded-b-xl"
+            className="sheet-in max-h-[90vh] w-full max-w-md overflow-y-auto rounded-b-none px-5 py-5 sm:rounded-b-xl"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            {...swipe}
+            data-audit="record-sheet"
           >
+            <div aria-hidden className="mx-auto -mt-2 mb-3 h-1.5 w-10 rounded-full bg-forest-green/20 sm:hidden" />
             <div className="flex items-center justify-between">
               <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
               <button
