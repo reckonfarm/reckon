@@ -2167,7 +2167,11 @@ async function main() {
       record('15b (ruling 9): the place page opens on boundary and recorded-here; activity and devices are folded shut', folds.length >= 1 && folds.every(f => f.endsWith(':closed')) && openHeads.some(h => /Boundary/.test(h)) && openHeads.some(h => /Recorded here/.test(h)),
         `folds ${folds.join(', ') || 'none'} · open headings ${openHeads.join(' | ')}`)
 
-      // 8: hay listings hold like any row; Add is "New listing".
+      // 8: hay listings hold like any row; Add is "New listing". The marketplace
+      // is behind a flag; a build with it off has no listings to hold.
+      const hayApi = await pt.request.get('/api/hay').then(r => r.status()).catch(() => 0)
+      if (hayApi === 404) skip('15b (ruling 8): hay listings are held like any row', 'the hay marketplace is flagged off on this build (/api/hay 404)')
+      else {
       await pt.goto('/hay', { waitUntil: 'domcontentloaded' })
       await pt.waitForTimeout(1_500)
       const smallBtns = await pt.locator('[data-audit="hay-listing-row"] button:has-text("Remove"), [data-audit="hay-listing-row"] button:has-text("Edit")').count()
@@ -2180,6 +2184,7 @@ async function main() {
         await pt.keyboard.press('Escape')
       }
       record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"', smallBtns === 0 && newListing === 1 && (rows === 0 || /Open/.test(holdOffers)), `small buttons ${smallBtns} · New listing ${newListing} · rows ${rows} · held: "${holdOffers.slice(0, 80)}"`)
+      }
 
       await ctxT.close()
     }
