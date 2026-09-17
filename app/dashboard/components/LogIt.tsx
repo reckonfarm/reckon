@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
+import Counter from '@/app/components/ui/Counter'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
@@ -244,7 +245,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
 }) {
   if (slot.newName !== null) {
     return (
-      <Field label={`${label} — new place`} hint="A name is enough. Save adds it with the entry.">
+      <Field label={`${label} — new place`}>
         <div className="flex gap-2">
           <Input
             autoFocus
@@ -352,28 +353,6 @@ function describe(
   }
 }
 
-// ─── −/+ at 56 px (Block 15, ruling 6) ────────────────────────────────────────
-// Any small number is set by thumb: head, bales, bred, open. The number stays
-// an input, so a big one can still be typed.
-function Counter({ label, value, onChange, unit, audit, min = 0, max = 20000 }: { label: string; value: string; onChange: (v: string) => void; unit?: string; audit: string; min?: number; max?: number }) {
-  const n = value.trim() === '' ? 0 : Math.max(min, Math.floor(Number(value) || 0))
-  const set = (k: number) => onChange(String(Math.max(min, Math.min(max, k))))
-  const btn = 'inline-flex h-[56px] w-[56px] shrink-0 items-center justify-center rounded-xl border border-control-border bg-surface font-dm-sans text-[26px] leading-none text-ink active:bg-forest-green/10 disabled:opacity-40'
-  return (
-    <div data-audit={audit}>
-      <p id={`${audit}-label`} className="font-dm-sans text-[16px] font-medium text-ink">{label}</p>
-      <div className="mt-1 flex items-center gap-2">
-        {/* The buttons' names carry no field name: a label lookup for "Head" must find the input, not three controls. */}
-        <button type="button" onClick={() => set(n - 1)} disabled={n <= min} className={btn} aria-label="Minus one" aria-describedby={`${audit}-label`} data-audit={`${audit}-minus`}>−</button>
-        <input type="number" inputMode="numeric" min={min} max={max} value={value} placeholder="0" onChange={e => onChange(e.target.value)}
-          className="min-h-[56px] w-full rounded-xl border border-control-border bg-surface px-3 text-center font-dm-sans text-[24px] tabular-nums text-ink" aria-label={label} data-audit={`${audit}-input`} />
-        <button type="button" onClick={() => set(n + 1)} className={btn} aria-label="Plus one" aria-describedby={`${audit}-label`} data-audit={`${audit}-plus`}>+</button>
-        {unit && <span className="shrink-0 font-dm-sans text-[16px] text-secondary-ink">{unit}</span>}
-      </div>
-    </div>
-  )
-}
-
 // Block 6A: one sheet is mounted for the whole app (RecordSheetHost); any
 // surface may render a launcher alone. `sheet` instances listen for openLogIt();
 // `launcher` instances only ask.
@@ -420,7 +399,6 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [asOf, setAsOf] = useState('')      // hay_inventory: 'YYYY-MM-DD', '' = today
   const [note, setNote] = useState('')      // hay_fed, behind More
   const [stock, setStock] = useState<PlaceSlot>(EMPTY_SLOT)   // hay_fed: the stack it came from, behind More
-  const [more, setMore] = useState(false)
   const [lotsError, setLotsError] = useState(false)
   // Block 14: "New bunch" inside any bunch picker opens the on-the-spot form
   // below it; a made bunch joins the list and is picked at once.
@@ -433,7 +411,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     eventId.current = null
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
-    setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT); setMore(false)
+    setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT)
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
     writeDraft(null)
   }, [])
@@ -749,17 +727,6 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         {Number(n1)} {Number(n1) === 1 ? 'bale' : 'bales'}{lots?.find(l => l.id === lot) ? ` to ${lotLabel(lots.find(l => l.id === lot)!)}` : ''}{place.newName !== null ? (place.newName.trim() ? ` at ${place.newName.trim()}` : '') : (places.find(p => p.id === place.id)?.name ? ` at ${places.find(p => p.id === place.id)!.name}` : '')}, {editWhen && when ? new Date(when).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : `today ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
       </p>
     )}
-    <div>
-      <button type="button" onClick={() => setMore(m => !m)} aria-expanded={more} className="min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="feed-more">{more ? 'Less' : 'More'}</button>
-      {more && (
-        <div className="mt-2 flex flex-col gap-4">
-          <PlaceSelect label="Stock source (the stack it came from)" slot={stock} places={places} onChange={setStock} disabled={busy} />
-          <Field label="Note">
-            <Input value={note} onChange={e => setNote(e.target.value)} maxLength={200} placeholder="anything worth remembering" />
-          </Field>
-        </div>
-      )}
-    </div>
   </>)
   if (type === 'bales_stacked') fields = (<>
     <NumberField label="Stacked" unit="bales" value={n1} onChange={setN1} max={10000} />
@@ -790,7 +757,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   if (type === 'hay_inventory') fields = (<>
     <NumberField label="On hand" unit="bales" value={n1} onChange={setN1} max={100000} placeholder="0" />
     <p className="font-dm-sans text-[16px] text-ink" data-audit="count-scope">Count for: <span className="font-semibold">{place.newName !== null ? (place.newName.trim() || 'Entire ranch') : (places.find(p => p.id === place.id)?.name ?? 'Entire ranch')}</span></p>
-    <Field label="Counted on" hint="The day you counted — the effective date. When you record it is kept separately.">
+    <Field label="Counted on">
       <Input type="date" value={asOf || todayKey()} max={todayKey()} onChange={e => setAsOf(e.target.value)} />
     </Field>
     {/* Block 7.4 — say what saving DOES, before it is saved. A count is not an

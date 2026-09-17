@@ -64,7 +64,7 @@ export default function RanchNameCard() {
   return (
     <Card shadow="none" className="mt-5 px-5 py-4">
       <form onSubmit={e => { e.preventDefault(); if (dirty && !saving) save() }} className="space-y-3">
-        <Field label="Ranch name" hint="How the operation is named across Dryline — it leads your dashboard.">
+        <Field label="Ranch name">
           <Input value={name} maxLength={RANCH_NAME_MAX} onChange={e => setName(e.target.value)} />
         </Field>
         {error && <p className="font-dm-sans text-[16px] font-medium text-warning" role="alert">{error}</p>}

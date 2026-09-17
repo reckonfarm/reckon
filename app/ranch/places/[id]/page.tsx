@@ -156,8 +156,8 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         </section>
 
         {rows.length > 0 && (
-          <section className="mt-6" aria-labelledby="place-activity">
-            <h2 id="place-activity" className={`${EYEBROW} !text-ink`}>Activity here</h2>
+          <details className="mt-6 group" data-audit="place-activity-fold">
+            <summary className={`${EYEBROW} !text-ink flex min-h-[48px] cursor-pointer list-none items-center justify-between`}>Activity here <span aria-hidden className="font-normal text-secondary-ink group-open:hidden">Show</span><span aria-hidden className="hidden font-normal text-secondary-ink group-open:inline">Hide</span></summary>
             <Card className="mt-2 p-0">
               <ol className="divide-y divide-rule" data-audit="place-activity">
                 {/* Operational (6B): what stands here, a correction marked, what it replaced one tap away. */}
@@ -167,12 +167,12 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
             {(activity?.nextCursor || (activity?.rows.length ?? 0) > rows.length) && (
               <p className="mt-2"><Link href={`/ranch/activity?place=${place.id}`} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">All activity here →</Link></p>
             )}
-          </section>
+          </details>
         )}
 
         {devices.length > 0 && (
-          <section className="mt-6" aria-labelledby="place-devices">
-            <h2 id="place-devices" className={`${EYEBROW} !text-ink`}>Connected devices</h2>
+          <details className="mt-6 group" data-audit="place-devices-fold">
+            <summary className={`${EYEBROW} !text-ink flex min-h-[48px] cursor-pointer list-none items-center justify-between`}>Connected devices <span aria-hidden className="font-normal text-secondary-ink group-open:hidden">Show</span><span aria-hidden className="hidden font-normal text-secondary-ink group-open:inline">Hide</span></summary>
             <Card className="mt-2 p-0">
               <ul className="divide-y divide-rule">
                 {devices.map(d => (
@@ -188,7 +188,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
                 ))}
               </ul>
             </Card>
-          </section>
+          </details>
         )}
       </main>
     </>
