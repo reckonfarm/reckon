@@ -113,6 +113,7 @@ async function teardown(label: string) {
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
+    n += (await admin.from('hay_listings').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
@@ -2168,22 +2169,40 @@ async function main() {
         `folds ${folds.join(', ') || 'none'} · open headings ${openHeads.join(' | ')}`)
 
       // 8: hay listings hold like any row; Add is "New listing". The marketplace
-      // is behind a flag; a build with it off has no listings to hold.
+      // is behind a build flag: with it off this check FAILS and says so — PK's
+      // rule, not a skip. With it on, the smoke user's own listing is made if
+      // there is none, held, deleted from the sheet, and put back by Undo.
       const hayApi = await pt.request.get('/api/hay').then(r => r.status()).catch(() => 0)
-      if (hayApi === 404) skip('15b (ruling 8): hay listings are held like any row', 'the hay marketplace is flagged off on this build (/api/hay 404)')
-      else {
-      await pt.goto('/hay', { waitUntil: 'domcontentloaded' })
-      await pt.waitForTimeout(1_500)
-      const smallBtns = await pt.locator('[data-audit="hay-listing-row"] button:has-text("Remove"), [data-audit="hay-listing-row"] button:has-text("Edit")').count()
-      const newListing = await pt.getByRole('button', { name: 'New listing' }).count()
-      const rows = await pt.locator('[data-audit="hay-listing-row"]').count()
-      let holdOffers = 'no rows to hold'
-      if (rows > 0) {
-        await pt.locator('[data-audit="hay-listing-row"]').first().click({ button: 'right' })
-        holdOffers = ((await pt.locator('[data-audit="row-actions-label"]').locator('xpath=..').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
-        await pt.keyboard.press('Escape')
-      }
-      record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"', smallBtns === 0 && newListing === 1 && (rows === 0 || /Open/.test(holdOffers)), `small buttons ${smallBtns} · New listing ${newListing} · rows ${rows} · held: "${holdOffers.slice(0, 80)}"`)
+      if (hayApi === 404) {
+        record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"', false, 'the hay marketplace is flagged off on this build (/api/hay 404) — nothing to hold')
+      } else {
+        await pt.goto('/hay', { waitUntil: 'domcontentloaded' })
+        await pt.locator('[data-audit="hay-listing-row"], [data-audit="hay-empty"], main').first().waitFor({ timeout: 15_000 }).catch(() => {})
+        await pt.waitForTimeout(1_000)
+        if ((await pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').count()) === 0) {
+          const { data: county } = await admin.from('counties').select('id').eq('fips', HOME_FIPS).maybeSingle()
+          const made = await pt.request.post('/api/hay', { data: { county_id: (county as { id?: number } | null)?.id, listing_type: 'sell', hay_type: `${PREFIX} grass`, quantity_tons: 20, price_per_ton: 150 } })
+          if (made.status() >= 300) console.log(`  (hay fixture: POST /api/hay ${made.status()} ${(await made.text()).slice(0, 120)})`)
+          await pt.reload({ waitUntil: 'domcontentloaded' })
+          await pt.waitForTimeout(1_500)
+        }
+        const smallBtns = await pt.locator('[data-audit="hay-listing-row"] button:has-text("Remove"), [data-audit="hay-listing-row"] button:has-text("Edit")').count()
+        const newListing = await pt.getByRole('button', { name: 'New listing' }).count()
+        const mine = pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').first()
+        const mineRows = await mine.count()
+        await mine.click({ button: 'right' }).catch(() => {})
+        const sheetTxt = ((await pt.locator('[data-audit="row-actions-label"]').locator('xpath=..').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+        record('15b (ruling 8): hay listings are held like any row — no small Edit/Remove buttons; Add is "New listing"; a held listing offers Open, Fix and Delete',
+          smallBtns === 0 && newListing === 1 && mineRows === 1 && /Open/.test(sheetTxt) && /Fix/.test(sheetTxt) && /Delete/.test(sheetTxt),
+          `small buttons ${smallBtns} · New listing ${newListing} · own rows ${mineRows} · held: "${sheetTxt.slice(0, 80)}"`)
+        await pt.locator('[data-audit="row-action-delete"]').click().catch(() => {})
+        const gone = await mine.waitFor({ state: 'hidden', timeout: 8_000 }).then(() => true).catch(() => false)
+        const strip = await undoStrip(pt).waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+        const back = await pressUndo(pt)
+        await pt.waitForTimeout(1_500)
+        const backRows = await pt.locator('[data-audit="hay-listing-row"][data-mine="true"]').count()
+        record('15b (ruling 8): Delete on a held listing takes it off the list with Undo on the strip, and Undo puts it back', gone && strip && back && backRows === 1, `gone ${gone} · strip ${strip} · undo ${back} · back rows ${backRows}`)
+        await admin.from('hay_listings').delete().eq('user_id', userId).like('hay_type', `${PREFIX}%`)
       }
 
       await ctxT.close()
