@@ -18,6 +18,13 @@ import type { CaptureFix } from '@/lib/places/capture'
 const KEY = 'dryline_ride_v1'
 const EVERY_N = 5
 const EVERY_MS = 3_000
+// The outbox lives on this same shelf, and an unsent feeding that cannot be
+// written is a lost record. A ride is capped well below the origin's quota so
+// it can never be the reason a record fails to save: 2 MB is about seven hours
+// at 1 Hz, far past any fence line, and leaves the outbox all the room it has
+// ever needed. Past the cap the ride goes on — the last snapshot is kept and
+// the screen says the phone has stopped keeping up.
+const MAX_BYTES = 2_000_000
 
 export interface RideDraft {
   startedAt: number
@@ -27,6 +34,9 @@ export interface RideDraft {
 
 let lastWriteAt = 0
 let lastWriteN = 0
+
+/** What the phone did with the last write — the screen says so when it is not 'kept'. */
+export type DraftWrite = 'kept' | 'too_big' | 'refused'
 
 export function loadRideDraft(): RideDraft | null {
   try {
@@ -38,16 +48,18 @@ export function loadRideDraft(): RideDraft | null {
   } catch { return null }
 }
 
-/** Write the ride; `force` skips the throttle. Returns false when the phone would not keep it. */
-export function saveRideDraft(fixes: CaptureFix[], startedAt: number, force = false): boolean {
-  if (fixes.length === 0) return true
+/** Write the ride; `force` skips the throttle. Never throws — it reports. */
+export function saveRideDraft(fixes: CaptureFix[], startedAt: number, force = false): DraftWrite {
+  if (fixes.length === 0) return 'kept'
   const now = Date.now()
-  if (!force && fixes.length - lastWriteN < EVERY_N && now - lastWriteAt < EVERY_MS) return true
+  if (!force && fixes.length - lastWriteN < EVERY_N && now - lastWriteAt < EVERY_MS) return 'kept'
+  const json = JSON.stringify({ startedAt, savedAt: now, fixes } satisfies RideDraft)
+  if (json.length > MAX_BYTES) return 'too_big'
   try {
-    localStorage.setItem(KEY, JSON.stringify({ startedAt, savedAt: now, fixes } satisfies RideDraft))
+    localStorage.setItem(KEY, json)
     lastWriteAt = now; lastWriteN = fixes.length
-    return true
-  } catch { return false }
+    return 'kept'
+  } catch { return 'refused' }
 }
 
 export function clearRideDraft(): void {

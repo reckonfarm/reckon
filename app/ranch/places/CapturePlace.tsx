@@ -5,7 +5,7 @@ import { Card } from '@/app/components/ui/Card'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOwnSaveStrip } from '@/app/dashboard/components/LogIt'
 import PlaceMapLoader, { type MapShape } from './PlaceMapLoader'
-import { clearRideDraft, loadRideDraft, saveRideDraft, type RideDraft } from '@/lib/places/ride-draft'
+import { clearRideDraft, loadRideDraft, saveRideDraft, type DraftWrite, type RideDraft } from '@/lib/places/ride-draft'
 import { PLACE_KINDS, MAX_NAME, DEFAULT_KIND, allowedParentKinds, kindLabel, parentRule } from '@/lib/places/kinds'
 import type { LatLng } from '@/lib/places/geo'
 import { warning } from '@/lib/brand-colors'
@@ -115,6 +115,10 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
   // Block 21: the ride the phone is holding, if any — offered on the chooser
   // and written to on every fix while riding.
   const [draft, setDraft] = useState<RideDraft | null>(null)
+  // What the phone did with the ride the last time it was written. A ride that
+  // is no longer being kept must SAY so while it is still recording — the
+  // operator can finish it now instead of learning later that it went.
+  const [held, setHeld] = useState<DraftWrite>('kept')
   const rideStartedAt = useRef<number>(0)
   useEffect(() => {
     const t = setTimeout(() => setDraft(loadRideDraft()), 0)
@@ -135,7 +139,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
   // throttled inside saveRideDraft — and always when the page hides.
   useEffect(() => {
     if (mode !== 'ride' || cap.fixes.length === 0) return
-    saveRideDraft(cap.fixes, rideStartedAt.current)
+    setHeld(saveRideDraft(cap.fixes, rideStartedAt.current))
   }, [mode, cap.fixes])
   useEffect(() => {
     if (mode !== 'ride') return
@@ -189,7 +193,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     // the first fix of the new ride. Only the operator ends a ride this way.
     if (seed.length === 0) { clearRideDraft(); setDraft(null) }
     rideStartedAt.current = startedAt ?? Date.now()
-    setMode('ride'); setOutcomeMsg(null); setOfferDrop(false)
+    setMode('ride'); setOutcomeMsg(null); setOfferDrop(false); setHeld('kept')
     await cap.start(seed)
   }, [cap])
   // Block 12 (12.2): the Record pill's Ground group links straight to a way of
@@ -346,6 +350,13 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           ±{latest ? latest.acc.toFixed(0) : '—'} m · {usable.length} {usable.length === 1 ? 'fix' : 'fixes'}
           {cap.rejected > 0 && <span className="text-secondary-ink"> · {cap.rejected} thrown out as wild</span>}
           {gaps.length > 0 && <span style={{ color: warning }}> · {gaps.length} gap{gaps.length === 1 ? '' : 's'}</span>}
+        </p>
+      )}
+      {held !== 'kept' && (
+        <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-not-held">
+          {held === 'too_big'
+            ? 'This ride is longer than the phone will hold. It is still recording, and everything so far is still here — close it before you shut the app.'
+            : 'This phone is full, so it has stopped keeping the ride. It is still recording — close it before you shut the app.'}
         </p>
       )}
       {cap.error && <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-error">{cap.error}</p>}
