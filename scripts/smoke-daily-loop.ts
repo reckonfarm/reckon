@@ -2534,7 +2534,11 @@ async function main() {
         mapBeforeRide === 1 && mapDuringRide === 1 && trackLayers >= 1 && diagnosticsBelowMap,
         `map before ${mapBeforeRide} · during ${mapDuringRide} · track layers ${trackLayers} · diagnostics below map ${diagnosticsBelowMap}`)
 
-      // A reload mid-ride: the phone kept it, offers it back, and Keep riding carries on from it.
+      // A reload mid-ride: the phone kept it, offers it back, and Keep riding
+      // carries on from it. LEAVE THE PAGE FIRST — a goto that changes only the
+      // hash is an in-page navigation, the component never remounts, and the
+      // ride screen would still be sitting there pretending to be a reload.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
       const kept = (await page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })) as number
       await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
@@ -2549,6 +2553,7 @@ async function main() {
 
       // Starting a NEW ride while one is held is stated before the tap — the
       // only way a ride ends without the operator finishing it is their own.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const rideBtn = (await page.locator('[data-audit="capture-ride-open"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -2587,14 +2592,23 @@ async function main() {
     // recorded through the sheet like any other. Nothing here is mocked: the
     // browser's own quota does the refusing.
     {
-      const fill = async (mb: number) => page.evaluate((n: number) => {
-        const chunk = 'x'.repeat(512 * 1024)
-        let put = 0
-        try { for (let i = 0; i < n * 2; i++) { localStorage.setItem(`__fill_${i}`, chunk); put++ } } catch { /* full is the point */ }
-        return put
-      }, mb)
+      // Fill to the EDGE: big chunks while they fit, then smaller, then prove
+      // the shelf is genuinely out of room with a 1 KB probe. A phone that is
+      // merely nearly full proves nothing — the write would simply succeed.
+      const fillToEdge = async () => page.evaluate(() => {
+        let n = 0
+        for (const size of [512 * 1024, 64 * 1024, 8 * 1024, 1024]) {
+          for (;;) {
+            if (n > 600) break
+            try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(size)); n++ } catch { break }
+          }
+        }
+        let full = false
+        try { localStorage.setItem('__probe__', 'y'.repeat(1024)); localStorage.removeItem('__probe__') } catch { full = true }
+        return { n, full }
+      })
       const clearFill = async () => page.evaluate(() => {
-        for (const k of Object.keys(localStorage)) if (k.startsWith('__fill_')) localStorage.removeItem(k)
+        for (const k of Object.keys(localStorage)) if (k.startsWith('__fill_') || k === '__probe__') localStorage.removeItem(k)
       })
       const draftLen = () => page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })
 
@@ -2605,7 +2619,7 @@ async function main() {
         const fixes = Array.from({ length: 20_000 }, (_, i) => ({ t: 1_700_000_000_000 + i * 1000, lat: 47.12 + i * 1e-6, lng: -108.43, acc: 3 }))
         try { localStorage.setItem('dryline_ride_v1', JSON.stringify({ startedAt: 1_700_000_000_000, savedAt: Date.now(), fixes })); return fixes.length } catch { return 0 }
       })
-      const filled = await fill(3)
+      const filled = await fillToEdge()
       const before = await outbox(page)
       await logFeed(page, 3)
       const seq = await watchStates(page, 'Saved', 10_000)
@@ -2613,8 +2627,8 @@ async function main() {
       const draftAfter = await draftLen()
       const kept = after.length > before.length
       record('21 (ruling 4): with the phone out of room, the record is written and the ride draft is what goes — never the other way round',
-        seeded > 0 && filled > 0 && kept && draftAfter === 0,
-        `draft seeded ${seeded} fixes · filler ${filled} × 512 KB · outbox ${before.length} → ${after.length} · draft after ${draftAfter} · ${seq.join(' → ') || 'no strip'}`)
+        seeded > 0 && filled.full && kept && draftAfter === 0,
+        `draft seeded ${seeded} fixes · ${filled.n} filler keys, shelf full ${filled.full} · outbox ${before.length} → ${after.length} · draft after ${draftAfter} · ${seq.join(' → ') || 'no strip'}`)
       await clearFill()
       await page.evaluate(() => localStorage.removeItem('dryline_ride_v1'))
 
@@ -2622,7 +2636,7 @@ async function main() {
       // STORAGE's words. "Couldn't send" is the network's word and must not
       // appear, because the network is not what went wrong.
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      const filled2 = await fill(6)
+      const filled2 = await fillToEdge()
       await logFeed(page, 4)
       await page.waitForTimeout(1_500)
       await page.locator('[data-audit="record-error"]').waitFor({ timeout: 15_000 }).catch(() => {})
@@ -2631,8 +2645,8 @@ async function main() {
       const saysStorage = /This phone is full, so nothing was saved\. Free some space on the phone, then record it again\./.test(sheet)
       const blamesNetwork = /Couldn't send|Waiting for signal/.test(sheet)
       record('21 (ruling 5): a phone that will not keep the record says so in storage\'s own words — what is wrong and what to do — and never blames the signal',
-        filled2 > 0 && saysStorage && !blamesNetwork,
-        `filler ${filled2} × 512 KB · storage words ${saysStorage} · network words present ${blamesNetwork} · said "${said.slice(0, 120) || '(nothing)'}"`)
+        filled2.full && saysStorage && !blamesNetwork,
+        `${filled2.n} filler keys, shelf full ${filled2.full} · storage words ${saysStorage} · network words present ${blamesNetwork} · said "${said.slice(0, 120) || '(nothing)'}"`)
       await clearFill()
       await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
     }
