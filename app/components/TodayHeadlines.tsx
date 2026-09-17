@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
+import { relativeTime } from '@/app/components/MarketsNews'
 import type { NewsItem, NewsResponse } from '@/lib/news-rank'
 
 // ─── Headlines on Today (Block 16, ruling 1) ──────────────────────────────────
@@ -21,17 +22,6 @@ type State =
 
 const HEADLINE_COUNT = 3
 const EXPANDED_COUNT = 10
-
-function relativeTime(iso: string | null): string {
-  if (!iso) return ''
-  const ms = Date.now() - new Date(iso).getTime()
-  if (!Number.isFinite(ms) || ms < 0) return ''
-  const h = Math.floor(ms / 3_600_000)
-  if (h < 1) return 'just now'
-  if (h < 24) return `${h}h ago`
-  const d = Math.floor(h / 24)
-  return d === 1 ? 'yesterday' : `${d}d ago`
-}
 
 function newsUrl(fips: string | null | undefined, limit: number): string {
   const qs = new URLSearchParams({ limit: String(limit) })
