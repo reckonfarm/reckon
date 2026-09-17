@@ -61,8 +61,7 @@ one rancher, one AI. Recon → report → PK rules → build on a branch → sui
   what a record means.
 - **Reports are short:** one paragraph on what changed, the suite counts, the tip, what to look at on production.
 - **Known capability gaps to name every run:** the hay marketplace is off in production
-  (`NEXT_PUBLIC_FEATURE_MARKETPLACE=false`, `/api/hay` answers 404, so the hay-listing hold check is red); the
-  Markets thin-sample headline ("about $Nk") is missing its arithmetic line on main (markets suite check 6I).
+  (`NEXT_PUBLIC_FEATURE_MARKETPLACE=false`, `/api/hay` answers 404, so the hay-listing hold check is red).
 
 ## Ground truth worth keeping
 
