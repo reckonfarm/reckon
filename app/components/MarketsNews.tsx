@@ -45,7 +45,7 @@ function localTierHeader(region: string | null): string {
   return name ? `${name} & the Northern Plains` : 'Near you'
 }
 
-function relativeTime(iso: string | null): string {
+export function relativeTime(iso: string | null): string {
   if (!iso) return ''
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''

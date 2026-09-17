@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { droughtAlertLine } from '@/lib/drought-words'
 import { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
 import { live } from '@/lib/ledger-effective'
@@ -84,18 +85,11 @@ const RENDERERS: Record<string, EventRenderer> = {
     return fallbackRender(e)
   },
   // Alerts Dryline wrote into the ledger (lib/alert-service, S3 2/2).
+  // Block 16 (ruling 2): the same words every reader prints — source, valid
+  // date, class — and never the program language.
   alert: e => {
-    const p = e.payload
-    if (p.kind === 'lfp_drought_alert' && typeof p.county_name === 'string' && typeof p.tier === 'number') {
-      const payments = typeof p.payments === 'number' ? p.payments : null
-      return {
-        title: `LFP alert — ${p.county_name} County at Tier ${p.tier}`,
-        detail: payments != null
-          ? `${payments} payment${payments === 1 ? '' : 's'} · USDM week of ${p.week_date}`
-          : null,
-        source: 'Dryline alert',
-      }
-    }
+    const line = droughtAlertLine(e.payload)
+    if (line) return { title: line, detail: null, source: 'U.S. Drought Monitor' }
     return { ...fallbackRender(e), source: 'Dryline alert' }
   },
 }
