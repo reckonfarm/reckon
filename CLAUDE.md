@@ -1,108 +1,79 @@
 @AGENTS.md
 
-# Dryline — Project Bible
+# Dryline / Reckon — how this repo is worked
 
-## What this is
-Drought + FSA program dashboard for ranchers at dryline.farm.
-Stack: Next.js 14, TypeScript, Tailwind v4, Supabase/Postgres, Vercel.
-Solo build — one rancher, one AI, Claude Code. Research → Confirm → Build, one prompt at a time.
+Ranch app for one operator (PK) and his hands: Next.js 16 App Router, TypeScript, Tailwind v4, Supabase/Postgres,
+Vercel, an offline-first PWA opened from the phone's home screen in a corral with one bar of signal. Solo build:
+one rancher, one AI. Recon → report → PK rules → build on a branch → suites once on the preview → merge on green.
 
-## The flywheel (the whole strategy in two sentences)
-Engine A: Drought + money engine — knows per-county drought state, LFP tier, estimated FSA payment.
-Engine B: Hay network — drought-aware two-sided marketplace, matched by haul distance.
-The drought data feeds the hay matching. The hay network makes the product viral. They spin together.
+## Words a person reads
 
-## The four engines — build in this order
-1. Money Engine (mostly built) — drought dashboard + LFP eligibility + push alerts. Finishing now.
-2. Hay Network — lean listings + drought-driven matching + haul-distance ranking. No payments day one.
-3. Operation Ledger — equipment (Fleet Command V9), seed (Seed Rate Bible), spray (Spray Rate Brain), payout history. Added after acquisition, as the switching-cost depth layer.
-4. Insurance Brain — PRF rainfall-index grid modeling, rancher-facing.
+- **The word is BUNCH** everywhere a person reads. The database stays `herd_lots`. "Lot" appears only on
+  auction and market screens, where it is the sale barn's word.
+- **Four save words, nothing else:** `Saved` · `Waiting for signal` · `Sent` · `Couldn't send`. No sentences
+  explaining sync. A refused record reads "Couldn't send", the reason in plain words on one line, and one button: Fix.
+- **Junior-high reading level.** Never `retire`, `archive`, `dismiss`, `revoke`, `provenance`, `superseded`,
+  `conflict`, `sync` in anything a person sees.
+- **Never a dead end:** a row that cannot be fixed or deleted shows a plain sentence saying why, never a greyed button.
+- A bunch is never just a name: every chip, option and row reads name · class · head.
 
-## Current phase
-Sprint 1 — COMPLETE
-- Hay listing detail page at /hay/[id]
-- Schema v2: cutting, bale type, bale weight, storage, forage
-  test fields (protein, TDN, moisture, RFV)
-- Richer listing cards with quality badges
-- Expanded post form with forage test section
-- Single listing API at /api/hay/[id]
+## How records behave
 
-Sprint 2 — COMPLETE
-- Triggered dashboard banner (forest-green, payment estimate,
-  FSA checklist scroll)
-- Pulsing trigger indicator on LFP tier badge
-- Hay nearby card on dashboard (haversine-filtered, D2+ context)
-- Dynamic homepage chips showing top 6 driest counties live
+- **Never a retry button.** Records retry themselves on every wake (signal back, app to the front, app opened),
+  forever. Nothing ages out. Unsent and failed outbox items never expire; the size cap trims sent items only.
+- **Hold 400 ms → Fix / Delete.** No confirmation dialogs. Delete goes to the trash with a ten-second Undo strip.
+  Removing a person is the one permanent delete, and the sheet says so before the tap.
+- **Never lose your place:** after a save, edit or delete the list stays where it was, scrolled to the row you
+  touched, lit for a moment.
+- **A rule lives in ONE place. The database decides; routes relay.** Never copy a database rule into TypeScript —
+  a route mirroring 069's refusal and the reconciliation caused two production failures (a real preg check refused in
+  a corral after the migration that allowed it had been run).
 
-Sprint 3 — Trust architecture (active)
-- Verified phone for sellers (SMS verification before first post)
-- Member since + listing count on seller profiles and detail pages
-- Post-transaction buyer review system (1-5 stars)
-- Hay test verified badge (seller uploaded lab results)
-- Multi-county ops view on watchlist (combined payment estimate,
-  sortable table, alert preferences per county)
+## Screen rules
 
-## Weather + map sprint — COMPLETE (current state)
+- 48 px tap targets, 17 px body, one column, Save full width at the bottom saying what it does ("Record feeding",
+  "Add the bunch"), −/+ at 56 px for any number under about twenty with the keyboard still available, existing
+  tokens only (forest green, cream, rust; Fraunces headings, DM Sans body). Take things away; don't invent.
+- Sections with air; no helper text under fields. Sheets slide over the page and close by swipe down; edge-swipe
+  goes back everywhere; pull down on a list refreshes it. Add is one button at the top: "New bunch", "New place",
+  "New listing" — never a bare plus.
+- Every current condition carries a visible as-of. A summary is never more confident than its detail.
 
-### Regional map layers (the toggle below the map)
-- 6 layers in a clean 2×3 toggle grid (`grid grid-cols-3`, in RegionalMapClient): Radar · Drought Monitor · Observed Rain · Forecast Rain · Rain Outlook · Drought Forecast. (alerts is registered but `inToggle:false` — radar overlay only.)
-- **RasterLayerView is the shared renderer** for all raster layers. Adding a raster layer = **+1 def in layers.ts + 1 `/api/layers/<id>` proxy**, 0 renderer changes. RasterWindow/RasterLayer support per-window `service` override, `defaultZoom`, `defaultWindow`, `legendTitle`, `asOfPrefix`, and per-horizon proxy metadata (`{issued, valid}` keyed by `window.key`).
-- Export-tile path (`ArcgisExportTiles`): dynamic ArcGIS MapServers are export-only; we subclass L.TileLayer and build per-tile `export` URLs with `imageSR=3857`, so non-3857 services reproject server-side and align with the county grid. Tiles load `<img>` direct from NOAA; the proxy only returns availability + as-of/issued.
-- The layers:
-  - **Observed Rain = % OF NORMAL** (not raw inches): obs/rfc_qpe Image sublayers **227** (30-day) / **235** (90-day). Diverging legend, dry-at-top, EXACT service hex (warm=below normal/short, gray ≈100%, cool=above/surplus). Framing "Precip vs normal · % of normal · as of {date}". Tab still labeled "Observed Rain". (Inches sublayers 68/76 are no longer used.)
-  - **Forecast Rain** = WPC QPF (vector/precip/wpc_qpf), windows Next 24hr/3-day/7-day (L1/9/11), inches.
-  - **Rain Outlook** = CPC 6-10 day + monthly PRECIP tilt (outlooks/cpc_6_10_day_outlk L1, outlooks/cpc_mthly_precip_outlk L0). Seasonal precip excluded (≈98% equal-chances over MT = empty). Diverging tilt legend; EC = transparent (hollow swatch).
-  - **Drought Forecast** = CPC monthly + seasonal DROUGHT direction (outlooks/cpc_drought_outlk L1 monthly / L4 seasonal). Categorical legend (Develops/Persists/Improves/Removal/No drought). fcst_date is "MM/DD/YYYY" (not epoch ms).
-- The old static bottom "Forecast" accordion (CPC drought *images* from official_maps) was **REMOVED** — superseded by the Drought Forecast map layer. The official_maps cpc_monthly/cpc_seasonal rows + cron still ingest but are no longer rendered.
+## Standing rules for the AI
 
-### Latest Reading card — unified timeline ribbon
-- Rebuilt as one card (`LatestReadingCard.tsx`): **hero** (current category + one "% in drought" number, from reliable DB `latest`) + **weekly 3-year color ribbon** (USDM hex, 1-yr tick) + **one summary line** ("Worst: D{n} · {season year} · in drought N of last M months").
-- `threeYearHistory` (weekly USDM API, statisticsType=2) feeds the ribbon; hero degrades **independently** of the ribbon (ribbon → "3-year history unavailable" on API fail, hero still renders).
-- The old 52-week + 3-year history accordion/charts were removed (`DroughtTrendChart.tsx` + `DroughtHistoryChart.tsx` deleted). `history` (52-wk drought_data) still gates the lower dashboard.
+- **Probes are read-only.** Never call a function that can change state. **Never run a migration** — write it,
+  validate it with `npx tsx scripts/migrate-local.ts supabase/migrations/NNN_name.sql`, and hand PK the line
+  `cat supabase/migrations/NNN_name.sql | pbcopy`.
+- **Suite tiers:** UI-only → daily loop once on the preview. Records or sync → all three once (isolation, daily loop,
+  markets). RLS or scoping → all three, always. Suites run from the worktree (`scripts/suite-worktree.sh <sha>`,
+  then from `~/reckon-wt` with `BASE=` the preview URL and `VERCEL_BYPASS` from `e2e/.env.e2e`). Never two daily
+  loops at once. Local runs prove nothing the preview doesn't.
+- **One build loop:** batch every check fix into one commit and one push. Never push-wait-fix-push.
+- **Blocks are two or three rulings.** Split anything bigger yourself, ship the first slice, tell PK what's left.
+- **A check that can't pass is a capability gap:** report it by name every run, never a silent skip. The only named
+  skips are the three flakes PK watched fail and recover: the force-quit receipt check, the 6B place-timeline check,
+  the Weather day-chips check (`flaky()` in `scripts/smoke-daily-loop.ts`).
+- **Default is merge on green** (`merge --no-ff`, push main; PK looks at production). **These stop for PK:**
+  migrations that change how a record is written, refused or reconciled; changes or backfills to existing
+  production rows; anything touching the outbox or sync; anything touching RLS or ranch isolation; deleting or
+  retiring at scale. Say so at the top of the report, stop, and wait.
+- Decide what you can decide; state the decision in the report. Save real questions for anything that changes
+  what a record means.
+- **Reports are short:** one paragraph on what changed, the suite counts, the tip, what to look at on production.
+- **Known capability gaps to name every run:** the hay marketplace is off in production
+  (`NEXT_PUBLIC_FEATURE_MARKETPLACE=false`, `/api/hay` answers 404, so the hay-listing hold check is red); the
+  Markets thin-sample headline ("about $Nk") is missing its arithmetic line on main (markets suite check 6I).
 
-### NOTE for future work
-PK plans to eventually render the map from **RAW DATA with custom color scales** — the current toggle / layer registry / export-tile system is **TRANSITIONAL scaffold** that will be replaced. Don't over-invest in it (e.g. no toggle-grouping restructure; 6 flat tabs is an accepted temporary state).
+## Ground truth worth keeping
 
-## Acceptance criteria on every feature
-- Works from the tractor cab on one bar of 3G. Required on every PR, not a someday project.
-- Offline-first: service worker + local cache of operation profile, FIPS data, last-known county conditions. Sync deltas on reconnect.
-- Every current condition carries a visible as-of timestamp. Stale cache never lies.
-- Plain language, big tap targets, readable in direct sun.
-
-## What not to build
-- No SMS until email alerts prove demand.
-- No payments or escrow in hay until listings + matching has real liquidity.
-- No predictive engine until there is historical data to make it honest.
-- No equipment/seed/spray ledger until hay network is live.
-- No native app — offline-first PWA owns the cab.
-- No general farm-management sprawl. Stay on drought-money + hay + operational-memory spine.
-
-## Truth metrics
-- Alert to action rate: of ranchers texted triggered + estimated payment, how many engage.
-- Hay match rate: listings that result in a real buyer/seller connection.
-- Counties watched per operation.
-
-## Design system
-Colors: forest-green #1B4332, cream #FDFBF7, rust #8B3A2B, USDM D0-D4 scale.
-Fonts: Fraunces headings, DM Sans body.
-Tailwind v4 CSS-based config in globals.css. All containers max-w-6xl.
-Tone: plain-spoken, trusted neighbor. Not pitch language.
-
-## Data sources confirmed working
-- USDM consecutive weeks: usdmdataservices.unl.edu/api/ConsecutiveNonConsecutiveStatistics/GetConsecutiveWeeksCounty
-- USDM 3-year history: usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?statisticsType=2 (weekly; feeds the Latest Reading ribbon)
-- ACIS precip vs normal: station-based (the rainfall-vs-normal *graph*; distinct from the map's % - of - normal raster)
-- NWS Local Discussion: 2-step /points/{lat},{lon} then /products/types/AFD/locations/{cwa}/latest
-- NWS 7-day forecast: lib/nws.ts getLocalForecast (points → gridpoint /forecast; parses temp + precipProbability + wind)
-- Map raster services (NOAA mapservices.weather.noaa.gov, all export → imageSR=3857): obs/rfc_qpe (Observed Rain % of normal, L227/235), vector/precip/wpc_qpf (Forecast Rain), outlooks/cpc_6_10_day_outlk + cpc_mthly_precip_outlk (Rain Outlook), outlooks/cpc_drought_outlk (Drought Forecast)
-
-## FSA LFP rules verified against NDMC FSA tool
-- OBBBA tiers 1-6 active from July 2025.
-- Tier 1: D2 4 or more consecutive weeks = 1 payment.
-- Tier 2: D2 7 of any 8 consecutive weeks = 2 payments.
-- Tier 3: D3 at any time = 3 payments.
-- Tier 4: D3 4 or more weeks = 4 payments.
-- Tier 5: D4 at any time = 4 payments.
-- Tier 6: D4 4 or more weeks = 5 payments.
-- Pre-period clipping fix is in and matches NDMC tool exactly.
-- Always disclaim: FSA makes the final determination.
+- Design tokens: forest-green `#1B4332`, cream `#FDFBF7`, rust `#8B3A2B`, USDM D0–D4 scale; Tailwind v4 CSS
+  config in `app/globals.css`; containers `max-w-6xl` (ranch pages `max-w-2xl`).
+- Membership is the sole RLS gate (`ranch_members`); `ranch_members` never gets a client write policy.
+- Head counts are a projection: `head_count_set` anchors plus live `group_action` deltas (066/067). Every real bunch
+  has an anchor; a fixture inserted by hand needs one too.
+- Data sources: USDM county statistics, ACIS precip vs normal, NWS points/gridpoints, NOAA map services
+  (obs/rfc_qpe, vector/precip/wpc_qpf, outlooks/*). FSA LFP tiers 1–6 (OBBBA, July 2025) verified against the NDMC
+  tool; always say FSA makes the final determination.
+- What not to build: no SMS before email proves demand, no payments or escrow in hay, no predictive engine without
+  history, no equipment/seed/spray ledger before the hay network is live, no native app, no general farm-management
+  sprawl.
