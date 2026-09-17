@@ -2494,6 +2494,16 @@ async function main() {
         kept >= afterClose - 5 && /\d+ fixes kept on this phone/.test(draftText) && resumed >= kept + 2,
         `kept ${kept} of ${afterClose} · "${draftText.slice(0, 70)}" · resumed ${resumed}`)
 
+      // Starting a NEW ride while one is held is stated before the tap — the
+      // only way a ride ends without the operator finishing it is their own.
+      await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const rideBtn = (await page.locator('[data-audit="capture-ride-open"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('21 (ruling 1): with a ride held, the chooser says plainly that starting a new one throws it away — no silent overwrite',
+        /Starts over — the ride above is thrown away/.test(rideBtn), `"${rideBtn.slice(0, 90)}"`)
+      await page.locator('[data-audit="capture-draft-resume"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 10_000 }).catch(() => {})
+
       // Finish here: it always closes. 80 m from the start, closed by hand, labelled, saved with the whole track.
       await page.locator('[data-audit="capture-finish-here"]').click().catch(() => {})
       await page.locator('[data-audit="capture-name"]').waitFor({ timeout: 10_000 }).catch(() => {})

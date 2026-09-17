@@ -184,6 +184,10 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
 
   const beginDrop = useCallback(async () => { setMode('drop'); setOutcomeMsg(null); await cap.start() }, [cap])
   const beginRide = useCallback(async (seed: CaptureFix[] = [], startedAt?: number) => {
+    // A ride started fresh while the phone is holding one REPLACES it, and the
+    // chooser says so before the tap — the draft is not quietly overwritten by
+    // the first fix of the new ride. Only the operator ends a ride this way.
+    if (seed.length === 0) { clearRideDraft(); setDraft(null) }
     rideStartedAt.current = startedAt ?? Date.now()
     setMode('ride'); setOutcomeMsg(null); setOfferDrop(false)
     await cap.start(seed)
@@ -382,7 +386,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           </button>
           <button type="button" onClick={() => void beginRide()} className="min-h-[52px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="capture-ride-open">
             Ride the perimeter
-            <span className="block text-[14px] font-normal text-secondary-ink">Draws the shape from your track as you go round</span>
+            <span className="block text-[14px] font-normal text-secondary-ink">{draft ? 'Starts over — the ride above is thrown away' : 'Draws the shape from your track as you go round'}</span>
           </button>
         </div>
         <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
