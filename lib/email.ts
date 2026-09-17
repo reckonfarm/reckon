@@ -1,7 +1,6 @@
 import 'server-only'
 import { Resend } from 'resend'
-import { LFP_DISCLAIMER } from './lfp-eligibility'
-import { estimatePayment } from './lfp-payment'
+import { droughtClassWords, USDM_WORDS, type UsdmSummary } from './drought-words'
 
 // Kill-switch: when EMAILS_DISABLED=1, every sender no-ops and returns immediately.
 // Defaults to sending — only non-production environments (e.g. the e2e preview
@@ -10,19 +9,18 @@ export function emailsDisabled(): boolean {
   return process.env.EMAILS_DISABLED === '1'
 }
 
+// Block 16 (ruling 2): the Thursday alert names the U.S. Drought Monitor,
+// carries the valid date the release carries, and states the class in plain
+// words. No eligibility, tier or payment language — that is FSA's
+// determination and it lives on its own screen, one link away.
 export interface DroughtAlertEmailParams {
-  to:                 string
-  countyName:         string
-  state:              string
-  fips:               string
-  tier:               number
-  payments:           number
-  tierLabel:          string
-  grazingPeriodStart: string
-  grazingPeriodEnd:   string
-  weekDate:           string
+  to:         string
+  countyName: string
+  state:      string
+  fips:       string
+  validDate:  string                 // YYYY-MM-DD — the Tuesday the release is valid for
+  usdm:       UsdmSummary | null     // the county's reading for that release; null = not on file
 }
-
 function formatDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -41,35 +39,22 @@ export async function sendDroughtAlert(params: DroughtAlertEmailParams): Promise
   if (!apiKey) throw new Error('RESEND_API_KEY is not set')
   const resend = new Resend(apiKey)
 
-  const {
-    to, countyName, state, fips, tier, payments,
-    tierLabel, grazingPeriodStart, grazingPeriodEnd, weekDate,
-  } = params
+  const { to, countyName, state, fips, validDate, usdm } = params
+  const classLine = usdm ? droughtClassWords(usdm) : 'The drought class for this release was not on file when this was sent'
+  const short = usdm ? `${USDM_WORDS[usdm.level]} (D${usdm.level})` : 'drought update'
 
-  // Per-100-head adult beef reference — we don't have user head counts yet.
-  // Once operation profiles are built, swap in the user's actual head count.
-  const est = estimatePayment('beef_adult', 100, payments)
-  const estAmount = formatDollars(est.cappedEstimate)
-
-  const subject =
-    `${countyName}, ${state} just hit LFP Tier ${tier} — est. ${estAmount} available`
+  const subject = `${countyName}, ${state}: ${short} — U.S. Drought Monitor, valid ${formatDate(validDate)}`
 
   const body = [
-    `${countyName} County, ${state} has triggered LFP Tier ${tier}.`,
+    `U.S. Drought Monitor — ${countyName}, ${state}`,
+    `Valid ${formatDate(validDate)}`,
     '',
-    `Trigger:        ${tierLabel}`,
-    `USDM release:   ${formatDate(weekDate)}`,
-    `Grazing period: ${formatDate(grazingPeriodStart)} – ${formatDate(grazingPeriodEnd)}`,
+    `${classLine}.`,
     '',
-    `Tier ${tier} = ${payments} monthly LFP payment${payments !== 1 ? 's' : ''}`,
-    `Est. payment:   ${estAmount} per 100 adult beef cattle`,
-    '',
-    'This is a reference estimate only. Your actual payment depends on your enrolled',
-    'head count and eligible acreage. Enter your numbers at:',
-    `https://dryline.farm/dashboard?fips=${fips}`,
+    `This county on Dryline: https://dryline.farm/dashboard?fips=${fips}`,
     '',
     '─'.repeat(60),
-    LFP_DISCLAIMER,
+    'Source: U.S. Drought Monitor, National Drought Mitigation Center. Any program determination is FSA\'s to make.',
     '',
     'You are receiving this alert because you added this county to your Dryline watchlist.',
     'Manage your counties: https://dryline.farm/watchlist',
