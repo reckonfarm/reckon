@@ -2129,6 +2129,7 @@ async function main() {
         oneNew === 1 && newAbove && /Class/.test(formText) && /Name/.test(formText) && /Head count/.test(formText) && !/Purpose|Average weight|Sharpen/.test(formText) && hints === 0 && plus === 1 && !!saveBox && saveBox.width > 300 && saveText === 'Add the bunch',
         `buttons ${oneNew} top ${newAbove} · fields "${formText.slice(0, 80)}" · hints ${hints} · plus ${plus} · save ${saveBox ? Math.round(saveBox.width) : '?'}px "${saveText}"`)
       const B15 = `${PREFIX} 15b bunch`
+      await pt.locator('[aria-label="Class"] button', { hasText: 'Heifers' }).first().click()
       await pt.getByLabel('Name').fill(B15)
       await pt.locator('[data-audit="lot-head-count-input"]').fill('12')
       await pt.locator('[data-audit="lot-save"]').click()
