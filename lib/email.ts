@@ -21,11 +21,6 @@ export interface DroughtAlertEmailParams {
   validDate:  string                 // YYYY-MM-DD — the Tuesday the release is valid for
   usdm:       UsdmSummary | null     // the county's reading for that release; null = not on file
 }
-function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  })
-}
 
 function formatDollars(n: number): string {
   return n.toLocaleString('en-US', {
