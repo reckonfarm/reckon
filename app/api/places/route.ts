@@ -142,6 +142,9 @@ export async function POST(req: NextRequest) {
           ...(typeof c.status === 'string' ? { status: c.status } : {}),
           ...(c.snapped === true ? { snapped: true } : {}),
           ...(c.closedByHand === true ? { closed_by_hand: true } : {}),
+          // Block 21 — a hand-closed ride whose joined track folded over
+          // itself is stored as the outer edge of the ride, and says so.
+          ...(c.outline === 'outer_edge' ? { outline: 'outer_edge' } : {}),
           ...(typeof c.accuracyM === 'number' ? { accuracy_m: Math.round(c.accuracyM * 10) / 10 } : {}),
           // Block 7A — a dropped pin may have been DRAGGED. Provenance says so
           // plainly: the fix the phone gave (never moved), where the pin ended

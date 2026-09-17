@@ -2436,6 +2436,88 @@ async function main() {
       if (pastureId) await admin.from('places').delete().eq('id', pastureId)
     }
 
+    // ── Block 21 — the ride never discards the track; Finish here always closes; the map is on ──
+    // Same emulated receiver as 7A. An open U is ridden — 80 m east, 80 m
+    // north, 80 m west — so the loop can never tie; the checks are that
+    // nothing is lost when it does not.
+    {
+      const LAT = 47.1230, LNG = -108.4320
+      const M_LAT = 1 / 111_132, M_LNG = 1 / (111_320 * Math.cos((LAT * Math.PI) / 180))
+      const ctx21 = page.context()
+      await ctx21.grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await ctx21.setGeolocation({ latitude: LAT, longitude: LNG, accuracy: 3 })
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.evaluate(() => { try { localStorage.removeItem('dryline_ride_v1') } catch { /* private mode */ } })
+      await page.goto('/ranch/places#capture-ride', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-ride-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
+      const mapBeforeRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
+      const at = async (dx: number, dy: number) => { await ctx21.setGeolocation({ latitude: LAT + dy * M_LAT, longitude: LNG + dx * M_LNG, accuracy: 3 }); await page.waitForTimeout(350) }
+      for (let i = 0; i < 6; i++) await at(i * 0.3, 0)              // settle: six steady readings on the spot
+      const u: [number, number][] = []
+      for (let k = 1; k <= 8; k++) u.push([k * 10, 0])
+      for (let k = 1; k <= 8; k++) u.push([80, k * 10])
+      for (let k = 1; k <= 8; k++) u.push([80 - k * 10, 80])
+      for (const [dx, dy] of u) await at(dx, dy)
+      const fixesText = async () => (await page.locator('[data-audit="capture-live"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const nFixes = (t: string) => Number((/(\d+) fix/.exec(t) ?? [])[1] ?? 0)
+      const beforeClose = nFixes(await fixesText())
+      const mapDuringRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
+      const trackLayers = await page.locator('[data-audit="capture-ride-map"] .leaflet-overlay-pane canvas, [data-audit="capture-ride-map"] .leaflet-overlay-pane path').count()
+      const diagnosticsBelowMap = await page.evaluate(() => {
+        const m = document.querySelector('[data-audit="capture-ride-map"]'), d = document.querySelector('[data-audit="capture-ride-diagnostics"]')
+        return m && d ? (m.compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false
+      })
+      await page.locator('[data-audit="capture-close-loop"]').click().catch(() => {})
+      await page.waitForTimeout(300)
+      const outcome = (await page.locator('[data-audit="capture-outcome"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await at(0, 80); await at(10, 80)                               // two more fixes AFTER the guard declined to grade
+      const afterClose = nFixes(await fixesText())
+      const stillRiding = await page.locator('[data-audit="capture-ride"]').count()
+      record('21 (ruling 1): an open loop is not thrown away — "Close the loop" says it is still recording, and the fixes keep coming',
+        stillRiding === 1 && /Still recording/.test(outcome) && afterClose > beforeClose && beforeClose >= 20,
+        `"${outcome.slice(0, 90)}" · fixes ${beforeClose} → ${afterClose}`)
+      record('21 (ruling 3): the ride shows the map with the track being laid, and the accuracy and fix count sit below it',
+        mapBeforeRide === 1 && mapDuringRide === 1 && trackLayers >= 1 && diagnosticsBelowMap,
+        `map before ${mapBeforeRide} · during ${mapDuringRide} · track layers ${trackLayers} · diagnostics below map ${diagnosticsBelowMap}`)
+
+      // A reload mid-ride: the phone kept it, offers it back, and Keep riding carries on from it.
+      await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
+      const kept = (await page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })) as number
+      await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const draftText = (await page.locator('[data-audit="capture-draft-summary"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="capture-draft-resume"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      await at(20, 80); await at(30, 80)
+      const resumed = nFixes(await fixesText())
+      record('21 (ruling 1): a reload mid-ride loses nothing — the phone offers the ride back with its fixes, and Keep riding carries on from them',
+        kept >= afterClose - 5 && /\d+ fixes kept on this phone/.test(draftText) && resumed >= kept + 2,
+        `kept ${kept} of ${afterClose} · "${draftText.slice(0, 70)}" · resumed ${resumed}`)
+
+      // Finish here: it always closes. 80 m from the start, closed by hand, labelled, saved with the whole track.
+      await page.locator('[data-audit="capture-finish-here"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-name"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-ring-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
+      const handLabel = await page.locator('[data-audit="capture-hand-label"]').count()
+      const ringMap = await page.locator('[data-audit="capture-ring-map"] .leaflet-container').count()
+      const acresText = (await page.locator('[data-audit="capture-summary"]').innerText().catch(() => '')).trim()
+      await page.locator('[data-audit="capture-name-input"]').fill('21 ride')
+      await page.locator('[data-audit="capture-kind-pasture"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-save"]').click().catch(() => {})
+      const seq21 = await watchStates(page, 'Sent', 45_000, '21 ride')
+      const ob21 = await outbox(page)
+      const rideItem = ob21.find(i => (i.body as { name?: string }).name === '21 ride')
+      const rideId = rideItem?.id ?? ''
+      const { data: rideRow } = rideId ? await admin.from('places').select('id, acres, geometry_provenance').eq('id', rideId).maybeSingle() : { data: null }
+      const rp = (rideRow as { acres: number | null; geometry_provenance: Record<string, unknown> } | null)?.geometry_provenance ?? null
+      const trackLen = Array.isArray(rp?.track) ? (rp!.track as unknown[]).length : 0
+      const draftAfter = (await page.evaluate(() => { try { return localStorage.getItem('dryline_ride_v1') } catch { return null } })) as string | null
+      record('21 (ruling 2): Finish here closes an open U 80 m from its start — labelled closed by hand, drawn at the naming step, and landed with the whole track as evidence; the phone\'s draft is cleared only then',
+        handLabel === 1 && ringMap === 1 && /acres/.test(acresText) && seq21.includes('Sent') && !!rp && rp.source === 'ridden' && rp.closed_by_hand === true && rp.status === 'closed_by_hand' && trackLen >= resumed - 2 && draftAfter === null,
+        `hand label ${handLabel} · ring map ${ringMap} · "${acresText}" · ${seq21.join(' → ')} · provenance ${rp ? `${String(rp.source)} closed_by_hand=${String(rp.closed_by_hand)} status=${String(rp.status)} track ${trackLen}` : 'none'} · draft after save ${draftAfter === null ? 'cleared' : 'kept'}`)
+      if (rideId) await admin.from('places').delete().eq('id', rideId)
+    }
+
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything

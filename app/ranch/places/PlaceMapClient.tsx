@@ -183,12 +183,25 @@ function FlyTo({ target }: { target: { p: LatLng; n: number } | null }) {
   return null
 }
 
+// Block 21 — keep the rider on screen. Pans only when the latest fix leaves
+// the middle of the view, and only while the operator has not taken the map.
+function TrackFollower({ here, following }: { here: LatLng | null; following: boolean }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!here || !following) return
+    const b = map.getBounds().pad(-0.25)
+    if (!b.contains([here.lat, here.lng])) map.panTo([here.lat, here.lng], { animate: true })
+  }, [map, here, following])
+  return null
+}
+
 export default function PlaceMapClient({
   shapes,
   initialCenter,
   height = 420,
   drawing = false,
   pin,
+  track,
   onShape,
   onCancel,
   useLabel = 'Use this shape',
@@ -279,6 +292,8 @@ export default function PlaceMapClient({
       <MapContainer
         {...(pin
           ? { center: [pin.position.lat, pin.position.lng] as LL, zoom: 18 }
+          : track?.here
+          ? { center: [track.here.lat, track.here.lng] as LL, zoom: 17 }
           : initialBounds
           ? { bounds: initialBounds, boundsOptions: { padding: [30, 30] as [number, number] } }
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
@@ -294,7 +309,8 @@ export default function PlaceMapClient({
           maxZoom={tiles.maxZoom}
         />
 
-        <FollowController boundsKey={boundsKey} following={following} onUserMove={() => setFollowUser(false)} />
+        <FollowController boundsKey={boundsKey} following={following && !track} onUserMove={() => setFollowUser(false)} />
+        {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
         <SizeKeeper />
@@ -346,6 +362,42 @@ export default function PlaceMapClient({
           />
         ))}
 
+        {/* Block 21 — the ride as it is laid: the line so far, where it began,
+            and the phone's fix with its accuracy. Dashed because nothing has
+            closed; the outline traces itself, which is the point of riding. */}
+        {track && track.points.length >= 2 && (
+          <Polyline
+            positions={track.points.map(c => [c.lat, c.lng] as LL)}
+            interactive={false}
+            pathOptions={{ color: DRAFT_COLOR, weight: 4, dashArray: '10 6', opacity: 0.95 }}
+          />
+        )}
+        {track && track.points.length >= 1 && (
+          <CircleMarker
+            center={[track.points[0].lat, track.points[0].lng]}
+            radius={8}
+            interactive={false}
+            pathOptions={{ color: cream, weight: 2, fillColor: DRAFT_COLOR, fillOpacity: 1 }}
+          />
+        )}
+        {track?.here && (
+          <>
+            {track.accuracyM != null && (
+              <Circle
+                center={[track.here.lat, track.here.lng]}
+                radius={Math.max(1, track.accuracyM)}
+                interactive={false}
+                pathOptions={{ color: '#2563EB', weight: 1, fillColor: '#2563EB', fillOpacity: 0.12 }}
+              />
+            )}
+            <CircleMarker
+              center={[track.here.lat, track.here.lng]}
+              radius={7}
+              interactive={false}
+              pathOptions={{ color: cream, weight: 2, fillColor: '#2563EB', fillOpacity: 1 }}
+            />
+          </>
+        )}
         {pin && (
           <>
             {/* The accuracy, in metres, around the fix — the phone's own claim. */}

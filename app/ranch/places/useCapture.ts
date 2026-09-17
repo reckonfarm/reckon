@@ -63,12 +63,17 @@ export function useCapture() {
     })
   }, [])
 
-  const start = useCallback(async () => {
+  // Block 21 (ruling 1): starting again never wipes what is already there.
+  // `seed` is the ride being picked up — from the phone's draft after a
+  // reload, or the fixes still in hand after a guard declined to grade them.
+  // A drop starts clean (a stale average is the wrong spot); a ride resumes.
+  const start = useCallback(async (seed: CaptureFix[] = []) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setState(s => ({ ...s, error: 'This phone will not give the app its position.' }))
       return
     }
-    setState(s => ({ ...s, running: true, fixes: [], settled: false, settleProgress: 0, rejected: 0, error: null, hiddenNow: false, lastHiddenS: null }))
+    const usable = seed.filter(f => !isOutlier(f))
+    setState(s => ({ ...s, running: true, fixes: seed, settled: seed.length > 0 && hasSettled(seed), settleProgress: Math.min(SETTLE_RUNS, settledRun(seed)), rejected: seed.length - usable.length, error: null, hiddenNow: false, lastHiddenS: null }))
 
     try {
       const nav = navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void>; addEventListener: (e: string, f: () => void) => void }> } }
@@ -104,6 +109,12 @@ export function useCapture() {
     )
   }, [push])
 
+  // Block 21: hold a ride's fixes without waking the receiver — the draft
+  // being finished from the chooser is already over; only the naming is left.
+  const seed = useCallback((fixes: CaptureFix[]) => {
+    const usable = fixes.filter(f => !isOutlier(f))
+    setState(s => ({ ...s, running: false, fixes, settled: hasSettled(fixes), settleProgress: Math.min(SETTLE_RUNS, settledRun(fixes)), rejected: fixes.length - usable.length }))
+  }, [])
   const stop = useCallback(async () => {
     if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current)
     watchRef.current = null
@@ -114,5 +125,5 @@ export function useCapture() {
     setState(s => ({ ...s, running: false, wake: s.wake === 'held' ? 'idle' : s.wake }))
   }, [])
 
-  return { ...state, start, stop, SETTLE_RUNS, SETTLE_MAX_ACC_M, MAX_ACCURACY_M, GAP_AFTER_S }
+  return { ...state, start, seed, stop, SETTLE_RUNS, SETTLE_MAX_ACC_M, MAX_ACCURACY_M, GAP_AFTER_S }
 }
