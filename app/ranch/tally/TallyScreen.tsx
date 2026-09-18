@@ -51,7 +51,10 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   const [mode, setMode] = useState<Mode>('idle')
   const [tally, setTally] = useState<Tally | null>(null)
   const [held, setHeld] = useState<Tally | null>(null)      // a count the phone was holding when this opened
-  const [flash, setFlash] = useState<{ size: TapSize | 'undo'; at: number } | null>(null)
+  // A counter, not a clock: two taps of the same size in a row have to be two
+  // different flashes, and reading the clock while rendering is not allowed.
+  const flashSeq = useRef(0)
+  const [flash, setFlash] = useState<{ size: TapSize | 'undo'; n: number } | null>(null)
   const [removed, setRemoved] = useState<TapSize | null>(null)
   const [refused, setRefused] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -79,7 +82,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     if (!flash) return
     const t = setTimeout(() => setFlash(null), FLASH_MS)
     return () => clearTimeout(t)
-  }, [flash])
+  }, [flash?.n, flash])
 
   const begin = useCallback(async (seed: Tally | null) => {
     const t = seed ?? startTally(initialLotId)
@@ -94,7 +97,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     setTally(r.tally)
     setRefused(r.wrote !== 'kept')
     setRemoved(null)
-    setFlash({ size, at: Date.now() })
+    setFlash({ size, n: ++flashSeq.current })
     confirmTap(size)
   }
 
@@ -105,7 +108,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     setTally(r.tally)
     setRefused(r.wrote !== 'kept')
     setRemoved(r.removed)
-    setFlash({ size: 'undo', at: Date.now() })
+    setFlash({ size: 'undo', n: ++flashSeq.current })
     confirmUndo()
   }
 
