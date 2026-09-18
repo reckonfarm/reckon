@@ -10,6 +10,7 @@ import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType, isManualEventType } from '@/lib/manual-log'
 import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass, bunchLabel, bunchDetail } from '@/lib/herd'
+import { splitBody, splitGroup, splitLabel, splitRefusal, defaultSplitClass, defaultSplitName } from '@/lib/cattle/split'
 import { discard } from '@/lib/outbox'
 import { warning } from '@/lib/brand-colors'
 import { todayKey as ranchToday } from '@/lib/jobs/format'
@@ -56,7 +57,7 @@ const DRAFT_KEY = 'manual_log_draft_v1'
 export const LOGIT_OPEN_EVENT = 'dryline:logit-open'
 // Block 15: the sheet records every manual entry AND the preg check — the
 // chute is a sheet now, not a page, so it opens with no signal.
-export type SheetType = ManualEventType | 'preg_check'
+export type SheetType = ManualEventType | 'preg_check' | 'split'
 export interface Draft {
   type: SheetType | null
   n1?: string
@@ -73,6 +74,8 @@ export interface Draft {
   split?: boolean
   splitName?: string
   splitClass?: string
+  // Block 19: how many head leave, on a split of its own.
+  leaving?: string
   // Block 15 (ruling 2): a refused record being FIXED — the sheet re-saves
   // under this same outbox id, replacing the refused item in place.
   outboxId?: string
@@ -85,6 +88,12 @@ export function draftFromBody(body: Record<string, unknown>, outboxId: string): 
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : undefined)
   const when = typeof body.ts === 'string' ? toLocalInput(new Date(body.ts)) : undefined
+  // Block 19: a refused SPLIT opens with its numbers and its name still in it
+  // — a refusal may not cost a person the typing (ruling 3).
+  if (body.type === 'group_action' && body.action === 'split') {
+    const g = (Array.isArray(body.results) ? body.results[0] : null) as { name?: unknown; class?: unknown; head?: unknown } | null
+    return { type: 'split', lot: str(body.source_lot_id), leaving: num(g?.head), splitName: str(g?.name), splitClass: str(g?.class), when, outboxId }
+  }
   if (body.type === 'group_action' && body.action === 'preg_check') {
     const results = Array.isArray(body.results) ? body.results as { name?: unknown; class?: unknown; head?: unknown }[] : []
     const detail = (body.detail && typeof body.detail === 'object' ? body.detail : {}) as { bred?: unknown; open?: unknown }
@@ -139,6 +148,7 @@ type Place = { id: string; name: string; kind: string }
 // Block 6A: the tiles are verbs. Count is its own group — it never reads as adding stock.
 const TILE_VERB: Record<SheetType, string> = {
   preg_check: 'Preg check',
+  split: 'Split a bunch',
   rain: 'Record rain',
   hay_fed: 'Feed hay',
   bales_stacked: 'Add bales to a stack',
@@ -149,6 +159,7 @@ const TILE_VERB: Record<SheetType, string> = {
 }
 const SAVE_LABEL: Record<SheetType, string> = {
   preg_check: 'Record preg check',
+  split: 'Record the split',
   rain: 'Record rain',
   hay_fed: 'Record feeding',
   bales_stacked: 'Add bales',
@@ -159,9 +170,10 @@ const SAVE_LABEL: Record<SheetType, string> = {
 }
 const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
-const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check']
+const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check', 'split']
 const TILE_HINT: Record<SheetType, string> = {
   preg_check: 'checked, bred, open — the opens become a bunch',
+  split: 'some head leave and become their own bunch',
   rain: 'inches in the gauge',
   hay_fed: 'bales put out',
   bales_stacked: 'bales into the stack',
@@ -169,17 +181,6 @@ const TILE_HINT: Record<SheetType, string> = {
   cattle_worked: 'head and what you did',
   hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
   cattle_counted: 'head you counted in one bunch \u2014 the bunch\u2019s number does not change',
-}
-
-// Block 15 (ruling 3): the split's defaults come from the source. Cows, old
-// cows and pairs checked → the opens are old cows (culls); any other class
-// keeps its class (open yearling heifers are still heifers, sale-bound).
-function defaultSplitClass(source: LotClass): LotClass {
-  return source === 'cows' || source === 'old_cows' || source === 'pairs' ? 'old_cows' : source
-}
-function defaultSplitName(source: Lot): string {
-  const what = source.class === 'cows' || source.class === 'old_cows' || source.class === 'pairs' ? 'cows' : LOT_CLASS_LABELS[source.class].toLowerCase()
-  return `Open ${what} ${ranchToday()}`
 }
 
 // The day a form is recording, in the words a person would use. '' means now.
@@ -351,6 +352,7 @@ function describe(
     case 'hay_inventory': return `${bales(n)} on hand${at}`
     case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
     case 'preg_check': return `Preg check · ${n} checked${lot ? ` · ${lot}` : ''}`
+    case 'split': return `Split · ${n} head${lot ? ` from ${lot}` : ''}`
   }
 }
 
@@ -366,6 +368,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [split, setSplit] = useState(true)
   const [splitName, setSplitName] = useState('')
   const [splitClass, setSplitClass] = useState<LotClass | ''>('')
+  // Block 19: how many head leave on a split of its own.
+  const [leaving, setLeaving] = useState('')
   // Block 15 (ruling 2): the refused record this sheet is fixing, if any.
   const [fixingId, setFixingId] = useState<string | null>(null)
   const [places, setPlaces] = useState<Place[]>([])
@@ -427,6 +431,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setToPlace(d.toPlace ? { id: d.toPlace, newName: null } : EMPTY_SLOT)
     setLot(d.lot ?? ''); setWhen(d.when ?? ''); setEditWhen(!!d.when); setAsOf(d.asOf ?? '')
     setPcChecked(d.checked ?? ''); setPcOpen(d.open ?? ''); setSplit(d.split ?? true); setSplitName(d.splitName ?? ''); setSplitClass((d.splitClass as LotClass | undefined) ?? '')
+    setLeaving(d.leaving ?? '')
     setFixingId(d.outboxId ?? null)
     setError(null)
     if (andOpen) setOpen(true)
@@ -467,9 +472,9 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       fromPlace: fromPlace.newName === null ? fromPlace.id : undefined,
       toPlace: toPlace.newName === null ? toPlace.id : undefined,
       lot, when: editWhen ? when : undefined, asOf,
-      checked: pcChecked, open: pcOpen, split, splitName, splitClass: splitClass || undefined, outboxId: fixingId ?? undefined,
+      checked: pcChecked, open: pcOpen, split, splitName, splitClass: splitClass || undefined, leaving, outboxId: fixingId ?? undefined,
     })
-  }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf, pcChecked, pcOpen, split, splitName, splitClass, fixingId])
+  }, [open, type, n1, what, place, fromPlace, toPlace, lot, when, editWhen, asOf, pcChecked, pcOpen, split, splitName, splitClass, leaving, fixingId])
 
   const openSheet = () => {
     if (!sheet) { openLogIt({ type: null }); return }   // a launcher alone asks the mounted sheet
@@ -626,20 +631,49 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         if (checked <= 0) { setError('How many did you check?'); setBusy(false); return }
         if (openN > checked) { setError(`${openN} open is more than the ${checked} checked.`); setBusy(false); return }
         const bred = checked - openN
-        const name = (splitName.trim() || defaultSplitName(source)).slice(0, 40)
-        const klass = splitClass || defaultSplitClass(source.class)
+        // Block 19 (ruling 1): the preg check is a CALLER of the split, not its
+        // owner. The group that leaves is built by lib/cattle/split.ts, the
+        // same one the split sheet uses — there is no second implementation.
+        const name = (splitName.trim() || defaultSplitName(source, ranchToday(), { culls: true })).slice(0, 40)
+        const klass = splitClass || defaultSplitClass(source.class, { culls: true })
         const doSplit = split && openN > 0
         const id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
         const pbody: Record<string, unknown> = {
           id, type: 'group_action', action: 'preg_check',
           source_lot_id: source.id, expected_head: source.head_count,
           counted: checked, stay: bred,
-          results: doSplit ? [{ lot_id: null, name, class: klass, head: openN }] : [],
+          results: doSplit ? [splitGroup(openN, name, klass)] : [],
           detail: { bred, open: openN },
           ...(when ? { ts: new Date(when).toISOString() } : {}),
         }
         const label = `Preg check · ${checked} checked · ${bred} bred · ${openN} open${doSplit ? ` · ${openN} to ${name}` : ''}`
         try { enqueue(pbody, label) } catch { setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
+        writeLastLot(lot)
+        close()
+        return
+      }
+
+      // Block 19 — SPLIT A BUNCH. Some head leave and become their own bunch;
+      // the one they came from drops by that many. The arithmetic is 071's
+      // (the count is what the bunch holds, what stays is the rest), so this
+      // sends neither — it sends who, how many, and what they are called.
+      //
+      // Ruling 3: the only thing that can be untrue is more head leaving than
+      // the bunch holds, and it is refused HERE only so a corral with no
+      // signal gets the answer now; the words are the database's own
+      // (lib/cattle/split.ts pins them). Nothing typed is thrown away — the
+      // sheet stays open with the numbers and the name still in it.
+      if (type === 'split') {
+        const source = lots?.find(l => l.id === lot) ?? null
+        if (!source) { setError('Pick the bunch that is splitting.'); setBusy(false); return }
+        const head = Math.floor(Number(leaving) || 0)
+        const refusal = splitRefusal(head, source.head_count)
+        if (refusal) { setError(refusal); setBusy(false); return }
+        const name = (splitName.trim() || defaultSplitName(source, ranchToday())).slice(0, 40)
+        const klass = splitClass || defaultSplitClass(source.class)
+        const id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
+        const sbody = splitBody({ id, source, head, name, class: klass, ...(when ? { ts: new Date(when).toISOString() } : {}) })
+        try { enqueue(sbody, splitLabel(source, head, name)) } catch { setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
         writeLastLot(lot)
         close()
         return
@@ -810,14 +844,62 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       )}
     </>)
   }
+  // Block 19 — SPLIT A BUNCH. Held from any bunch row, or picked here. Which
+  // bunch, how many leave, what they are called. The parent's new count is
+  // shown as it will be, but it is never sent: 071 works it out.
+  if (type === 'split') {
+    const source = lots?.find(l => l.id === lot) ?? null
+    const head = Math.floor(Number(leaving) || 0)
+    const nameShown = splitName || (source ? defaultSplitName(source, ranchToday()) : '')
+    const classShown = splitClass || (source ? defaultSplitClass(source.class) : 'cows')
+    const refusal = source && leaving.trim() !== '' ? splitRefusal(head, source.head_count) : null
+    fields = (<>
+      <div>
+        <p className="font-dm-sans text-[16px] font-medium text-ink" id="split-bunch-label">Which bunch</p>
+        {lots === null ? (
+          <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="lots-loading">Loading bunches…</p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="split-bunch-label" data-audit="split-bunch">
+            {lots.map(l => (
+              <button key={l.id} type="button" role="radio" aria-checked={lot === l.id} onClick={() => setLot(l.id)} disabled={busy}
+                className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${lot === l.id ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit="split-lot-choice" data-lot={l.id}>
+                {lotLabel(l)} <span className="font-normal opacity-80">· {bunchDetail(l)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <Counter label="How many leave" value={leaving} onChange={setLeaving} unit="head" audit="split-leaving" max={source?.head_count} />
+      <div>
+        <label className="block font-dm-sans text-[16px] font-medium text-ink" htmlFor="split-name">Name the new bunch
+          <input id="split-name" value={nameShown} onChange={e => setSplitName(e.target.value.slice(0, 40))} maxLength={40} className="mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="split-name" />
+        </label>
+        <p className="mt-3 font-dm-sans text-[16px] font-medium text-ink" id="split-class-label">Class</p>
+        <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="split-class-label" data-audit="split-class">
+          {LOT_CLASSES.map(c => (
+            <button key={c} type="button" role="radio" aria-checked={classShown === c} onClick={() => setSplitClass(c)}
+              className={`min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${classShown === c ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`} data-audit={`split-class-${c}`}>
+              {LOT_CLASS_LABELS[c]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {refusal && <p className="font-dm-sans text-[17px] font-semibold text-warning" role="alert" data-audit="split-refusal">{refusal}</p>}
+      {source && !refusal && head > 0 && (
+        <p className="font-dm-sans text-[17px] text-ink" data-audit="split-preview">
+          {lotLabel(source)} keeps <span className="font-semibold">{(source.head_count - head).toLocaleString()}</span> · <span className="font-semibold">{head.toLocaleString()}</span> to {nameShown}
+        </p>
+      )}
+    </>)
+  }
   // Block 15 — THE CHUTE, in the sheet. Bunch, checked, bred, open by thumb;
   // the split on by default with its name and class shown and changeable.
   if (type === 'preg_check') {
     const source = lots?.find(l => l.id === lot) ?? null
     const checked = Math.floor(Number(pcChecked) || 0), openN = Math.floor(Number(pcOpen) || 0)
     const bred = Math.max(0, checked - openN)
-    const nameShown = splitName || (source ? defaultSplitName(source) : '')
-    const classShown = splitClass || (source ? defaultSplitClass(source.class) : 'old_cows')
+    const nameShown = splitName || (source ? defaultSplitName(source, ranchToday(), { culls: true }) : '')
+    const classShown = splitClass || (source ? defaultSplitClass(source.class, { culls: true }) : 'old_cows')
     fields = (<>
       <div>
         <p className="font-dm-sans text-[16px] font-medium text-ink" id="preg-bunch-label">Which bunch</p>

@@ -25,6 +25,7 @@ import Counter from '@/app/components/ui/Counter'
 import Link from 'next/link'
 import type { LastWork } from '@/lib/ranch-summary'
 import RowActions from '@/app/components/RowActions'
+import { openLogIt } from '@/app/dashboard/components/LogIt'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
@@ -435,7 +436,16 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
   function renderRow(lot: Lot) {
     const work = lastWork[lot.id]
     return (
-      <RowActions key={lot.id} links={{ label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`, openHref: `/ranch/cattle#${lot.id}`, fix: { onSelect: () => openEdit(lot) }, del: { onSelect: () => removeLot(lot) } }}>
+      <RowActions key={lot.id} links={{
+        label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`,
+        openHref: `/ranch/cattle#${lot.id}`,
+        fix: { onSelect: () => openEdit(lot) },
+        // Block 19 (ruling 1): splitting is something you do to ANY bunch, so
+        // it is on the hold gesture every row already has — not buried inside
+        // a preg check the bunch may never have come through.
+        extra: [{ label: 'Split', onSelect: () => openLogIt({ type: 'split', lot: lot.id }) }],
+        del: { onSelect: () => removeLot(lot) },
+      }}>
       <Card shadow="sm" className={`p-4 transition-shadow ${litId === lot.id ? 'ring-2 ring-forest-green' : ''}`} data-audit="lot-row" id={`lot-${lot.id}`} data-lit={litId === lot.id ? 'true' : undefined}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">

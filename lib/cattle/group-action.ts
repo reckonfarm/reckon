@@ -94,10 +94,16 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
   const sourceLotId = typeof body.source_lot_id === 'string' && UUID_RE.test(body.source_lot_id)
     ? body.source_lot_id : bad('source_lot_id must be a uuid')
 
-  const counted = int(body.counted)
+  // Block 19: a SPLIT brings neither. 071 reads the count off the bunch and
+  // works out what stays, and ignores both of these — so the route must not
+  // demand numbers the caller has no business computing. Every other working
+  // still brings them.
+  const isSplit = action === 'split'
+  const counted = int(body.counted) ?? (isSplit ? 0 : null)
   if (counted === null || counted < 0 || counted > MAX_HEAD) bad(`counted must be a whole number 0–${MAX_HEAD}`)
-  const stay = int(body.stay)
+  const stay = int(body.stay) ?? (isSplit ? 0 : null)
   if (stay === null || stay < 0) bad('the number that stay must be a whole number, 0 or more')
+  if (isSplit && !Array.isArray(body.results)) bad('a split needs the bunch that leaves')
 
   if (!Array.isArray(body.results)) bad('results must be a list')
   const rawResults = body.results as unknown[]
@@ -165,6 +171,7 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
 const STATUS: Record<string, number> = {
   not_authenticated: 401,
   unknown_action: 400,
+  too_many: 400,       // Block 19 (071): more head leaving than the bunch holds
   bad_number: 400,
   mismatch: 400,
   unnamed_group: 400,
@@ -236,6 +243,15 @@ export async function recordGroupAction(supabase: SupabaseClient, input: GroupAc
  */
 export function groupActionConsequence(p: GroupActionPayload): { lines: string[] } {
   const head = (n: number) => `${n.toLocaleString()} head`
+  // Block 19 (ruling 2): a split is an event, and its receipt says the count
+  // the bunch held BEFORE it as well as after — that number stays readable
+  // for good, here and in the ledger, rather than being quietly replaced.
+  if (p.action === 'split') {
+    const out = [`${p.source_name} was ${head(p.source_head_before)} · ${head(p.source_head_after)} now`]
+    for (const r of p.results) out.push(`${head(r.head)} to ${r.name}${r.created ? ' (new)' : ` · now ${r.head_after.toLocaleString()}`}`)
+    if (p.source_head_after === 0) out.push(`${p.source_name} is empty now — it stays on the ranch until you retire it`)
+    return { lines: out }
+  }
   const lines: string[] = [
     `${p.counted.toLocaleString()} counted through${p.source_head_before !== p.counted ? ` · ${p.source_name} said ${p.source_head_before.toLocaleString()}` : ''}`,
   ]
