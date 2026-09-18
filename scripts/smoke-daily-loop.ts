@@ -2698,6 +2698,12 @@ async function main() {
           const hasSplit = await splitBtn.count()
           await splitBtn.first().click().catch(() => {})
           await page.locator('[data-audit="split-leaving"]').waitFor({ timeout: 15_000 }).catch(() => {})
+          // The bunch chips are drawn only once the ranch's bunches have
+          // loaded, and the counter above them is drawn at once — so reading
+          // the chips the moment the sheet opens reads an empty row and says
+          // the bunch was not carried through when it was. Wait for the chips
+          // themselves, then look at which one is picked.
+          await page.locator('[data-audit="split-lot-choice"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
           const bunchPrefilled = await page.locator(`[data-audit="split-lot-choice"][data-lot="${lot19}"][aria-checked="true"]`).count()
 
           // Ruling 3: a refusal keeps what was typed. Type more than the bunch
