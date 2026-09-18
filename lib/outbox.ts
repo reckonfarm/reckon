@@ -126,12 +126,17 @@ function write(items: OutboxItem[]): void {
   try {
     localStorage.setItem(KEY, json)
   } catch (e) {
-    // Block 21 (ruling 4): a pending record outranks any draft. If the phone
-    // is out of room, everything a record is allowed to outrank is thrown away
-    // and the write is made again. If it still will not go, the caller says
-    // so — in storage's own words, never the network's (ruling 5).
-    if (!isQuotaError(e) || !makeRoomForRecords()) throw e
-    localStorage.setItem(KEY, json)
+    // Block 21 (ruling 4) and Block 22 (ruling 3): a pending record outranks
+    // every piece of work-in-progress, but they are given up ONE AT A TIME
+    // and cheapest first — the ride draft, then the live tally. So this keeps
+    // asking for room and retrying until the record is written or there is
+    // nothing left that a record is allowed to outrank. If it still will not
+    // go, the caller says so in storage's own words, never the network's.
+    if (!isQuotaError(e)) throw e
+    for (;;) {
+      if (!makeRoomForRecords()) throw e
+      try { localStorage.setItem(KEY, json); break } catch (again) { if (!isQuotaError(again)) throw again }
+    }
   }
   cache = kept
   for (const l of listeners) l()
