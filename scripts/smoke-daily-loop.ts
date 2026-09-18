@@ -2489,6 +2489,175 @@ async function main() {
       if (pastureId) await admin.from('places').delete().eq('id', pastureId)
     }
 
+    // ── Block 21 — the ride never discards the track; Finish here always closes; the map is on ──
+    // Same emulated receiver as 7A. An open U is ridden — 80 m east, 80 m
+    // north, 80 m west — so the loop can never tie; the checks are that
+    // nothing is lost when it does not.
+    {
+      const LAT = 47.1230, LNG = -108.4320
+      const M_LAT = 1 / 111_132, M_LNG = 1 / (111_320 * Math.cos((LAT * Math.PI) / 180))
+      const ctx21 = page.context()
+      await ctx21.grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await ctx21.setGeolocation({ latitude: LAT, longitude: LNG, accuracy: 3 })
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.evaluate(() => { try { localStorage.removeItem('dryline_ride_v1') } catch { /* private mode */ } })
+      await page.goto('/ranch/places#capture-ride', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-ride-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
+      const mapBeforeRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
+      const at = async (dx: number, dy: number) => { await ctx21.setGeolocation({ latitude: LAT + dy * M_LAT, longitude: LNG + dx * M_LNG, accuracy: 3 }); await page.waitForTimeout(350) }
+      for (let i = 0; i < 6; i++) await at(i * 0.3, 0)              // settle: six steady readings on the spot
+      const u: [number, number][] = []
+      for (let k = 1; k <= 8; k++) u.push([k * 10, 0])
+      for (let k = 1; k <= 8; k++) u.push([80, k * 10])
+      for (let k = 1; k <= 8; k++) u.push([80 - k * 10, 80])
+      for (const [dx, dy] of u) await at(dx, dy)
+      const fixesText = async () => (await page.locator('[data-audit="capture-live"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const nFixes = (t: string) => Number((/(\d+) fix/.exec(t) ?? [])[1] ?? 0)
+      const beforeClose = nFixes(await fixesText())
+      const mapDuringRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
+      const trackLayers = await page.locator('[data-audit="capture-ride-map"] .leaflet-overlay-pane canvas, [data-audit="capture-ride-map"] .leaflet-overlay-pane path').count()
+      const diagnosticsBelowMap = await page.evaluate(() => {
+        const m = document.querySelector('[data-audit="capture-ride-map"]'), d = document.querySelector('[data-audit="capture-ride-diagnostics"]')
+        return m && d ? (m.compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false
+      })
+      await page.locator('[data-audit="capture-close-loop"]').click().catch(() => {})
+      await page.waitForTimeout(300)
+      const outcome = (await page.locator('[data-audit="capture-outcome"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await at(0, 80); await at(10, 80)                               // two more fixes AFTER the guard declined to grade
+      const afterClose = nFixes(await fixesText())
+      const stillRiding = await page.locator('[data-audit="capture-ride"]').count()
+      record('21 (ruling 1): an open loop is not thrown away — "Close the loop" says it is still recording, and the fixes keep coming',
+        stillRiding === 1 && /Still recording/.test(outcome) && afterClose > beforeClose && beforeClose >= 20,
+        `"${outcome.slice(0, 90)}" · fixes ${beforeClose} → ${afterClose}`)
+      record('21 (ruling 3): the ride shows the map with the track being laid, and the accuracy and fix count sit below it',
+        mapBeforeRide === 1 && mapDuringRide === 1 && trackLayers >= 1 && diagnosticsBelowMap,
+        `map before ${mapBeforeRide} · during ${mapDuringRide} · track layers ${trackLayers} · diagnostics below map ${diagnosticsBelowMap}`)
+
+      // A reload mid-ride: the phone kept it, offers it back, and Keep riding
+      // carries on from it. LEAVE THE PAGE FIRST — a goto that changes only the
+      // hash is an in-page navigation, the component never remounts, and the
+      // ride screen would still be sitting there pretending to be a reload.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
+      const kept = (await page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })) as number
+      await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const draftText = (await page.locator('[data-audit="capture-draft-summary"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="capture-draft-resume"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      await at(20, 80); await at(30, 80)
+      const resumed = nFixes(await fixesText())
+      record('21 (ruling 1): a reload mid-ride loses nothing — the phone offers the ride back with its fixes, and Keep riding carries on from them',
+        kept >= afterClose - 5 && /\d+ fixes kept on this phone/.test(draftText) && resumed >= kept + 2,
+        `kept ${kept} of ${afterClose} · "${draftText.slice(0, 70)}" · resumed ${resumed}`)
+
+      // Starting a NEW ride while one is held is stated before the tap — the
+      // only way a ride ends without the operator finishing it is their own.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.goto('/ranch/places#capture', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-draft"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const rideBtn = (await page.locator('[data-audit="capture-ride-open"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('21 (ruling 1): with a ride held, the chooser says plainly that starting a new one throws it away — no silent overwrite',
+        /Starts over — the ride above is thrown away/.test(rideBtn), `"${rideBtn.slice(0, 90)}"`)
+      await page.locator('[data-audit="capture-draft-resume"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 10_000 }).catch(() => {})
+
+      // Finish here: it always closes. 80 m from the start, closed by hand, labelled, saved with the whole track.
+      await page.locator('[data-audit="capture-finish-here"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-name"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-ring-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
+      const handLabel = await page.locator('[data-audit="capture-hand-label"]').count()
+      const ringMap = await page.locator('[data-audit="capture-ring-map"] .leaflet-container').count()
+      const acresText = (await page.locator('[data-audit="capture-summary"]').innerText().catch(() => '')).trim()
+      await page.locator('[data-audit="capture-name-input"]').fill('21 ride')
+      await page.locator('[data-audit="capture-kind-pasture"]').click().catch(() => {})
+      await page.locator('[data-audit="capture-save"]').click().catch(() => {})
+      const seq21 = await watchStates(page, 'Sent', 45_000, '21 ride')
+      const ob21 = await outbox(page)
+      const rideItem = ob21.find(i => (i.body as { name?: string }).name === '21 ride')
+      const rideId = rideItem?.id ?? ''
+      const { data: rideRow } = rideId ? await admin.from('places').select('id, acres, geometry_provenance').eq('id', rideId).maybeSingle() : { data: null }
+      const rp = (rideRow as { acres: number | null; geometry_provenance: Record<string, unknown> } | null)?.geometry_provenance ?? null
+      const trackLen = Array.isArray(rp?.track) ? (rp!.track as unknown[]).length : 0
+      const draftAfter = (await page.evaluate(() => { try { return localStorage.getItem('dryline_ride_v1') } catch { return null } })) as string | null
+      record('21 (ruling 2): Finish here closes an open U 80 m from its start — labelled closed by hand, drawn at the naming step, and landed with the whole track as evidence; the phone\'s draft is cleared only then',
+        handLabel === 1 && ringMap === 1 && /acres/.test(acresText) && seq21.includes('Sent') && !!rp && rp.source === 'ridden' && rp.closed_by_hand === true && rp.status === 'closed_by_hand' && trackLen >= resumed - 2 && draftAfter === null,
+        `hand label ${handLabel} · ring map ${ringMap} · "${acresText}" · ${seq21.join(' → ')} · provenance ${rp ? `${String(rp.source)} closed_by_hand=${String(rp.closed_by_hand)} status=${String(rp.status)} track ${trackLen}` : 'none'} · draft after save ${draftAfter === null ? 'cleared' : 'kept'}`)
+      if (rideId) await admin.from('places').delete().eq('id', rideId)
+    }
+
+    // ── Block 21 (rulings 4 + 5) — the outbox outranks the draft; a full phone is not a lost signal ──
+    // The shelf is filled for real. A ride draft and a wall of filler are put
+    // on it until the phone is genuinely out of room, and then a feeding is
+    // recorded through the sheet like any other. Nothing here is mocked: the
+    // browser's own quota does the refusing.
+    {
+      // Fill to the EDGE: big chunks while they fit, then smaller, then prove
+      // the shelf is genuinely out of room with a 1 KB probe. A phone that is
+      // merely nearly full proves nothing — the write would simply succeed.
+      const fillToEdge = async () => page.evaluate(() => {
+        let n = 0
+        for (const size of [512 * 1024, 64 * 1024, 8 * 1024, 1024, 64]) {
+          for (;;) {
+            if (n > 3000) break
+            try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(size)); n++ } catch { break }
+          }
+        }
+        // The outbox does not add a key — it REWRITES its own, bigger. So the
+        // proof of a full shelf is that a 64-byte growth of a key already
+        // there is refused. Restore the value when it is not.
+        let full = false
+        const k = '__fill_0'
+        const v = localStorage.getItem(k)
+        if (v == null) return { n, full: false }
+        try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        return { n, full }
+      })
+      const clearFill = async () => page.evaluate(() => {
+        for (const k of Object.keys(localStorage)) if (k.startsWith('__fill_') || k === '__probe__') localStorage.removeItem(k)
+      })
+      const draftLen = () => page.evaluate(() => { try { const d = JSON.parse(localStorage.getItem('dryline_ride_v1') ?? 'null') as { fixes?: unknown[] } | null; return d?.fixes?.length ?? 0 } catch { return 0 } })
+
+      // Ruling 4 — a big ride draft, the shelf filled around it, then a record.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await clearFill()
+      const seeded = await page.evaluate(() => {
+        const fixes = Array.from({ length: 20_000 }, (_, i) => ({ t: 1_700_000_000_000 + i * 1000, lat: 47.12 + i * 1e-6, lng: -108.43, acc: 3 }))
+        try { localStorage.setItem('dryline_ride_v1', JSON.stringify({ startedAt: 1_700_000_000_000, savedAt: Date.now(), fixes })); return fixes.length } catch { return 0 }
+      })
+      const filled = await fillToEdge()
+      const before = await outbox(page)
+      await logFeed(page, 3)
+      const seq = await watchStates(page, 'Saved', 10_000)
+      const after = await outbox(page)
+      const draftAfter = await draftLen()
+      const kept = after.length > before.length
+      record('21 (ruling 4): with the phone out of room, the record is written and the ride draft is what goes — never the other way round',
+        seeded > 0 && filled.full && kept && draftAfter === 0,
+        `draft seeded ${seeded} fixes · ${filled.n} filler keys, shelf full ${filled.full} · outbox ${before.length} → ${after.length} · draft after ${draftAfter} · ${seq.join(' → ') || 'no strip'}`)
+      await clearFill()
+      await page.evaluate(() => localStorage.removeItem('dryline_ride_v1'))
+
+      // Ruling 5 — no draft to give up, the shelf full: the save must fail in
+      // STORAGE's words. "Couldn't send" is the network's word and must not
+      // appear, because the network is not what went wrong.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const filled2 = await fillToEdge()
+      await logFeed(page, 4)
+      await page.waitForTimeout(1_500)
+      await page.locator('[data-audit="record-error"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const said = (await page.locator('[data-audit="record-error"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const sheet = `${said} ${(await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')}`
+      const saysStorage = /This phone is full, so nothing was saved\. Free some space on the phone, then record it again\./.test(sheet)
+      const blamesNetwork = /Couldn't send|Waiting for signal/.test(sheet)
+      record('21 (ruling 5): a phone that will not keep the record says so in storage\'s own words — what is wrong and what to do — and never blames the signal',
+        filled2.full && saysStorage && !blamesNetwork,
+        `${filled2.n} filler keys, shelf full ${filled2.full} · storage words ${saysStorage} · network words present ${blamesNetwork} · said "${said.slice(0, 120) || '(nothing)'}"`)
+      await clearFill()
+      await page.evaluate(() => { for (const k of ['manual_log_draft_v1', 'dryline_ride_v1']) localStorage.removeItem(k) })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    }
+
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything

@@ -48,7 +48,7 @@ export default function RepeatLastCard({ last }: { last: LastFeeding }) {
       enqueue({ id, type: 'hay_fed', bales: last.bales, herd_lot_id: last.lotId, place_id: last.placeId }, label, UNDO_HOLD_MS)
       setMadeId(id)
     } catch {
-      setError("Couldn't save. This phone refused to store it.")
+      setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
     }
   }
 

@@ -1,7 +1,7 @@
 import {
   CAPTURE_CONFIG, MAX_ACCURACY_M, GAP_AFTER_S, SETTLE_RUNS,
   hasSettled, settledRun, isOutlier, gapsIn, rideBoundary, closeByHand,
-  averagePosition, rideOutcome, metresBetween, TOO_SMALL_M2, type CaptureFix,
+  averagePosition, rideOutcome, metresBetween, type CaptureFix,
 } from '../lib/places/capture'
 import { ACRE_M2, MAX_LOOP_SELF_CROSSINGS } from '../lib/jobs/boundary'
 import { validateGeoJSONPolygon } from '../lib/places/geo'
@@ -180,10 +180,15 @@ check('profile: closure tolerance is 2× the measured p90, and leave is 2× that
   // is exactly 150, which is how the first two attempts at this shape passed.
   leg(0, 0, 300, 0); leg(300, 0, 300, 205); leg(300, 205, 151, 205)
   leg(151, 205, 151, -83); leg(151, -83, 40, -83)   // cuts back across the first leg
+  // Block 21: Finish here ALWAYS closes. A track that folds over itself is
+  // closed as the OUTER EDGE of the ride, labelled, and the ring it hands to
+  // Save is one the route will accept at the driven-lap tolerance.
   const crossed = closeByHand(u)
-  check('a hand closure that would fold the shape over is REFUSED, before Save is offered',
-    !crossed.ok && crossed.reason === 'crossed',
-    crossed.ok ? `WRONGLY ALLOWED — ${crossed.acres.toFixed(2)} ac` : `refused (${crossed.reason}): "${crossed.error.slice(0, 56)}…"`)
+  const crossedRing = crossed.ok ? crossed.ring : []
+  const crossedValid = validateGeoJSONPolygon({ type: 'Polygon', coordinates: [crossedRing.map(p => [p.lng, p.lat])] }, MAX_LOOP_SELF_CROSSINGS)
+  check('a hand closure that would fold the shape over still CLOSES — as the outer edge, labelled, and the save accepts it',
+    crossed.ok && crossed.outerEdge && crossedValid.ok,
+    crossed.ok ? `${crossed.acres.toFixed(2)} ac · outer edge ${crossed.outerEdge} · save ${crossedValid.ok ? 'ok' : crossedValid.error.slice(0, 40)}` : `REFUSED (${crossed.reason}): "${crossed.error.slice(0, 56)}…"`)
 
   // And the thing that made it a bug rather than a rejection: a ridden ring is
   // now judged at the driven-lap tolerance, not the tap-draw zero.

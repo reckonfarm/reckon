@@ -1,17 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOwnSaveStrip } from '@/app/dashboard/components/LogIt'
 import PlaceMapLoader, { type MapShape } from './PlaceMapLoader'
+import { clearRideDraft, loadRideDraft, saveRideDraft, type DraftWrite, type RideDraft } from '@/lib/places/ride-draft'
 import { PLACE_KINDS, MAX_NAME, DEFAULT_KIND, allowedParentKinds, kindLabel, parentRule } from '@/lib/places/kinds'
 import type { LatLng } from '@/lib/places/geo'
 import { warning } from '@/lib/brand-colors'
 import { enqueue, newEventId } from '@/lib/outbox'
 import {
   averagePosition, closeByHand, gapsIn, isOutlier, rideBoundary, rideOutcome,
-  SETTLE_MAX_ACC_M,
+  SETTLE_MAX_ACC_M, type CaptureFix,
 } from '@/lib/places/capture'
 import { useCapture } from './useCapture'
 
@@ -27,6 +28,16 @@ import { useCapture } from './useCapture'
 // RIDE (8.2) is for enclosures, and reuses the swather's closure entirely.
 // FINISH HERE (8.3) is the honest exit when the ground will not let you close
 // — a creek, a cliff, the neighbour's fence — and it labels what it did.
+//
+// BLOCK 21 — the ride never discards the track. Recording stops when the
+// operator says stop, never when a guard fails: "Close the loop" on an open
+// loop says so and keeps recording; every fix is written to the phone as it
+// arrives (lib/places/ride-draft.ts) and a reload picks the ride back up;
+// starting again never wipes what is already there. Finish here ALWAYS
+// closes — it does not have to be accurate, it has to close, and it has to
+// work every time — and the map is on for the whole ride so the outline
+// traces itself. A guard may refuse to grade the work. It may not throw the
+// work away.
 //
 // BLOCK 7A — three things changed, and each is a rule, not a feature:
 //
@@ -56,7 +67,7 @@ import { useCapture } from './useCapture'
 type Mode = 'choose' | 'drop' | 'ride' | 'name' | 'saved'
 type Pending =
   | { kind: 'point'; fix: LatLng; accM: number; used: number }
-  | { kind: 'ring'; ring: LatLng[]; acres: number; snapped: boolean; byHand: boolean; status: string }
+  | { kind: 'ring'; ring: LatLng[]; acres: number; snapped: boolean; byHand: boolean; outerEdge: boolean; status: string }
 
 interface PlaceOption { id: string; name: string; kind: string }
 
@@ -101,6 +112,18 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
   // 8: a ride is unsaved work, and Cancel sat one thumb-width from Save with
   // nothing between them. PK lost a finished 3.68-acre ride to exactly that.
   const [confirmCancel, setConfirmCancel] = useState(false)
+  // Block 21: the ride the phone is holding, if any — offered on the chooser
+  // and written to on every fix while riding.
+  const [draft, setDraft] = useState<RideDraft | null>(null)
+  // What the phone did with the ride the last time it was written. A ride that
+  // is no longer being kept must SAY so while it is still recording — the
+  // operator can finish it now instead of learning later that it went.
+  const [held, setHeld] = useState<DraftWrite>('kept')
+  const rideStartedAt = useRef<number>(0)
+  useEffect(() => {
+    const t = setTimeout(() => setDraft(loadRideDraft()), 0)
+    return () => clearTimeout(t)
+  }, [])
 
   // The answer card below carries the receipt with a tappable link, so the
   // global strip (no taps) stands down while it is up.
@@ -112,6 +135,19 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
   // eight usable readings, with the best accuracy among them — the same number
   // "Drop it here" will freeze.
   const liveFix = useMemo(() => averagePosition(usable.slice(-8)), [usable])
+  // Block 21 (ruling 1): every fix reaches the phone's shelf as it arrives —
+  // throttled inside saveRideDraft — and always when the page hides.
+  useEffect(() => {
+    if (mode !== 'ride' || cap.fixes.length === 0) return
+    setHeld(saveRideDraft(cap.fixes, rideStartedAt.current))
+  }, [mode, cap.fixes])
+  useEffect(() => {
+    if (mode !== 'ride') return
+    const onHide = () => { if (document.visibilityState === 'hidden') saveRideDraft(cap.fixes, rideStartedAt.current, true) }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onHide)
+    return () => { document.removeEventListener('visibilitychange', onHide); window.removeEventListener('pagehide', onHide) }
+  }, [mode, cap.fixes])
 
   // The parents this kind may sit inside, from the ranch's live list. The
   // list is what /api/places offers every picker: live, unretired, this
@@ -144,14 +180,22 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     if (usable.length > 0) { setConfirmCancel(true); return }
     void cap.stop(); setMode('choose')
   }
-  function discard() { void cap.stop(); setConfirmCancel(false); setMode('choose') }
+  function discard() { void cap.stop(); clearRideDraft(); setDraft(null); setConfirmCancel(false); setOutcomeMsg(null); setMode('choose') }
   function reset() {
     setPending(null); setPinAt(null); setName(''); setKind(DEFAULT_KIND); setParentId(null)
     setSaveErr(null); setOutcomeMsg(null); setOfferDrop(false); setSavedId(null); setMode('choose')
   }
 
   const beginDrop = useCallback(async () => { setMode('drop'); setOutcomeMsg(null); await cap.start() }, [cap])
-  const beginRide = useCallback(async () => { setMode('ride'); setOutcomeMsg(null); await cap.start() }, [cap])
+  const beginRide = useCallback(async (seed: CaptureFix[] = [], startedAt?: number) => {
+    // A ride started fresh while the phone is holding one REPLACES it, and the
+    // chooser says so before the tap — the draft is not quietly overwritten by
+    // the first fix of the new ride. Only the operator ends a ride this way.
+    if (seed.length === 0) { clearRideDraft(); setDraft(null) }
+    rideStartedAt.current = startedAt ?? Date.now()
+    setMode('ride'); setOutcomeMsg(null); setOfferDrop(false); setHeld('kept')
+    await cap.start(seed)
+  }, [cap])
   // Block 12 (12.2): the Record pill's Ground group links straight to a way of
   // marking a place — #capture-drop or #capture-ride start it; #capture (draw,
   // or no preference) lands on the chooser. Read once, on mount; the hash is a
@@ -176,20 +220,36 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     setMode('name')
   }
 
+  // Block 21: neither exit stops the receiver until there is a shape to name.
+  // A loop that will not tie keeps recording and says so; Finish here closes
+  // whatever is there. The draft is written in full at the moment of leaving.
   async function finishRide(byHand: boolean) {
     const fixes = cap.fixes
-    await cap.stop()
+    saveRideDraft(fixes, rideStartedAt.current, true)
     if (byHand) {
       const hand = closeByHand(fixes)
-      if (!hand.ok) { setOutcomeMsg(hand.error); setOfferDrop(hand.reason === 'too_small'); return }
-      setPending({ kind: 'ring', ring: hand.ring, acres: hand.acres, snapped: false, byHand: true, status: 'closed_by_hand' })
+      if (!hand.ok) { setOutcomeMsg(`${hand.error} Still recording.`); setOfferDrop(false); return }
+      await cap.stop()
+      setPending({ kind: 'ring', ring: hand.ring, acres: hand.acres, snapped: false, byHand: true, outerEdge: hand.outerEdge, status: 'closed_by_hand' })
       setMode('name'); return
     }
     const r = rideBoundary(fixes)
     const o = rideOutcome(r, fixes)
     if (!r.boundary.polygon) { setOutcomeMsg(o.message); setOfferDrop(o.offerDrop); return }
+    await cap.stop()
     const ring = [...r.boundary.polygon, r.boundary.polygon[0]]
-    setPending({ kind: 'ring', ring, acres: r.boundary.acres ?? 0, snapped: r.boundary.snapped, byHand: false, status: r.boundary.status })
+    setPending({ kind: 'ring', ring, acres: r.boundary.acres ?? 0, snapped: r.boundary.snapped, byHand: false, outerEdge: false, status: r.boundary.status })
+    setMode('name')
+  }
+
+  // Finish here from the chooser: the phone's draft, closed without waking the
+  // receiver — the ride is already over; only the naming is left.
+  function finishDraftHere() {
+    if (!draft) return
+    const hand = closeByHand(draft.fixes)
+    if (!hand.ok) { void beginRide(draft.fixes, draft.startedAt); setOutcomeMsg(`${hand.error} Still recording.`); return }
+    cap.seed(draft.fixes)
+    setPending({ kind: 'ring', ring: hand.ring, acres: hand.acres, snapped: false, byHand: true, outerEdge: hand.outerEdge, status: 'closed_by_hand' })
     setMode('name')
   }
 
@@ -215,7 +275,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
       }
     } else {
       ring = pending.ring
-      capture = { source: 'ridden', status: pending.status, snapped: pending.snapped, closedByHand: pending.byHand }
+      capture = { source: 'ridden', status: pending.status, snapped: pending.snapped, closedByHand: pending.byHand, outline: pending.outerEdge ? 'outer_edge' : 'ridden' }
     }
     const body = {
       id, name: trimmed, kind,
@@ -232,9 +292,10 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     try {
       enqueue(body, label, 0, { endpoint: '/api/places', link: { href: `/ranch/places/${id}`, label: 'Open this place' } })
     } catch {
-      setSaveErr('This phone would not keep the place. Nothing was saved — free some space and try again.')
+      setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
       return
     }
+    if (pending.kind === 'ring') { clearRideDraft(); setDraft(null) }
     setSavedId(id); setSavedLabel(label); setMode('saved')
   }
 
@@ -291,12 +352,41 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           {gaps.length > 0 && <span style={{ color: warning }}> · {gaps.length} gap{gaps.length === 1 ? '' : 's'}</span>}
         </p>
       )}
+      {held !== 'kept' && (
+        <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-not-held">
+          {held === 'yielded'
+            ? 'The phone made room for a record you saved, so this ride is no longer being kept here. It is still recording, and everything you have ridden still saves with the place — close it before you shut the app.'
+            : held === 'too_big'
+            ? 'This ride is longer than the phone will hold. It is still recording, and everything so far is still here — close it before you shut the app.'
+            : 'This phone is full, so it has stopped keeping the ride. It is still recording — close it before you shut the app.'}
+        </p>
+      )}
       {cap.error && <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-error">{cap.error}</p>}
     </>
   )
 
   if (mode === 'choose') {
     return (
+      <>
+      {draft && (
+        <Card className="mt-4 p-4 sm:p-5" data-audit="capture-draft">
+          <p className="font-dm-sans text-[17px] font-semibold text-ink">A ride in progress</p>
+          <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="capture-draft-summary">
+            {draft.fixes.length} {draft.fixes.length === 1 ? 'fix' : 'fixes'} kept on this phone, started {new Date(draft.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}. Nothing is lost.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void beginRide(draft.fixes, draft.startedAt)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream" data-audit="capture-draft-resume">
+              Keep riding
+            </button>
+            <button type="button" onClick={finishDraftHere} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[17px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="capture-draft-finish">
+              Finish here
+            </button>
+            <button type="button" onClick={discard} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-draft-discard">
+              Throw it away
+            </button>
+          </div>
+        </Card>
+      )}
       <Card className="mt-4 p-4 sm:p-5" data-audit="capture-choose">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">Add a place</p>
         {/* Block 12 (12.12): what this makes, and what happens next, before the
@@ -309,13 +399,14 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           </button>
           <button type="button" onClick={() => void beginRide()} className="min-h-[52px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="capture-ride-open">
             Ride the perimeter
-            <span className="block text-[14px] font-normal text-secondary-ink">Draws the shape from your track as you go round</span>
+            <span className="block text-[14px] font-normal text-secondary-ink">{draft ? 'Starts over — the ride above is thrown away' : 'Draws the shape from your track as you go round'}</span>
           </button>
         </div>
         <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
           A stack, a gate or a tank is a point. A field, a pasture or a corral is a ride. You can also draw one by tapping corners on the map.
         </p>
       </Card>
+      </>
     )
   }
 
@@ -352,12 +443,24 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     return (
       <Card className="mt-4 p-4 sm:p-5" data-audit="capture-ride">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">Ride the fence line</p>
-        {live}
+        {/* Block 21 (ruling 3): the map, with the track being laid. Remounted
+            once when the first fix arrives so it opens ON the rider; after
+            that the line grows and the view follows. Never blank: with no fix
+            yet it opens where the ranch is. */}
+        <div className="mt-3" data-audit="capture-ride-map">
+          <PlaceMapLoader
+            key={liveFix ? 'ride-fixed' : 'ride-waiting'}
+            shapes={otherShapes}
+            initialCenter={liveFix ? { lat: liveFix.lat, lng: liveFix.lng } : initialCenter}
+            height={320}
+            track={{ points: usable.map(f => ({ lat: f.lat, lng: f.lng })), here: latest && !isOutlier(latest) ? { lat: latest.lat, lng: latest.lng } : null, accuracyM: latest ? latest.acc : null }}
+          />
+        </div>
         {outcomeMsg && (
           <div className="mt-3 rounded-lg border p-3" style={{ borderColor: warning }} data-audit="capture-outcome">
             <p className="font-dm-sans text-[16px] leading-snug text-ink">{outcomeMsg}</p>
             {offerDrop && (
-              <button type="button" onClick={() => { setOutcomeMsg(null); setOfferDrop(false); void beginDrop() }} className="mt-2 min-h-[48px] font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="capture-switch-to-drop">
+              <button type="button" onClick={() => { setOutcomeMsg(null); setOfferDrop(false); void cap.stop(); void beginDrop() }} className="mt-2 min-h-[48px] font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="capture-switch-to-drop">
                 Drop a single point instead
               </button>
             )}
@@ -365,7 +468,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
         )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" disabled={!cap.settled} onClick={() => void finishRide(false)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="capture-close-loop">
-            Save the loop
+            Close the loop
           </button>
           <button type="button" disabled={!cap.settled} onClick={() => void finishRide(true)} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[17px] font-semibold disabled:opacity-50" style={{ color: warning, borderColor: warning }} data-audit="capture-finish-here">
             Finish here
@@ -374,8 +477,10 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
         </div>
         {cancelGuard}
         <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
-          Finish here draws a straight line back to your start when the ground will not let you close — a creek, a cliff, the neighbour&rsquo;s fence. The place is labelled for it.
+          Finish here closes the shape from where you are, however far from your start. It always works; the place is labelled for it.
         </p>
+        {/* Diagnostics sit under the map (ruling 3): they explain, they do not lead. */}
+        <div data-audit="capture-ride-diagnostics">{live}</div>
       </Card>
     )
   }
@@ -423,10 +528,24 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
       )}
       {pending?.kind === 'ring' && (
         <>
-          <p className="font-dm-sans text-[20px] font-semibold text-ink" data-audit="capture-summary">{fmtAcres(pending.acres)} acres</p>
+          {/* Block 21: the shape being named, drawn over the ground it came from. */}
+          <div data-audit="capture-ring-map">
+            <PlaceMapLoader
+              key="name-ring"
+              shapes={[...otherShapes, { id: 'draft', ring: pending.ring, draft: true }]}
+              initialCenter={pending.ring[0]}
+              height={300}
+            />
+          </div>
+          <p className="mt-3 font-dm-sans text-[20px] font-semibold text-ink" data-audit="capture-summary">{fmtAcres(pending.acres)} acres</p>
+          {pending.outerEdge && (
+            <p className="mt-1 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-outer-edge-label">
+              The ride crossed its own line, so this is the outer edge of everywhere you rode — an estimate, not a fence.
+            </p>
+          )}
           {pending.byHand && (
             <p className="mt-1 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="capture-hand-label">
-              Closed by hand — a straight line back to your start, not ground you rode.
+              Closed by hand — you closed it, not the geometry. The acreage is an estimate.
             </p>
           )}
           {pending.snapped && (

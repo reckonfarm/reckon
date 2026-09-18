@@ -38,8 +38,21 @@ export interface MapPin {
   onMove?: (p: LatLng) => void
 }
 
+/**
+ * Block 21 — the ride, drawn as it is laid. `track` is every usable fix so
+ * far; `here` is the latest one with its accuracy. The map follows the rider
+ * until a finger moves it. Nothing here is a claim: it is the raw thing.
+ */
+export interface MapTrack {
+  points: LatLng[]
+  here: LatLng | null
+  accuracyM: number | null
+}
+
 export interface PlaceMapProps {
   shapes: MapShape[]
+  /** Ride mode: the track being laid. */
+  track?: MapTrack
   /** Where to open when there is nothing drawn to fit to. */
   initialCenter: LatLng
   height?: number

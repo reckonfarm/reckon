@@ -33,6 +33,7 @@
 // useOutbox() (useSyncExternalStore) so every surface shows the same truth.
 
 import { useSyncExternalStore } from 'react'
+import { isQuotaError, makeRoomForRecords } from './local-space'
 
 export type OutboxState = 'local' | 'queued' | 'synced' | 'failed'
 
@@ -121,9 +122,54 @@ function write(items: OutboxItem[]): void {
   const room = Math.max(0, MAX_ITEMS - unsynced.length)
   const keptSet = new Set([...unsynced, ...synced.slice(-room)])
   const kept = fresh.filter(i => keptSet.has(i))
-  localStorage.setItem(KEY, JSON.stringify(kept))
+  const json = JSON.stringify(kept)
+  try {
+    localStorage.setItem(KEY, json)
+  } catch (e) {
+    // Block 21 (ruling 4): a pending record outranks any draft. If the phone
+    // is out of room, everything a record is allowed to outrank is thrown away
+    // and the write is made again. If it still will not go, the caller says
+    // so — in storage's own words, never the network's (ruling 5).
+    if (!isQuotaError(e) || !makeRoomForRecords()) throw e
+    localStorage.setItem(KEY, json)
+  }
   cache = kept
   for (const l of listeners) l()
+}
+
+// ─── A full phone is not a lost signal (Block 21, ruling 5) ───────────────────
+// "Couldn't send" is the NETWORK's word and nothing else's. A phone that will
+// not keep its own copy is a different problem with different words and a
+// different thing to do about it, so it is tracked apart here and never
+// written onto a record as a failure to send.
+let storageFull = false
+
+export function storageIsFull(): boolean { return storageFull }
+
+function noteStorage(e: unknown): boolean {
+  if (!isQuotaError(e)) return false
+  if (!storageFull) { storageFull = true; for (const l of listeners) l() }
+  return true
+}
+
+function clearedStorage(): void {
+  if (storageFull) { storageFull = false; for (const l of listeners) l() }
+}
+
+/**
+ * update() that never blames the network for the phone. Returns false when the
+ * phone refused to keep the change — the record itself is untouched and still
+ * on the shelf, so the next wake tries again.
+ */
+function safeUpdate(id: string, patch: Partial<OutboxItem>): boolean {
+  try {
+    update(id, patch)
+    clearedStorage()
+    return true
+  } catch (e) {
+    if (!noteStorage(e)) throw e
+    return false
+  }
 }
 
 function update(id: string, patch: Partial<OutboxItem>): OutboxItem | null {
@@ -278,7 +324,11 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 async function uploadOne(item: OutboxItem): Promise<void> {
   inFlight = item.id
   const queuedAt = Date.now()
-  update(item.id, { state: 'queued', attempts: item.attempts + 1, holdUntil: undefined })
+  // Ruling 5: every status write below goes through safeUpdate, so a phone
+  // that will not keep its own copy is reported as a full phone and never as
+  // a record that could not be sent. The record itself is untouched either
+  // way — it stays on the shelf and the next wake tries again.
+  if (!safeUpdate(item.id, { state: 'queued', attempts: item.attempts + 1, holdUntil: undefined })) { inFlight = null; return }
   try {
     // Block 7A: the endpoint is the item's, so a place and an entry share one
     // queue, one retry loop and one set of words. Both routes answer a replayed
@@ -297,22 +347,24 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       const serverId = j.event?.id ?? j.place?.id
       const followUp = j.follow_up && j.follow_up.kind === 'set_head' && typeof j.follow_up.lot_id === 'string' && typeof j.follow_up.head === 'number' ? j.follow_up : undefined
       await sleep(Math.max(0, MIN_DWELL_MS - (Date.now() - queuedAt)))   // 'queued' is seen before 'synced'
-      update(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId, ...(followUp ? { followUp } : {}) })
+      safeUpdate(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId, ...(followUp ? { followUp } : {}) })
       return
     }
     const message = typeof (json as { error?: unknown }).error === 'string' ? (json as { error: string }).error : `Server said ${res.status}`
     if (TRANSIENT.has(res.status)) {
-      update(item.id, { state: 'queued', lastError: message })
+      safeUpdate(item.id, { state: 'queued', lastError: message })
       return
     }
     if (res.status === 401) {
-      update(item.id, { state: 'queued', lastError: 'Sign in to send it' })
+      safeUpdate(item.id, { state: 'queued', lastError: 'Sign in to send it' })
       return
     }
-    update(item.id, { state: 'failed', lastError: message })
-  } catch (err) {
-    // No network, DNS, aborted — the phone still has it.
-    update(item.id, { state: 'queued', lastError: undefined })
+    safeUpdate(item.id, { state: 'failed', lastError: message })
+  } catch {
+    // No network, DNS, aborted — the phone still has it. A phone that would
+    // not keep its own copy never lands here: safeUpdate reports that apart,
+    // so this branch only ever means the network (ruling 5).
+    safeUpdate(item.id, { state: 'queued', lastError: undefined })
   } finally {
     inFlight = null
   }
@@ -335,6 +387,7 @@ export async function flush(): Promise<void> {
       const next = read().find(i => (i.state === 'local' || i.state === 'queued') && (!i.holdUntil || i.holdUntil <= now))
       if (!next) break
       await uploadOne(next)
+      if (storageIsFull()) break   // ruling 5: the phone, not the signal — stop rather than spin
       const after = read().find(i => i.id === next.id)
       if (after && after.state === 'queued') break   // transient failure — back off
     }
@@ -393,6 +446,15 @@ function getSnapshot(): OutboxItem[] { return read() }
 function getServerSnapshot(): OutboxItem[] { return EMPTY }
 
 /** Live view of the outbox for any client component. */
+/** True while the phone is refusing to keep its own copy (ruling 5). */
+export function useStorageFull(): boolean {
+  return useSyncExternalStore(
+    cb => { listeners.add(cb); return () => { listeners.delete(cb) } },
+    () => storageFull,
+    () => false,
+  )
+}
+
 export function useOutbox(): OutboxItem[] {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
