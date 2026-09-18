@@ -63,7 +63,10 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   const [ending, setEnding] = useState<Ending>('set_head')
   const [newName, setNewName] = useState('')
   const eventId = useRef<string | null>(null)
-  const { wake, hold, let_go } = useWakeLock()
+  // Block 10's hook, unchanged: it takes the lock while a count is live and
+  // gives it back when one is not. Declarative, so nothing here has to
+  // remember to release it.
+  const wake = useWakeLock(mode === 'counting')
   useOwnSaveStrip(mode === 'saved')
 
   const lotId = tally?.lotId ?? initialLotId
@@ -84,12 +87,11 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     return () => clearTimeout(t)
   }, [flash?.n, flash])
 
-  const begin = useCallback(async (seed: Tally | null) => {
+  const begin = useCallback((seed: Tally | null) => {
     const t = seed ?? startTally(initialLotId)
     setTally(t); setHeld(null); setRemoved(null); setRefused(false)
     setMode('counting')
-    await hold()
-  }, [initialLotId, hold])
+  }, [initialLotId])
 
   function tap(size: TapSize) {
     if (!tally) return
@@ -114,7 +116,6 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
 
   function throwAway() {
     clearTally(); setTally(null); setHeld(null); setLeaving(false); setMode('idle')
-    void let_go()
   }
 
   // ── Ruling 6: finishing chooses the meaning ────────────────────────────────
@@ -143,7 +144,6 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     }
     clearTally()
     setSavedId(id); setTally(null); setMode('saved')
-    void let_go()
   }
 
   const note = wakeNote(wake)
@@ -159,7 +159,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
           {held.taps.length.toLocaleString('en-US')} {held.taps.length === 1 ? 'tap' : 'taps'}, kept on this phone. Nothing is lost.
         </p>
         <div className="mt-4 flex flex-col gap-2">
-          <button type="button" onClick={() => void begin(held)} className="min-h-[60px] rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-held-keep">Keep counting</button>
+          <button type="button" onClick={() => begin(held)} className="min-h-[60px] rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-held-keep">Keep counting</button>
           <button type="button" onClick={() => { setTally(held); setHeld(null); setMode('finish') }} className="min-h-[60px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[18px] font-semibold text-ink" data-audit="tally-held-finish">Finish this count</button>
           <button type="button" onClick={throwAway} className="min-h-[60px] rounded-lg border px-4 font-dm-sans text-[18px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="tally-held-discard">Throw it away</button>
         </div>
@@ -174,7 +174,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
         <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">
           {source ? `Counting ${lotLabel(source)} · ${bunchDetail(source)}` : 'Tap as they come through. You choose what the count means at the end.'}
         </p>
-        <button type="button" onClick={() => void begin(null)} className="mt-4 min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-begin">Start counting</button>
+        <button type="button" onClick={() => begin(null)} className="mt-4 min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-begin">Start counting</button>
       </Card>
     )
   }
@@ -280,7 +280,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
           <p className="mt-1 font-dm-sans text-[15px] leading-snug text-secondary-ink">The phone keeps it either way — it will be here when you come back. Throwing it away cannot be undone.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => setLeaving(false)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="tally-stay">Keep counting</button>
-            <button type="button" onClick={() => { setLeaving(false); void let_go(); setMode('idle'); setHeld(loadTally()) }} className="min-h-[52px] rounded-lg border border-control-border px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="tally-leave-keep">Leave it for later</button>
+            <button type="button" onClick={() => { setLeaving(false); setMode('idle'); setHeld(loadTally()) }} className="min-h-[52px] rounded-lg border border-control-border px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="tally-leave-keep">Leave it for later</button>
             <button type="button" onClick={throwAway} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="tally-leave-discard">Throw it away</button>
           </div>
         </div>
