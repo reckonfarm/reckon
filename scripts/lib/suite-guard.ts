@@ -25,6 +25,24 @@ import { resolve } from 'node:path'
  * worktree line disagrees with the commit you asked for proves nothing about
  * that commit, whatever its counts say.
  */
+/**
+ * The identity of the code a run is made of, in the form a SUMMARY can carry.
+ *
+ * PK, 2026-09-18: "An identity line that nobody reads is not a check." The
+ * header at the top of a run scrolls away; the summary is what gets copied,
+ * quoted and believed. So every suite prints this beside its counts, and
+ * counts without it are a partial, not a result.
+ */
+export function suiteIdentity(): string {
+  const root = process.cwd()
+  let sha = 'unknown-commit'
+  let dirty = ''
+  try { sha = execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim() } catch { /* no git */ }
+  try { if (execSync('git status --porcelain', { cwd: root, encoding: 'utf8' }).trim()) dirty = '+dirty' } catch { /* no git */ }
+  const base = process.env.BASE ?? 'https://www.dryline.farm'
+  return `scripts ${sha}${dirty} · BASE ${base}`
+}
+
 export function guardWorktree(suite: string): void {
   const root = process.cwd()
   const dotGit = resolve(root, '.git')

@@ -28,6 +28,7 @@ import EmbeddedPostgres from 'embedded-postgres'
 import postgres from 'postgres'
 import { baselineDdl, statements, STUBS } from './lib/embedded-schema'
 import { splitTooManyMessage, SPLIT_NEEDS_ONE, splitRefusal } from '../lib/cattle/split'
+import { suiteIdentity } from './lib/suite-guard'
 
 let failures = 0
 const check = (name: string, ok: boolean, detail: string) => {
@@ -161,7 +162,7 @@ async function main() {
     await pg.stop().catch(() => {})
     rmSync(DIR, { recursive: true, force: true })
   }
-  console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}`)
+  console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}  —  ${suiteIdentity()}`)
   process.exit(failures ? 1 : 0)
 }
 

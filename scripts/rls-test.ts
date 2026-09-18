@@ -19,7 +19,7 @@
 // Writes only RLS-TEST-* rows under the two synthetic accounts (the smoke
 // scratch-account rule: nothing here touches a real ranch's ledger).
 
-import { guardWorktree } from './lib/suite-guard'
+import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -1649,7 +1649,7 @@ async function main() {
     console.log(`${r.pass ? 'PASS' : 'FAIL'}    ${r.who.padEnd(w)}  ${r.check.padEnd(cw)}  ${r.detail}`)
   }
   const fails = results.filter(r => !r.pass).length
-  console.log(`\n${results.length - fails} PASS · ${fails} FAIL${fails ? '  — BLOCKED' : ''}\n`)
+  console.log(`\n${results.length - fails} PASS · ${fails} FAIL${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 
