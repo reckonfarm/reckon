@@ -146,7 +146,9 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     setSavedId(id); setTally(null); setMode('saved')
   }
 
-  const note = wakeNote(wake)
+  // Only a lock that was HELD and then taken back interrupts the count screen.
+  const note = wake === 'released' ? wakeNote(wake) : null
+  const beforeNote = wake === 'released' ? null : wakeNote(wake)
   const kind = typeof window === 'undefined' ? 'none' : hapticKind()
 
   // ── A count the phone was holding, offered back (ruling 3) ─────────────────
@@ -177,6 +179,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
             phone that cannot buzz says so rather than letting him find out at
             the gate that nothing is confirming his thumb. */}
         <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="tally-haptics">{HAPTIC_WORDS[kind]}</p>
+        {beforeNote && <p className="mt-1 font-dm-sans text-[15px]" style={{ color: warning }} data-audit="tally-wake-before">{beforeNote}</p>}
       </Card>
     )
   }

@@ -26,7 +26,11 @@ import { useEffect, useState } from 'react'
 // comes back. A failure is reported, never thrown: losing the wake lock must
 // not cost a person the entry they were recording.
 
-export type WakeLockState = 'held' | 'unsupported' | 'refused' | 'off'
+// Block 22: 'released' is its own state. It used to be folded into 'refused',
+// so a browser that never granted the lock was described as having taken it
+// back — a sentence that cannot be true, on the one screen that is supposed to
+// carry nothing but the count.
+export type WakeLockState = 'held' | 'unsupported' | 'refused' | 'released' | 'off'
 
 interface SentinelLike { released: boolean; release: () => Promise<void>; addEventListener: (t: string, f: () => void) => void }
 
@@ -35,7 +39,7 @@ export function useWakeLock(active: boolean): WakeLockState {
   // effect whose whole body is a setState is a cascading render, and the
   // answer to "is a wake lock being held right now" when nothing asked for one
   // is simply no — it does not need to be stored to be true.
-  const [held, setHeld] = useState<'off' | 'held' | 'refused'>('off')
+  const [held, setHeld] = useState<'off' | 'held' | 'refused' | 'released'>('off')
   // Whether this browser HAS the API is not a fact about this component, so it
   // is read, not stored. (Server-side there is no navigator and this reads
   // false — which never shows, because nothing asks for a wake lock until a
@@ -57,7 +61,7 @@ export function useWakeLock(active: boolean): WakeLockState {
         setHeld('held')
         // The system releases it on backgrounding; say so rather than keep
         // claiming the screen is being held awake when it is not.
-        sentinel.addEventListener('release', () => { if (!dropped) setHeld('refused') })
+        sentinel.addEventListener('release', () => { if (!dropped) setHeld('released') })
       } catch {
         setHeld('refused')
       }
@@ -87,6 +91,6 @@ export function useWakeLock(active: boolean): WakeLockState {
  */
 export function wakeNote(state: WakeLockState): string | null {
   if (state === 'held' || state === 'off') return null
-  if (state === 'refused') return 'The screen lock came back. Keep the phone awake.'
-  return 'This phone will not let the app hold the screen awake — set the auto-lock long.'
+  if (state === 'released') return 'The screen lock came back. Keep the phone awake.'
+  return 'This phone will not hold the screen awake — set the auto-lock long.'
 }

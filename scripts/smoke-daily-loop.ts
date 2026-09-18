@@ -2779,7 +2779,7 @@ async function main() {
         const onScreen = await page.evaluate(() => {
           const box = document.querySelector('[data-audit="tally-counting"]')
           if (!box) return { words: '', extras: -1 }
-          const allowed = new Set(['tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed'])
+          const allowed = new Set(['tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
           const extras = Array.from(box.querySelectorAll('p, button, span')).filter(e => {
             const r = e.getBoundingClientRect()
             if (r.height === 0 || !(e.textContent ?? '').trim()) return false
@@ -2789,9 +2789,13 @@ async function main() {
           })
           return { words: extras.map(e => (e.textContent ?? '').trim().slice(0, 40)).join(' | '), extras: extras.length }
         })
+        // A wake note is allowed above, and checked here instead: it may only
+        // ever appear when a lock that WAS held has been taken back. A headless
+        // browser never grants one, so the count screen must be silent about it.
+        const wakeOnCount = await page.locator('[data-audit="tally-wake"]').count()
         record('22 (ruling 7 + doctrine): at 47 the screen shows the total, what is left of the 220, the four and Undo — and nothing else',
-          at47 === '47' && against47 === '47 through · 173 left of 220' && onScreen.extras === 0,
-          `total "${at47}" · "${against47}" · anything else on screen: ${onScreen.extras === 0 ? 'nothing' : onScreen.words}`)
+          at47 === '47' && against47 === '47 through · 173 left of 220' && onScreen.extras === 0 && wakeOnCount === 0,
+          `total "${at47}" · "${against47}" · anything else on screen: ${onScreen.extras === 0 ? 'nothing' : onScreen.words}${wakeOnCount ? ` · a wake note on a lock that was never held` : ''}`)
 
         await tap(4, 44)                                        // 47 + 176 = 223
         const past = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
