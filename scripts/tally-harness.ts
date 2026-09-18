@@ -54,7 +54,7 @@ function shelf(quota: number): FakeStorage {
 shelf(1_000_000)
 
 import { RIDE_DRAFT_KEY, TALLY_KEY, forgetDraftDropped, forgetTallyDropped, tallyDroppedForRecord, draftDroppedForRecord } from '../lib/local-space'
-import { startTally, addTap, undoTap, loadTally, clearTally, saveTally, total, type TapSize } from '../lib/tally'
+import { startTally, addTap, undoTap, loadTally, clearTally, saveTally, total, againstLine, remainderOf, type TapSize } from '../lib/tally'
 import { saveRideDraft, clearRideDraft } from '../lib/places/ride-draft'
 import { enqueue, clearOutbox, getOutbox } from '../lib/outbox'
 import type { CaptureFix } from '../lib/places/capture'
@@ -192,6 +192,40 @@ const reset = () => { forgetDraftDropped(); forgetTallyDropped(); clearRideDraft
   clearTally()
   check('finishing or throwing away a count leaves nothing behind, and the next one starts even',
     loadTally() === null && !tallyDroppedForRecord(), 'cleared')
+}
+
+// ── 7. What the count is counting against, and counting past it (ruling 7) ───
+{
+  shelf(1_000_000)
+  reset()
+  const BUNCH = { name: 'Replacement Heifers', head: 220 }
+  check('a count started cold says only its total — no bunch, no remainder, nothing invented',
+    againstLine(47, null) === null, `"${againstLine(47, null) ?? '(nothing)'}"`)
+  check('a count against a bunch says what is through and what is left',
+    againstLine(47, BUNCH) === '47 through · 173 left of 220', `"${againstLine(47, BUNCH)}"`)
+  check('at nothing counted it still reads honestly, rather than hiding until the first tap',
+    againstLine(0, BUNCH) === '0 through · 220 left of 220', `"${againstLine(0, BUNCH)}"`)
+  check('when the count catches the record exactly, it says none left rather than zero left',
+    againstLine(220, BUNCH) === '220 through · none left of 220', `"${againstLine(220, BUNCH)}"`)
+
+  // THE FALSIFIER: start from the 220 and tap past it.
+  let t = startTally('lot-220')
+  for (let i = 0; i < 221; i++) t = addTap(t, 1).tally
+  const through = total(t.taps)
+  const r = remainderOf(through, BUNCH.head)
+  check('THE FALSIFIER: a count started from the 220 taps PAST it — nothing refuses, caps, or warns',
+    through === 221 && loadTally() !== null && total(loadTally()!.taps) === 221,
+    `counted ${through} against a bunch of ${BUNCH.head} · the phone kept ${total(loadTally()!.taps)}`)
+  check('and the overage is shown plainly, as a disagreement with the record rather than a mistake',
+    r.over === 1 && r.left === 0 && againstLine(through, BUNCH) === '221 through · 1 more than the 220 on the record',
+    `"${againstLine(through, BUNCH)}"`)
+  for (let i = 0; i < 10; i++) t = addTap(t, 1).tally
+  check('it keeps going past that too — the gate is what is true, the record is only what was last written',
+    total(t.taps) === 231 && againstLine(total(t.taps), BUNCH) === '231 through · 11 more than the 220 on the record',
+    `"${againstLine(total(t.taps), BUNCH)}"`)
+  check('the remainder is never part of what is kept — the phone holds taps, and nothing else',
+    JSON.stringify(Object.keys(loadTally()!).sort()) === JSON.stringify(['lotId', 'savedAt', 'startedAt', 'taps']),
+    Object.keys(loadTally()!).sort().join(', '))
 }
 
 console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}`)

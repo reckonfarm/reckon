@@ -104,3 +104,45 @@ export function startTally(lotId: string | null = null): Tally {
   saveTally(t)
   return t
 }
+
+// ─── What the count is counting against (Block 22, ruling 7) ─────────────────
+//
+// A count started FROM a bunch shows what is left as it climbs, because at a
+// gate the interesting number is often what is still behind you. A count
+// started cold shows the running total and nothing else — no placeholder, no
+// empty field, nothing invented.
+//
+// THE REMAINDER IS DISPLAY ONLY. It is never the saved number and it never
+// constrains the count. Counting past the bunch's head is allowed and shown
+// plainly, because the bunch's number is what someone last recorded and the
+// gate is what is actually true. A count that disagrees with the record is
+// information, not an error — it is the whole reason ruling 6 offers to set
+// the bunch to what was counted.
+
+export interface Against { name: string; head: number }
+
+export interface Remainder {
+  /** Head still to come, by the record. Zero once the count has caught up. */
+  left: number
+  /** Head counted beyond what the record says. Zero until it happens. */
+  over: number
+}
+
+export function remainderOf(through: number, head: number): Remainder {
+  const diff = head - through
+  return diff >= 0 ? { left: diff, over: 0 } : { left: 0, over: -diff }
+}
+
+/**
+ * The line under the running total. Null when there is nothing to count
+ * against — a cold count says only its total, and this returns nothing rather
+ * than a sentence about nothing.
+ */
+export function againstLine(through: number, against: Against | null): string | null {
+  if (!against) return null
+  const n = (x: number) => x.toLocaleString('en-US')
+  const { left, over } = remainderOf(through, against.head)
+  if (over > 0) return `${n(through)} through · ${n(over)} more than the ${n(against.head)} on the record`
+  if (left === 0) return `${n(through)} through · none left of ${n(against.head)}`
+  return `${n(through)} through · ${n(left)} left of ${n(against.head)}`
+}

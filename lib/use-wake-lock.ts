@@ -1,66 +1,70 @@
 'use client'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useEffect, useState } from 'react'
-
-// ─── Keep the screen awake while a working is being recorded (Block 10) ───────
+// ─── Keeping the screen awake while work is happening ────────────────────────
 //
-// This is not a comfort feature. There is NO service worker in this app — the
-// offline-first line in the project bible is not built — so the outbox can
-// save without signal but the PAGE cannot reload without it. iOS discards
-// backgrounded web views under memory pressure, and a discarded page comes
-// back by reloading, which at a chute with no bars lands on the browser's
-// offline error instead of the app.
+// Two surfaces need this and they need it for the same reason: a phone that
+// sleeps stops doing the job. A perimeter ride stops recording fixes (Block 8
+// measured it — the wake lock was granted, then released the moment the screen
+// went off, and forty-eight seconds of ride went unrecorded). A gate tally goes
+// dark between bunches with a man's thumb over a button he can no longer see.
 //
-// A screen that stays on keeps the page foregrounded, which is the single
-// cheapest thing that stops that happening across a working morning. It does
-// not make the app offline-capable and must never be described as if it does.
+// PK's ruling from Block 8 still governs what this can promise: the wake lock
+// is RELEASED by the system whenever the page is hidden, and some phones will
+// not give it at all. So this reports its state honestly and the screens say so
+// — it is never treated as a guarantee that the screen will stay lit.
 //
-// Everything here is best-effort by construction: the API is absent on older
-// iOS, the request is refused when the tab is not visible, and the lock is
-// dropped by the system on backgrounding — so it is re-taken when the page
-// comes back. A failure is reported, never thrown: losing the wake lock must
-// not cost a person the entry they were recording.
+//   'unsupported'  this browser has no wake lock
+//   'idle'         not asked for, or released on purpose
+//   'held'         granted and held right now
+//   'released'     granted, then taken back (the screen locked, or the page hid)
+//   'refused'      asked for and denied
 
-export type WakeLockState = 'held' | 'unsupported' | 'refused' | 'off'
+export type WakeState = 'unsupported' | 'idle' | 'held' | 'released' | 'refused'
 
-interface SentinelLike { released: boolean; release: () => Promise<void>; addEventListener: (t: string, f: () => void) => void }
+interface Sentinel { release: () => Promise<void>; addEventListener: (e: string, f: () => void) => void }
+interface WakeNav { wakeLock?: { request: (t: 'screen') => Promise<Sentinel> } }
 
-export function useWakeLock(active: boolean): WakeLockState {
-  const [state, setState] = useState<WakeLockState>('off')
+export function useWakeLock(): { wake: WakeState; hold: () => Promise<void>; let_go: () => Promise<void> } {
+  const [wake, setWake] = useState<WakeState>('idle')
+  const ref = useRef<Sentinel | null>(null)
 
+  const hold = useCallback(async () => {
+    try {
+      const nav = navigator as unknown as WakeNav
+      if (!nav.wakeLock) { setWake('unsupported'); return }
+      const sentinel = await nav.wakeLock.request('screen')
+      ref.current = sentinel
+      setWake('held')
+      sentinel.addEventListener('release', () => setWake('released'))
+    } catch {
+      setWake('refused')
+    }
+  }, [])
+
+  const let_go = useCallback(async () => {
+    try { await ref.current?.release() } catch { /* already gone */ }
+    ref.current = null
+    setWake(w => (w === 'held' ? 'idle' : w))
+  }, [])
+
+  // The system takes the lock back whenever the page hides. Coming back to the
+  // front is the moment to ask again, or the screen quietly stops staying lit
+  // for the rest of the job.
   useEffect(() => {
-    if (!active) { setState('off'); return }
-    const api = (navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<SentinelLike> } }).wakeLock
-    if (!api) { setState('unsupported'); return }
+    const onVis = () => { if (document.visibilityState === 'visible' && ref.current === null && wake === 'released') void hold() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [hold, wake])
 
-    let sentinel: SentinelLike | null = null
-    let dropped = false
+  useEffect(() => () => { void ref.current?.release().catch(() => {}) }, [])
 
-    const take = async () => {
-      if (dropped || document.visibilityState !== 'visible') return
-      try {
-        sentinel = await api.request('screen')
-        setState('held')
-        // The system releases it on backgrounding; say so rather than keep
-        // claiming the screen is being held awake when it is not.
-        sentinel.addEventListener('release', () => { if (!dropped) setState('refused') })
-      } catch {
-        setState('refused')
-      }
-    }
+  return { wake, hold, let_go }
+}
 
-    // Re-take when the page comes back: the lock does not survive a trip to
-    // the home screen, and the walk back from the chute gate is exactly that.
-    const onVisible = () => { if (document.visibilityState === 'visible') void take() }
-    document.addEventListener('visibilitychange', onVisible)
-    void take()
-
-    return () => {
-      dropped = true
-      document.removeEventListener('visibilitychange', onVisible)
-      void sentinel?.release().catch(() => {})
-    }
-  }, [active])
-
-  return state
+/** The one sentence a screen shows about it. Null when there is nothing to say. */
+export function wakeNote(wake: WakeState): string | null {
+  if (wake === 'held' || wake === 'idle') return null
+  if (wake === 'released') return 'The screen lock came back. Keep the phone awake.'
+  return 'This phone will not let the app hold the screen awake — set the auto-lock long.'
 }
