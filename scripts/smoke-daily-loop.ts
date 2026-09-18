@@ -96,6 +96,21 @@ async function probe070(page: Page, ranchId: string, userId: string): Promise<bo
   await admin.from('herd_lots').delete().like('name', `${PREFIX} 070 probe%`)
   return has070
 }
+// Block 19: does this database know what a split is? 071 is PK's to run, and
+// until he has, the split is a capability this build does not have — named in
+// the report every run, never a silent skip.
+let has071: boolean | null = null
+async function probe071(page: Page, ranchId: string, userId: string): Promise<boolean> {
+  if (has071 !== null) return has071
+  const { data: lot } = await admin.from('herd_lots').insert({ ranch_id: ranchId, class: 'cows', name: `${PREFIX} 071 probe`, head_count: 3, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId }).select('id').single()
+  if (!lot) { has071 = false; return false }
+  const id = randomUUID()
+  const r = await page.request.post('/api/log', { data: { id, type: 'group_action', action: 'split', source_lot_id: (lot as { id: string }).id, expected_head: 3, results: [{ lot_id: null, name: `${PREFIX} 071 probe off`, class: 'cows', head: 1 }] } })
+  has071 = r.status() === 201
+  await admin.from('events').delete().eq('id', id)
+  await admin.from('herd_lots').delete().like('name', `${PREFIX} 071 probe%`)
+  return has071
+}
 let userIdB = ''
 let ranchId = ''
 let placeId = ''
@@ -2656,6 +2671,69 @@ async function main() {
       await clearFill()
       await page.evaluate(() => { for (const k of ['manual_log_draft_v1', 'dryline_ride_v1']) localStorage.removeItem(k) })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+    }
+
+    // ── Block 19 — split a bunch: a first-class action on any bunch ──────────
+    // The split the 220 could not have. Held from the bunch row, typed, saved;
+    // the parent drops, the new bunch exists, and the count the parent held
+    // before it stays on the record. What a split REFUSES is proved against
+    // the function itself in scripts/split-harness.ts — this is the screen.
+    {
+      const lot19 = randomUUID(), LOT19 = `${PREFIX} 19 split bunch`
+      const { error: e19 } = await admin.from('herd_lots').insert({ id: lot19, ranch_id: ranchId, class: 'heifers', name: LOT19, head_count: 220, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (e19) skip('19: split checks', `fixture: ${e19.message.slice(0, 80)}`)
+      else {
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot19, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+        if (!(await probe071(page, ranchId, userId))) {
+          skip('19: split a bunch — hold → Split, the parent drops, the ledger keeps the count before', 'migration 071 not run on this database yet (PK runs it by hand)')
+          skip('19: a split that cannot be true is refused in the ranch\'s own words, and nothing typed is lost', 'migration 071 not run on this database yet (PK runs it by hand)')
+        } else {
+          // Hold the bunch row → Split. The action is on the row every bunch
+          // already has, not inside a preg check (ruling 1).
+          await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+          const row19 = page.locator(`[data-audit="lot-row"]#lot-${lot19}`)
+          await row19.waitFor({ timeout: 20_000 }).catch(() => {})
+          const held = await hold(page, row19)
+          const splitBtn = page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' })
+          const hasSplit = await splitBtn.count()
+          await splitBtn.first().click().catch(() => {})
+          await page.locator('[data-audit="split-leaving"]').waitFor({ timeout: 15_000 }).catch(() => {})
+          const bunchPrefilled = await page.locator(`[data-audit="split-lot-choice"][data-lot="${lot19}"][aria-checked="true"]`).count()
+
+          // Ruling 3: a refusal keeps what was typed. Type more than the bunch
+          // holds, read the refusal, then correct it — without retyping.
+          await page.getByLabel('How many leave').fill('221')
+          await page.locator('[data-audit="split-name"]').fill(`${PREFIX} 19 off heifers`)
+          const refusal = (await stableText(page, '[data-audit="split-refusal"]')).trim()
+          await page.getByRole('button', { name: 'Record the split', exact: true }).click().catch(() => {})
+          await page.waitForTimeout(400)
+          const stillOpen = await page.locator('[data-audit="split-leaving"]').count()
+          const keptName = await page.locator('[data-audit="split-name"]').inputValue().catch(() => '')
+          const keptNumber = await page.getByLabel('How many leave').inputValue().catch(() => '')
+          record('19: a split that cannot be true is refused in the ranch\'s own words, and nothing typed is lost',
+            /^221 head cannot leave a bunch of 220\.$/.test(refusal) && stillOpen === 1 && keptName === `${PREFIX} 19 off heifers` && keptNumber === '221',
+            `"${refusal}" · sheet still open ${stillOpen === 1} · name kept "${keptName}" · number kept "${keptNumber}"`)
+
+          // Now a split that is true.
+          await page.getByLabel('How many leave').fill('22')
+          const preview = (await stableText(page, '[data-audit="split-preview"]')).replace(/\s+/g, ' ').trim()
+          await page.getByRole('button', { name: 'Record the split', exact: true }).click().catch(() => {})
+          const seq19 = await watchStates(page, 'Sent', 45_000, '19 off heifers')
+          const { data: after19 } = await admin.from('herd_lots').select('id, name, head_count, class').eq('ranch_id', ranchId).in('name', [LOT19, `${PREFIX} 19 off heifers`])
+          const rows19 = (after19 ?? []) as { id: string; name: string; head_count: number; class: string }[]
+          const parent = rows19.find(r => r.name === LOT19), child = rows19.find(r => r.name !== LOT19)
+          const { data: ev19 } = await admin.from('events').select('id, payload').eq('ranch_id', ranchId).eq('type', 'group_action').order('ts', { ascending: false }).limit(1)
+          const pay = ((ev19 ?? [])[0] as { payload?: Record<string, unknown> } | undefined)?.payload ?? {}
+          record('19: split a bunch — hold → Split, the parent drops, the ledger keeps the count before',
+            held && hasSplit === 1 && bunchPrefilled === 1 && /keeps 198/.test(preview) && seq19.includes('Sent')
+            && parent?.head_count === 198 && child?.head_count === 22 && child?.class === 'heifers'
+            && pay.action === 'split' && pay.source_head_before === 220 && pay.stayed === 198 && pay.moved === 22,
+            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}`)
+          if (child?.id) await admin.from('herd_lots').delete().eq('id', child.id)
+        }
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot19)
+        await admin.from('herd_lots').delete().eq('id', lot19)
+      }
     }
 
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────

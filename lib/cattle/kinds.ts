@@ -8,8 +8,12 @@
 // their own counts, reconciling against a count taken at the chute. Preg check
 // is the first one with a screen; the others are the same primitive and are
 // listed here so the database's allowed set and the app's have one source.
+//
+// Block 19: 'split' is the second with a screen, and the only one whose
+// arithmetic the database works out for itself (071) — the count is what the
+// bunch holds, what stays is the rest.
 
-export const GROUP_ACTIONS = ['preg_check', 'sort', 'wean', 'ship'] as const
+export const GROUP_ACTIONS = ['preg_check', 'sort', 'wean', 'ship', 'split'] as const
 export type GroupAction = (typeof GROUP_ACTIONS)[number]
 
 export const isGroupAction = (v: unknown): v is GroupAction =>
@@ -20,6 +24,9 @@ export const GROUP_ACTION_LABELS: Record<GroupAction, string> = {
   sort: 'Sorted',
   wean: 'Weaned',
   ship: 'Shipped',
+  // Block 19: splitting a bunch is a working in its own right, not something
+  // only a preg check can do.
+  split: 'Split',
 }
 
 export const GROUP_ACTION_TYPE = 'group_action'

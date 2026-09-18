@@ -141,6 +141,12 @@ function describeBody(r: ActivityRow, names: Names): string {
       const moved = results
         .map(x => { const h = num(x.head); const n = str(x.name); return h == null || !n ? null : `${h.toLocaleString()} to ${n}` })
         .filter((x): x is string => x !== null).join(', ')
+      // Block 19: a split counted nothing — nobody stood at a chute. It says
+      // which bunch split, who left, and how many stayed.
+      if (action === 'split') {
+        const stayed = num(p.stayed)
+        return `Split${from ? ` ${from}` : ''}${moved ? ` · ${moved}` : ''}${stayed == null ? '' : ` · ${stayed.toLocaleString()} stay`}`
+      }
       return `${label}${counted == null ? '' : ` · ${counted.toLocaleString()} counted`}${from ? ` from ${from}` : ''}${moved ? ` · ${moved}` : ' · none moved'}`
     }
     case 'alert': return alertLine(p) ?? 'Alert'   // never reached for a row listActivity dropped — see alertLine
