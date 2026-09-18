@@ -36,7 +36,7 @@ function Dot({ state }: { state: OutboxState }) {
 // ten minutes; the global strip on every other page: a short while).
 // The refresh of the server-rendered ledgers after a sync is NOT here — it is
 // RecordSheetHost's SyncRefresh, once, on every page (Block 6D).
-export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { itemId?: string; fadeAfterMs?: number } = {}) {
+export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000, compact = false }: { itemId?: string; fadeAfterMs?: number; compact?: boolean } = {}) {
   const items = useOutbox()
   // Block 11 (P0): A SYNCED RECEIPT IS TRANSIENT AND BELONGS TO THIS VIEW.
   // The outbox lives in localStorage because unsynced work must survive a
@@ -52,6 +52,16 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
   const item = itemId ? items.find(i => i.id === itemId) ?? null : items.length ? items[items.length - 1] : null
   const shown = item?.state ?? null
   const [now, setNow] = useState(0)
+  // Block 23 (ruling 4): the last time a finger touched the screen while this
+  // receipt was up. A touch anywhere restarts the window — the strip itself
+  // stays untappable, so holding a receipt can never cost someone the control
+  // it is sitting above.
+  const [touchedAt, setTouchedAt] = useState(0)
+  useEffect(() => {
+    const onTouch = () => setTouchedAt(Date.now())
+    document.addEventListener('pointerdown', onTouch, { passive: true })
+    return () => document.removeEventListener('pointerdown', onTouch)
+  }, [])
 
   // A clock, ticked in an effect (never read in render): drives the undo
   // countdown and the "old news" cutoff below.
@@ -71,9 +81,17 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
   // Synced before this view existed → it is history, not a receipt.
   if (item.state === 'synced' && (!item.syncedAt || item.syncedAt < viewOpenedAt)) return null
   // And even within a view, a receipt has said its piece after a while.
-  if (item.state === 'synced' && item.syncedAt && now > 0 && now - item.syncedAt > fadeAfterMs) return null
+  // Block 23 (ruling 4): ANY TOUCH HOLDS IT. A receipt that fades while a
+  // person is deciding whether to take something back is a receipt that
+  // decided for them. Touching anywhere on the screen — not this strip, which
+  // stays untappable so it can never swallow a control underneath — starts the
+  // generous window again.
+  const faded = item.state === 'synced' && item.syncedAt && now > 0
+    && now - Math.max(item.syncedAt, touchedAt) > fadeAfterMs
+  if (faded) return null
 
   const secondsLeft = held ? Math.ceil((held.holdUntil! - now) / 1000) : 0
+
 
   return (
     <div role="status" aria-live="polite" className={`rounded-lg px-4 py-3 font-dm-sans ${TONE[shown]}`}>
@@ -82,7 +100,7 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000 }: { i
         <div className="flex items-start gap-3">
           <Dot state={shown} />
           <div className="min-w-0 flex-1">
-            <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} href={item.link?.href} eventLabel={item.link?.label} tone="strip" />
+            <SaveReceipt headline={STATE_LABEL.synced} label={item.label} lines={item.consequence?.lines ?? []} eventId={item.serverId ?? item.id} href={item.link?.href} eventLabel={item.link?.label} tone="strip" compact={compact} />
             {/* Block 14: the one thing the server offered after the entry landed. */}
             {item.followUp && <div className="pointer-events-auto"><FollowUpButton itemId={item.id} followUp={item.followUp} /></div>}
             {/* Block 15 (ruling 3): a working — the check and its split — is one record with one Undo. */}

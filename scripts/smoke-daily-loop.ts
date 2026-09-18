@@ -2742,6 +2742,108 @@ async function main() {
       }
     }
 
+    // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
+    // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
+    // line, Undo is tappable without scrolling or dismissing anything, and the
+    // pill is nowhere near it.
+    {
+      const lot23 = randomUUID(), LOT23 = `${PREFIX} 23 receipt bunch`
+      const { error: e23 } = await admin.from('herd_lots').insert({ id: lot23, ranch_id: ranchId, class: 'cows', name: LOT23, head_count: 220, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (e23) skip('23: hold menu and receipt checks', `fixture: ${e23.message.slice(0, 80)}`)
+      else {
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot23, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+        const prior = page.viewportSize()
+
+        // Ruling 1 — Open is off the bunch's hold menu, and the rest is still there.
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row23 = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+        await row23.waitFor({ timeout: 20_000 }).catch(() => {})
+        const heldOpen = await hold(page, row23)
+        const opens = await page.locator('[data-audit="row-action-open"]').count()
+        const fixes = await page.locator('[data-audit="row-action-fix"]').count()
+        const splits = await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).count()
+        record('23 (ruling 1): a bunch\'s hold menu offers nothing that does nothing — Open is gone, Fix and Split remain',
+          heldOpen && opens === 0 && fixes === 1 && splits === 1, `Open ${opens} · Fix ${fixes} · Split ${splits}`)
+
+        // Ruling 2 — an Undo owns the bottom of the screen: delete a bunch and
+        // check that nothing floating is drawn over the Undo button.
+        await page.keyboard.press('Escape').catch(() => {})
+        await page.locator('[data-audit="row-actions-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        const del23 = randomUUID(), DEL23 = `${PREFIX} 23 delete me`
+        await admin.from('herd_lots').insert({ id: del23, ranch_id: ranchId, class: 'cows', name: DEL23, head_count: 4, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        const delRow = page.locator(`[data-audit="lot-row"]#lot-${del23}`)
+        await delRow.waitFor({ timeout: 20_000 }).catch(() => {})
+        await hold(page, delRow)
+        await page.locator('[data-audit="row-action-delete"]').click().catch(() => {})
+        await page.locator('[data-audit="undo-button"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        const covered = await page.evaluate(() => {
+          const btn = document.querySelector('[data-audit="undo-button"]')
+          if (!btn) return { found: false, coveredBy: 'no undo button at all', pill: 0 }
+          const r = btn.getBoundingClientRect()
+          // What does the browser say is on top at the middle of the Undo?
+          const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          const inside = !!at && btn.contains(at)
+          const owner = at?.closest('[data-audit]')?.getAttribute('data-audit') ?? at?.tagName ?? 'nothing'
+          return { found: true, coveredBy: inside ? '' : owner, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+        })
+        record('23 (ruling 2): nothing is drawn over an Undo — the record pill yields, and the Undo button answers its own taps',
+          covered.found && covered.coveredBy === '' && covered.pill === 0,
+          `undo present ${covered.found} · the tap would hit ${covered.coveredBy || 'the Undo button'} · pills on screen ${covered.pill}`)
+        await page.locator('[data-audit="undo-button"]').click().catch(() => {})
+        await page.waitForTimeout(1_500)
+        await admin.from('herd_lots').delete().eq('id', del23)
+
+        // Rulings 3 and 4 — split the bunch and read the receipt, at both widths.
+        if (!(await probe071(page, ranchId, userId))) skip('23 (rulings 3 + 4): the receipt after a split is one readable line with Undo, at 390 and at 320', 'migration 071 not run on this database')
+        else {
+          const seen: string[] = []
+          let ok = true
+          for (const width of [390, 320]) {
+            await page.setViewportSize({ width, height: 844 })
+            await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+            const r = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+            await r.waitFor({ timeout: 20_000 }).catch(() => {})
+            await hold(page, r)
+            await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).first().click().catch(() => {})
+            await page.locator('[data-audit="split-lot-choice"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+            await page.getByLabel('How many leave').fill('22')
+            await page.locator('[data-audit="split-name"]').fill(`${PREFIX} 23 off ${width}`)
+            await page.getByRole('button', { name: 'Record the split', exact: true }).click().catch(() => {})
+            await watchStates(page, 'Sent', 45_000, `23 off ${width}`)
+            await page.locator('[data-audit="save-receipt"][data-compact="true"]').waitFor({ timeout: 20_000 }).catch(() => {})
+            const shape = await page.evaluate(() => {
+              const box = document.querySelector('[data-audit="save-receipt"][data-compact="true"]')
+              const balance = box?.querySelector('[data-audit="receipt-balance"]') as HTMLElement | null
+              const undo = document.querySelector('[data-audit="take-back"], [data-audit="undo-this"]') as HTMLElement | null
+              if (!box || !balance) return { line: '', px: 0, extras: -1, undoReachable: false, undoInView: false, pill: 1 }
+              const cs = getComputedStyle(balance)
+              const extras = box.querySelectorAll('[data-audit="receipt-label"], [data-audit="receipt-detail"], [data-audit="receipt-open-entry"]').length
+              let undoReachable = false, undoInView = false
+              if (undo) {
+                const u = undo.getBoundingClientRect()
+                undoInView = u.top >= 0 && u.bottom <= window.innerHeight && u.width > 0
+                const at = document.elementFromPoint(u.left + u.width / 2, u.top + u.height / 2)
+                undoReachable = !!at && undo.contains(at)
+              }
+              return { line: (balance.textContent ?? '').trim(), px: parseFloat(cs.fontSize), extras, undoReachable, undoInView, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+            })
+            seen.push(`${width}px: "${shape.line}" ${shape.px}px · extras ${shape.extras} · undo reachable ${shape.undoReachable}/in view ${shape.undoInView}`)
+            if (!/^220 → 198, 22 to /.test(shape.line) || shape.px < 20 || shape.extras !== 0 || !shape.undoReachable || !shape.undoInView) ok = false
+            const { data: made } = await admin.from('herd_lots').select('id').eq('ranch_id', ranchId).like('name', `${PREFIX} 23 off ${width}%`)
+            for (const m of (made ?? []) as { id: string }[]) await admin.from('herd_lots').delete().eq('id', m.id)
+            await admin.from('herd_lots').update({ head_count: 220 }).eq('id', lot23)
+          }
+          record('23 (rulings 3 + 4): the receipt after a split is ONE readable line with a reachable Undo, at 390 and at 320',
+            ok, seen.join(' | '))
+        }
+        if (prior) await page.setViewportSize(prior)
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot23)
+        await admin.from('herd_lots').delete().eq('id', lot23)
+      }
+    }
+
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything

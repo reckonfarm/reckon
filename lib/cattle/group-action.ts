@@ -246,11 +246,14 @@ export function groupActionConsequence(p: GroupActionPayload): { lines: string[]
   // Block 19 (ruling 2): a split is an event, and its receipt says the count
   // the bunch held BEFORE it as well as after — that number stays readable
   // for good, here and in the ledger, rather than being quietly replaced.
+  // Block 23 (ruling 3): ONE LINE. "220 → 198, 22 to Fall Cows" and nothing
+  // else — it is read at arm's length in a corral, in gloves and sun, by
+  // someone whose attention is on cattle. The arithmetic, the class, the
+  // place, what the bunch was called before: all of it is one tap away on the
+  // record, and none of it belongs on a strip at the bottom of a phone.
   if (p.action === 'split') {
-    const out = [`${p.source_name} was ${head(p.source_head_before)} · ${head(p.source_head_after)} now`]
-    for (const r of p.results) out.push(`${head(r.head)} to ${r.name}${r.created ? ' (new)' : ` · now ${r.head_after.toLocaleString()}`}`)
-    if (p.source_head_after === 0) out.push(`${p.source_name} is empty now — it stays on the ranch until you retire it`)
-    return { lines: out }
+    const went = p.results.map(r => `${r.head.toLocaleString()} to ${r.name}`).join(', ')
+    return { lines: [`${p.source_head_before.toLocaleString()} → ${p.source_head_after.toLocaleString()}${went ? `, ${went}` : ''}`] }
   }
   const lines: string[] = [
     `${p.counted.toLocaleString()} counted through${p.source_head_before !== p.counted ? ` · ${p.source_name} said ${p.source_head_before.toLocaleString()}` : ''}`,

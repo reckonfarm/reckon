@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import { usePathname, useRouter } from 'next/navigation'
+import { useUndoOwnsTheSlot } from '@/lib/undo'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
@@ -67,7 +68,11 @@ function DiscardedOnSwitch() {
 function GlobalSaveStatus() {
   const launcher = useLauncherMounted()
   const pathname = usePathname()
-  if (launcher) return null
+  // Block 23 (ruling 2): the receipt shares this slot with the Undo strip. A
+  // receipt is news; an Undo is a ten-second chance to take something back.
+  // The news waits.
+  const undoShowing = useUndoOwnsTheSlot()
+  if (launcher || undoShowing) return null
   // Block 11 (P0): keyed by pathname, so leaving a page ends its receipt. The
   // strip is fixed above the bottom nav, and on the audit it landed ON TOP of
   // Correct / Void / Delete on an entry page and swallowed the taps — two
@@ -81,7 +86,7 @@ function GlobalSaveStatus() {
   // where it is in the flow and cannot cover anything).
   return (
     <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status">
-      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
+      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} compact /></div>
     </div>
   )
 }
