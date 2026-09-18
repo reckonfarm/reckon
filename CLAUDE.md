@@ -55,6 +55,10 @@ one rancher, one AI. Recon → report → PK rules → build on a branch → sui
   against the wrong surface: a collapsed `<details>` read with `innerText`, a sign-in page standing in for an authed
   page, a 404 standing in for a preview. A check that cannot confirm what it is looking at reports that it could not,
   and never a pass.
+- **An identity line nobody reads is not a check.** Every suite and harness prints the commit and BASE on its SUMMARY
+  line, beside the counts (`suiteIdentity()` in `scripts/lib/suite-guard.ts`) — the header scrolls away, the summary is
+  what gets quoted. **Counts reported without the commit they came from are a partial, not a result** — in the run's
+  own output and in the report to PK.
 - **A check that can't pass is a capability gap:** report it by name every run, never a silent skip. The only named
   skips are the three flakes PK watched fail and recover: the force-quit receipt check, the 6B place-timeline check,
   the Weather day-chips check (`flaky()` in `scripts/smoke-daily-loop.ts`).

@@ -67,6 +67,7 @@ shelf(1_000_000)
 import { RECORD_RESERVE_BYTES, roomLeftForRecords, makeRoomForRecords, draftDroppedForRecord, forgetDraftDropped, RIDE_DRAFT_KEY } from '../lib/local-space'
 import { saveRideDraft, clearRideDraft, loadRideDraft } from '../lib/places/ride-draft'
 import { enqueue, clearOutbox, getOutbox, storageIsFull } from '../lib/outbox'
+import { suiteIdentity } from './lib/suite-guard'
 
 const fixes = (n: number) => Array.from({ length: n }, (_, i) => ({ t: 1_700_000_000_000 + i * 1000, lat: 47.12 + i * 1e-6, lng: -108.43, acc: 3 }))
 /** Fill the shelf so that exactly `headroom` bytes are left. */
@@ -168,5 +169,5 @@ function fillTo(s: FakeStorage, headroom: number): void {
     getOutbox().map(i => i.state).join(', '))
 }
 
-console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}`)
+console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}  —  ${suiteIdentity()}`)
 process.exit(failures ? 1 : 0)
