@@ -98,6 +98,12 @@ export async function consequenceFor(
       case 'cattle_counted': {
         const counted = num('counted'), expected = num('expected')
         if (counted == null) return { lines }
+        // Block 22 (ruling 6) + Block 23 (ruling 3): a count that SET the bunch
+        // says so in one line, in the same shape a split's receipt uses —
+        // "220 → 198". A count that changed nothing reads as it always has.
+        if (payload.set_head === true && expected != null && expected !== counted) {
+          return { lines: [`${expected.toLocaleString()} → ${counted.toLocaleString()}`] }
+        }
         lines.push(countLine(counted, expected))
         return { lines }
       }

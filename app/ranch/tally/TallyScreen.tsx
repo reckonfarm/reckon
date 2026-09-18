@@ -155,8 +155,8 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
       <Card className="mt-4 p-4 sm:p-5" data-audit="tally-held">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">A count in progress</p>
         <p className="mt-1 type-main-number text-ink" data-audit="tally-held-total">{total(held.taps).toLocaleString('en-US')}</p>
-        <p className="mt-1 font-dm-sans text-[16px] text-ink" data-audit="tally-held-note">
-          {held.taps.length.toLocaleString('en-US')} {held.taps.length === 1 ? 'tap' : 'taps'}, kept on this phone. Nothing is lost.
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink" data-audit="tally-held-note">
+          {held.taps.length.toLocaleString('en-US')} {held.taps.length === 1 ? 'tap' : 'taps'}
         </p>
         <div className="mt-4 flex flex-col gap-2">
           <button type="button" onClick={() => begin(held)} className="min-h-[60px] rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-held-keep">Keep counting</button>
@@ -170,11 +170,13 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   if (mode === 'idle') {
     return (
       <Card className="mt-4 p-4 sm:p-5" data-audit="tally-start">
-        <p className="font-dm-sans text-[17px] font-semibold text-ink">Count at a gate</p>
-        <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">
-          {source ? `Counting ${lotLabel(source)} · ${bunchDetail(source)}` : 'Tap as they come through. You choose what the count means at the end.'}
-        </p>
-        <button type="button" onClick={() => begin(null)} className="mt-4 min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-begin">Start counting</button>
+        {source && <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="tally-subject">{lotLabel(source)} · {bunchDetail(source)}</p>}
+        <button type="button" onClick={() => begin(null)} className={`${source ? 'mt-4' : ''} min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream`} data-audit="tally-begin">Start counting</button>
+        {/* What this phone will do when a tap lands — said once, before he
+            starts, so the counting screen carries nothing but the count. A
+            phone that cannot buzz says so rather than letting him find out at
+            the gate that nothing is confirming his thumb. */}
+        <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="tally-haptics">{HAPTIC_WORDS[kind]}</p>
       </Card>
     )
   }
@@ -226,32 +228,45 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   }
 
   // ── Counting ───────────────────────────────────────────────────────────────
+  // Doctrine: the four buttons, the total, the remainder, Undo. Nothing else.
+  // Leaving and finishing are ACTIONS, so they are icons with a short word at
+  // the top, out of the thumb's way. Nothing on this screen explains what a
+  // control already says.
   const line = againstLine(through, against)
   const flashing = flash !== null
   return (
     <div data-audit="tally-counting">
-      {/* THE NUMBER. Enormous, at the top, readable at arm's length in sun —
-          and it flashes on every tap so a landed tap is visible without
-          looking straight at it (ruling 2, as amended). */}
-      <div className="mt-3 rounded-xl border border-forest-green/15 bg-surface px-4 py-6 text-center transition-colors duration-100"
+      <div className="mt-2 flex items-center justify-between">
+        <button type="button" onClick={() => setLeaving(true)} className="inline-flex min-h-[48px] items-center gap-1.5 font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="tally-leave">
+          <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          Leave
+        </button>
+        <button type="button" onClick={() => setMode('finish')} className="inline-flex min-h-[48px] items-center gap-1.5 rounded-lg border border-forest-green px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="tally-finish-open">
+          <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          Finish
+        </button>
+      </div>
+
+      {/* THE NUMBER, and under it what is still behind you. */}
+      <div className="mt-2 rounded-xl border border-forest-green/15 bg-surface px-4 py-6 text-center transition-colors duration-100"
         style={flashing ? { backgroundColor: 'rgba(27,67,50,0.10)' } : undefined} data-audit="tally-total-box" data-flash={flashing ? 'true' : 'false'}>
         <p className="font-fraunces text-[104px] leading-none font-semibold tabular-nums text-forest-green" data-audit="tally-total">{through.toLocaleString('en-US')}</p>
         {line && <p className="mt-2 font-dm-sans text-[20px] text-ink" data-audit="tally-against">{line}</p>}
       </div>
 
+      {/* A refusal, and a count the phone gave up: the two exceptions. */}
       {refused && (
         <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-refused">
-          This phone is full, so the last tap was not kept. The count on screen is ahead of what the phone has — free some space.
+          This phone is full, so the last tap was not kept. Free some space.
         </p>
       )}
       {tallyWasDropped() && (
         <p role="alert" className="mt-2 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-taken">
-          The phone made room for a record you saved and this count was what it took. What is on screen is all that is left of it — finish it now.
+          The phone made room for a record you saved and took this count. What is on screen is all that is left — finish it now.
         </p>
       )}
-      {removed !== null && <p className="mt-2 font-dm-sans text-[18px] font-semibold text-ink" role="status" data-audit="tally-removed">Removed +{removed}</p>}
       {note && <p className="mt-2 font-dm-sans text-[15px]" style={{ color: warning }} data-audit="tally-wake">{note}</p>}
-      <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink" data-audit="tally-haptics">{HAPTIC_WORDS[kind]}</p>
+      {removed !== null && <p className="mt-2 font-dm-sans text-[18px] font-semibold text-ink" role="status" data-audit="tally-removed">Removed +{removed}</p>}
 
       {/* UNDO — the largest control after the four (ruling 4). */}
       <button type="button" onClick={undo} disabled={through === 0}
@@ -268,16 +283,10 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
         ))}
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => setMode('finish')} className="min-h-[56px] flex-1 rounded-lg border border-forest-green px-4 font-dm-sans text-[17px] font-semibold text-forest-green" data-audit="tally-finish-open">Finish</button>
-        <button type="button" onClick={() => setLeaving(true)} className="min-h-[56px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-leave">Leave</button>
-      </div>
-
       {/* Ruling 5: a live count cannot be left by accident. */}
       {leaving && (
         <div className="mt-3 rounded-lg border p-3" style={{ borderColor: warning }} role="alert" data-audit="tally-leave-guard">
           <p className="font-dm-sans text-[17px] font-semibold text-ink">Leave a count of {through.toLocaleString('en-US')}?</p>
-          <p className="mt-1 font-dm-sans text-[15px] leading-snug text-secondary-ink">The phone keeps it either way — it will be here when you come back. Throwing it away cannot be undone.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => setLeaving(false)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="tally-stay">Keep counting</button>
             <button type="button" onClick={() => { setLeaving(false); setMode('idle'); setHeld(loadTally()) }} className="min-h-[52px] rounded-lg border border-control-border px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="tally-leave-keep">Leave it for later</button>
@@ -287,4 +296,5 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
       )}
     </div>
   )
+
 }

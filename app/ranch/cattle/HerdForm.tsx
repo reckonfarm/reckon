@@ -443,7 +443,12 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
         // Block 19 (ruling 1): splitting is something you do to ANY bunch, so
         // it is on the hold gesture every row already has — not buried inside
         // a preg check the bunch may never have come through.
-        extra: [{ label: 'Split', onSelect: () => openLogIt({ type: 'split', lot: lot.id }) }],
+        extra: [
+          // Block 22: counting at a gate is a thing you do TO a bunch, so it is
+          // on the same gesture as Split rather than buried under Record.
+          { label: 'Count at a gate', href: `/ranch/tally?lot=${lot.id}` },
+          { label: 'Split', onSelect: () => openLogIt({ type: 'split', lot: lot.id }) },
+        ],
         del: { onSelect: () => removeLot(lot) },
       }}>
       <Card shadow="sm" className={`p-4 transition-shadow ${litId === lot.id ? 'ring-2 ring-forest-green' : ''}`} data-audit="lot-row" id={`lot-${lot.id}`} data-lit={litId === lot.id ? 'true' : undefined}>

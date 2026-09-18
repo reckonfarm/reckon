@@ -1,5 +1,6 @@
 import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
+import { setLotHeadFromCount } from '@/lib/herd-lots'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
 import { GROUP_ACTION_TYPE, GroupActionError, groupActionConsequence, parseGroupAction, recordGroupAction } from '@/lib/cattle/group-action'
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
   // The bunch must be this ranch's (RLS: another ranch's is not found). The
   // count moves nothing; "Change bunch to N?" is a separate act the answer offers.
   let countFollowUp: { kind: 'set_head'; lot_id: string; head: number; label: string } | null = null
+  let setHeadDone: { before: number | null; head: number; name: string } | null = null
   if (body.type === 'cattle_counted') {
     const lotId = (payload as { herd_lot_id: string }).herd_lot_id
     const { data: lotRow } = await supabase.from('herd_lots').select('id, head_count, name, class, retired_at, deleted_at').eq('id', lotId).maybeSingle()
@@ -98,7 +100,19 @@ export async function POST(req: NextRequest) {
     if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })
     payload = { ...payload, expected: lot.head_count } as typeof payload
     const counted = (payload as { counted: number }).counted
-    if (counted !== lot.head_count) countFollowUp = { kind: 'set_head', lot_id: lot.id, head: counted, label: `Change bunch to ${counted.toLocaleString()}?` }
+    // Block 22 (ruling 6): the count carries its own meaning when it was taken
+    // at a gate — the person already chose, on the screen, that the gate beats
+    // the record. Then the bunch is set HERE, in the same request, and the
+    // answer does not ask a question that has been answered. Everything else
+    // is unchanged: a count with no such decision still moves nothing and
+    // still offers "Change bunch to N?".
+    if ((payload as { set_head?: boolean }).set_head === true) {
+      const set = await setLotHeadFromCount(supabase, lot.id, counted)
+      if (!set.ok) return NextResponse.json({ error: set.error }, { status: 400 })
+      setHeadDone = set.changed ? { before: set.before, head: counted, name: lot.name ?? lot.class } : null
+    } else if (counted !== lot.head_count) {
+      countFollowUp = { kind: 'set_head', lot_id: lot.id, head: counted, label: `Change bunch to ${counted.toLocaleString()}?` }
+    }
   }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
