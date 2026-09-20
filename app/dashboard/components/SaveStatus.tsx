@@ -116,7 +116,7 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000, compa
       <div className="flex items-center gap-3">
         <Dot state={shown} />
         <div className="min-w-0 flex-1">
-          <p className="text-[17px] font-semibold leading-snug">{STATE_LABEL[shown]}</p>
+          <p className="text-[17px] font-semibold leading-snug" data-save-word>{STATE_LABEL[shown]}</p>
           <p className="mt-0.5 text-[16px] leading-snug opacity-80">{item.label}</p>
         </div>
         {held && (

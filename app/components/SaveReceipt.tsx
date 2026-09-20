@@ -37,7 +37,7 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
             changes what a person reads into a shout and what any reader of the
             page sees into a different string. "Sent" rendered as "SENT" is why
             a split that had reached the ranch looked stuck for three runs. */}
-        <p className="text-[15px] font-semibold tracking-wide text-forest-green/80" data-audit="receipt-headline">{headline}</p>
+        <p className="text-[15px] font-semibold tracking-wide text-forest-green/80" data-audit="receipt-headline" data-save-word>{headline}</p>
         <p className="mt-0.5 text-[22px] font-semibold leading-tight text-ink" data-audit="receipt-balance">{lines[0] ?? label}</p>
         {/* The record's own name stays reachable to anything that needs to know
             WHICH record this is — a screen reader, a check — without spending a

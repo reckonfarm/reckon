@@ -2855,13 +2855,17 @@ async function main() {
           }
           record('23 (rulings 3 + 4): the receipt after a split is ONE readable line with a reachable Undo, at 390 and at 320',
             ok, seen.join(' | '))
-          // The save word on a receipt is one of the four, AS WRITTEN. Read off
-          // the painted page, so a CSS transform counts as changing it — which
-          // is what "SENT" did, hiding a landed split behind a stuck-looking
-          // strip for three runs.
-          const word = (await page.locator('[data-audit="global-save-status"] [data-audit="receipt-headline"]').innerText().catch(() => '')).trim()
-          record('23: the save word on a receipt is one of the four, exactly as written — no shouting, no transform',
-            ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"].includes(word), `"${word}"`)
+          // EVERY painted save word, wherever it is shown, read off the painted
+          // page — so a transform counts as changing it, which is what "SENT"
+          // did, hiding a landed split behind a stuck-looking strip for three
+          // runs. `data-save-word` marks each place one is drawn.
+          const words = await page.locator('[data-save-word]').evaluateAll(els =>
+            els.map(e => ({ text: (e as HTMLElement).innerText.trim(), transform: getComputedStyle(e).textTransform })))
+          const FOUR = ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"]
+          const wrong = words.filter(w => !FOUR.includes(w.text) || w.transform !== 'none')
+          record('23: every painted save word is one of the four, exactly as written — no shouting, no transform',
+            words.length > 0 && wrong.length === 0,
+            `${words.length} painted · ${wrong.length === 0 ? 'all four, untransformed' : wrong.map(w => `"${w.text}" (${w.transform})`).join(', ')}`)
         }
         if (prior) await page.setViewportSize(prior)
         await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot23)

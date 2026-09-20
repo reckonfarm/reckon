@@ -64,7 +64,7 @@ function WaitingRow({ item, onFix }: { item: OutboxItem; onFix: () => void }) {
   return (
     <li className="py-3" data-audit="waiting-row" data-state={item.state} data-id={item.id}>
       <p className="font-dm-sans text-[16px] text-ink">{item.label}</p>
-      <p className={`mt-0.5 font-dm-sans text-[15px] font-semibold ${item.state === 'failed' ? 'text-rust' : 'text-amber-900'}`} data-audit="waiting-state">{STATE_LABEL[item.state]}</p>
+      <p className={`mt-0.5 font-dm-sans text-[15px] font-semibold ${item.state === 'failed' ? 'text-rust' : 'text-amber-900'}`} data-audit="waiting-state" data-save-word>{STATE_LABEL[item.state]}</p>
       {item.state === 'failed' && item.lastError && <p className="mt-0.5 font-dm-sans text-[15px] leading-snug text-ink" data-audit="waiting-reason">{item.lastError}</p>}
       {item.state === 'failed' && (
         draft

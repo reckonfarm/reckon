@@ -9,9 +9,9 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 
 - **The word is BUNCH.** The database stays `herd_lots`; "lot" is the sale barn's word and appears only on auction
   and market screens. A bunch is never just a name: every chip, option and row reads name · class · head.
-- **Four save words, nothing else:** `Saved` · `Waiting for signal` · `Sent` · `Couldn't send`. No sentences
-  explaining sync. "Couldn't send" is the network's word only — a phone that will not keep a record says what is
-  actually wrong and what to do.
+- **Four save words, nothing else:** `Saved` · `Waiting for signal` · `Sent` · `Couldn't send` — the words as
+  written, never transformed. No sentences explaining sync. "Couldn't send" is the network's word only; a phone
+  that will not keep a record says what is actually wrong and what to do.
 - **Junior-high reading level.** Never `retire`, `archive`, `dismiss`, `revoke`, `provenance`, `superseded`,
   `conflict`, `sync` where a person can see it.
 - **A refusal explains itself and never dead-ends:** the reason in the ranch's own words on one line, and the one
@@ -25,13 +25,12 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 - **A record someone made outranks work still being made.** Out of room, the order is pending record → live tally →
   ride draft, given up one at a time, cheapest first. `lib/local-space.ts` owns it and is the only thing that gives
   anything up; nothing else is ever sacrificed.
-- **Never a retry button.** Records retry themselves on every wake, forever. Nothing ages out: unsent and failed
-  items never expire, and the size cap trims sent items only.
+- **Never a retry button.** Records retry themselves on every wake, forever, and nothing ages out.
 - **Hold 400 ms → Fix / Delete,** no confirmation dialogs. Delete goes to the trash with a ten-second Undo, and
   nothing may ever cover an Undo — every floating element yields to it. Removing a person is the one permanent
   delete; the sheet says so first. After any save, edit or delete the list stays put at the row you touched.
 - **A rule lives in ONE place. The database decides; routes relay.** Never copy a database rule into TypeScript. A
-  screen may show the ranch's own refusal for speed in a corral — then a harness pins the two strings together.
+  screen may show the ranch's own refusal for speed in a corral, pinned as below.
 
 ## Screens — a command center, not documentation
 
@@ -51,13 +50,14 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 
 - **Probes are read-only; never run a migration.** Write it, validate it with `npx tsx scripts/migrate-local.ts
   supabase/migrations/NNN_name.sql`, and hand PK `cat supabase/migrations/NNN_name.sql | pbcopy`.
-- **A check proves what it is looking at before it reads from it, and says so where the answer is read.** Identity
-  first — this page, this commit, this deploy — then content. Every suite and harness prints its commit and BASE on
-  the SUMMARY line beside the counts (`suiteIdentity()`); counts without their commit are a partial, not a result,
-  in the run's output and in the report to PK. A check that cannot confirm its subject reports that, never a pass.
+- **A check reads what is actually there — the right page, commit and deploy, and the text as PAINTED.** Identity
+  first, then content; a check that cannot confirm its subject reports that, never a pass. Rendering changes what
+  every reader receives, checks included: a transform that shouts a word makes it a different word to a person and
+  to a check, so painted strings are pinned to their originals wherever they are shown.
+  Every suite and harness prints its commit and BASE beside its counts on the summary line (`suiteIdentity()`), and
+  counts without their commit are a partial, not a result — in the run's output and in the report to PK.
 - **A check that can't pass is a capability gap:** name it every run, never a silent skip. Standing gap: the hay
-  marketplace is off in production (`/api/hay` 404s, so the hay-listing hold check is red). The only skips are PK's
-  three watched flakes — force-quit receipt, 6B place-timeline, Weather day-chips (`flaky()`).
+  marketplace is off in production (`/api/hay` 404s). Only PK's three watched flakes may skip (`flaky()`).
 - **Suite tiers:** UI-only → daily loop once on the preview. Records or sync → all three. RLS or scoping → all
   three, always. Run from a worktree (`scripts/suite-worktree.sh <sha>`, `BASE=` the preview, `VERCEL_BYPASS` from
   `e2e/.env.e2e`) — one worktree per run, never two daily loops at once, and local runs prove nothing.
