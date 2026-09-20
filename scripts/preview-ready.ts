@@ -37,8 +37,14 @@ const EVERY_MS = 15_000
 
 /** The page a suite signs in through. Not a guess: scripts/*.ts use it. */
 const SIGN_IN = '/signin'
-/** Something only this app serves. A Vercel 404 or a protection page has none of it. */
+/**
+ * Proof the page is OURS. Checked against the real thing and against what
+ * stands in its place: Vercel's protection page is titled "Login – Vercel",
+ * is 340 KB, answers 200, and contains no "Dryline" anywhere — so it passes a
+ * status check and fails this one, which is the whole point.
+ */
 const MARKER = /Dryline/i
+const NOT_OURS = /Login\s*[–-]\s*Vercel/i
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -46,18 +52,28 @@ async function main() {
   let last = 'never answered'
   for (let i = 1; i <= TRIES; i++) {
     try {
+      // The bypass TOKEN only. Never `x-vercel-set-bypass-cookie` here: that
+      // asks Vercel to set a cookie and redirect, and this client keeps no
+      // cookies, so it redirects until the limit and reports "fetch failed" —
+      // a dead deployment, indistinguishable from a real one, six times out of
+      // six. The suites may send it because Playwright holds the cookie. A
+      // header copied from a client that can honour it into one that cannot is
+      // the same mistake as reading a page whose identity was never checked.
       const res = await fetch(`${BASE}${SIGN_IN}`, {
         redirect: 'follow',
-        headers: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {},
+        headers: BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {},
       })
       const body = await res.text()
-      if (res.status === 200 && MARKER.test(body)) {
-        console.log(`preview-ready: ${BASE}${SIGN_IN} serves the app (200, ${body.length} bytes) after ${i} ${i === 1 ? 'try' : 'tries'}`)
+      const title = (/<title>([^<]*)<\/title>/.exec(body) ?? [, ''])[1].trim()
+      if (res.status === 200 && MARKER.test(body) && !NOT_OURS.test(body)) {
+        console.log(`preview-ready: ${BASE}${SIGN_IN} serves the app — 200, "${title}", ${body.length} bytes, after ${i} ${i === 1 ? 'try' : 'tries'}`)
         process.exit(0)
       }
-      last = res.status === 200
-        ? `200 but the page is not ours (${body.length} bytes, no marker) — a protection page or the wrong project`
-        : `HTTP ${res.status}`
+      last = res.status !== 200
+        ? `HTTP ${res.status}`
+        : NOT_OURS.test(body)
+        ? `200 but this is Vercel's protection page ("${title}") — the bypass token is missing or wrong`
+        : `200 but the page is not ours ("${title}", ${body.length} bytes)`
     } catch (e) {
       last = e instanceof Error ? e.message : String(e)
     }
