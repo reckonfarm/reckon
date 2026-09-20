@@ -121,17 +121,19 @@ async function main() {
 
     // 2 — every screen paints its own landmark, not just a 200
     const screens: [string, string][] = [
-      ['/today', 'main'],
+      ['/today', 'main h1, main h2'],
       ['/ranch/cattle', '[data-audit="lot-row"]'],
-      ['/ranch/places', '[data-audit="place-row"], #places-unplaced'],
-      ['/ranch/activity', 'main'],
-      ['/hay', 'main'],
-      ['/account', 'main'],
+      ['/ranch/places', '[data-audit="place-row"], #places-unplaced, [data-audit="capture-choose"]'],
+      ['/ranch/activity', 'main h1, [data-audit="activity-row"]'],
+      ['/hay', 'main h1'],
+      ['/account', 'main h1'],
     ]
     const bad: string[] = []
     for (const [path, landmark] of screens) {
       const res = await page.goto(path, { waitUntil: 'domcontentloaded' }).catch(() => null)
-      const painted = await page.locator(landmark).first().isVisible({ timeout: 8_000 }).catch(() => false)
+      // waitFor, not isVisible: isVisible answers immediately, so it asks
+      // whether the page had painted BEFORE it had a chance to.
+      const painted = await page.locator(landmark).first().waitFor({ state: 'visible', timeout: 12_000 }).then(() => true).catch(() => false)
       if (!res || res.status() >= 400 || !painted) bad.push(`${path} (${res?.status() ?? 'no answer'}${painted ? '' : ', nothing painted'})`)
     }
     record(`every screen paints — ${screens.length} of them`, bad.length === 0, bad.length ? bad.join(' · ') : screens.map(s => s[0]).join(' '))
