@@ -217,9 +217,14 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
   const raw: string[] = []
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
-    const text = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const strip = page.locator('[role="status"]').first()
+    const text = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ')
     if (raw[raw.length - 1] !== text) raw.push(text)
-    if (label && !text.includes(label)) { await page.waitForTimeout(50); continue }   // still showing the previous entry
+    // Block 23: a synced receipt is ONE line and may not repeat the record's
+    // name, so which record a strip is about is read from the strip, not from
+    // its words. The text is still accepted, for strips without the attribute.
+    const named = await strip.getAttribute('data-label').catch(() => null)
+    if (label && !text.includes(label) && !(named ?? '').includes(label)) { await page.waitForTimeout(50); continue }
     const s = STATES.find(x => text.includes(x))
     if (s && seen[seen.length - 1] !== s) seen.push(s)
     if (s === until) break
@@ -1599,7 +1604,12 @@ async function main() {
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
       for (let i = 0; i < 80 && !/Sent/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Sent/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      // Block 23: a sent receipt is one line and says what the feeding MEANT
+      // ("161 bales on hand"), not what was tapped a second ago. It still names
+      // the record it is about — in the strip's own attribute — so this asks
+      // for that rather than for words the ruling took off the screen.
+      const stripNames = ((await page.locator('[data-audit="global-save-status"] [data-audit="save-strip"]').getAttribute('data-label').catch(() => '')) ?? '')
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripNames) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
       for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
       record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
@@ -2734,11 +2744,128 @@ async function main() {
             held && hasSplit === 1 && bunchPrefilled === 1 && /keeps 198/.test(preview) && seq19.includes('Sent')
             && parent?.head_count === 198 && child?.head_count === 22 && child?.class === 'heifers'
             && pay.action === 'split' && pay.source_head_before === 220 && pay.stayed === 198 && pay.moved === 22,
-            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}`)
+            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}` + rawSeen())
           if (child?.id) await admin.from('herd_lots').delete().eq('id', child.id)
         }
         await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot19)
         await admin.from('herd_lots').delete().eq('id', lot19)
+      }
+    }
+
+    // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
+    // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
+    // line, Undo is tappable without scrolling or dismissing anything, and the
+    // pill is nowhere near it.
+    {
+      const lot23 = randomUUID(), LOT23 = `${PREFIX} 23 receipt bunch`
+      const { error: e23 } = await admin.from('herd_lots').insert({ id: lot23, ranch_id: ranchId, class: 'cows', name: LOT23, head_count: 220, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (e23) skip('23: hold menu and receipt checks', `fixture: ${e23.message.slice(0, 80)}`)
+      else {
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot23, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+        const prior = page.viewportSize()
+
+        // Ruling 1 — Open is off the bunch's hold menu, and the rest is still there.
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row23 = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+        await row23.waitFor({ timeout: 20_000 }).catch(() => {})
+        const heldOpen = await hold(page, row23)
+        const opens = await page.locator('[data-audit="row-action-open"]').count()
+        const fixes = await page.locator('[data-audit="row-action-fix"]').count()
+        const splits = await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).count()
+        record('23 (ruling 1): a bunch\'s hold menu offers nothing that does nothing — Open is gone, Fix and Split remain',
+          heldOpen && opens === 0 && fixes === 1 && splits === 1, `Open ${opens} · Fix ${fixes} · Split ${splits}`)
+
+        // Ruling 2 — an Undo owns the bottom of the screen: delete a bunch and
+        // check that nothing floating is drawn over the Undo button.
+        await page.keyboard.press('Escape').catch(() => {})
+        await page.locator('[data-audit="row-actions-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        const del23 = randomUUID(), DEL23 = `${PREFIX} 23 delete me`
+        await admin.from('herd_lots').insert({ id: del23, ranch_id: ranchId, class: 'cows', name: DEL23, head_count: 4, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        const delRow = page.locator(`[data-audit="lot-row"]#lot-${del23}`)
+        await delRow.waitFor({ timeout: 20_000 }).catch(() => {})
+        await hold(page, delRow)
+        await page.locator('[data-audit="row-action-delete"]').click().catch(() => {})
+        await page.locator('[data-audit="undo-button"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        const covered = await page.evaluate(() => {
+          const btn = document.querySelector('[data-audit="undo-button"]')
+          if (!btn) return { found: false, coveredBy: 'no undo button at all', pill: 0 }
+          const r = btn.getBoundingClientRect()
+          // What does the browser say is on top at the middle of the Undo?
+          const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          const inside = !!at && btn.contains(at)
+          const owner = at?.closest('[data-audit]')?.getAttribute('data-audit') ?? at?.tagName ?? 'nothing'
+          return { found: true, coveredBy: inside ? '' : owner, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+        })
+        // The receipt yields by going INVISIBLE, never by unmounting: it starts a
+        // clock when it mounts and calls anything synced before that history, so
+        // tearing it down for an Undo's ten seconds silently ate the receipt for
+        // anything that landed in them.
+        const yielded = await page.evaluate(() => {
+          const strip = document.querySelector('[data-audit="global-save-status"]')
+          return { mounted: !!strip, yielded: strip?.getAttribute('data-yielded') === 'true', box: strip ? strip.getBoundingClientRect().height : 0 }
+        })
+        record('23 (ruling 2): nothing is drawn over an Undo — the record pill yields, the receipt hides without being torn down, and the Undo answers its own taps',
+          covered.found && covered.coveredBy === '' && covered.pill === 0 && yielded.mounted && yielded.yielded,
+          `undo present ${covered.found} · the tap would hit ${covered.coveredBy || 'the Undo button'} · pills on screen ${covered.pill} · receipt still mounted ${yielded.mounted}, yielded ${yielded.yielded}`)
+        await page.locator('[data-audit="undo-button"]').click().catch(() => {})
+        await page.waitForTimeout(1_500)
+        await admin.from('herd_lots').delete().eq('id', del23)
+
+        // Rulings 3 and 4 — split the bunch and read the receipt, at both widths.
+        if (!(await probe071(page, ranchId, userId))) skip('23 (rulings 3 + 4): the receipt after a split is one readable line with Undo, at 390 and at 320', 'migration 071 not run on this database')
+        else {
+          const seen: string[] = []
+          let ok = true
+          for (const width of [390, 320]) {
+            await page.setViewportSize({ width, height: 844 })
+            await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+            const r = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+            await r.waitFor({ timeout: 20_000 }).catch(() => {})
+            await hold(page, r)
+            await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).first().click().catch(() => {})
+            await page.locator('[data-audit="split-lot-choice"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+            await page.getByLabel('How many leave').fill('22')
+            await page.locator('[data-audit="split-name"]').fill(`${PREFIX} 23 off ${width}`)
+            await page.getByRole('button', { name: 'Record the split', exact: true }).click().catch(() => {})
+            await watchStates(page, 'Sent', 45_000, `23 off ${width}`)
+            await page.locator('[data-audit="save-receipt"][data-compact="true"]').waitFor({ timeout: 20_000 }).catch(() => {})
+            const shape = await page.evaluate(() => {
+              const box = document.querySelector('[data-audit="save-receipt"][data-compact="true"]')
+              const balance = box?.querySelector('[data-audit="receipt-balance"]') as HTMLElement | null
+              const undo = document.querySelector('[data-audit="take-back"], [data-audit="undo-this"]') as HTMLElement | null
+              if (!box || !balance) return { line: '', px: 0, extras: -1, undoReachable: false, undoInView: false, pill: 1 }
+              const cs = getComputedStyle(balance)
+              const extras = box.querySelectorAll('[data-audit="receipt-label"], [data-audit="receipt-detail"], [data-audit="receipt-open-entry"]').length
+              let undoReachable = false, undoInView = false
+              if (undo) {
+                const u = undo.getBoundingClientRect()
+                undoInView = u.top >= 0 && u.bottom <= window.innerHeight && u.width > 0
+                const at = document.elementFromPoint(u.left + u.width / 2, u.top + u.height / 2)
+                undoReachable = !!at && undo.contains(at)
+              }
+              return { line: (balance.textContent ?? '').trim(), px: parseFloat(cs.fontSize), extras, undoReachable, undoInView, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+            })
+            seen.push(`${width}px: "${shape.line}" ${shape.px}px · extras ${shape.extras} · undo reachable ${shape.undoReachable}/in view ${shape.undoInView}`)
+            if (!/^220 → 198, 22 to /.test(shape.line) || shape.px < 20 || shape.extras !== 0 || !shape.undoReachable || !shape.undoInView) ok = false
+            const { data: made } = await admin.from('herd_lots').select('id').eq('ranch_id', ranchId).like('name', `${PREFIX} 23 off ${width}%`)
+            for (const m of (made ?? []) as { id: string }[]) await admin.from('herd_lots').delete().eq('id', m.id)
+            await admin.from('herd_lots').update({ head_count: 220 }).eq('id', lot23)
+          }
+          record('23 (rulings 3 + 4): the receipt after a split is ONE readable line with a reachable Undo, at 390 and at 320',
+            ok, seen.join(' | '))
+          // The save word on a receipt is one of the four, AS WRITTEN. Read off
+          // the painted page, so a CSS transform counts as changing it — which
+          // is what "SENT" did, hiding a landed split behind a stuck-looking
+          // strip for three runs.
+          const word = (await page.locator('[data-audit="global-save-status"] [data-audit="receipt-headline"]').innerText().catch(() => '')).trim()
+          record('23: the save word on a receipt is one of the four, exactly as written — no shouting, no transform',
+            ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"].includes(word), `"${word}"`)
+        }
+        if (prior) await page.setViewportSize(prior)
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot23)
+        await admin.from('herd_lots').delete().eq('id', lot23)
       }
     }
 

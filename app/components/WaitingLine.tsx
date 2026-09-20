@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useOutbox, useStorageFull, STATE_LABEL, type OutboxItem } from '@/lib/outbox'
+import { useUndoOwnsTheSlot } from '@/lib/undo'
 import { openLogIt, draftFromBody } from '@/app/dashboard/components/LogIt'
 
 // ─── "3 waiting for signal" (Block 15, ruling 5) ──────────────────────────────
@@ -16,9 +17,13 @@ export default function WaitingLine() {
   // line, ahead of the count, because what a person does about it is
   // different — free some space, not find a hilltop.
   const full = useStorageFull()
+  // Block 23 (ruling 2): this line and an Undo are drawn in the same slot. For
+  // the ten seconds an Undo is live it has the slot to itself; the count of
+  // what is waiting has waited this long and can wait ten seconds more.
+  const undoShowing = useUndoOwnsTheSlot()
   const [open, setOpen] = useState(false)
   const waiting = items.filter(i => i.state !== 'synced')
-  if (waiting.length === 0) return null
+  if (waiting.length === 0 || (undoShowing && !open)) return null
   const failed = waiting.filter(i => i.state === 'failed')
   const n = waiting.length
   const line = full

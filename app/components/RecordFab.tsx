@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useRecordAvailable, useRecordSheetOpen } from '@/lib/record-sheet-state'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
+import { useUndoOwnsTheSlot } from '@/lib/undo'
 
 // ─── Record — the pill, back (Block 12, 12.1) ─────────────────────────────────
 // PK liked it. It comes back UNDER the 11.4 rule, not instead of it: no
@@ -28,7 +29,12 @@ export default function RecordFab() {
   const pathname = usePathname()
   const sheetOpen = useRecordSheetOpen()
   const available = useRecordAvailable()
-  if (!available || sheetOpen) return null
+  // Block 23 (ruling 2): an Undo owns the bottom of the screen while it is
+  // showing. The pill is the thing that used to cover it, so the pill goes —
+  // for ten seconds, on a screen where the person's next tap is Undo or
+  // nothing.
+  const undoShowing = useUndoOwnsTheSlot()
+  if (!available || sheetOpen || undoShowing) return null
   if (pathname === '/' || HIDDEN_ON.some(p => pathname.startsWith(p))) return null
   return (
     <button

@@ -81,6 +81,23 @@ export function showNotice(error: string): void {
 export function dismissUndo(): void { current = null; if (timer) clearTimeout(timer); timer = null; emit() }
 
 function subscribe(l: () => void) { listeners.add(l); return () => { listeners.delete(l) } }
+/**
+ * Block 23 (ruling 2): NOTHING MAY EVER COVER AN UNDO.
+ *
+ * Three things live in the same strip slot above the bottom bar — this one,
+ * the save receipt and the waiting line — and the Record pill floats over all
+ * of them at the same stacking level. On a bunch delete the pill landed on top
+ * of the Undo button and swallowed the tap. Recovery that exists but cannot be
+ * reached is recovery that does not exist.
+ *
+ * So the slot has an owner while an undo is live, and every other floating
+ * element asks this before it draws itself. One place, so a fourth floating
+ * thing cannot quietly reintroduce the same bug.
+ */
+export function useUndoOwnsTheSlot(): boolean {
+  return useUndo() !== null
+}
+
 export function useUndo(): UndoItem | null {
   return useSyncExternalStore(subscribe, () => current, () => null)
 }

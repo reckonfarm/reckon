@@ -438,7 +438,11 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
     return (
       <RowActions key={lot.id} links={{
         label: `${lot.head_count.toLocaleString('en-US')} head · ${lotLabel(lot)}`,
-        openHref: `/ranch/cattle#${lot.id}`,
+        // Block 23 (ruling 1): NO Open. A bunch has no page of its own — it is
+        // this row — and the link pointed at `#<id>` while the row answers to
+        // `#lot-<id>`, so the button navigated to the page you were already on
+        // and did nothing visible. A control that does nothing when tapped
+        // teaches people the app is broken where it is not.
         fix: { onSelect: () => openEdit(lot) },
         // Block 19 (ruling 1): splitting is something you do to ANY bunch, so
         // it is on the hold gesture every row already has — not buried inside

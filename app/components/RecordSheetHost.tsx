@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import { usePathname, useRouter } from 'next/navigation'
+import { useUndoOwnsTheSlot } from '@/lib/undo'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
@@ -67,6 +68,14 @@ function DiscardedOnSwitch() {
 function GlobalSaveStatus() {
   const launcher = useLauncherMounted()
   const pathname = usePathname()
+  // Block 23 (ruling 2): the receipt shares this slot with the Undo strip. A
+  // receipt is news; an Undo is a ten-second chance to take something back.
+  // The news waits — but it is HIDDEN, never unmounted. SaveStatus starts a
+  // clock when it mounts and treats anything synced before that as history, so
+  // unmounting it for the ten seconds of an Undo threw away the receipt for
+  // every record that landed during those ten seconds. The record synced; the
+  // person simply never saw it say so.
+  const undoShowing = useUndoOwnsTheSlot()
   if (launcher) return null
   // Block 11 (P0): keyed by pathname, so leaving a page ends its receipt. The
   // strip is fixed above the bottom nav, and on the audit it landed ON TOP of
@@ -80,8 +89,8 @@ function GlobalSaveStatus() {
   // states that are NOT this one (the strip renders those inline on Today,
   // where it is in the flow and cannot cover anything).
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status">
-      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
+    <div className={`pointer-events-none fixed inset-x-0 z-30 px-4${undoShowing ? ' invisible' : ''}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status" data-yielded={undoShowing ? 'true' : undefined}>
+      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} compact /></div>
     </div>
   )
 }
