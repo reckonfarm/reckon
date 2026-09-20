@@ -2798,9 +2798,17 @@ async function main() {
           const owner = at?.closest('[data-audit]')?.getAttribute('data-audit') ?? at?.tagName ?? 'nothing'
           return { found: true, coveredBy: inside ? '' : owner, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
         })
-        record('23 (ruling 2): nothing is drawn over an Undo — the record pill yields, and the Undo button answers its own taps',
-          covered.found && covered.coveredBy === '' && covered.pill === 0,
-          `undo present ${covered.found} · the tap would hit ${covered.coveredBy || 'the Undo button'} · pills on screen ${covered.pill}`)
+        // The receipt yields by going INVISIBLE, never by unmounting: it starts a
+        // clock when it mounts and calls anything synced before that history, so
+        // tearing it down for an Undo's ten seconds silently ate the receipt for
+        // anything that landed in them.
+        const yielded = await page.evaluate(() => {
+          const strip = document.querySelector('[data-audit="global-save-status"]')
+          return { mounted: !!strip, yielded: strip?.getAttribute('data-yielded') === 'true', box: strip ? strip.getBoundingClientRect().height : 0 }
+        })
+        record('23 (ruling 2): nothing is drawn over an Undo — the record pill yields, the receipt hides without being torn down, and the Undo answers its own taps',
+          covered.found && covered.coveredBy === '' && covered.pill === 0 && yielded.mounted && yielded.yielded,
+          `undo present ${covered.found} · the tap would hit ${covered.coveredBy || 'the Undo button'} · pills on screen ${covered.pill} · receipt still mounted ${yielded.mounted}, yielded ${yielded.yielded}`)
         await page.locator('[data-audit="undo-button"]').click().catch(() => {})
         await page.waitForTimeout(1_500)
         await admin.from('herd_lots').delete().eq('id', del23)
