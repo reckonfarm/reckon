@@ -32,7 +32,12 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
   if (compact) {
     return (
       <div className={`font-dm-sans ${box}`} data-audit="save-receipt" data-compact="true">
-        <p className="text-[15px] font-semibold uppercase tracking-wide text-forest-green/80" data-audit="receipt-headline">{headline}</p>
+        {/* NOT uppercase. The four save words are the words themselves — Saved ·
+            Waiting for signal · Sent · Couldn't send — and a CSS transform
+            changes what a person reads into a shout and what any reader of the
+            page sees into a different string. "Sent" rendered as "SENT" is why
+            a split that had reached the ranch looked stuck for three runs. */}
+        <p className="text-[15px] font-semibold tracking-wide text-forest-green/80" data-audit="receipt-headline">{headline}</p>
         <p className="mt-0.5 text-[22px] font-semibold leading-tight text-ink" data-audit="receipt-balance">{lines[0] ?? label}</p>
         {/* The record's own name stays reachable to anything that needs to know
             WHICH record this is — a screen reader, a check — without spending a

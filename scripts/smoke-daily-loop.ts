@@ -2855,6 +2855,13 @@ async function main() {
           }
           record('23 (rulings 3 + 4): the receipt after a split is ONE readable line with a reachable Undo, at 390 and at 320',
             ok, seen.join(' | '))
+          // The save word on a receipt is one of the four, AS WRITTEN. Read off
+          // the painted page, so a CSS transform counts as changing it — which
+          // is what "SENT" did, hiding a landed split behind a stuck-looking
+          // strip for three runs.
+          const word = (await page.locator('[data-audit="global-save-status"] [data-audit="receipt-headline"]').innerText().catch(() => '')).trim()
+          record('23: the save word on a receipt is one of the four, exactly as written — no shouting, no transform',
+            ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"].includes(word), `"${word}"`)
         }
         if (prior) await page.setViewportSize(prior)
         await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot23)
