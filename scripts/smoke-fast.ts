@@ -110,6 +110,11 @@ async function main() {
     if (!tokenHash) throw new Error(`generateLink: ${link.error?.message}`)
     await page.goto(`/auth/callback?token_hash=${tokenHash}&type=magiclink&next=/today`, { waitUntil: 'domcontentloaded' })
     await page.waitForURL(u => !u.pathname.startsWith('/auth/callback'), { timeout: 20_000 }).catch(() => {})
+    await page.goto('/today', { waitUntil: 'domcontentloaded' })
+    // The header paints "Sign in" first and swaps to the account button once
+    // the browser client has read the session — wait for the SWAP, not the
+    // first paint, or this reads a signed-in page as a signed-out one.
+    await page.locator('header [data-audit="account-button"]').waitFor({ timeout: 25_000 }).catch(() => {})
     const signedIn = await page.locator('header [data-audit="account-button"]').count()
     record('sign-in sticks and Today paints', signedIn === 1, signedIn === 1 ? 'account button present' : 'no account button — every check below is meaningless')
     if (signedIn !== 1) throw new Error('not signed in')
