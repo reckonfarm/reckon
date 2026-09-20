@@ -2744,7 +2744,7 @@ async function main() {
             held && hasSplit === 1 && bunchPrefilled === 1 && /keeps 198/.test(preview) && seq19.includes('Sent')
             && parent?.head_count === 198 && child?.head_count === 22 && child?.class === 'heifers'
             && pay.action === 'split' && pay.source_head_before === 220 && pay.stayed === 198 && pay.moved === 22,
-            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}`)
+            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}` + rawSeen())
           if (child?.id) await admin.from('herd_lots').delete().eq('id', child.id)
         }
         await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot19)
