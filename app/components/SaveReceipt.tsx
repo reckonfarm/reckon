@@ -49,7 +49,7 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
 
   return (
     <div className={`font-dm-sans ${box}`} data-audit="save-receipt">
-      <p className="text-[17px] font-semibold leading-snug text-forest-green" data-audit="receipt-headline">{headline}</p>
+      <p className="text-[17px] font-semibold leading-snug text-forest-green" data-audit="receipt-headline" data-save-word>{headline}</p>
       <p className="mt-0.5 text-[16px] leading-snug text-ink" data-audit="receipt-label">{label}</p>
       {/* Block 11 (11.12): SYNC STATUS, EVENT, BALANCE — and the arithmetic
           one tap away. This was six lines with a full equation in the middle of
