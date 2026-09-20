@@ -34,6 +34,10 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
       <div className={`font-dm-sans ${box}`} data-audit="save-receipt" data-compact="true">
         <p className="text-[15px] font-semibold uppercase tracking-wide text-forest-green/80" data-audit="receipt-headline">{headline}</p>
         <p className="mt-0.5 text-[22px] font-semibold leading-tight text-ink" data-audit="receipt-balance">{lines[0] ?? label}</p>
+        {/* The record's own name stays reachable to anything that needs to know
+            WHICH record this is — a screen reader, a check — without spending a
+            second line on a screen read at arm's length. */}
+        {lines[0] && lines[0] !== label && <span className="sr-only" data-audit="receipt-label-sr">{label}</span>}
       </div>
     )
   }

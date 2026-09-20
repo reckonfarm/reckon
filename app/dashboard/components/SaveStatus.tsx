@@ -94,7 +94,12 @@ export default function SaveStatus({ itemId, fadeAfterMs = 10 * 60 * 1000, compa
 
 
   return (
-    <div role="status" aria-live="polite" className={`rounded-lg px-4 py-3 font-dm-sans ${TONE[shown]}`}>
+    // Block 23: the strip names the record it is about, in an attribute, so a
+    // receipt trimmed to one line can still be told apart from the one before
+    // it — by a person through the line itself, and by a check that follows one
+    // record's states without reading the screen's words.
+    <div role="status" aria-live="polite" data-audit="save-strip" data-label={item.label} data-state={shown}
+      className={`rounded-lg px-4 py-3 font-dm-sans ${TONE[shown]}`}>
       {shown === 'synced' ? (
         // Block 5C — one receipt: what was recorded, what it meant, the exact entry.
         <div className="flex items-start gap-3">

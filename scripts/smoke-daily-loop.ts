@@ -217,9 +217,14 @@ async function watchStates(page: Page, until: string, timeoutMs: number, label?:
   const raw: string[] = []
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
-    const text = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const strip = page.locator('[role="status"]').first()
+    const text = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ')
     if (raw[raw.length - 1] !== text) raw.push(text)
-    if (label && !text.includes(label)) { await page.waitForTimeout(50); continue }   // still showing the previous entry
+    // Block 23: a synced receipt is ONE line and may not repeat the record's
+    // name, so which record a strip is about is read from the strip, not from
+    // its words. The text is still accepted, for strips without the attribute.
+    const named = await strip.getAttribute('data-label').catch(() => null)
+    if (label && !text.includes(label) && !(named ?? '').includes(label)) { await page.waitForTimeout(50); continue }
     const s = STATES.find(x => text.includes(x))
     if (s && seen[seen.length - 1] !== s) seen.push(s)
     if (s === until) break
@@ -1599,7 +1604,12 @@ async function main() {
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
       for (let i = 0; i < 80 && !/Sent/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Sent/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      // Block 23: a sent receipt is one line and says what the feeding MEANT
+      // ("161 bales on hand"), not what was tapped a second ago. It still names
+      // the record it is about — in the strip's own attribute — so this asks
+      // for that rather than for words the ruling took off the screen.
+      const stripNames = ((await page.locator('[data-audit="global-save-status"] [data-audit="save-strip"]').getAttribute('data-label').catch(() => '')) ?? '')
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripNames) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
       let afterHay = NaN, firstAfter = ''
       for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
       record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
