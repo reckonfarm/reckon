@@ -121,7 +121,9 @@ async function main() {
 
     // 2 — every screen paints its own landmark, not just a 200
     const screens: [string, string][] = [
-      ['/today', 'main h1, main h2'],
+      // Today has no heading, and its headlines need a home county this
+      // fixture ranch does not have. The ledger tabs are on Today either way.
+      ['/today', 'main [role="tablist"][aria-label="Ledgers"]'],
       ['/ranch/cattle', '[data-audit="lot-row"]'],
       ['/ranch/places', '[data-audit="place-row"], #places-unplaced, [data-audit="capture-choose"]'],
       ['/ranch/activity', 'main h1, [data-audit="activity-row"]'],
@@ -152,7 +154,9 @@ async function main() {
     record('a feeding saves and reaches Sent', /Sent/.test(strip), `"${strip.slice(0, 70)}"`)
 
     // 4 — the save words, as painted
-    const words = await page.locator('[data-save-word]').evaluateAll(els =>
+    // receipt-headline is where the save word is painted — the same element
+    // the daily loop reads it from. Zero painted is a FAIL, never a pass.
+    const words = await page.locator('[data-audit="receipt-headline"]').evaluateAll(els =>
       els.map(e => ({ text: (e as HTMLElement).innerText.trim(), transform: getComputedStyle(e).textTransform })))
     const wrong = words.filter(w => !FOUR.includes(w.text) || w.transform !== 'none')
     record('every painted save word is one of the four, untransformed',
