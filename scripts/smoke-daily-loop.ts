@@ -20,7 +20,7 @@
 //   mid-save (page killed while offline) → reopened → exactly one row;
 //   double-tap Save → one row; a half-typed sheet survives a reload.
 
-import { guardWorktree } from './lib/suite-guard'
+import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
@@ -3262,7 +3262,9 @@ async function main() {
   }
   const fails = results.filter(r => !r.pass).length
   const skips = results.filter(r => r.skip).length
-  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}\n`)
+  // The commit rides WITH the counts (PK 2026-09-18): a number without the
+  // code it came from is a partial, not a result.
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 

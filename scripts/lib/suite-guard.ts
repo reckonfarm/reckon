@@ -10,6 +10,39 @@ import { resolve } from 'node:path'
 // ref it is running so the log carries its own identity.
 //   scripts/suite-worktree.sh <ref>      creates or refreshes ~/reckon-wt at <ref>, detached
 //   cd ~/reckon-wt && npx tsx scripts/<suite>.ts
+/**
+ * DOCTRINE (PK, 2026-09-18): A CHECK PROVES WHAT IT IS LOOKING AT BEFORE IT
+ * READS ANYTHING FROM IT. Identity first — this is the page, this is the
+ * commit, this is the deploy — then content. Three checks have passed or
+ * nearly passed against the wrong surface: a collapsed <details> read with
+ * innerText, a sign-in page standing in for an authed page, a 404 standing in
+ * for a preview. A check that cannot confirm what it is looking at reports
+ * that it could not, and never a pass.
+ *
+ * This file is the first half of that for a suite run: the line it prints
+ * names the commit the SCRIPTS came from. It cannot speak for the build BASE
+ * is serving — see the note in each suite's readiness gate — and a run whose
+ * worktree line disagrees with the commit you asked for proves nothing about
+ * that commit, whatever its counts say.
+ */
+/**
+ * The identity of the code a run is made of, in the form a SUMMARY can carry.
+ *
+ * PK, 2026-09-18: "An identity line that nobody reads is not a check." The
+ * header at the top of a run scrolls away; the summary is what gets copied,
+ * quoted and believed. So every suite prints this beside its counts, and
+ * counts without it are a partial, not a result.
+ */
+export function suiteIdentity(): string {
+  const root = process.cwd()
+  let sha = 'unknown-commit'
+  let dirty = ''
+  try { sha = execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim() } catch { /* no git */ }
+  try { if (execSync('git status --porcelain', { cwd: root, encoding: 'utf8' }).trim()) dirty = '+dirty' } catch { /* no git */ }
+  const base = process.env.BASE ?? 'https://www.dryline.farm'
+  return `scripts ${sha}${dirty} · BASE ${base}`
+}
+
 export function guardWorktree(suite: string): void {
   const root = process.cwd()
   const dotGit = resolve(root, '.git')

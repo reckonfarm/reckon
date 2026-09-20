@@ -5,6 +5,7 @@ import {
 } from '../lib/places/capture'
 import { ACRE_M2, MAX_LOOP_SELF_CROSSINGS } from '../lib/jobs/boundary'
 import { validateGeoJSONPolygon } from '../lib/places/geo'
+import { suiteIdentity } from './lib/suite-guard'
 
 // ─── Block 8 capture harness — the profile, proved before any UI ──────────────
 // Synthetic rides built from PK's measured numbers (1 Hz, ±2.1 m median), run
@@ -211,5 +212,5 @@ check('profile: closure tolerance is 2× the measured p90, and leave is 2× that
     avg?.accM === 1.9, `±${avg?.accM} m`)
 }
 
-console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURE(S)`}\n`)
+console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURE(S)`}  —  ${suiteIdentity()}\n`)
 process.exit(failures ? 1 : 0)
