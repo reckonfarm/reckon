@@ -54,6 +54,7 @@ import type { PlaceMapProps } from './PlaceMapLoader'
 // decides what to do with it.
 
 const TAP_SLOP_PX = 12
+const MAP_BTN = 'inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-gray-200 bg-white/95 px-3 font-dm-sans text-[15px] font-semibold text-forest-green'
 
 // Harvest gold for the draft, the same choice the job map's cut fill makes:
 // high contrast against green ground, and what worked ground looks like from
@@ -78,6 +79,17 @@ const pinIcon = (draggable: boolean) => L.divIcon({
   iconAnchor: [PIN_SIZE / 2, PIN_SIZE / 2],
   html: `<div data-audit="map-pin" style="width:${PIN_SIZE}px;height:${PIN_SIZE}px;display:flex;align-items:center;justify-content:center;cursor:${draggable ? 'grab' : 'default'}">
     <div style="width:22px;height:22px;border-radius:9999px;background:${DRAFT_COLOR};border:3px solid ${cream};box-shadow:0 0 0 2px #111827, 0 2px 6px rgba(0,0,0,.5)"></div>
+  </div>`,
+})
+
+// Block 26 — a place with no shape. Same 44 px thumb box as the draft pin, a
+// square head so it never reads as "you are here", filled with its bunch's colour.
+const placeIcon = (fill: string) => L.divIcon({
+  className: '',
+  iconSize: [PIN_SIZE, PIN_SIZE],
+  iconAnchor: [PIN_SIZE / 2, PIN_SIZE / 2],
+  html: `<div data-audit="map-place-pin" style="width:${PIN_SIZE}px;height:${PIN_SIZE}px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+    <div style="width:20px;height:20px;border-radius:4px;background:${fill};border:3px solid ${cream};box-shadow:0 0 0 2px #111827, 0 2px 6px rgba(0,0,0,.5)"></div>
   </div>`,
 })
 
@@ -184,6 +196,21 @@ function FlyTo({ target }: { target: { p: LatLng; n: number } | null }) {
   return null
 }
 
+// Block 26 — Follow me: keep the person centred while they have not taken the map.
+// Its own moves are flagged so they are never mistaken for a finger: a zoom the
+// map makes for itself fires zoomstart exactly as a pinch does.
+function MeFollower({ here, auto }: { here: LatLng | null; auto: { current: boolean } }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!here) return
+    auto.current = true
+    map.setView([here.lat, here.lng], Math.max(map.getZoom(), 15), { animate: true })
+    const t = setTimeout(() => { auto.current = false }, 800)
+    return () => clearTimeout(t)
+  }, [map, here, auto])
+  return null
+}
+
 // Block 21 — keep the rider on screen. Pans only when the latest fix leaves
 // the middle of the view, and only while the operator has not taken the map.
 function TrackFollower({ here, following }: { here: LatLng | null; following: boolean }) {
@@ -206,6 +233,9 @@ export default function PlaceMapClient({
   onShape,
   onCancel,
   useLabel = 'Use this shape',
+  markers = [],
+  onPlaceTap,
+  overview = false,
 }: PlaceMapProps) {
   const [basemap, setBasemap] = useState<Basemap>('satellite')
   const [followUser, setFollowUser] = useState(true)
@@ -223,23 +253,44 @@ export default function PlaceMapClient({
   // Pin mode is the same rule: the pin is the subject, and a re-fit to the
   // ranch's shapes would pull the ground out from under it.
   const following = !drawing && !pin && followUser
+  const tappable = !drawing && !!onPlaceTap
+
+  // Block 26 — the overview takes the screen on a tap and gives it back.
+  const [expanded, setExpanded] = useState(false)
+  const full = drawing || expanded
+  // Follow me: foreground location only — a watch that lives exactly as long
+  // as the control is on and the map is mounted. A finger on the map PAUSES
+  // it (the dot keeps moving, the map stays put) until Recenter.
+  const [followMe, setFollowMe] = useState(false)
+  const [mePaused, setMePaused] = useState(false)
+  const autoMove = useRef(false)
+  const [me, setMe] = useState<{ p: LatLng; accuracyM: number } | null>(null)
+  useEffect(() => {
+    if (!followMe || typeof navigator === 'undefined' || !navigator.geolocation) return
+    const id = navigator.geolocation.watchPosition(
+      pos => setMe({ p: { lat: pos.coords.latitude, lng: pos.coords.longitude }, accuracyM: pos.coords.accuracy }),
+      () => { setFollowMe(false); setNote('Could not get your position.') },
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
+    )
+    return () => navigator.geolocation.clearWatch(id)
+  }, [followMe])
 
   // Fight #6: while the screen belongs to the map, the page behind it must not
   // scroll under the operator's finger. Syncing one bit of React state to the
   // document is what an effect is FOR — this is not derived state.
   useEffect(() => {
-    if (!drawing) return
+    if (!full) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }
-  }, [drawing])
+  }, [full])
 
   const addCorner = useCallback((p: LatLng) => {
     setNote(null)
     setCorners(prev => [...prev, p])
   }, [])
 
-  const allShapePts = useMemo(() => shapes.flatMap(s => s.ring), [shapes])
+  const allShapePts = useMemo(() => [...shapes.flatMap(s => s.ring), ...markers.map(m => m.position)], [shapes, markers])
 
   // Re-fit target in read mode. In draw mode following is off, so this is inert.
   const boundsKey = useMemo(() => {
@@ -285,7 +336,7 @@ export default function PlaceMapClient({
   }
 
   return (
-    <div className={drawing
+    <div className={full
       ? 'fixed inset-0 z-[60] flex flex-col bg-white'
       : 'relative overflow-hidden rounded-xl border border-forest-green/10'}
       role={drawing ? 'dialog' : undefined}
@@ -301,16 +352,17 @@ export default function PlaceMapClient({
           ? { bounds: initialBounds, boundsOptions: { padding: [30, 30] as [number, number] } }
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
         preferCanvas
-        style={{ ...(drawing ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }), background: PLAIN_GROUND }}
+        style={{ ...(full ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }), background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >
         <ImageryLayer basemap={basemap} onPlain={setPlain} />
 
-        <FollowController boundsKey={boundsKey} following={following && !track} onUserMove={() => setFollowUser(false)} />
+        <FollowController boundsKey={boundsKey} following={following && !track && !followMe} onUserMove={() => { if (autoMove.current) return; setFollowUser(false); if (followMe) setMePaused(true) }} />
+        <MeFollower here={followMe && !mePaused ? me?.p ?? null : null} auto={autoMove} />
+        <SizeKeeper key={full ? 'full' : 'inline'} />
         {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
-        <SizeKeeper />
 
         {/* Fight #4: nothing already on the map is interactive while drawing. */}
         {shapes.map(s => (
@@ -326,12 +378,26 @@ export default function PlaceMapClient({
             )}
             <Polygon
               positions={s.ring.map(c => [c.lat, c.lng] as LL)}
-              interactive={false}
+              interactive={tappable && !s.draft}
+              eventHandlers={tappable && !s.draft ? { click: () => onPlaceTap!(s.id) } : {}}
               pathOptions={s.draft
                 ? { color: DRAFT_COLOR, weight: 3, fillColor: DRAFT_COLOR, fillOpacity: 0.2 }
+                : s.fill
+                ? { color: saved.color, weight: 3, fillColor: s.fill, fillOpacity: 0.55 }
                 : { color: saved.color, weight: 3, fillColor: saved.fill, fillOpacity: saved.fillOpacity }}
             />
           </Fragment>
+        ))}
+
+        {/* Block 26: a place with no shape is a pin — the same tap, the same colour rule. */}
+        {markers.map(m => (
+          <Marker
+            key={m.id}
+            position={[m.position.lat, m.position.lng]}
+            icon={placeIcon(m.fill ?? cream)}
+            interactive={tappable}
+            eventHandlers={tappable ? { click: () => onPlaceTap!(m.id) } : {}}
+          />
         ))}
 
         {/* The live draft: dashed, because it hasn't closed yet. */}
@@ -420,6 +486,12 @@ export default function PlaceMapClient({
           </>
         )}
 
+        {followMe && me && (
+          <>
+            <Circle center={[me.p.lat, me.p.lng]} radius={Math.max(1, me.accuracyM)} interactive={false} pathOptions={{ color: '#2563EB', weight: 1, fillColor: '#2563EB', fillOpacity: 0.12 }} />
+            <CircleMarker center={[me.p.lat, me.p.lng]} radius={7} interactive={false} pathOptions={{ color: cream, weight: 2, fillColor: '#2563EB', fillOpacity: 1 }} />
+          </>
+        )}
         {here && (
           <CircleMarker
             center={[here.lat, here.lng]}
@@ -456,6 +528,27 @@ export default function PlaceMapClient({
             permission sheet appears. Both are true — the fix moves the map and
             drops the blue dot, and it is never written down, never sent, and
             gone when the map closes. */}
+        {overview && !drawing && (
+          <div className="pointer-events-auto flex flex-col items-end gap-2">
+            <button type="button" onClick={() => setExpanded(e => !e)} aria-label={expanded ? 'Close map' : 'Full screen map'} className={MAP_BTN} data-audit="map-expand">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {expanded ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+              </svg>
+              {expanded && <span>Close</span>}
+            </button>
+            {geolocatable && (
+              <button type="button" onClick={() => { if (!followMe) { setFollowMe(true); setMePaused(false) } else if (mePaused) setMePaused(false); else setFollowMe(false) }}
+                aria-pressed={followMe && !mePaused} className={`${MAP_BTN} ${followMe && !mePaused ? '!bg-forest-green !text-white' : ''}`} data-audit="map-follow" data-state={!followMe ? 'off' : mePaused ? 'paused' : 'following'}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+                <span>{followMe && mePaused ? 'Recenter' : 'Follow me'}</span>
+              </button>
+            )}
+            {followUser === false && !followMe && boundsKey && (
+              <button type="button" onClick={() => setFollowUser(true)} className={MAP_BTN} data-audit="map-whole-ranch"><span>Whole ranch</span></button>
+            )}
+          </div>
+        )}
+        {note && !drawing && <p role="status" className="pointer-events-auto max-w-[13.5rem] rounded-lg bg-white/95 px-3 py-2 font-dm-sans text-[15px] font-semibold" style={{ color: warning }} data-audit="map-note">{note}</p>}
         {drawing && geolocatable && (
           <div className="pointer-events-auto max-w-[13.5rem] overflow-hidden rounded-lg border border-gray-200 bg-white/95">
             <p className="px-3 pt-2 font-dm-sans text-[13px] leading-snug text-secondary-ink" data-audit="draw-locate-note">

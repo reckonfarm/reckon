@@ -22,6 +22,15 @@ export interface MapShape {
   ring: LatLng[]
   /** Draft shapes draw in the draw colour so they read as not-yet-saved. */
   draft?: boolean
+  /** Block 26: a place with a bunch on it is filled in that bunch's colour. */
+  fill?: string
+}
+
+/** Block 26: a place with no shape but a known position — a pin, tappable like a shape. */
+export interface MapMarker {
+  id: string
+  position: LatLng
+  fill?: string
 }
 
 /**
@@ -55,7 +64,14 @@ export interface PlaceMapProps {
   track?: MapTrack
   /** Where to open when there is nothing drawn to fit to. */
   initialCenter: LatLng
-  height?: number
+  /** Pixels, or any CSS length ("40vh") — the Today overview is sized to the screen. */
+  height?: number | string
+  /** Block 26: places with no shape. */
+  markers?: MapMarker[]
+  /** Block 26: a tap on a saved shape or a marker. Off while drawing (fight #4). */
+  onPlaceTap?: (id: string) => void
+  /** Block 26: the ranch overview — expands to full screen, and offers Follow me. */
+  overview?: boolean
   /** Pin mode: the map opens on the pin, follow is off, and the pin is the subject. */
   pin?: MapPin
   /** Draw mode: corner placement on, follow off, toolbar visible. */
