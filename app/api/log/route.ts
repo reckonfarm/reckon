@@ -2,6 +2,8 @@ import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
+import { placeBunchFromMove } from '@/lib/bunch-place'
+import { MOVE_NEEDS_BUNCH } from '@/lib/move-line'
 import { GROUP_ACTION_TYPE, GroupActionError, groupActionConsequence, parseGroupAction, recordGroupAction } from '@/lib/cattle/group-action'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -101,6 +103,16 @@ export async function POST(req: NextRequest) {
     if (counted !== lot.head_count) countFollowUp = { kind: 'set_head', lot_id: lot.id, head: counted, label: `Change bunch to ${counted.toLocaleString()}?` }
   }
 
+  // Block 25: a move names its bunch — one bunch, this ranch's, still on it.
+  // Same read a count makes, and the same words when the bunch is not there.
+  if (body.type === 'cattle_moved') {
+    const lotId = (payload as { herd_lot_id: string | null }).herd_lot_id
+    if (!lotId) return NextResponse.json({ error: MOVE_NEEDS_BUNCH }, { status: 400 })
+    const { data: lotRow } = await supabase.from('herd_lots').select('id, retired_at, deleted_at').eq('id', lotId).maybeSingle()
+    const lot = lotRow as { id: string; retired_at: string | null; deleted_at: string | null } | null
+    if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })
+  }
+
   const ranch_id = await resolveRanchId(supabase, user.id)
   // Answered here, not by the database. Without this the person gets a 500
   // carrying a row-level-security message, which tells them nothing they can
@@ -142,14 +154,31 @@ export async function POST(req: NextRequest) {
     return consequenceFor(supabase, body.type, payload as unknown as Record<string, unknown>, placeName)
   }
 
+  // Block 25 (ruling 2): the move sets the bunch's place, in this request, so
+  // where the bunch is reads true the moment the move is Sent. Run on a retry
+  // of a landed move too — a first attempt may have saved the move and died
+  // before this. If it cannot be set, the move is NOT reported as sent: the
+  // phone keeps it and sends again, and the second pass finds the move landed
+  // and only the place left to do.
+  const place = async (moveTs: string) => {
+    if (body.type !== 'cattle_moved') return null
+    const p = payload as unknown as { herd_lot_id: string | null; to_place_id: string | null }
+    const r = await placeBunchFromMove(supabase, user.id, { ts: moveTs, lotId: p.herd_lot_id, toPlaceId: p.to_place_id })
+    return r === 'failed' ? NextResponse.json({ error: 'The move is recorded, but the bunch’s place could not be set just now.' }, { status: 503 }) : null
+  }
+
   if (error) {
     // 23505 on the primary key = this exact entry already landed. Return it.
     if (error.code === '23505' && id) {
       const { data: existing } = await supabase.from('events').select(EVENT_COLS).eq('id', id).maybeSingle()
+      const unplaced = existing ? await place((existing as { ts: string }).ts) : null
+      if (unplaced) return unplaced
       if (existing) return NextResponse.json({ event: existing, duplicate: true, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 200 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  const unplaced = await place(ts)
+  if (unplaced) return unplaced
   return NextResponse.json({ event: row, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 201 })
 }
 

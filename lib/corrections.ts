@@ -1,3 +1,4 @@
+import { placeBunchFromMove } from '@/lib/bunch-place'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ACTIVITY_COLS, type ActivityRow } from './activity'
@@ -158,7 +159,18 @@ export async function correctEvent(supabase: SupabaseClient, userId: string, id:
     // the reason included (a plain entry has no reason, so any reason differs).
     const same = ts === original.ts && JSON.stringify(payload) === JSON.stringify(original.payload) && (reason ?? '') === (original.correction_reason ?? '')
     if (same) return { ok: false, status: 400, error: 'Nothing changed — change a value, the time, or the reason; or void the entry instead' }
-    return insertSuperseding(supabase, userId, original, { id: clientId, ts, payload, reason, voided: false })
+    const done = await insertSuperseding(supabase, userId, original, { id: clientId, ts, payload, reason, voided: false })
+    // Block 25: a corrected move is a move — if it is now the bunch's latest,
+    // the bunch is where the correction says. The correction stands either
+    // way; its receipt reads the bunch's place back, so it never claims one
+    // that was not set. A VOIDED move places nothing and un-places nothing:
+    // where the cattle went back to is not something the ledger knows.
+    if (done.ok && original.type === 'cattle_moved') {
+      const p = payload as { herd_lot_id?: string | null; to_place_id?: string | null }
+      const placed = await placeBunchFromMove(supabase, userId, { ts, lotId: p.herd_lot_id ?? null, toPlaceId: p.to_place_id ?? null })
+      if (placed === 'placed') return { ...done, consequence: await consequenceFor(supabase, 'cattle_moved', payload, await placeNameOf(supabase, payload.place_id)).then(c => ({ lines: ['Entry corrected', ...c.lines] })) }
+    }
+    return done
   } catch (err) {
     if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }
     throw err

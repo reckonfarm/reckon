@@ -1,3 +1,4 @@
+import { movedWho, unnamed, type MovedBunch } from '@/lib/move-line'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getHayLedger, type RunOutVerdict } from './hay/queries'
 import { explainOnHand } from './hay/explain'
@@ -83,7 +84,13 @@ export async function consequenceFor(
       case 'cattle_moved': {
         const head = num('head')
         if (head == null) return { lines }
-        lines.push(`${head.toLocaleString()} head recorded${placeName ? ` moved to ${placeName}` : ''}`)
+        // Block 25: the receipt names the bunch and says where it is NOW — read
+        // back off the bunch itself, so it only claims a place the bunch has.
+        const lotId = typeof payload.herd_lot_id === 'string' ? payload.herd_lot_id : null
+        const { data: lotRow } = lotId ? await supabase.from('herd_lots').select('name, class, place_id').eq('id', lotId).maybeSingle() : { data: null }
+        const lot = lotRow as { name: string | null; class: MovedBunch['class']; place_id: string | null } | null
+        const there = !!lot && !!placeName && lot.place_id === payload.to_place_id
+        lines.push(`${movedWho(head, lot)}${there ? ` — now at ${placeName}` : placeName ? ` moved to ${placeName}` : ' moved'}${unnamed(lot)}`)
         return { lines }
       }
       case 'cattle_worked': {

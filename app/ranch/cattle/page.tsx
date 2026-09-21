@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
-import { lastWorkByLot } from '@/lib/ranch-summary'
+import { lastWorkByLot, whereByLot } from '@/lib/ranch-summary'
 import SiteHeader from '@/app/components/SiteHeader'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import HerdForm from './HerdForm'
@@ -21,8 +21,9 @@ export default async function CattlePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/cattle')
   const lots = await getRanchLots(supabase, user.id)
-  const [lastWork, purposeSupported] = await Promise.all([
+  const [lastWork, where, purposeSupported] = await Promise.all([
     lastWorkByLot(supabase, lots.map(l => l.id)).catch(() => ({})),
+    whereByLot(supabase, lots).catch(() => ({})),
     lotPurposeSupported(supabase).catch(() => false),
   ])
   return (
@@ -45,7 +46,7 @@ export default async function CattlePage() {
             <span className="font-normal text-secondary-ink">Count them through</span>
           </Link>
         )}
-        <HerdForm initialLots={lots} lastWork={lastWork} purposeSupported={purposeSupported} />
+        <HerdForm initialLots={lots} lastWork={lastWork} where={where} purposeSupported={purposeSupported} />
       </main>
     </>
   )

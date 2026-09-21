@@ -1,3 +1,4 @@
+import { movedWho } from '@/lib/move-line'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
@@ -55,7 +56,10 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ['Who', <>{names.person(row.user_id)} <span className="text-secondary-ink">· {actorRole}</span></>],
     ['What', line],
     ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
-    ...(lotName ? [['Bunch', lotName] as [string, React.ReactNode]] : []),
+    // Block 25: a move's bunch reads name · class, and a move with none says so.
+    ...(row.type === 'cattle_moved'
+      ? [['Bunch', <span key="b">{names.bunch(lotId) ? movedWho(null, names.bunch(lotId)) : 'No bunch named'}</span>] as [string, React.ReactNode]]
+      : lotName ? [['Bunch', lotName] as [string, React.ReactNode]] : []),
     ...(placeName && placeId ? [['Place', <Link key="p" href={`/ranch/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
     // 6E: the optional fields the form asks for read back here — a note, and the
     // stack the hay was taken from. Absent = no row, never a blank.
@@ -138,7 +142,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
         <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Entry {row.id}</p>
 
-        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null }} />}
+        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null, line }} />}
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Link href={`/activity${placeId ? `?place=${placeId}` : ''}`} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">{placeName ? `All activity at ${placeName}` : 'All activity'}</Link>

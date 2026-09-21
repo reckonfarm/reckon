@@ -126,14 +126,21 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
     }
     case 'bales_stacked':
       return { ...base, count: boundedNumber(body.count, 'count', LIMITS.count.min, LIMITS.count.max, true) }
-    case 'cattle_moved':
+    case 'cattle_moved': {
+      const to = optionalUuid(body.to_place_id, 'to_place_id')
       return {
         ...base,
+        // Block 25: a move's place IS its destination. Derived here, so a
+        // correction that changes To can never leave the old place behind.
+        place_id: to,
         head: boundedNumber(body.head, 'head', LIMITS.head.min, LIMITS.head.max, true),
         from_place_id: optionalUuid(body.from_place_id, 'from_place_id'),
-        to_place_id: optionalUuid(body.to_place_id, 'to_place_id'),
-        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch moved — optional, never changes a head count
+        to_place_id: to,
+        // Which bunch moved. A NEW move must name one (the record route says
+        // so); a move from before Block 25 may not, and stays correctable.
+        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),
       }
+    }
     case 'cattle_worked': {
       const what = typeof body.what === 'string' ? body.what.trim().slice(0, LIMITS.what.maxLen) : ''
       if (!what) throw new ValidationError('what is required (e.g. "pregged", "vaccinated")')

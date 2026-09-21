@@ -1,3 +1,4 @@
+import { moveLine, type MovedBunch } from '@/lib/move-line'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
@@ -29,7 +30,7 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : n
 
 interface Row { id: string; user_id: string; type: string; ts: string; ingested_at: string; payload: Record<string, unknown>; supersedes_event_id: string | null; voided_at: string | null }
 
-function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: unknown) => string | null): string {
+function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: unknown) => string | null, bunch: (id: unknown) => MovedBunch | null): string {
   const p = r.payload
   const at = placeName(p.place_id)
   const suffix = at ? ` at ${at}` : ''
@@ -41,10 +42,7 @@ function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
     case 'bales_stacked': { const c = num(p.count); return `stacked ${c == null ? 'bales' : plural(c, 'bale')}${suffix}` }
     case 'hay_inventory': { const b = num(p.bales); const asOf = str(p.as_of); return `counted ${b == null ? 'the stack' : `${b.toLocaleString()} bales on hand`}${asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''}${suffix}` }
     case 'rain': { const i = num(p.inches); return `logged ${i == null ? 'rain' : `${i.toFixed(2)}" of rain`}${suffix}` }
-    case 'cattle_moved': {
-      const h = num(p.head); const from = placeName(p.from_place_id); const to = placeName(p.to_place_id)
-      return `moved ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
-    }
+    case 'cattle_moved': { const l = moveLine(num(p.head), bunch(p.herd_lot_id), placeName(p.from_place_id), placeName(p.to_place_id)); return l[0].toLowerCase() + l.slice(1) }   // Block 25
     case 'cattle_worked': { const h = num(p.head); const w = str(p.what); return `${w ?? 'worked'} ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); return `counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${e != null && c != null ? ` (${e.toLocaleString()} expected)` : ''}${suffix}` }
     case 'alert': return `LFP alert for ${str(p.county_name) ?? 'a county'}${num(p.tier) ? ` — tier ${p.tier}` : ''}`
@@ -128,6 +126,8 @@ export default async function SinceYouWereHere() {
   const lotNames = new Map(herdRes.map(l => [l.id, lotLabel(l)]))   // the RANCH's lots (Block 4A), so a hand's feeding keeps its name for everyone
   const placeName = (id: unknown) => { const s = str(id); return s ? placeNames.get(s) ?? null : null }
   const lotName = (id: unknown) => { const s = str(id); return s ? lotNames.get(s) ?? null : null }
+  const bunches = new Map<string, MovedBunch>(herdRes.map(l => [l.id, { name: l.name, class: l.class }]))
+  const bunch = (id: unknown) => { const s = str(id); return s ? bunches.get(s) ?? null : null }
 
   return (
     <Card shadow="soft" className="p-4 sm:p-5">
@@ -139,7 +139,7 @@ export default async function SinceYouWereHere() {
           const href = `/ranch/activity/${r.id}`
           void href
           // 6B: the same row component as every timeline — a correction or a void is marked, not prefixed.
-          return <ActivityRowItem key={r.id} id={r.id} who={author} line={what(r, placeName, lotName)} when={when(r.ts)} marker={r.voided_at ? 'voided' : r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="since-row" rowClass="py-2" sep=" " />
+          return <ActivityRowItem key={r.id} id={r.id} who={author} line={what(r, placeName, lotName, bunch)} when={when(r.ts)} marker={r.voided_at ? 'voided' : r.supersedes_event_id ? 'corrected' : null} chain={[]} audit="since-row" rowClass="py-2" sep=" " />
         })}
       </ul>
       {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work
