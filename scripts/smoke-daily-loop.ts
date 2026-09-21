@@ -2335,7 +2335,14 @@ async function main() {
       const lit = pt.locator('[data-audit="lot-row"][data-lit="true"]')
       const litUp = await lit.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
       const litText = litUp ? ((await lit.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') : ''
-      const litInView = litUp && await lit.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })
+      // The row is brought in by a SMOOTH scroll, so "in view" is a fact about where
+      // it comes to rest, not about the frame it lit up in — a longer list (25b adds
+      // two bunches above it) is still scrolling when the ring appears.
+      let litInView = false
+      for (let i = 0; litUp && i < 30 && !litInView; i++) {
+        litInView = await lit.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight }).catch(() => false)
+        if (!litInView) await pt.waitForTimeout(100)
+      }
       record('15b (ruling 7): after a save the list stays put — the row you made is scrolled into view and lit', litUp && litText.includes(B15) && litInView, `lit ${litUp} · in view ${litInView} · "${litText.slice(0, 60)}"`)
       await admin.from('herd_lots').delete().eq('ranch_id', ranchId).eq('name', B15)
 
