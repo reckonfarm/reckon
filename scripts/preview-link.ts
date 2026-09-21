@@ -2,9 +2,13 @@
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/preview-link.ts
 //
-// Prints ONE link. Tapping it on the phone gets past Vercel's protection and
-// lands signed in as PK on that preview — no typing, no bypass header to set,
-// no magic-link email to wait for.
+// Writes ONE link to .scratch/preview-link.txt and prints only where it is.
+// Tapping it on the phone gets past Vercel's protection and lands signed in as
+// PK on that preview — no typing, no bypass header to set, no magic-link email
+// to wait for.
+//
+// It NEVER prints the link. A link in a report gets pasted along with the
+// report, and it carries the project's bypass secret: that leaked it twice.
 //
 // It is built from what already exists: the same admin.generateLink the suites
 // sign in with, and the same VERCEL_BYPASS token they send as a header, put in
@@ -16,14 +20,15 @@
 //   · a deployment that is not serving — the link would land on a 404 or on
 //     Vercel's login page, which is worse than no link;
 //   · an account that is not on this database — a typo in the email would
-//     otherwise mint a working link for a stranger.
+//     otherwise mint a working link for a stranger;
+//   · a link file git would pick up — the secret does not go in a commit.
 //
 // The auth token is single-use and expires the way Supabase's magic links do.
 // The bypass token in the URL is NOT short-lived: it is the project's
 // automation secret, so the link is for PK's phone and not for anywhere it
 // would be written down.
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { execSync } from 'node:child_process'
 import { createClient } from '@supabase/supabase-js'
@@ -41,6 +46,7 @@ const BYPASS = process.env.VERCEL_BYPASS
 const NEXT = process.env.LINK_NEXT ?? '/today'
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
+const OUT = '.scratch/preview-link.txt'
 
 function die(why: string): never {
   console.error(`preview-link: ${why}`)
@@ -62,6 +68,10 @@ async function main() {
     die(`refusing ${host} — this mints a one-tap sign-in and only ever points at a preview, never production.`)
   }
   if (!BYPASS) die('VERCEL_BYPASS is missing from e2e/.env.e2e — without it the link lands on Vercel\'s login page.')
+
+  // The file the link goes to must be one git ignores, checked before anything
+  // is minted. check-ignore exits non-zero when the path is NOT ignored.
+  try { execSync(`git check-ignore -q ${OUT}`) } catch { die(`${OUT} is not gitignored — refusing to write a secret git could commit.`) }
 
   // 2. The deployment has to be serving OUR app, or the link is worthless.
   //    Same proof scripts/preview-ready.ts uses: the sign-in page, and a marker
@@ -89,8 +99,10 @@ async function main() {
   const url = `${BASE}/auth/callback?token_hash=${tokenHash}&type=magiclink&next=${encodeURIComponent(NEXT)}`
     + `&x-vercel-protection-bypass=${BYPASS}&x-vercel-set-bypass-cookie=true`
 
-  console.log(url)
-  console.error(`\n(one tap, signs in as ${EMAIL} on ${host}, lands on ${NEXT} — single use, expires)`)
+  mkdirSync(resolve(process.cwd(), '.scratch'), { recursive: true })
+  writeFileSync(resolve(process.cwd(), OUT), url + '\n', { mode: 0o600 })
+  chmodSync(resolve(process.cwd(), OUT), 0o600)
+  console.log(`preview link written to ${OUT} — signs in as ${EMAIL} on ${host}, lands on ${NEXT}; single use, expires`)
 }
 
 main().catch(e => die(e instanceof Error ? e.message : String(e)))
