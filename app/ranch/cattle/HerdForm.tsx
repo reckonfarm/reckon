@@ -24,6 +24,8 @@ import { Segmented } from '@/app/components/ui/Segmented'
 import Counter from '@/app/components/ui/Counter'
 import Link from 'next/link'
 import type { LastWork, BunchWhere } from '@/lib/ranch-summary'
+import { enqueue, newEventId } from '@/lib/outbox'
+import { moveLine, NO_PLACE_RECORDED } from '@/lib/move-line'
 import RowActions from '@/app/components/RowActions'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
@@ -95,11 +97,12 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     if (e) { const lot = (initialLots ?? []).find(l => l.id === e[1]); if (lot) openEdit(lot) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  // Block 14: where a NEW bunch is. Set on create only; moved by a real move event after that.
+  // Block 14: where a NEW bunch is. Block 25b: and where an existing one is — picking
+  // a different place on an edit records a MOVE there, through the outbox.
   const [dPlace, setDPlace] = useState<string>('')
   const [placeOptions, setPlaceOptions] = useState<{ id: string; name: string }[] | null>(null)
   useEffect(() => {
-    if (editing !== 'new' || placeOptions !== null) return
+    if (editing === null || placeOptions !== null) return
     let alive = true
     fetch('/api/places').then(r => (r.ok ? r.json() : { places: [] })).then(j => { if (alive) setPlaceOptions((j.places ?? []) as { id: string; name: string }[]) }).catch(() => { if (alive) setPlaceOptions([]) })
     return () => { alive = false }
@@ -162,6 +165,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     setDWindows(lot.sale_windows?.map(w => w.month) ?? [])
     setDPurpose(lot.purpose ?? '')
     setDMonth('')
+    setDPlace(lot.place_id ?? '')
     setShowDetail((lot.sale_windows?.length ?? 0) > 0)
     setErrorMsg(''); setEditing(lot.id)
   }
@@ -233,9 +237,27 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     const lot = buildPayloadLot()
     const before = new Set(lots.map(l => l.id))
     const was = editing
+    // Block 25b (ruling 3): a place picked on an EDIT is a move to it — saved on
+    // this phone first and sent by the outbox, so it works at a gate. When the
+    // place is all that changed there is nothing else to send.
+    const orig = editing === 'new' ? null : lots.find(l => l.id === editing) ?? null
+    const movedTo = orig && dPlace && dPlace !== (orig.place_id ?? '') ? dPlace : null
+    if (orig && movedTo) {
+      const nameOf = (id: string | null | undefined) => placeOptions?.find(pl => pl.id === id)?.name ?? null
+      try {
+        enqueue({ id: newEventId(), type: 'cattle_moved', ts: new Date().toISOString(), head: orig.head_count, herd_lot_id: orig.id, from_place_id: orig.place_id ?? null, to_place_id: movedTo, place_id: movedTo },
+          moveLine(orig.head_count, orig, nameOf(orig.place_id), nameOf(movedTo)))
+      } catch {
+        setStatus('error'); setErrorMsg('This phone is full, so the move was not saved. Free some space on the phone, then pick the place again.'); return
+      }
+    }
+    const same = !!orig && (orig.name ?? '') === (lot.name ?? '') && orig.class === lot.class && orig.head_count === lot.head_count && (orig.avg_weight ?? null) === (lot.avg_weight ?? null)
+      && orig.weight_unit === lot.weight_unit && orig.frame === lot.frame && orig.weaned === lot.weaned && (orig.purpose ?? '') === (lot.purpose ?? '')
+      && JSON.stringify((orig.sale_windows ?? []).map(w => w.month)) === JSON.stringify((lot.sale_windows ?? []).map(w => w.month))
     const ok = editing === 'new'
       ? await write('/api/herd/lots', 'POST', lot)
-      : await write(`/api/herd/lots/${editing}`, 'PATCH', { ...lot, expected_updated_at: lots.find(l => l.id === editing)?.updated_at ?? null })
+      : movedTo && same ? true
+      : await write(`/api/herd/lots/${editing}`, 'PATCH', { ...lot, expected_updated_at: orig?.updated_at ?? null })
     if (ok) {
       setEditing(null); resetDraft()
       const now = await reload()
@@ -344,11 +366,13 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
           </div>
         </div>
 
-        {editing === 'new' && placeOptions !== null && placeOptions.length > 0 && (
+        {placeOptions !== null && placeOptions.length > 0 && (
           <div className="mt-4">
             <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink" id="lot-place-label">Where they are <span className="font-normal text-secondary-ink">· optional</span></p>
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="lot-place-label" data-audit="lot-place">
-              <button type="button" role="radio" aria-checked={dPlace === ''} onClick={() => setDPlace('')} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === '' ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`}>Not said</button>
+{/* Block 25b: a bunch that has a place cannot be un-placed by hand — only its
+                  moves say where it is — so the "none" chip is offered only while there is none. */}
+              {(editing === 'new' || !lots.find(l => l.id === editing)?.place_id) && (              <button type="button" role="radio" aria-checked={dPlace === ''} onClick={() => setDPlace('')} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === '' ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`}>Not said</button>)}
               {placeOptions.map(pl => (
                 <button key={pl.id} type="button" role="radio" aria-checked={dPlace === pl.id} onClick={() => setDPlace(pl.id)} className={`min-h-[48px] rounded-lg border px-3 font-dm-sans text-[16px] ${dPlace === pl.id ? 'border-accent bg-accent font-semibold text-cream' : 'border-line/20 text-accent'}`} data-audit="lot-place-option">{pl.name}</button>
               ))}
@@ -464,6 +488,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
             </p>
             {/* Block 25: where the bunch is — set by its last move, which is
                 also its as-of and one tap away. */}
+            {!where[lot.id] && <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-where">{NO_PLACE_RECORDED}</p>}
             {where[lot.id] && (
               <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-where">
                 At <Link href={`/ranch/places/${where[lot.id].placeId}`} className="font-semibold underline underline-offset-2" data-audit="lot-where-place">{where[lot.id].placeName}</Link>

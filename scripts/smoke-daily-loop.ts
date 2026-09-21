@@ -27,7 +27,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { chromium, type Locator, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
-import { MOVE_NEEDS_BUNCH } from '../lib/move-line'
+import { MOVE_NEEDS_BUNCH, NO_PLACE_RECORDED } from '../lib/move-line'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -1136,6 +1136,61 @@ async function main() {
       record('25: a back-dated move lands but does not move the bunch back; an old move with no bunch is given none, and says so',
         late.status() === 201 && latePlace === east25.id && oldWhat.includes(`Moved 12 head to ${PREFIX} West stack · no bunch named`) && oldBunch === 'No bunch named',
         `late ${late.status()} place ${latePlace === east25.id ? 'unchanged' : latePlace} · old "${oldWhat}" · bunch "${oldBunch}"`)
+
+      // ── Block 25b: the DATABASE decides where a bunch is (072) ────────────────
+      // PK's falsifier: A then B; void B → at A; delete A → no place recorded;
+      // change a move's bunch X → Y → X loses the place, Y gains it. Plus: a
+      // place picked on the edit form is a move; a bunch made at a place is a
+      // placement. Capability, not existence — 42883 = 072 is not applied.
+      const probe072 = await admin.rpc('rebuild_lot_place', { p_lot: '00000000-0000-0000-0000-000000000000' })
+      if (probe072.error?.code === '42883') {
+        // A capability gap, named and RED — never a skip to reach green.
+        record('25b: the place projection — CAPABILITY GAP: migration 072 is not applied on this database', false, 'void → A · delete → no place · bunch X→Y · edit-form move · placement: none of these can be read until 072 is run')
+      } else {
+        const post = async (path: string, data: unknown) => { const r = await page.request.post(path, { data }); return { status: r.status(), json: (await r.json().catch(() => ({}))) as Record<string, unknown> } }
+        const movesOf = async (lot: string) => ((await admin.from('events').select('id, ts, payload, superseded_by, voided_at, deleted_at').eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot).order('ts', { ascending: false })).data ?? []) as { id: string; ts: string; payload: Record<string, unknown>; superseded_by: string | null; voided_at: string | null; deleted_at: string | null }[]
+        const live = (await movesOf(lot6g)).filter(m => !m.superseded_by && !m.voided_at && !m.deleted_at)
+        const toB = live.find(m => m.payload.to_place_id === east25.id)
+        // A = West stack (two live moves there: the first, and the back-dated one), B = 25 east.
+        const voided = toB ? await post(`/api/activity/${toB.id}/void`, { id: randomUUID(), reason: '25b falsifier' }) : { status: 0, json: {} }
+        const afterVoid = await placeOf(lot6g)
+        record('25b: void the move to B and the bunch reads as at A — the move before it, by its own time', voided.status === 201 && afterVoid === placeId, `void ${voided.status} · place ${afterVoid === placeId ? 'A' : afterVoid}`)
+
+        for (const m of (await movesOf(lot6g)).filter(m => !m.superseded_by && !m.voided_at && !m.deleted_at)) await page.request.delete(`/api/activity/${m.id}/delete`)
+        const afterDelete = await placeOf(lot6g)
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const noPlace = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').trim()
+        record('25b: delete every live move and the bunch has no place — not the place from before — and the row says so', afterDelete === null && noPlace === NO_PLACE_RECORDED, `place ${afterDelete ?? 'null'} · row "${noPlace}"`)
+
+        const lotY = randomUUID(), LOTY = `${PREFIX} 25b Y`
+        await admin.from('herd_lots').insert({ id: lotY, ranch_id: ranchId, class: 'heifers', name: LOTY, head_count: 12, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lotY, reason: 'created', source: 'manual', head_after: 12, head_before: null, schema_version: 1 } })
+        const mx = randomUUID()
+        const movedX = await post('/api/log', { id: mx, type: 'cattle_moved', head: 44, herd_lot_id: lot6g, to_place_id: east25.id, place_id: east25.id, ts: new Date().toISOString() })
+        const xAt = await placeOf(lot6g)
+        const fixed = await post(`/api/activity/${mx}/correct`, { id: randomUUID(), herd_lot_id: lotY, reason: 'wrong bunch' })
+        record('25b: change a move\'s bunch from X to Y — X loses the place, Y gains it', movedX.status === 201 && xAt === east25.id && fixed.status === 201 && (await placeOf(lot6g)) === null && (await placeOf(lotY)) === east25.id,
+          `move ${movedX.status} X→${xAt === east25.id ? 'B' : xAt} · correct ${fixed.status} · X ${(await placeOf(lot6g)) ?? 'no place'} · Y ${(await placeOf(lotY)) === east25.id ? 'B' : await placeOf(lotY)}`)
+
+        // Ruling 3: the place chip on the bunch EDIT form records a move, through the outbox.
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-fix"]').click()
+        await page.locator('[data-audit="lot-place"]').getByRole('radio', { name: `${PREFIX} West stack`, exact: true }).click()
+        await page.locator('[data-audit="lot-save"]').click()
+        const chipStates = await watchStates(page, 'Sent', 30_000, `Moved ${LOT6G}`)
+        const chipMove = (await movesOf(lot6g)).find(m => !m.deleted_at && !m.superseded_by && !m.voided_at)
+        record('25b: picking a place on the bunch\'s edit form records a MOVE there through the outbox, and the bunch is there', chipStates.includes('Sent') && (await placeOf(lot6g)) === placeId && chipMove?.payload.to_place_id === placeId && chipMove?.payload.placement !== true,
+          `[${chipStates.join(' → ')}] place ${(await placeOf(lot6g)) === placeId ? 'A' : await placeOf(lot6g)} · move ${chipMove ? 'written' : 'MISSING'}${rawSeen()}`)
+
+        // A bunch MADE at a place is a placement: same event, reads "placed at".
+        const madeAt = await post('/api/herd/lots', { name: `${PREFIX} 25b made`, class: 'cows', head_count: 9, weight_unit: 'lb', place_id: east25.id })
+        const madeId = ((madeAt.json.lot ?? {}) as { id?: string }).id ?? ''
+        const placement = (await movesOf(madeId))[0]
+        await page.goto(`/ranch/activity/${placement?.id}`, { waitUntil: 'domcontentloaded' })
+        const placedWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        record('25b: a bunch made at a place records a placement — it reads "placed at", never "moved", and the bunch is there', (madeAt.status === 200 || madeAt.status === 201) && placement?.payload.placement === true && (await placeOf(madeId)) === east25.id && placedWhat.includes(`${PREFIX} 25b made · Cows · 9 head placed at ${PREFIX} 25 east`) && !/moved/i.test(placedWhat),
+          `create ${madeAt.status} · placement ${placement?.payload.placement === true} · "${placedWhat}"`)
+      }
     }
 
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────

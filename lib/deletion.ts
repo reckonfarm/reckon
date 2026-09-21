@@ -1,4 +1,4 @@
-import { moveLine, type MovedBunch } from '@/lib/move-line'
+import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
@@ -141,7 +141,7 @@ async function labelOf(supabase: SupabaseClient, row: EventRow): Promise<string>
       const lotId = typeof p.herd_lot_id === 'string' ? p.herd_lot_id : null
       const { data } = lotId ? await supabase.from('herd_lots').select('name, class, deleted_at').eq('id', lotId).maybeSingle() : { data: null }
       const l = data as { name: string | null; class: MovedBunch['class']; deleted_at: string | null } | null
-      return moveLine(n('head'), l ? { name: l.name, class: l.class, deleted: !!l.deleted_at } : null, null, null)
+      return moveLine(n('head'), l ? { name: l.name, class: l.class, deleted: !!l.deleted_at } : null, null, null, isPlacement(p))
     }
     case 'cattle_worked': return 'Cattle work'
     case 'cattle_counted': { const c = n('counted'); return c != null ? `Counted ${c} head` : 'A cattle count' }
