@@ -1,3 +1,4 @@
+import { moveLine, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './supabase'
@@ -48,6 +49,8 @@ export interface Names {
   place: (id: unknown) => string | null
   lot: (id: unknown) => string | null
   person: (userId: string) => string
+  /** Block 25: the bunch itself, for a line that reads name · class · head. */
+  bunch: (id: unknown) => MovedBunch | null
 }
 export interface ActivityFilters { actor?: string | null; place?: string | null; lot?: string | null; from?: string | null; to?: string | null; since?: string | null }   // since = recorded (ingested_at) after this instant — Today's "View all N updates"
 export interface ActivityPage { rows: ActivityRow[]; names: Names; nextCursor: string | null; ranchId: string; filters: ActivityFilters }
@@ -126,7 +129,7 @@ function describeBody(r: ActivityRow, names: Names): string {
     case 'rain': { const inches = num(p.inches); return inches == null ? `Rain${suffix}` : `${inches.toFixed(2)}" of rain${suffix}` }
     case 'hay_fed': { const bales = num(p.bales); const to = names.lot(p.herd_lot_id); const who = to ? ` to ${to}` : ''; return bales == null ? `Hay fed${who}${suffix}` : `Fed ${plural(bales, 'bale')}${who}${suffix}` }
     case 'bales_stacked': { const count = num(p.count); return count == null ? `Bales stacked${suffix}` : `Stacked ${plural(count, 'bale')}${suffix}` }
-    case 'cattle_moved': { const head = num(p.head); const from = names.place(p.from_place_id); const to = names.place(p.to_place_id); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'Cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); const route = from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''; return `Moved ${who}${route}` }
+    case 'cattle_moved': return moveLine(num(p.head), names.bunch(p.herd_lot_id), names.place(p.from_place_id), names.place(p.to_place_id))   // Block 25: the one move wording
     case 'cattle_worked': { const head = num(p.head); const what = str(p.what); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); const lot = names.lot(p.herd_lot_id); return `Counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${lot ? ` of ${lot}` : ''}${e != null && c != null ? ` · ${e.toLocaleString()} expected · ${c - e === 0 ? 'same' : c - e > 0 ? `+${c - e}` : `−${e - c}`}` : ''}${suffix}` }
     case 'hay_inventory': { const bales = num(p.bales); const asOf = str(p.as_of); const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''; return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}` }
@@ -184,10 +187,13 @@ async function namesFor(supabase: SupabaseClient, userId: string, rows: Activity
   const placeNames = new Map((places.data ?? []).map(p => [p.id as string, (p as { deleted_at?: string | null }).deleted_at ? `${p.name as string} (deleted)` : p.name as string]))
   const people = new Map((profiles.data ?? []).map(p => [p.id as string, ((p.display_name as string | null)?.trim() || (p.email as string | null) || 'Someone on the ranch')]))
   const lotNames = new Map((lots as Lot[]).map(l => [l.id, lotLabel(l)]))
+  const bunches = new Map<string, MovedBunch>((lots as Lot[]).map(l => [l.id, { name: l.name, class: l.class }]))
   for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, `${l.name?.trim() || l.class} (deleted)`)
+  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!bunches.has(l.id)) bunches.set(l.id, { name: l.name, class: l.class as Lot['class'], deleted: true })
   return {
     place: id => { const s = str(id); return s ? placeNames.get(s) ?? null : null },
     lot: id => { const s = str(id); return s ? lotNames.get(s) ?? null : null },
+    bunch: id => { const s = str(id); return s ? bunches.get(s) ?? null : null },
     person: uid => people.get(uid) ?? 'Someone on the ranch',
   }
 }

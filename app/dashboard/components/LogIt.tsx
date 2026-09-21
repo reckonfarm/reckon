@@ -9,6 +9,7 @@ import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType, isManualEventType } from '@/lib/manual-log'
+import { moveLine, movedWho, MOVE_NEEDS_BUNCH, type MovedBunch } from '@/lib/move-line'
 import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass, bunchLabel, bunchDetail } from '@/lib/herd'
 import { splitBody, splitGroup, splitLabel, splitRefusal, defaultSplitClass, defaultSplitName } from '@/lib/cattle/split'
 import { discard } from '@/lib/outbox'
@@ -340,6 +341,7 @@ function UnitInput({ unit, id, invalid, className = '', ...rest }: React.InputHT
 function describe(
   type: SheetType, n: number, what: string,
   lot: string | null, place: string | null, from: string | null, to: string | null,
+  bunch: MovedBunch | null = null,
 ): string {
   const at = place ? ` at ${place}` : ''
   const bales = (k: number) => `${k} ${k === 1 ? 'bale' : 'bales'}`
@@ -347,7 +349,7 @@ function describe(
     case 'rain':          return `${Number.isFinite(n) ? n.toFixed(2) : '?'}" of rain${at}`
     case 'hay_fed':       return `Fed ${bales(n)}${lot ? ` to ${lot}` : ''}${at}`
     case 'bales_stacked': return `Stacked ${bales(n)}${at}`
-    case 'cattle_moved':  return `Moved ${n} head${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
+    case 'cattle_moved':  return moveLine(Number.isFinite(n) ? n : null, bunch, from, to)   // Block 25: the one move wording
     case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
     case 'hay_inventory': return `${bales(n)} on hand${at}`
     case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
@@ -679,7 +681,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         return
       }
 
-      const num = n1.trim() === '' ? NaN : Number(n1)
+      // Block 25: a move left blank is the whole bunch — the number the field
+      // shows in grey, and the one the preview line under it spells out.
+      const wholeBunch = type === 'cattle_moved' ? lots?.find(l => l.id === lot)?.head_count : undefined
+      const num = n1.trim() === '' ? (wholeBunch ?? NaN) : Number(n1)
       // Block 7.4 — an empty field used to travel as NaN, become null in JSON,
       // and be rejected by the server AFTER the entry had already landed in the
       // outbox as 'failed'. Refuse it here, where the person can still fix it.
@@ -691,7 +696,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; if (note.trim()) body.note = note.trim(); { const sid = await resolveSlot(stock, setStock); if (sid) body.stock_place_id = sid } break
         case 'bales_stacked': body.count = num; body.place_id = placeId; break
         case 'cattle_moved':
-          body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot || null
+          // Block 25: a move names its bunch. The route refuses without one in
+          // these same words; said here first so a corral never waits on it.
+          if (!lot) { setError(MOVE_NEEDS_BUNCH); setBusy(false); return }
+          body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot
           body.place_id = toId   // where they are now
           break
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
@@ -709,7 +717,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       const placeName = (id: string | null) => places.find(p => p.id === id)?.name ?? null
       const lotName = lots?.find(l => l.id === lot)
       body.id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
-      const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId))
+      const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId), lotName ?? null)
       try {
         enqueue(body, label)
       } catch {
@@ -771,13 +779,13 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   // 6G: which bunch — optional, with "Unassigned" plain. What a move DOES is said
   // on the field: it records the move; it never changes a lot's head count.
-  const lotField = (label: string, hint: string, audit: string) => (<>
+  const lotField = (label: string, hint: string, audit: string, required = false) => (<>
     <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit={audit}>
-          <option value="">Unassigned</option>
+          <option value="">{required ? 'Pick a bunch' : 'Unassigned'}</option>
           {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
@@ -785,11 +793,20 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     </Field>
     {newBunch && <NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} />}
   </>)
+  // Block 25: a move names ONE bunch and it is required — picked first, since
+  // it answers "how many" too. Blank head = the whole bunch.
+  const movedLot = lots?.find(l => l.id === lot) ?? null
+  const movedTo = toPlace.newName !== null ? toPlace.newName.trim() : (places.find(p => p.id === toPlace.id)?.name ?? '')
   if (type === 'cattle_moved') fields = (<>
-    <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} />
-    {lotField('Bunch', 'Records the move against this bunch. A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move')}
+    {lotField('Bunch', 'A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move', true)}
+    <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} placeholder={movedLot ? String(movedLot.head_count) : '—'} />
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
+    {movedLot && (
+      <p className="font-dm-sans text-[16px] leading-snug text-ink" data-audit="move-preview">
+        {movedWho(n1.trim() !== '' && Number.isFinite(Number(n1)) ? Number(n1) : movedLot.head_count, movedLot)}{movedTo ? ` → ${movedTo}` : ''}
+      </p>
+    )}
   </>)
   if (type === 'hay_inventory') fields = (<>
     <NumberField label="On hand" unit="bales" value={n1} onChange={setN1} max={100000} placeholder="0" />

@@ -27,6 +27,7 @@ import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { chromium, type Locator, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
+import { MOVE_NEEDS_BUNCH } from '../lib/move-line'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -1053,24 +1054,88 @@ async function main() {
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const lastWork = (await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-last-work"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6G: the lot card\'s last recorded work is the cattle work', /pregged 12 head/.test(lastWork), lastWork.slice(0, 100))
-      // a move naming the lot — recorded, and the head count untouched
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await recordControl(page).click()
-      await page.getByRole('button', { name: /^Move cattle/ }).click()
+      // ── Block 25: a move names its bunch, and sets the bunch's place ─────────
+      // PK's falsifier, as written: record a move of a bunch to a place; the
+      // bunch's place reads as that place immediately, and the move in Activity
+      // names both. Then once with the network off: it queues, sends on
+      // reconnect, and the place is set. Read from the DATABASE first
+      // (herd_lots.place_id), then from the painted page.
+      const placeOf = async (lot: string) => ((await admin.from('herd_lots').select('place_id').eq('id', lot).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { data: east25, error: e25 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 25 east`, kind: 'pasture' }).select('id').single()
+      if (e25) throw new Error(`25 place: ${e25.message}`)
+      const openMove = async () => {
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await recordControl(page).click()
+        await page.getByRole('button', { name: /^Move cattle/ }).click()
+        await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
+      }
+
+      // (a) no bunch, no move — the sheet's words ARE the route's words.
+      await openMove()
+      await page.locator('[data-audit="lot-for-move"]').selectOption('')
       await page.getByLabel('Moved').fill('5')
-      await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
+      await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
+      await page.getByRole('button', { name: 'Record move', exact: true }).click()
+      const sheetSays = ((await page.getByText(MOVE_NEEDS_BUNCH, { exact: true }).first().innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
+      const bare = await page.request.post('/api/log', { data: { type: 'cattle_moved', head: 5, to_place_id: placeId, place_id: placeId } })
+      const routeSays = ((await bare.json().catch(() => ({}))) as { error?: string }).error ?? ''
+      record('25: a move with no bunch is refused — and the sheet and the route say it in the same words',
+        sheetSays === MOVE_NEEDS_BUNCH && bare.status() === 400 && routeSays === MOVE_NEEDS_BUNCH, `sheet "${sheetSays}" · route ${bare.status()} "${routeSays}"`)
+
+      // (b) a move of a bunch to a place — online.
+      const before25 = await placeOf(lot6g)
       const hintId = await page.locator('[data-audit="lot-for-move"]').getAttribute('aria-describedby')
       const moveHint = hintId ? (await page.locator(`#${hintId}`).innerText().catch(() => '')).replace(/\s+/g, ' ') : ''
       await selectBunch(page, '[data-audit="lot-for-move"]', LOT6G)
-      await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
+      const preview25 = ((await page.locator('[data-audit="move-preview"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
-      await watchStates(page, 'Sent', 20_000, 'Moved 5 head')
+      const WHO25 = `${LOT6G} · Cows · 5 head`
+      await watchStates(page, 'Sent', 20_000, `Moved ${WHO25}`)
+      const receipt25 = ((await page.locator('[role="status"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const after25 = await placeOf(lot6g)
       const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      record('25: the move sets the bunch’s place in the same request — true in the database the moment it is Sent, and the receipt says where they are now',
+        before25 === null && after25 === placeId && moved?.payload?.herd_lot_id === lot6g && moved?.payload?.place_id === placeId && receipt25.includes(`${WHO25} — now at ${PREFIX} West stack`),
+        `place ${before25} → ${after25} (want ${placeId}) · preview "${preview25}" · receipt "${receipt25.slice(0, 110)}"`)
+
       await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
       const mLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const head1 = await headBefore()
-      record('6G: a move names a bunch, says on the field that it never changes a head count, and the count stays', moved?.payload?.herd_lot_id === lot6g && mLot === LOT6G && /Moved 5 head of SMOKE-DAILY-LOOP Pairs to .*West stack/.test(mWhat) && /never changes a bunch/.test(moveHint) && head1 === head0 && Number.isFinite(head0), `lot "${mLot}" · "${mWhat}" · head ${head0} → ${head1} · hint "${moveHint.slice(0, 60)}"`)
+      const where25 = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      record('25: the move in Activity names the bunch and where it went; the bunch reads as there, with the move as its as-of; the head count stays',
+        mLot === `${LOT6G} · Cows` && mWhat.includes(`Moved ${WHO25} to ${PREFIX} West stack`) && where25.includes(`At ${PREFIX} West stack`) && /moved today/.test(where25) && /never changes a bunch/.test(moveHint) && head1 === head0 && Number.isFinite(head0),
+        `bunch "${mLot}" · "${mWhat}" · row "${where25}" · head ${head0} → ${head1}`)
+
+      // (c) the same with the network off: it queues, sends on reconnect, and the place is set.
+      await openMove()
+      await selectBunch(page, '[data-audit="lot-for-move"]', LOT6G)
+      await page.getByLabel('To').selectOption({ label: `${PREFIX} 25 east` })
+      await page.context().setOffline(true)
+      await page.getByRole('button', { name: 'Record move', exact: true }).click()
+      // Offline the strip says Saved and STAYS there (the airplane-mode check's own
+      // rule); Waiting for signal is what it says once it starts to send.
+      const offStates = await watchStates(page, 'Sent', 4_000, `Moved ${LOT6G}`)   // must NOT reach Sent
+      const waitingLabel = (await page.locator('[role="status"]').first().getAttribute('data-label').catch(() => '')) ?? ''
+      const heldPlace = await placeOf(lot6g)
+      await page.context().setOffline(false)
+      const onStates = await watchStates(page, 'Sent', 45_000, `Moved ${LOT6G}`)
+      const sentPlace = await placeOf(lot6g)
+      record('25: with no signal the move waits — named, whole bunch — and on reconnect it sends and the bunch is at the new place',
+        offStates[0] === 'Saved' && !offStates.includes('Sent') && heldPlace === placeId && onStates.includes('Sent') && sentPlace === east25.id && waitingLabel.includes(`${LOT6G} · Cows · 44 head`),
+        `offline [${offStates.join(' → ')}] place held ${heldPlace === placeId} · online [${onStates.join(' → ')}] place ${sentPlace} (want ${east25.id}) · label "${waitingLabel}"${rawSeen()}`)
+
+      // (d) an older move arriving late never drags the bunch back; a move with
+      //     no bunch (from before Block 25) is given none and says so.
+      const late = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 44, herd_lot_id: lot6g, to_place_id: placeId, place_id: placeId, ts: new Date(Date.now() - 6 * 3600_000).toISOString() } })
+      const latePlace = await placeOf(lot6g)
+      const old25 = randomUUID()
+      await admin.from('events').insert({ id: old25, user_id: userId, ranch_id: ranchId, type: 'cattle_moved', ts: new Date(Date.now() - 86_400_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, head: 12, place_id: placeId, to_place_id: placeId, from_place_id: null, herd_lot_id: null } })
+      await page.goto(`/ranch/activity/${old25}`, { waitUntil: 'domcontentloaded' })
+      const oldWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' '), oldBunch = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim()
+      record('25: a back-dated move lands but does not move the bunch back; an old move with no bunch is given none, and says so',
+        late.status() === 201 && latePlace === east25.id && oldWhat.includes(`Moved 12 head to ${PREFIX} West stack · no bunch named`) && oldBunch === 'No bunch named',
+        `late ${late.status()} place ${latePlace === east25.id ? 'unchanged' : latePlace} · old "${oldWhat}" · bunch "${oldBunch}"`)
     }
 
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────

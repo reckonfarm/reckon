@@ -23,7 +23,7 @@ import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Segmented } from '@/app/components/ui/Segmented'
 import Counter from '@/app/components/ui/Counter'
 import Link from 'next/link'
-import type { LastWork } from '@/lib/ranch-summary'
+import type { LastWork, BunchWhere } from '@/lib/ranch-summary'
 import RowActions from '@/app/components/RowActions'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
@@ -73,7 +73,7 @@ function agoLabel(iso: string): string {
   return m === 1 ? 'a month ago' : `${m} months ago`
 }
 
-export default function HerdForm({ initialLots, lastWork = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, LastWork>; purposeSupported?: boolean } = {}) {
+export default function HerdForm({ initialLots, lastWork = {}, where = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, LastWork>; where?: Record<string, BunchWhere>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
   // Block 13: the server's list is the truth after a refresh — an Undo puts a
@@ -462,6 +462,14 @@ export default function HerdForm({ initialLots, lastWork = {}, purposeSupported 
               {lot.avg_weight == null ? <span data-audit="lot-no-weight">no weight set</span> : <><span className="tabular-nums">{lot.avg_weight}</span> {lot.weight_unit} avg</>}
               {isFeeder(lot.class) ? ` · ${lot.weaned ? 'weaned' : 'unweaned'}` : ''}
             </p>
+            {/* Block 25: where the bunch is — set by its last move, which is
+                also its as-of and one tap away. */}
+            {where[lot.id] && (
+              <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-where">
+                At <Link href={`/ranch/places/${where[lot.id].placeId}`} className="font-semibold underline underline-offset-2" data-audit="lot-where-place">{where[lot.id].placeName}</Link>
+                {where[lot.id].moved && <span className="text-secondary-ink"> · <Link href={`/ranch/activity/${where[lot.id].moved!.eventId}`} className="underline underline-offset-2">moved {agoLabel(where[lot.id].moved!.ts)}</Link></span>}
+              </p>
+            )}
             {/* Block 14: the last count, one line, with the difference — and the
                 one button when it differs. A count never changed this number;
                 this button does, through the same save as any edit. */}

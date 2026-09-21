@@ -35,6 +35,7 @@ export interface Editable {
   ts: string                 // ISO work time
   values: Record<string, unknown>
   reason?: string | null     // the reason this entry (itself a correction) carries — a new reason alone is a correction
+  line?: string              // Block 25: the entry as the page already reads it — a move names its bunch here too
 }
 
 const REF_KEYS = ['herd_lot_id', 'place_id', 'from_place_id', 'to_place_id'] as const
@@ -46,7 +47,7 @@ function labelFor(e: Editable): string {
     case 'rain': return `Rain ${String(v.inches ?? '?')} in`
     case 'bales_stacked': return `Stacked ${String(v.count ?? '?')} bales`
     case 'hay_inventory': return `Counted ${String(v.bales ?? '?')} bales`
-    case 'cattle_moved': return `Moved ${String(v.head ?? '?')} head`
+    case 'cattle_moved': return e.line ?? `Moved ${String(v.head ?? '?')} head`
     case 'cattle_worked': return `${String(v.what ?? 'Worked')} ${String(v.head ?? '?')} head`
     case 'cattle_counted': return `Counted ${String(v.counted ?? '?')} head`
     default: return e.type.replace(/_/g, ' ')
