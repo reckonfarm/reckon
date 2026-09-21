@@ -1,10 +1,11 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { BASEMAPS, type Basemap } from '@/lib/map-basemaps'
+import { IMAGERY_KEY_MISSING, IMAGERY_KEY_MISSING_LINE, PLAIN_GROUND, type Basemap } from '@/lib/map-basemaps'
+import ImageryLayer from '@/app/components/map/ImageryLayer'
 import { cream, forestGreen, warning } from '@/lib/brand-colors'
 import { fmtAcres, polygonAreaAcres, validateRing, type LatLng } from '@/lib/places/geo'
 import type { PlaceMapProps } from './PlaceMapLoader'
@@ -257,8 +258,10 @@ export default function PlaceMapClient({
   // back to the start — which is what "use this shape" will do.
   const draftAcres = corners.length >= 3 ? polygonAreaAcres(corners) : null
 
-  const tiles = BASEMAPS[basemap]
-  const saved = SAVED_STYLE[basemap]
+  // Block 26: with no picture under them — no key, or no signal — shapes are
+  // styled for plain ground, which is the street map's style.
+  const [plain, setPlain] = useState(false)
+  const saved = SAVED_STYLE[plain ? 'street' : basemap]
   const geolocatable = typeof navigator !== 'undefined' && !!navigator.geolocation
 
   const locate = () => {
@@ -298,16 +301,10 @@ export default function PlaceMapClient({
           ? { bounds: initialBounds, boundsOptions: { padding: [30, 30] as [number, number] } }
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
         preferCanvas
-        style={drawing ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }}
+        style={{ ...(drawing ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }), background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >
-        <TileLayer
-          key={basemap}
-          url={tiles.url}
-          attribution={tiles.attribution}
-          maxNativeZoom={tiles.maxNativeZoom}
-          maxZoom={tiles.maxZoom}
-        />
+        <ImageryLayer basemap={basemap} onPlain={setPlain} />
 
         <FollowController boundsKey={boundsKey} following={following && !track} onUserMove={() => setFollowUser(false)} />
         {track && <TrackFollower here={track.here} following={followUser} />}
@@ -437,6 +434,9 @@ export default function PlaceMapClient({
           Both stack in the top-RIGHT corner: Leaflet's own zoom control owns
           the top-left, and a button sitting on top of it was the first thing
           the rendered page showed. */}
+      {basemap === 'satellite' && IMAGERY_KEY_MISSING && !drawing && (
+        <p className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] rounded-lg bg-white/95 px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="imagery-key-missing">{IMAGERY_KEY_MISSING_LINE}</p>
+      )}
       <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
         <div className="pointer-events-auto flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold">
           {(['satellite', 'street'] as const).map(b => (

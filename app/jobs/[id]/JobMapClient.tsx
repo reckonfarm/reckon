@@ -1,12 +1,13 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, CircleMarker, Polyline, Polygon, Popup, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { forestGreen, warning } from '@/lib/brand-colors'
 import { BALE_VERIFY_BELOW } from '@/lib/detections/detect-bales'
 import type { JobMapProps } from './JobMapLoader'
-import { BASEMAPS, type Basemap } from '@/lib/map-basemaps'
+import { IMAGERY_KEY_MISSING, IMAGERY_KEY_MISSING_LINE, PLAIN_GROUND, type Basemap } from '@/lib/map-basemaps'
+import ImageryLayer from '@/app/components/map/ImageryLayer'
 
 // ─── The job map — a product view with a diagnostic behind a toggle ────────────
 // Which field, and how much of it is done. That is the whole question this map
@@ -226,8 +227,9 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
     : [[track[0].lat, track[0].lng], [track[track.length - 1].lat, track[track.length - 1].lng]]
   const boundsKey = bounds.flat().join(',')
 
-  const style = MAP_STYLE[basemap]
-  const tiles = BASEMAPS[basemap]
+  // Block 26: no picture under the job (no key, or no signal) → styled for plain ground.
+  const [plain, setPlain] = useState(false)
+  const style = MAP_STYLE[plain ? 'street' : basemap]
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-forest-green/10">
@@ -235,16 +237,10 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
         bounds={bounds}
         boundsOptions={{ padding: [30, 30] }}
         preferCanvas
-        style={{ height: 420, width: '100%' }}
+        style={{ height: 420, width: '100%', background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >
-        <TileLayer
-          key={basemap}
-          url={tiles.url}
-          attribution={tiles.attribution}
-          maxNativeZoom={tiles.maxNativeZoom}
-          maxZoom={tiles.maxZoom}
-        />
+        <ImageryLayer basemap={basemap} onPlain={setPlain} />
 
         <FollowController
           boundsKey={boundsKey}
@@ -359,6 +355,9 @@ export default function JobMapClient({ track, bbox, mode, bales, boundaries, fil
 
       {/* Overlaid controls live OUTSIDE the Leaflet tree — plain siblings above
           the panes, so taps never fight the map's own event capture. */}
+      {basemap === 'satellite' && IMAGERY_KEY_MISSING && (
+        <p className="absolute inset-x-3 bottom-3 z-[1000] rounded-lg bg-white/95 px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="imagery-key-missing">{IMAGERY_KEY_MISSING_LINE}</p>
+      )}
       <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
         <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold">
           {(['satellite', 'street'] as const).map(b => (

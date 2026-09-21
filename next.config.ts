@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 
+// Block 26 (PK, 2026-09-21): the Esri basemap key is a public-application key —
+// basemaps only, referrer-locked — made to be embedded in a page. It lives in
+// ONE env var, ESRI_BASEMAP_KEY; this hands the same value to the browser
+// bundle under the public name, so nobody keeps two copies in step. A build
+// with no key says so here, and the maps say so where imagery would be —
+// never a fall back to the unlicensed keyless endpoint.
+if (!process.env.ESRI_BASEMAP_KEY) console.warn('\n[dryline] ESRI_BASEMAP_KEY is not set — maps will draw WITHOUT satellite imagery on this build.\n')
+
 const nextConfig: NextConfig = {
   devIndicators: false,
+  env: { NEXT_PUBLIC_ESRI_BASEMAP_KEY: process.env.ESRI_BASEMAP_KEY ?? '' },
   // Block 6A — the old URLs resolve forever (bookmarks, notification links, share
   // cards). Permanent = 301. Session-aware ones (signed-in / and /home → /today)
   // live in middleware.ts, which holds the refreshed session; a config redirect
