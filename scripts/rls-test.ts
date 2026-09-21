@@ -28,7 +28,10 @@ import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo
 import { buildProgramAlerts } from '../lib/program-alerts'
 
 function loadEnv() {
-  for (const f of ['.env', '.env.local']) {
+  // e2e/.env.e2e too, like every other suite: VERCEL_BYPASS lives only there,
+  // and without it every API call here stops at Vercel's protection page and
+  // reads as sixty isolation failures that never reached the app.
+  for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
     const path = resolve(process.cwd(), f)
     if (!existsSync(path)) continue
     for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -1660,6 +1663,17 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { 
 
 async function main() {
   console.log(`\nDryline — two-ranch isolation test  (db ${URL_}, ingest ${BASE})\n`)
+  // IDENTITY FIRST. Every route check below is meaningless if BASE is answering
+  // with Vercel's protection page instead of the app: that reads as dozens of
+  // 401 "isolation failures" that never reached a route. Say it once, and stop.
+  {
+    const res = await fetch(`${BASE}/signin`, { headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} }).catch(() => null)
+    const body = res ? await res.text().catch(() => '') : ''
+    if (!res || res.status !== 200 || !/Dryline/i.test(body)) {
+      console.error(`rls-test: ${BASE} is not serving the app (${res ? `HTTP ${res.status}` : 'no answer'})${BASE.includes('vercel.app') && !process.env.VERCEL_BYPASS ? ' — VERCEL_BYPASS is missing from e2e/.env.e2e' : ''}. Nothing was checked — this is NOT a pass.  —  ${suiteIdentity()}`)
+      process.exit(2)
+    }
+  }
   await teardown('pre-run residue')
   try {
     fx.A = await seed('A')
