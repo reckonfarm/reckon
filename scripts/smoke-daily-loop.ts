@@ -1113,14 +1113,16 @@ async function main() {
       await page.getByLabel('To').selectOption({ label: `${PREFIX} 25 east` })
       await page.context().setOffline(true)
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
-      const offStates = await watchStates(page, 'Waiting for signal', 15_000, `Moved ${LOT6G}`)
+      // Offline the strip says Saved and STAYS there (the airplane-mode check's own
+      // rule); Waiting for signal is what it says once it starts to send.
+      const offStates = await watchStates(page, 'Sent', 4_000, `Moved ${LOT6G}`)   // must NOT reach Sent
       const waitingLabel = (await page.locator('[role="status"]').first().getAttribute('data-label').catch(() => '')) ?? ''
       const heldPlace = await placeOf(lot6g)
       await page.context().setOffline(false)
       const onStates = await watchStates(page, 'Sent', 45_000, `Moved ${LOT6G}`)
       const sentPlace = await placeOf(lot6g)
       record('25: with no signal the move waits — named, whole bunch — and on reconnect it sends and the bunch is at the new place',
-        offStates.includes('Waiting for signal') && heldPlace === placeId && onStates.includes('Sent') && sentPlace === east25.id && waitingLabel.includes(`${LOT6G} · Cows · 44 head`),
+        offStates[0] === 'Saved' && !offStates.includes('Sent') && heldPlace === placeId && onStates.includes('Sent') && sentPlace === east25.id && waitingLabel.includes(`${LOT6G} · Cows · 44 head`),
         `offline [${offStates.join(' → ')}] place held ${heldPlace === placeId} · online [${onStates.join(' → ')}] place ${sentPlace} (want ${east25.id}) · label "${waitingLabel}"${rawSeen()}`)
 
       // (d) an older move arriving late never drags the bunch back; a move with
