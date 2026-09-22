@@ -2712,6 +2712,7 @@ async function main() {
       // the same race from the other side, 2 runs in 6.)
       await page.locator('[data-audit="capture-choose"]').waitFor({ timeout: 20_000 }).catch(() => {})
       await recordControl(page).click()
+      await page.locator('[data-audit="tile-place"]').click().catch(() => {})   // Block 20: the ways to mark ground sit behind Place
       await page.getByRole('link', { name: /^Ride the perimeter/ }).click()
       const rideFromPlaces = await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
       record('26b (2): from Places itself, Record → Ground → Ride the perimeter starts the ride — a same-page hash link is honoured, not lost', rideFromPlaces, `ride surface ${rideFromPlaces ? 'mounted' : 'NEVER MOUNTED'} · ${page.url().replace(BASE, '')}`)
@@ -3230,6 +3231,8 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      // The phone keeps the ranch once it has seen it: wait for that copy to be written before the signal goes.
+      const cached = await page.waitForFunction(() => { try { return !!localStorage.getItem('dryline_ranch_map_v1') } catch { return false } }, undefined, { timeout: 15_000 }).then(() => true).catch(() => false)
       await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button
       // Location AND network off.
       await page.context().setGeolocation(null).catch(() => {})
@@ -3240,7 +3243,7 @@ async function main() {
       await picker.waitFor({ timeout: 15_000 }).catch(() => {})
       const mapState = await picker.getAttribute('data-map').catch(() => null)
       const polygonsOff = await page.locator('[data-audit="record-picker"] .leaflet-overlay-pane canvas').count()
-      await page.locator(`[data-audit="record-place-chip"][data-place="${p20!.id}"]`).click()
+      await page.locator(`[data-audit="record-place-chip"][data-place="${p20!.id}"]`).click({ timeout: 20_000 })
       await page.locator('[data-audit="tile-hay_fed"]').click()
       const whereOff = await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
       await page.getByLabel('Hay fed').fill('4')
@@ -3248,8 +3251,8 @@ async function main() {
       const off20 = await watchStates(page, 'Sent', 4_000, 'Fed 4 bales')
       const queued20 = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 4 && (i.body as { place_id?: string }).place_id === p20!.id)
       record('20: location and network off — Record opens on the map from the phone\'s copy, a place then Feed prefills it, and the feeding saves to the outbox with that place',
-        mapState === 'drawn' && polygonsOff >= 1 && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
-        `map ${mapState} · polygons ${polygonsOff} · where "${whereOff.slice(0, 40)}" · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
+        cached && mapState === 'drawn' && polygonsOff >= 1 && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
+        `cached ${cached} · map ${mapState} · polygons ${polygonsOff} · where "${whereOff.slice(0, 40)}" · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
       await page.context().setOffline(false)
       await watchStates(page, 'Sent', 45_000, 'Fed 4 bales')
 
