@@ -1040,7 +1040,7 @@ async function main() {
       const openDialogs = await page.getByRole('dialog').count()
       const recWhileOpen = await rec.count()
       const flag = await page.evaluate(() => document.documentElement.dataset.recordSheet ?? '')
-      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button — the pull-down, the dim, or Escape
       await page.waitForTimeout(300)
       const recAfter = await rec.isVisible().catch(() => false)
       record('6A: Record opens the sheet and is not offered while the sheet is up, back when it closes',
@@ -2500,7 +2500,7 @@ async function main() {
       record('12.2/14: the pill opens Work · Count · Ground — seven workings with Count cattle and Count hay under Count, Preg check under Count, three ways to mark ground',
         groups.join('|') === 'Work|Count|Ground' && workTiles === 7 && preg === 1 && groundLinks === 3,
         `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
-      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button — the pull-down, the dim, or Escape
 
       // 12.11 — every dropdown looks like one: a chevron beside every select.
       let bare = 0, total = 0
@@ -2948,46 +2948,58 @@ async function main() {
       const mv26 = randomUUID()
       const moved26 = await page.request.post('/api/log', { data: { id: mv26, type: 'cattle_moved', head: 220, herd_lot_id: lot26, to_place_id: p26.id, place_id: p26.id, ts: new Date(Date.now() - 3 * 86_400_000).toISOString() } })
 
-      // THE FILL, READ PROPERLY (PK): frame the map to the place first, then read
-      // a healthy patch from the MIDDLE of the map — which, framed, is the inside
-      // of that place. A count of matching pixels anywhere on the canvas can be
-      // passed by antialiasing on an edge; a filled interior cannot. Returns the
-      // share of the patch that is that colour, and the share that is painted at all.
+      // THE OUTLINE AND THE LABEL, READ PROPERLY (PK, 26c): frame the map to the
+      // place, then read the painted canvas AT THE RING'S EDGE — every edge
+      // midpoint projected through the map's own handle to a container point,
+      // a small window of pixels around it looked at for the bunch's colour —
+      // and read the label Leaflet painted inside it. A control on an empty
+      // pasture proves both reads can fail.
       const frame = async (placeIdToFrame: string) => {
         await page.locator(`[data-audit="ranch-map-place-button"][data-place="${placeIdToFrame}"]`).evaluate(el => (el as HTMLButtonElement).click())
         await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ timeout: 8_000 }).catch(() => {})
-        await page.mouse.click(10, 10).catch(() => {})                       // close the sheet; the framing stays
+        await page.mouse.click(10, 10).catch(() => {})                       // the dim closes the sheet; the framing stays
         await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
         await page.waitForTimeout(900)
       }
-      const interior = (hex: string) => page.evaluate((h: string) => {
+      const outline = (hex: string, ring: number[][]) => page.evaluate(({ h, ring }: { h: string; ring: number[][] }) => {
         const want = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
-        const box = document.querySelector('[data-audit="ranch-map"] .leaflet-container')?.getBoundingClientRect()
-        if (!box || !Number.isFinite(want[0])) return { patch: 0, colour: 0, painted: 0 }
-        let patch = 0, colour = 0, paintedPx = 0
-        // The middle 30% × 30% of the map, in each canvas's own pixels.
-        const x0 = box.left + box.width * 0.35, x1 = box.left + box.width * 0.65, y0 = box.top + box.height * 0.35, y1 = box.top + box.height * 0.65
-        for (const c of Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas')) as HTMLCanvasElement[]) {
-          const r = c.getBoundingClientRect(), ctx2 = c.getContext('2d'); if (!ctx2 || !r.width) continue
-          const k = c.width / r.width
-          const sx = Math.max(0, Math.round((x0 - r.left) * k)), sy = Math.max(0, Math.round((y0 - r.top) * k))
-          const sw = Math.min(c.width - sx, Math.round((x1 - x0) * k)), sh = Math.min(c.height - sy, Math.round((y1 - y0) * k))
-          if (sw <= 0 || sh <= 0) continue
-          const d = ctx2.getImageData(sx, sy, sw, sh).data
-          for (let i = 0; i < d.length; i += 4) { patch++; if (d[i + 3] > 20) { paintedPx++; if (Math.abs(d[i] - want[0]) < 14 && Math.abs(d[i + 1] - want[1]) < 14 && Math.abs(d[i + 2] - want[2]) < 14) colour++ } }
+        const c = document.querySelector('[data-audit="ranch-map"] .leaflet-container') as (HTMLElement & { __leafletMap?: { latLngToContainerPoint: (ll: [number, number]) => { x: number; y: number } } }) | null
+        const map = c?.__leafletMap
+        const canvases = Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas')) as HTMLCanvasElement[]
+        if (!map || !c || !canvases.length || !Number.isFinite(want[0])) return { edges: 0, hit: 0 }
+        const box = c.getBoundingClientRect()
+        let edges = 0, hit = 0
+        for (let k = 0; k + 1 < ring.length; k++) {
+          const a = ring[k], b = ring[k + 1]
+          const mid = map.latLngToContainerPoint([(a[1] + b[1]) / 2, (a[0] + b[0]) / 2])
+          const px = box.left + mid.x, py = box.top + mid.y
+          edges++
+          let found = false
+          for (const cv of canvases) {
+            const r = cv.getBoundingClientRect(), ctx2 = cv.getContext('2d'); if (!ctx2 || !r.width) continue
+            const sc = cv.width / r.width
+            const sx = Math.round((px - r.left) * sc) - 6, sy = Math.round((py - r.top) * sc) - 6
+            if (sx < 0 || sy < 0 || sx + 12 > cv.width || sy + 12 > cv.height) continue
+            const d = ctx2.getImageData(sx, sy, 12, 12).data
+            for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 60 && Math.abs(d[i] - want[0]) < 28 && Math.abs(d[i + 1] - want[1]) < 28 && Math.abs(d[i + 2] - want[2]) < 28) { found = true; break }
+            if (found) break
+          }
+          if (found) hit++
         }
-        return { patch, colour: patch ? colour / patch : 0, painted: patch ? paintedPx / patch : 0 }
-      }, hex)
+        return { edges, hit }
+      }, { h: hex, ring })
+      const labelOn = async () => ((await page.locator('[data-audit="ranch-map"] .leaflet-tooltip.dryline-place-label').allInnerTexts().catch(() => [])) ?? []).map(t => t.replace(/\s+/g, ' ').trim())
       const rgbToHex = (rgb: string) => { const m = rgb.match(/\d+/g) ?? []; return '#' + m.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('') }
 
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      const chip = page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 })
-      await chip.waitFor({ timeout: 25_000 }).catch(() => {})
       await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
       await page.waitForTimeout(1500)
-      const swatch = rgbToHex(await chip.locator('span').first().evaluate(e => getComputedStyle(e).backgroundColor).catch(() => ''))
       await frame(p26.id)
-      const paint = await interior(swatch)
+      const labels = await labelOn()
+      const swatch = rgbToHex(await page.locator('[data-audit="ranch-map"] .leaflet-tooltip.dryline-place-label span').filter({ hasText: LOT26 }).first().evaluate(e => getComputedStyle(e).color).catch(() => ''))
+      const paint = await outline(swatch, ring26)
+      const pillButtons = await page.locator('[data-audit="ranch-map"] [data-audit="map-pill"] button').count()
+      const floating = await page.locator('[data-audit="ranch-map"] .leaflet-container ~ * button, [data-audit="ranch-map"] [data-audit="map-expand"], [data-audit="ranch-map"] [data-audit="map-whole-ranch"]').count()
       // THE CONTROL — this read must be able to FAIL. A second pasture, drawn,
       // with no bunch on it: framed the same way and read for the same colour,
       // it has to come back empty, or the read proves nothing.
@@ -2996,17 +3008,19 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
       await frame(pEmpty!.id)
-      const control = await interior(swatch)
-      record('26: THE CONTROL — a drawn pasture with NO bunch, framed and read the same way, shows none of the bunch\'s colour: the fill read can go red',
-        control.patch > 2000 && control.colour < 0.02, `patch ${control.patch}px · bunch colour ${(control.colour * 100).toFixed(1)}% (want ~0) · painted at all ${(control.painted * 100).toFixed(1)}%`)
+      const control = await outline(swatch, ringEmpty)
+      const controlLabels = (await labelOn()).filter(t => /26 empty/.test(t))
+      record('26c: THE CONTROL — a drawn pasture with NO bunch, framed and read the same way, has none of the bunch\'s colour on its edge and no label: both reads can go red',
+        control.edges >= 4 && control.hit === 0 && controlLabels.length === 0, `edges ${control.edges} · in the bunch's colour ${control.hit} (want 0) · labels on it ${controlLabels.length}`)
       const mapBox = await page.locator('[data-audit="ranch-map"] .leaflet-container').boundingBox().catch(() => null)
       const mapWords = ((await page.locator('[data-audit="ranch-map"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p')).map(p => (p as HTMLElement).innerText).join(' | ')).catch(() => '')) ?? '').trim()
       const firstOnToday = await page.evaluate(() => { const m = document.querySelector('[data-audit="ranch-map"]'); const col = document.querySelector('main'); if (!m || !col) return false; return m.getBoundingClientRect().top - col.getBoundingClientRect().top < 260 })
-      record('26: the map is first on Today at about 40% of the screen; the pasture is FILLED in its bunch\'s colour (read off the canvas) and the bunch\'s name is the key; no words on the map',
-        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.patch > 2000 && paint.colour > 0.8 && mapWords === '',
-        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · key ${swatch} · framed interior ${paint.patch}px, ${(paint.colour * 100).toFixed(1)}% the bunch's colour (want > 80) · words "${mapWords}"`)
+      const label26 = labels.find(t => t.includes(LOT26)) ?? ''
+      record('26/26c: the map is first on Today at about 40% of the screen; the occupied pasture has a steady outline in its bunch\'s colour (read off the canvas at its edge) and a label inside — head · bunch name; one pill of two controls and nothing else floating; no other words on the map',
+        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.edges >= 4 && paint.hit / paint.edges >= 0.6 && label26 === `220 · ${LOT26}` && pillButtons === 2 && floating === 0 && mapWords === '',
+        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · colour ${swatch} · edge ${paint.hit} of ${paint.edges} in it · label "${label26}" · pill ${pillButtons} · floating ${floating} · words "${mapWords}"`)
 
-      await chip.click()
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
       const sheet = page.locator('[data-audit="ranch-map-sheet"]')
       await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
       const sBunch = ((await sheet.locator('[data-audit="sheet-bunch"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
@@ -3018,6 +3032,31 @@ async function main() {
       record('26: the place sheet — name, acres, the bunch as name · class · head, the days since the move and the move itself, the latest entry with its age, and Record here',
         sBunch.includes(`${LOT26} · Heifers · 220 head`) && /3 days here/.test(sDays) && sMoveHref === `/ranch/activity/${mv26}` && /acres/i.test(sAcres) && /days ago|today|yesterday/.test(sLatest) && sRecord === 1,
         `"${sBunch}" · "${sDays}" · move ${sMoveHref === `/ranch/activity/${mv26}` ? 'linked' : sMoveHref} · ${sAcres} · "${sLatest.slice(0, 70)}" · record ${sRecord}`)
+      // Block 26c: the dim closes the sheet; no Close button exists.
+      const closeButtons = await sheet.getByRole('button', { name: /^Close$/ }).count()
+      await page.mouse.click(10, 10).catch(() => {})
+      const dimClosed = await sheet.waitFor({ state: 'detached', timeout: 5_000 }).then(() => true).catch(() => false)
+      record('26c: the place sheet has a grabber and no Close button, and a tap on the dim behind it dismisses it', closeButtons === 0 && dimClosed, `close buttons ${closeButtons} · dim closed ${dimClosed}`)
+      // Full screen is a tap on open ground, and a tap takes it back.
+      const container = page.locator('[data-audit="ranch-map"] .leaflet-container')
+      const cb = await container.boundingBox()
+      if (cb) { await page.mouse.click(cb.x + 8, cb.y + cb.height - 8); await page.waitForTimeout(700) }
+      const fullNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height > window.innerHeight * 0.85 })
+      const cb2 = await container.boundingBox()
+      if (cb2) { await page.mouse.click(cb2.x + 8, cb2.y + cb2.height - 8); await page.waitForTimeout(700) }
+      const backNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height < window.innerHeight * 0.6 })
+      record('26c: full screen is a tap on the map — one tap on open ground fills the screen, another brings it back — with no button for it', fullNow && backNow, `full ${fullNow} · back ${backNow}`)
+      // Unplaced: a bunch with no recorded place is listed, and its tap opens a move with it prefilled.
+      const lotU = randomUUID(), LOTU = `${PREFIX} 26c unplaced`
+      await admin.from('herd_lots').insert({ id: lotU, ranch_id: ranchId, class: 'cows', name: LOTU, head_count: 15, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lotU, reason: 'created', source: 'manual', head_after: 15, head_before: null, schema_version: 1 } })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const unplacedChip = page.locator(`[data-audit="ranch-map-unplaced-bunch"][data-lot="${lotU}"]`)
+      const listed = await unplacedChip.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      await unplacedChip.click().catch(() => {})
+      const moveForm = await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      const moveLot = await page.locator('[data-audit="lot-for-move"]').inputValue().catch(() => '')
+      record('26c: a bunch with no recorded place is listed under the map as Unplaced, and its tap opens a move with that bunch already picked', listed && moveForm && moveLot === lotU, `listed ${listed} · move form ${moveForm} · bunch picked ${moveLot === lotU}`)
       await page.keyboard.press('Escape').catch(() => {})
       await page.mouse.click(10, 10).catch(() => {})
 
@@ -3033,16 +3072,15 @@ async function main() {
       await page.route(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/, r => r.abort())
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       const ledgersUp = await page.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
-      await page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 }).waitFor({ timeout: 25_000 }).catch(() => {})
       await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
       await page.waitForTimeout(2500)
       const tilesShown = await page.locator('[data-audit="ranch-map"] img.leaflet-tile-loaded').count()
       await frame(p26.id)
-      const paintOff = await interior(swatch)
-      await page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 }).click().catch(() => {})
+      const paintOff = await outline(swatch, ring26)
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click()).catch(() => {})
       const tapOff = await sheet.waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
       record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
-        ledgersUp && tilesShown === 0 && paintOff.patch > 2000 && paintOff.colour > 0.8 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · framed interior ${(paintOff.colour * 100).toFixed(1)}% the bunch's colour · tap ${tapOff}`)
+        ledgersUp && tilesShown === 0 && paintOff.edges >= 4 && paintOff.hit / paintOff.edges >= 0.6 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · edge ${paintOff.hit} of ${paintOff.edges} in the bunch's colour · tap ${tapOff}`)
       await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
       await page.mouse.click(10, 10).catch(() => {})
     })

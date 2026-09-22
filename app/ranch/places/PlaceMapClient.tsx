@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, AttributionControl, Tooltip, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { IMAGERY_KEY_MISSING, IMAGERY_KEY_MISSING_LINE, PLAIN_GROUND, type Basemap } from '@/lib/map-basemaps'
@@ -54,7 +54,6 @@ import type { PlaceMapProps } from './PlaceMapLoader'
 // decides what to do with it.
 
 const TAP_SLOP_PX = 12
-const MAP_BTN = 'inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-gray-200 bg-white/95 px-3 font-dm-sans text-[15px] font-semibold text-forest-green'
 
 // Harvest gold for the draft, the same choice the job map's cut fill makes:
 // high contrast against green ground, and what worked ground looks like from
@@ -217,7 +216,32 @@ function FocusPlace({ focus, shapes, markers, setAuto, onFocus }: { focus: { id:
   return null
 }
 
-// Block 26 — a tap on open ground takes the overview full screen. A tap on a
+// A check that reads the painted outline has to know where the ring's edge
+// landed on the canvas. The map instance is hung on its own container for
+// that projection — nothing about what was drawn is claimed here.
+function AuditHandle() {
+  const map = useMap()
+  useEffect(() => { (map.getContainer() as HTMLElement & { __leafletMap?: L.Map }).__leafletMap = map }, [map])
+  return null
+}
+
+// Block 26c — motion only on change: a move that landed moments ago draws its
+// destination once, bright and wide, and settles to the steady style over a
+// second. Nothing blinks. A phone that asks for reduced motion gets no settle.
+function Settle({ ring, color }: { ring: LatLng[]; color: string }) {
+  const [t, setT] = useState(() => (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : 0))
+  useEffect(() => {
+    if (t >= 1) return
+    const t0 = Date.now(), id = setInterval(() => { const k = Math.min(1, (Date.now() - t0) / 1100); setT(k); if (k >= 1) clearInterval(id) }, 40)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once; t only ends it
+  }, [])
+  if (t >= 1) return null
+  return <Polygon positions={ring.map(c => [c.lat, c.lng] as LL)} interactive={false} pathOptions={{ color, weight: 3.5 + 9 * (1 - t), opacity: 0.9 * (1 - t), fill: false }} />
+}
+
+// Block 26/26c — a tap on open ground takes the overview full screen, and a tap
+// takes it back (PK: full screen is a tap on the map, not a button). A tap on a
 // place never reaches here: the shape stops it and opens its sheet instead.
 function GroundTap({ onTap }: { onTap: () => void }) {
   useMapEvents({ click() { onTap() } })
@@ -382,30 +406,37 @@ export default function PlaceMapClient({
           ? { bounds: initialBounds, boundsOptions: { padding: [30, 30] as [number, number] } }
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
         preferCanvas
+        attributionControl={false}
         style={{ ...(full ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }), background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >
         <ImageryLayer basemap={basemap} onPlain={setPlain} />
+        <AttributionControl prefix={false} position="bottomleft" />
 
         <FollowController boundsKey={boundsKey} following={following && !track && !followMe} onUserMove={() => { if (autoMove.current) return; setFollowUser(false); if (followMe) setMePaused(true) }} />
         <MeFollower here={followMe && !mePaused ? me?.p ?? null : null} setAuto={setAuto} />
         <SizeKeeper key={full ? 'full' : 'inline'} />
+        <AuditHandle />
         {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
         <FocusPlace focus={focus} shapes={shapes} markers={markers} setAuto={setAuto} onFocus={() => setFollowUser(false)} />
-        {overview && !full && <GroundTap onTap={() => setExpanded(true)} />}
+        {overview && !drawing && <GroundTap onTap={() => setExpanded(e => !e)} />}
 
         {/* Fight #4: nothing already on the map is interactive while drawing. */}
         {shapes.map(s => (
           <Fragment key={s.id}>
             {/* Casing first, under the edge — the job map's rule for a line
                 that has to survive any ground under it. */}
-            {!s.draft && saved.casing && (
+            {/* Block 26c: an OCCUPIED place is a steady bright outline in its bunch's
+                colour over a dark backing stroke, a light fill of the same colour,
+                and its label inside — head · bunch name. An EMPTY place is a thin
+                neutral outline. Occupancy never fades with age. */}
+            {!s.draft && (s.fill || saved.casing) && (
               <Polygon
                 positions={s.ring.map(c => [c.lat, c.lng] as LL)}
                 interactive={false}
-                pathOptions={{ color: saved.casing, weight: 6, opacity: 0.55, fill: false }}
+                pathOptions={{ color: '#111827', weight: s.fill ? 7 : 3, opacity: s.fill ? 0.7 : 0.35, fill: false }}
               />
             )}
             <Polygon
@@ -415,9 +446,16 @@ export default function PlaceMapClient({
               pathOptions={s.draft
                 ? { color: DRAFT_COLOR, weight: 3, fillColor: DRAFT_COLOR, fillOpacity: 0.2 }
                 : s.fill
-                ? { color: saved.color, weight: 3, fillColor: s.fill, fillOpacity: 0.55 }
-                : { color: saved.color, weight: 3, fillColor: saved.fill, fillOpacity: saved.fillOpacity }}
-            />
+                ? { color: s.fill, weight: 3.5, opacity: 1, fillColor: s.fill, fillOpacity: 0.10 }
+                : { color: saved.color, weight: 1.5, opacity: 0.8, fill: false }}
+            >
+              {s.label && (
+                <Tooltip permanent direction="center" interactive={false} className="dryline-place-label" opacity={1}>
+                  <span style={{ color: s.fill }}>{s.label}</span>
+                </Tooltip>
+              )}
+            </Polygon>
+            {s.pulse && <Settle ring={s.ring} color={s.fill ?? saved.color} />}
           </Fragment>
         ))}
 
@@ -541,42 +579,24 @@ export default function PlaceMapClient({
       {basemap === 'satellite' && IMAGERY_KEY_MISSING && !drawing && (
         <p className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] rounded-lg bg-white/95 px-3 py-2 font-dm-sans text-[15px] text-ink" data-audit="imagery-key-missing">{IMAGERY_KEY_MISSING_LINE}</p>
       )}
-      <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
-        <div className="pointer-events-auto flex overflow-hidden rounded-lg border border-gray-200 bg-white/95 font-dm-sans text-[14px] font-semibold">
-          {(['satellite', 'street'] as const).map(b => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => setBasemap(b)}
-              className={`min-h-[44px] px-3 capitalize transition-colors ${basemap === b ? 'bg-forest-green text-white' : 'text-secondary-ink hover:text-forest-green'}`}
-            >
-              {b}
+      {/* Block 26c (PK, Apple Maps as the reference): at most TWO controls on the
+          map, Layers and Locate, in one small pill top-right. Small on screen,
+          full-size to the thumb (the hit box is 48 px; the pill is 36). Nothing
+          else floats: full screen is a tap on the map, and the ranch re-frames
+          itself when the place goes back. */}
+      <div className="pointer-events-none absolute right-2 top-2 z-[1000] flex flex-col items-end gap-2">
+        {!drawing && (
+          <div className="pointer-events-auto flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white/95 shadow-sm" data-audit="map-pill">
+            <button type="button" onClick={() => setBasemap(b => (b === 'satellite' ? 'street' : 'satellite'))} aria-label={basemap === 'satellite' ? 'Layers — show the street map' : 'Layers — show the satellite picture'}
+              className="relative flex h-9 w-9 items-center justify-center text-forest-green before:absolute before:-inset-1.5 before:content-['']" data-audit="map-layers">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5" /></svg>
             </button>
-          ))}
-        </div>
-        {/* The FIRST time Dryline ever asks for a location, and the people it
-            asks are the pilot crew. The button does not stand alone: it says
-            what it does and what happens to the answer, before the phone's own
-            permission sheet appears. Both are true — the fix moves the map and
-            drops the blue dot, and it is never written down, never sent, and
-            gone when the map closes. */}
-        {overview && !drawing && (
-          <div className="pointer-events-auto flex flex-col items-end gap-2">
-            <button type="button" onClick={() => setExpanded(e => !e)} aria-label={expanded ? 'Close map' : 'Full screen map'} className={MAP_BTN} data-audit="map-expand">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                {expanded ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
-              </svg>
-              {expanded && <span>Close</span>}
-            </button>
-            {geolocatable && (
+            {geolocatable && overview && (
               <button type="button" onClick={() => { if (!followMe) { setFollowMe(true); setMePaused(false) } else if (mePaused) setMePaused(false); else setFollowMe(false) }}
-                aria-pressed={followMe && !mePaused} className={`${MAP_BTN} ${followMe && !mePaused ? '!bg-forest-green !text-white' : ''}`} data-audit="map-follow" data-state={!followMe ? 'off' : mePaused ? 'paused' : 'following'}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
-                <span>{followMe && mePaused ? 'Recenter' : 'Follow me'}</span>
+                aria-label={!followMe ? 'Locate me' : mePaused ? 'Recenter on me' : 'Stop following me'} aria-pressed={followMe && !mePaused}
+                className={`relative flex h-9 w-9 items-center justify-center border-t border-black/10 before:absolute before:-inset-1.5 before:content-[''] ${followMe && !mePaused ? 'bg-forest-green text-white' : 'text-forest-green'}`} data-audit="map-locate" data-state={!followMe ? 'off' : mePaused ? 'paused' : 'following'}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
               </button>
-            )}
-            {followUser === false && !followMe && boundsKey && (
-              <button type="button" onClick={() => setFollowUser(true)} className={MAP_BTN} data-audit="map-whole-ranch"><span>Whole ranch</span></button>
             )}
           </div>
         )}

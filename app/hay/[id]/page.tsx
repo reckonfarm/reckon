@@ -1,5 +1,6 @@
 'use client'
 
+import BottomSheet from '@/app/components/BottomSheet'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
@@ -769,8 +770,8 @@ export default function HayDetailPage() {
 
       {/* ── Review modal ─────────────────────────────────────────────────────── */}
       {showReview && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
-          <div className="w-full max-w-md rounded-2xl bg-cream px-5 py-6 shadow-xl">
+        <BottomSheet open onClose={() => { setShowReview(false); setReviewError('') }} label="Rate this deal" z={50}>
+          <div>
             <Heading level={5}>
               Rate {listing.counterparty_name ?? (listing.counterparty_role === 'seller' ? 'the seller' : 'the buyer')}
             </Heading>
@@ -822,13 +823,13 @@ export default function HayDetailPage() {
               </button>
             </div>
           </div>
-        </div>
+        </BottomSheet>
       )}
 
       {/* ── Report modal ─────────────────────────────────────────────────────── */}
       {showReport && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
-          <div className="w-full max-w-md rounded-2xl bg-cream px-5 py-6 shadow-xl">
+        <BottomSheet open onClose={() => { setShowReport(false); setReportError('') }} label="Report this listing" z={50}>
+          <div>
             {reportDone ? (
               <div className="py-2 text-center">
                 <p className="font-fraunces text-lg font-semibold text-forest-green">
@@ -909,7 +910,7 @@ export default function HayDetailPage() {
               </>
             )}
           </div>
-        </div>
+        </BottomSheet>
       )}
     </>
   )
