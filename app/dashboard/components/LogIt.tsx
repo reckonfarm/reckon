@@ -1,5 +1,6 @@
 'use client'
 
+import { CAPTURE_EVENT } from '@/lib/places/capture-event'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
@@ -1078,7 +1079,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                     ['ride', 'Ride the perimeter', 'a field, a pasture, a corral'],
                     ['draw', 'Draw a place on the map', 'tap the corners'],
                   ] as const).map(([mode, label, hint]) => (
-                    <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`} onClick={close} className="flex min-h-[56px] items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit={`tile-place-${mode}`}>
+                    <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`} onClick={() => { close(); if (mode !== 'draw' && window.location.pathname === '/ranch/places') window.dispatchEvent(new CustomEvent(CAPTURE_EVENT, { detail: mode })) }} className="flex min-h-[56px] items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit={`tile-place-${mode}`}>
                       <span>{label}</span><span className="font-normal text-secondary-ink">{hint}</span>
                     </Link>
                   ))}

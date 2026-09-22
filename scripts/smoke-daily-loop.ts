@@ -2678,8 +2678,16 @@ async function main() {
       await ctx21.setGeolocation({ latitude: LAT, longitude: LNG, accuracy: 3 })
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       await page.evaluate(() => { try { localStorage.removeItem('dryline_ride_v1') } catch { /* private mode */ } })
-      await page.goto('/ranch/places#capture-ride', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      // Block 26b (2): the ride is started the way a rancher on Places starts it —
+      // Record → Ground → "Ride the perimeter", with the page already mounted.
+      // That link only changes the hash, and before 26b the hash was read once
+      // on mount: the tap did nothing, silently. (The suite's own two gotos hit
+      // the same race from the other side, 2 runs in 6.)
+      await page.locator('[data-audit="capture-choose"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await recordControl(page).click()
+      await page.getByRole('link', { name: /^Ride the perimeter/ }).click()
+      const rideFromPlaces = await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      record('26b (2): from Places itself, Record → Ground → Ride the perimeter starts the ride — a same-page hash link is honoured, not lost', rideFromPlaces, `ride surface ${rideFromPlaces ? 'mounted' : 'NEVER MOUNTED'} · ${page.url().replace(BASE, '')}`)
       await page.locator('[data-audit="capture-ride-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
       const mapBeforeRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
       const at = async (dx: number, dy: number) => { await ctx21.setGeolocation({ latitude: LAT + dy * M_LAT, longitude: LNG + dx * M_LNG, accuracy: 3 }); await page.waitForTimeout(350) }
