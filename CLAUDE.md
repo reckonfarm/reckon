@@ -57,7 +57,7 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
   Every suite and harness prints its commit and BASE beside its counts on the summary line (`suiteIdentity()`), and
   counts without their commit are a partial, not a result — in the run's output and in the report to PK.
 - **A check that can't pass is a capability gap:** name it every run, never a silent skip. Standing gap: the hay
-  marketplace is off in production (`/api/hay` 404s). Only PK's three watched flakes may skip (`flaky()`).
+  marketplace is off in production (`/api/hay` 404s). Only PK's two watched flakes may skip (`flaky()`).
 - **Suite tiers:** UI-only → daily loop once on the preview. Records or sync → all three. RLS or scoping → all
   three, always. Run from a worktree (`scripts/suite-worktree.sh <sha>`, `BASE=` the preview, `VERCEL_BYPASS` from
   `e2e/.env.e2e`) — one worktree per run, never two daily loops at once, and local runs prove nothing.
