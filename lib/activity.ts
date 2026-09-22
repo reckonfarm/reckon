@@ -1,4 +1,4 @@
-import { moveLine, type MovedBunch } from '@/lib/move-line'
+import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './supabase'
@@ -129,7 +129,7 @@ function describeBody(r: ActivityRow, names: Names): string {
     case 'rain': { const inches = num(p.inches); return inches == null ? `Rain${suffix}` : `${inches.toFixed(2)}" of rain${suffix}` }
     case 'hay_fed': { const bales = num(p.bales); const to = names.lot(p.herd_lot_id); const who = to ? ` to ${to}` : ''; return bales == null ? `Hay fed${who}${suffix}` : `Fed ${plural(bales, 'bale')}${who}${suffix}` }
     case 'bales_stacked': { const count = num(p.count); return count == null ? `Bales stacked${suffix}` : `Stacked ${plural(count, 'bale')}${suffix}` }
-    case 'cattle_moved': return moveLine(num(p.head), names.bunch(p.herd_lot_id), names.place(p.from_place_id), names.place(p.to_place_id))   // Block 25: the one move wording
+    case 'cattle_moved': return moveLine(num(p.head), names.bunch(p.herd_lot_id), names.place(p.from_place_id), names.place(p.to_place_id), isPlacement(p))   // Block 25: the one move wording
     case 'cattle_worked': { const head = num(p.head); const what = str(p.what); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); const lot = names.lot(p.herd_lot_id); return `Counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${lot ? ` of ${lot}` : ''}${e != null && c != null ? ` · ${e.toLocaleString()} expected · ${c - e === 0 ? 'same' : c - e > 0 ? `+${c - e}` : `−${e - c}`}` : ''}${suffix}` }
     case 'hay_inventory': { const bales = num(p.bales); const asOf = str(p.as_of); const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''; return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}` }

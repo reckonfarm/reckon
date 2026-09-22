@@ -28,7 +28,10 @@ import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo
 import { buildProgramAlerts } from '../lib/program-alerts'
 
 function loadEnv() {
-  for (const f of ['.env', '.env.local']) {
+  // e2e/.env.e2e too, like every other suite: VERCEL_BYPASS lives only there,
+  // and without it every API call here stops at Vercel's protection page and
+  // reads as sixty isolation failures that never reached the app.
+  for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
     const path = resolve(process.cwd(), f)
     if (!existsSync(path)) continue
     for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -1035,6 +1038,50 @@ async function projectionChecks() {
   record('user A (owner)', '12.6/067: after B\'s rows are gone, A\'s count still stands where A left it', (await headOf(a.lotId)) === aBefore, `A ${await headOf(a.lotId)} (was ${aBefore})`)
 }
 
+// ── Block 25b (072): where a bunch is cannot be steered across ranches ────────
+// The place projection is SECURITY DEFINER, like the head count's, so it gets
+// 067's proof: a move B writes on B's ranch naming A's bunch — or naming A's
+// place for B's own bunch — puts nothing anywhere on A, and B's bunch nowhere
+// on A's ground.
+async function placeProjectionChecks() {
+  const a = fx.A!, b = fx.B!
+  const B = await userClient('B')
+  // Capability, not existence: 42883 = the function is not there (072 unrun).
+  const probe = await admin.rpc('rebuild_lot_place', { p_lot: '00000000-0000-0000-0000-000000000000' })
+  // A capability gap, named and RED — never a skip to reach green.
+  if (probe.error?.code === '42883') { record('(gap)', '25b: place projection checks — CAPABILITY GAP: migration 072 is not applied on this database', false, 'five cross-ranch place checks cannot be read until 072 is run'); return }
+
+  const placeOf = async (id: string) => ((await admin.from('herd_lots').select('place_id').eq('id', id).maybeSingle()).data as { place_id?: string | null } | null)?.place_id ?? null
+  const aBefore = await placeOf(a.lotId), bBefore = await placeOf(b.lotId)
+  const move = (lot: string, to: string) => B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'cattle_moved', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, head: 5, herd_lot_id: lot, from_place_id: null, to_place_id: to, place_id: to } }).select('id').single()
+
+  const m1 = await move(a.lotId, b.placeId)
+  record('user B (other ranch)', '25b/072: a move B writes on B\'s ranch naming A\'s bunch puts A\'s bunch nowhere — the projection believes only the bunch\'s own ranch',
+    (await placeOf(a.lotId)) === aBefore, `B\'s row ${m1.error ? `refused (${m1.error.code})` : 'landed on B'} · A\'s bunch ${aBefore ?? 'no place'} → ${(await placeOf(a.lotId)) ?? 'no place'}`)
+
+  const m2 = await move(b.lotId, a.placeId)
+  const bAfter = await placeOf(b.lotId)
+  record('user B (other ranch)', '25b/072: B\'s own bunch cannot be put on A\'s place — a place on another ranch is no place',
+    bAfter !== a.placeId, `B\'s row ${m2.error ? `refused (${m2.error.code})` : 'landed on B'} · B\'s bunch → ${bAfter === a.placeId ? 'A\'S PLACE' : bAfter ?? 'no place'}`)
+
+  const viaRoute = await api(B, '/api/log', { id: randomUUID(), type: 'cattle_moved', head: 5, herd_lot_id: a.lotId, to_place_id: b.placeId, place_id: b.placeId })
+  record('user B (other ranch)', '25: the record route refuses a move naming another ranch\'s bunch, and A\'s bunch is unmoved',
+    viaRoute.status === 400 && (await placeOf(a.lotId)) === aBefore, `${viaRoute.status} "${String(viaRoute.json.error ?? '').slice(0, 50)}"`)
+
+  for (const fn of ['rebuild_lot_place', 'lot_place_from_moves'] as const) {
+    const direct = await B.rpc(fn, { p_lot: a.lotId })
+    record('user B (other ranch)', `25b: B cannot call ${fn} on A\'s bunch — refused`, !!direct.error && (await placeOf(a.lotId)) === aBefore, `${direct.error?.code ?? 'ALLOWED'}`)
+  }
+  const trig = await B.rpc('events_project_bunch_place')
+  record('user B (other ranch)', '25b: the place trigger function cannot be called directly by a client', !!trig.error, `${trig.error?.code ?? 'ALLOWED'}`)
+
+  // Tidy B's probe rows; both bunches must read as they did before any of this.
+  for (const m of [m1, m2]) if (m.data) await admin.from('events').delete().eq('id', m.data.id)
+  record('user A (owner)', '25b/072: after B\'s rows are gone, both bunches are where they were', (await placeOf(a.lotId)) === aBefore && (await placeOf(b.lotId)) === bBefore,
+    `A ${(await placeOf(a.lotId)) ?? 'no place'} (was ${aBefore ?? 'no place'}) · B ${(await placeOf(b.lotId)) ?? 'no place'} (was ${bBefore ?? 'no place'})`)
+}
+
 async function turnoutChecks() {
   const a = fx.A!, b = fx.B!
   const A = await userClient('A')
@@ -1616,6 +1663,17 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { 
 
 async function main() {
   console.log(`\nDryline — two-ranch isolation test  (db ${URL_}, ingest ${BASE})\n`)
+  // IDENTITY FIRST. Every route check below is meaningless if BASE is answering
+  // with Vercel's protection page instead of the app: that reads as dozens of
+  // 401 "isolation failures" that never reached a route. Say it once, and stop.
+  {
+    const res = await fetch(`${BASE}/signin`, { headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} }).catch(() => null)
+    const body = res ? await res.text().catch(() => '') : ''
+    if (!res || res.status !== 200 || !/Dryline/i.test(body)) {
+      console.error(`rls-test: ${BASE} is not serving the app (${res ? `HTTP ${res.status}` : 'no answer'})${BASE.includes('vercel.app') && !process.env.VERCEL_BYPASS ? ' — VERCEL_BYPASS is missing from e2e/.env.e2e' : ''}. Nothing was checked — this is NOT a pass.  —  ${suiteIdentity()}`)
+      process.exit(2)
+    }
+  }
   await teardown('pre-run residue')
   try {
     fx.A = await seed('A')
@@ -1636,6 +1694,7 @@ async function main() {
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
     await countChecks()          // Block 14 — counts and bunches; needs 069 (skips without it)
     await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
+    await placeProjectionChecks()   // Block 25b — a bunch's place cannot be steered across ranches; needs 072 (skips, named, without it)
     await projectionChecks()    // Block 12 — the head-count projection cannot be steered across ranches; needs 066 (skips without it); RED until 067
     await removedMemberChecks() // last — it removes A's membership
   } finally {

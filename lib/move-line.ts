@@ -32,6 +32,15 @@ export function moveRoute(from: string | null, to: string | null): string {
 }
 
 /** "Moved Fall Cows · Cows · 40 head West pasture → East pasture" · "Moved 12 head to East pasture · no bunch named" */
-export function moveLine(head: number | null, bunch: MovedBunch | null, from: string | null, to: string | null): string {
+export function moveLine(head: number | null, bunch: MovedBunch | null, from: string | null, to: string | null, placement = false): string {
+  // Block 25b: a bunch given a place with no move behind it — made there, or
+  // made by a working where its source stood — was PLACED, never "moved".
+  if (placement) return `${movedWho(head, bunch)} placed${to ? ` at ${to}` : ''}${unnamed(bunch)}`
   return `Moved ${movedWho(head, bunch)}${moveRoute(from, to)}${unnamed(bunch)}`
 }
+
+/** payload.placement === true — the one test for "placed, not moved". */
+export const isPlacement = (payload: Record<string, unknown> | null | undefined) => payload?.placement === true
+
+/** Block 25b (ruling 2): what a bunch with no live move reads as. */
+export const NO_PLACE_RECORDED = 'No place recorded'

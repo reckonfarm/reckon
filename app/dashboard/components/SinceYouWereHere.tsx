@@ -1,4 +1,4 @@
-import { moveLine, type MovedBunch } from '@/lib/move-line'
+import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
@@ -42,7 +42,7 @@ function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
     case 'bales_stacked': { const c = num(p.count); return `stacked ${c == null ? 'bales' : plural(c, 'bale')}${suffix}` }
     case 'hay_inventory': { const b = num(p.bales); const asOf = str(p.as_of); return `counted ${b == null ? 'the stack' : `${b.toLocaleString()} bales on hand`}${asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''}${suffix}` }
     case 'rain': { const i = num(p.inches); return `logged ${i == null ? 'rain' : `${i.toFixed(2)}" of rain`}${suffix}` }
-    case 'cattle_moved': { const l = moveLine(num(p.head), bunch(p.herd_lot_id), placeName(p.from_place_id), placeName(p.to_place_id)); return l[0].toLowerCase() + l.slice(1) }   // Block 25
+    case 'cattle_moved': { const l = moveLine(num(p.head), bunch(p.herd_lot_id), placeName(p.from_place_id), placeName(p.to_place_id), isPlacement(p)); return l[0].toLowerCase() + l.slice(1) }   // Block 25
     case 'cattle_worked': { const h = num(p.head); const w = str(p.what); return `${w ?? 'worked'} ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); return `counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${e != null && c != null ? ` (${e.toLocaleString()} expected)` : ''}${suffix}` }
     case 'alert': return `LFP alert for ${str(p.county_name) ?? 'a county'}${num(p.tier) ? ` — tier ${p.tier}` : ''}`

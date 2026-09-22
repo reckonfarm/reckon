@@ -134,7 +134,9 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const row = {
     ranch_id: who.ranchId, class: l.class, name: l.name ?? null, head_count: l.head_count, avg_weight: l.avg_weight,
     weight_unit: l.weight_unit, frame: l.frame, weaned: l.weaned, sale_windows: l.sale_windows, created_by: who.uid, updated_by: who.uid,
-    ...(placeId ? { place_id: placeId } : {}),
+    // Block 25b: NOT place_id. A bunch's place is the database's projection of
+    // its moves (072); a bunch made at a place gets a placement below, and the
+    // trigger puts it there.
     ...(l.purpose && (await lotPurposeSupported(supabase)) ? { purpose: l.purpose } : {}),
   }
   let ins: Res = await supabase.from('herd_lots').insert(row).select(LOT_COLUMNS_BASE).single()
@@ -149,6 +151,15 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const created = data as LotRow
   const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created')
   if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but its count could not be written to the record — open it and set the count again.' }
+  // Block 25b (PK, 2026-09-21): a place without a move is a PLACEMENT — the same
+  // event a move is, marked so it reads "placed at", never "moved".
+  if (placeId) {
+    const { error: placedErr } = await supabase.from('events').insert({
+      user_id: who.uid, ranch_id: who.ranchId, device_id: null, type: 'cattle_moved', ts: new Date().toISOString(), schema_version: 1,
+      payload: { source: 'manual', schema_version: 1, placement: true, placement_reason: 'created', head: created.head_count, herd_lot_id: created.id, from_place_id: null, to_place_id: placeId, place_id: placeId },
+    })
+    if (placedErr) return { ok: false, status: 500, error: 'The bunch was saved, but where it is could not be written to the record — open it and pick the place again.' }
+  }
   return { ok: true, lot: (await withPurpose(supabase, [await withPlace(supabase, created)]))[0] }
 }
 

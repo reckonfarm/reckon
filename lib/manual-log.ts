@@ -139,6 +139,8 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         // Which bunch moved. A NEW move must name one (the record route says
         // so); a move from before Block 25 may not, and stays correctable.
         herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),
+        // Block 25b: placed, not moved — kept through a correction, never invented by one.
+        ...(body.placement === true ? { placement: true, ...(typeof body.placement_reason === 'string' ? { placement_reason: body.placement_reason.slice(0, 40) } : {}) } : {}),
       }
     }
     case 'cattle_worked': {
