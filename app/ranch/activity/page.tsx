@@ -103,7 +103,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         {failed ? (
           <Card className="mt-4 p-5" data-audit="activity-failed"><p className="font-dm-sans text-[17px] text-ink">The record couldn&rsquo;t be read just now. Nothing is lost; try again in a moment.</p></Card>
         ) : !page ? (
-          <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
+          <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p><Link href="/setup" className="mt-3 inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="activity-setup-link">Set up my ranch</Link></Card>
         ) : (
           <>
             <FilterShell active={activeFilterLabel} filtering={filtering}>

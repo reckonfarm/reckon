@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
+import { resolveRanchId } from '@/lib/ranch-membership'
 import { CONTACT_EMAIL, OPERATOR_NAME } from '@/lib/legal'
 import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -25,6 +26,7 @@ export default async function AccountPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/account')
+  const ranchId = await resolveRanchId(supabase, user.id).catch(() => null)
   return (
     <>
       <SiteHeader />
@@ -42,6 +44,9 @@ export default async function AccountPage() {
           <ProfileForm />
         </section>
 
+        {/* Block 31: no heading over nothing. Without a ranch these sections do
+            not exist; the middleware sends a ranchless person to /setup anyway. */}
+        {ranchId && (<>
         <section className="mt-6" aria-labelledby="acct-ranch">
           <h2 id="acct-ranch" className={`${EYEBROW} !text-ink`}>Ranch settings</h2>
           <RanchNameCard />
@@ -56,6 +61,7 @@ export default async function AccountPage() {
               (flagEnabled('messaging') hid it), so nothing on screen changes;
               what goes is a link to a dead page waiting for a flag flip. */}
         </section>
+        </>)}
 
         <section className="mt-6" aria-labelledby="acct-prefs">
           <h2 id="acct-prefs" className={`${EYEBROW} !text-ink`}>Preferences</h2>
