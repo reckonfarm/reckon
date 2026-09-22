@@ -67,6 +67,30 @@ export async function middleware(request: NextRequest) {
     return redirectResponse
   }
 
+  // Block 31 — no screen pretends a ranch exists. Signed in and on a ranch
+  // screen with no ranch → the one setup screen; on /setup with a ranch →
+  // Today. Public county pages (?fips=) and the invite landing are never
+  // touched: an invited person has no ranch until they accept. The read's
+  // answer rides on the response (x-dryline-ranch), so a redirect that did
+  // not happen can be read back.
+  if (user && !request.nextUrl.searchParams.has('fips')) {
+    const path = request.nextUrl.pathname
+    const onSetup = path === '/setup'
+    if (onSetup || RANCH_PATHS.test(path)) {
+      const { member, said } = await hasRanch(user.id)
+      supabaseResponse.headers.set('x-dryline-ranch', said)
+      if (onSetup ? member : !member) {
+        const dest = request.nextUrl.clone()
+        dest.pathname = onSetup ? '/today' : '/setup'
+        dest.search = ''
+        const redirectResponse = NextResponse.redirect(dest)
+        redirectResponse.headers.set('x-dryline-ranch', said)
+        supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
+        return redirectResponse
+      }
+    }
+  }
+
   return supabaseResponse
 }
 
