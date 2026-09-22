@@ -3580,7 +3580,14 @@ async function main() {
           await opt.waitFor({ state: 'attached', timeout: 15_000 })
           try { await opt.click({ timeout: 15_000 }) } catch (e) {
             // What was it, when it could not be tapped? Said in the death, not guessed at afterwards.
-            const st = await opt.evaluate(el => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null; return { disabled: (el as HTMLButtonElement).disabled, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)].join(','), vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetAnim: sheet ? getComputedStyle(sheet).animationName : '', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled') } }).catch(() => null)
+            const st = await opt.evaluate(async el => {
+              const frame = () => new Promise<void>(r => requestAnimationFrame(() => r()))
+              const boxes: string[] = []
+              for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)].join(',')); await frame(); await frame() }
+              const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null
+              const anims = document.getAnimations().map(a => `${(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? a.constructor.name}@${(a.effect?.target as HTMLElement | null)?.getAttribute('data-audit') ?? (a.effect?.target as HTMLElement | null)?.tagName ?? '?'}:${a.playState}`)
+              return { disabled: (el as HTMLButtonElement).disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled'), anims: anims.slice(0, 8) }
+            }).catch(() => null)
             throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)}`)
           }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
