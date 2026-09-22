@@ -3079,7 +3079,8 @@ async function main() {
       await undrawnChip.click().catch(() => {})
       const undrawnSheet = ((await sheet.locator('[data-audit="sheet-place"]').innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
       record('26: a place with no shape and no position is a chip in the key, into the same sheet', !!undrawnName && undrawnSheet === undrawnName, `chip "${undrawnName}" → sheet "${undrawnSheet}"`)
-      await page.mouse.click(10, 10).catch(() => {})
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
 
       // Kill the tiles (the network the map needs): Today still paints, the polygons still draw, the tap still works.
       await page.route(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/, r => r.abort())
@@ -3095,7 +3096,8 @@ async function main() {
       record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
         ledgersUp && tilesShown === 0 && paintOff.edges >= 4 && paintOff.hit / paintOff.edges >= 0.6 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · edge ${paintOff.hit} of ${paintOff.edges} in the bunch's colour · tap ${tapOff}`)
       await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
-      await page.mouse.click(10, 10).catch(() => {})
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
     })
 
     // ── Block 27 — a record carries the moment it was made on the phone ──────
