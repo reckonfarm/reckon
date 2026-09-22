@@ -3242,7 +3242,7 @@ async function main() {
       // The record is paged (50 a page); by now the ranch has more rows than
       // one page, so the three are read across pages in list order.
       const ids: string[] = []
-      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.goto(`/ranch/activity?from=${today}&to=${today}`, { waitUntil: 'domcontentloaded' })   // today's rows only: the three are today's
       for (let pg = 0; pg < 4; pg++) {
         ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
         const next = page.locator('a[href*="cursor="]').first()
@@ -3284,6 +3284,18 @@ async function main() {
         // What Reviewed sends: the newest made-at it was shown.
         let sent: string | null = null
         await pb.route('**/api/seen', async (route) => { try { sent = (JSON.parse(route.request().postData() ?? '{}') as { through?: string }).through ?? null } catch { sent = null }; await route.continue() })
+        // By now the card holds more than its five, so Reviewed lives on the last page of View all (6H) — the path a person takes.
+        if (!(await pb.locator('[data-audit="mark-reviewed"]').count())) {
+          await pb.locator('[data-audit="since-view-all"]').click({ timeout: 10_000 }).catch(() => {})
+          for (let pg = 0; pg < 6; pg++) {
+            await pb.locator('li[data-id], [data-audit="mark-reviewed"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+            const next = pb.locator('a[href*="cursor="]').first()
+            if (!(await next.count())) break
+            const was = await pb.locator('li[data-id]').first().getAttribute('data-id').catch(() => null)
+            await next.click()
+            await pb.waitForFunction((w: string | null) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== w, was, { timeout: 10_000 }).catch(() => {})
+          }
+        }
         await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(() => {})
         await pb.waitForTimeout(1500)
         await pb.unroute('**/api/seen')

@@ -54,7 +54,7 @@ export default async function SinceYouWereHere() {
       <ul className="mt-3 divide-y divide-forest-green/10">
         {rows.map(r => (
           // 6B: the same row component as every timeline — a correction or a void is marked, not prefixed.
-          <ActivityRowItem key={r.id} id={r.id} who={r.who} line={r.line} when={when(r.workedAt)} marker={r.marker} chain={[]} audit="since-row" />
+          <ActivityRowItem key={r.id} id={r.id} who={r.who} line={r.line} when={when(r.workedAt)} marker={r.marker} chain={[]} audit="since-row" rowClass="py-2" sep=" " />
         ))}
       </ul>
       {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work
