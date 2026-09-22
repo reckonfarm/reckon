@@ -59,7 +59,12 @@ function SyncRefresh() {
   const [, startTransition] = useTransition()
   if (seen.current === null) seen.current = new Set(items.filter(i => i.state === 'synced').map(i => i.id))
 
-  const refresh = () => startTransition(() => router.refresh())
+  // Never while offline: a refresh with no signal fails its fetch and the
+  // router falls back to a full navigation — the page reloads and the receipt
+  // on it is gone. With one bar in a corral that would happen on every retry.
+  // The page catches up when the signal returns (the 'online' listener below).
+  const canRefresh = () => typeof navigator === 'undefined' || navigator.onLine !== false
+  const refresh = () => { if (canRefresh()) startTransition(() => router.refresh()) }
   const arm = (ms: number) => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(recheck, ms) }
   // Is the painted stamp at or past what this phone knows landed? If not, refresh again.
   const recheck = () => {
@@ -67,6 +72,7 @@ function SyncRefresh() {
     const stamp = readStamp()
     if (stamp === undefined || !target.current) return
     if (stamp && Date.parse(stamp) >= Date.parse(target.current)) { tries.current = 0; return }
+    if (!canRefresh()) return
     const wait = RETRY_MS[tries.current]
     if (wait == null) return
     tries.current += 1
@@ -88,11 +94,13 @@ function SyncRefresh() {
     return () => { if (timer.current) clearTimeout(timer.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
-  // Waking: refresh once, then prove it.
+  // Waking, or the signal coming back: refresh once, then prove it.
   useEffect(() => {
     const onWake = () => { if (document.visibilityState === 'visible') { tries.current = 0; refresh(); arm(RECHECK_MS) } }
+    const onSignal = () => { tries.current = 0; refresh(); arm(RECHECK_MS) }
     document.addEventListener('visibilitychange', onWake)
-    return () => document.removeEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onSignal)
+    return () => { document.removeEventListener('visibilitychange', onWake); window.removeEventListener('online', onSignal) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return null
