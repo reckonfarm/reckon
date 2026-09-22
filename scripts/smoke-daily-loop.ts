@@ -2822,12 +2822,14 @@ async function main() {
         // outbox rewrites its key on a timer and can free a few bytes between
         // the fill and the probe (one run in five did), so the fill is topped
         // up and probed again, a few times, before the shelf is called not full.
+        // A growth that succeeds is KEPT (it is the bytes the outbox freed), so
+        // the next probe meets a fuller shelf — giving it back let the timer win.
         let full = false
         const k = '__fill_0'
-        for (let attempt = 0; attempt < 4 && !full; attempt++) {
+        for (let attempt = 0; attempt < 8 && !full; attempt++) {
           for (;;) { if (n > 3000) break; try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(64)); n++ } catch { break } }
           const v = localStorage.getItem(k) ?? ''
-          try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+          try { localStorage.setItem(k, v + 'y'.repeat(64)) } catch { full = true }
         }
         return { n, full }
       })
