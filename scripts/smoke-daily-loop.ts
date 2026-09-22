@@ -3111,8 +3111,8 @@ async function main() {
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const row = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT28 }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').trim()
       const inPickers = await page.request.get('/api/places').then(r => r.json()).then((j: { places?: { id: string }[] }) => (j.places ?? []).some(p => p.id === p28!.id)).catch(() => true)
-      record('28: delete a place a move points at — the move still reads its name marked removed, the bunch reads no place recorded, and the place is off the pickers',
-        moved.status() === 201 && before === p28!.id && del.status() === 200 && afterDelete === null && what.includes(`${PREFIX} 28 pasture (removed)`) && row === NO_PLACE_RECORDED && !inPickers,
+      record('28: delete a place a move points at — the move still reads its name marked in trash, the bunch reads no place recorded, and the place is off the pickers',
+        moved.status() === 201 && before === p28!.id && del.status() === 200 && afterDelete === null && what.includes(`${PREFIX} 28 pasture (in trash)`) && row === NO_PLACE_RECORDED && !inPickers,
         `move ${moved.status()} · delete ${del.status()} · bunch ${before === p28!.id ? 'at it' : before} → ${afterDelete ?? 'no place'} · "${what.slice(0, 90)}" · row "${row}" · in pickers ${inPickers}`)
 
       // The purge, past its window: the referenced place is kept, the empty one goes.
@@ -3131,7 +3131,7 @@ async function main() {
       await page.goto(`/ranch/activity/${mv28}`, { waitUntil: 'domcontentloaded' })
       const whatBack = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('28: restore from the trash brings the place back with its history — the bunch is there again and the move reads its name plain',
-        restored.status() === 200 && afterRestore === p28!.id && whatBack.includes(`${PREFIX} 28 pasture`) && !/removed/.test(whatBack),
+        restored.status() === 200 && afterRestore === p28!.id && whatBack.includes(`${PREFIX} 28 pasture`) && !/in trash/.test(whatBack),
         `restore ${restored.status()} · bunch → ${afterRestore === p28!.id ? 'at it' : afterRestore ?? 'no place'} · "${whatBack.slice(0, 90)}"`)
     })
 
@@ -3326,7 +3326,7 @@ async function main() {
       const undone2 = await pressUndo(page)
       const { data: back2 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
       record('13 (place): hold → Delete with an entry and a device attached — no confirm, both survive and still name it, the entry shows it as deleted; Undo puts it back',
-        s2b && noConfirm && entryKept && deviceKept && /\(removed\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        s2b && noConfirm && entryKept && deviceKept && /\(in trash\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
         `sheet ${s2b} · no confirm ${noConfirm} · entry kept ${entryKept} · device kept ${deviceKept} · row "${namesGone.slice(0, 60)}" · undo ${undone2}`)
 
       // 3 · Device: Fix edits name and where it sits, and says what the device sets itself; Delete → Undo.

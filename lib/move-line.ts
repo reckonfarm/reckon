@@ -12,8 +12,9 @@ import { LOT_CLASS_LABELS, lotLabel, type Lot } from '@/lib/herd'
 export type MovedBunch = { name?: string | null; class: Lot['class']; deleted?: boolean }
 
 export const NO_BUNCH_NAMED = 'no bunch named'
-/** Block 28: the one word for a place or bunch that is in the trash, wherever history still names it. */
-export const REMOVED = 'removed'
+/** Block 28: the one mark for a place or bunch that is in the trash, wherever history still names it.
+ *  Not "removed" — that already means a voided entry, and one word cannot mean two things on a line. */
+export const REMOVED = 'in trash'
 export const removedName = (name: string, removed: boolean | null | undefined) => (removed ? `${name} (${REMOVED})` : name)
 /** The refusal, said by the record route and shown by the sheet before it — one string, two places. */
 export const MOVE_NEEDS_BUNCH = 'Pick the bunch you moved.'
