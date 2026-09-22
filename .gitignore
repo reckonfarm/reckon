@@ -64,5 +64,5 @@ __pycache__/
 # smoke session cookies minted by scripts/smoke-signin.ts — never commit
 *cookie*.txt
 
-# one-tap preview links carry the bypass secret — never committed
+# scratch files, never committed
 .scratch/
