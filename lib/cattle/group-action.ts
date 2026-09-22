@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { GROUP_ACTIONS, MAX_GROUP_NAME, MAX_HEAD, isGroupAction, type GroupAction } from './kinds'
 import { LOT_CLASSES, type LotClass } from '@/lib/herd'
+import { parseCreatedAt, parseEventTs } from '@/lib/manual-log'
 
 // ─── Group actions — one event, named result groups (Block 10) ────────────────
 //
@@ -69,6 +70,8 @@ const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : 
 export interface GroupActionInput {
   eventId: string
   ts: string
+  /** Block 27: when the phone made it. */
+  createdAt: string
   action: GroupAction
   sourceLotId: string
   expectedHead: number | null
@@ -89,6 +92,8 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
   const bad = (m: string): never => { throw new GroupActionError(400, m) }
 
   const eventId = typeof body.id === 'string' && UUID_RE.test(body.id) ? body.id.toLowerCase() : bad('id must be a uuid')
+  let createdAt = ''
+  try { createdAt = parseCreatedAt(body.created_at) } catch (e) { bad(e instanceof Error ? e.message : 'created_at') }
   if (!isGroupAction(body.action)) bad(`action must be one of ${GROUP_ACTIONS.join(', ')}`)
   const action = body.action as GroupAction
   const sourceLotId = typeof body.source_lot_id === 'string' && UUID_RE.test(body.source_lot_id)
@@ -150,7 +155,10 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
 
   return {
     eventId: eventId as string,
-    ts: typeof body.ts === 'string' ? body.ts : new Date().toISOString(),
+    // Block 27: the same bounds every manual type gets (this bypassed them), and
+    // no work time chosen = when it was made.
+    ts: ((): string => { try { return parseEventTs(body.ts, createdAt) } catch (e) { return bad(e instanceof Error ? e.message : 'ts') } })(),
+    createdAt,
     action,
     sourceLotId: sourceLotId as string,
     expectedHead,

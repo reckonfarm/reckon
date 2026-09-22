@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ACTIVITY_COLS, type ActivityRow } from './activity'
-import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, type ManualEventType } from './manual-log'
+import { parseCreatedAt, buildManualPayload, isManualEventType, parseEventTs, ValidationError, type ManualEventType } from './manual-log'
 import { consequenceFor, type Consequence } from './log-consequence'
 
 // ─── Corrections after the undo window (Block 5B, migration 054) ─────────────
@@ -72,7 +72,7 @@ async function insertSuperseding(
   supabase: SupabaseClient,
   userId: string,
   original: OriginalRow,
-  fields: { id: string | null; ts: string; payload: Record<string, unknown>; reason: string | null; voided: boolean },
+  fields: { id: string | null; ts: string; createdAt: string; payload: Record<string, unknown>; reason: string | null; voided: boolean },
 ): Promise<CorrectionResult> {
   const { data, error } = await supabase
     .from('events')
@@ -83,6 +83,7 @@ async function insertSuperseding(
       device_id: null,
       type: original.type,
       ts: fields.ts,
+      created_at: fields.createdAt,   // Block 27: made on the phone
       lat: null,
       lng: null,
       payload: fields.payload,
@@ -159,7 +160,7 @@ export async function correctEvent(supabase: SupabaseClient, userId: string, id:
     const same = ts === original.ts && JSON.stringify(payload) === JSON.stringify(original.payload) && (reason ?? '') === (original.correction_reason ?? '')
     if (same) return { ok: false, status: 400, error: 'Nothing changed — change a value, the time, or the reason; or void the entry instead' }
     // Block 25b: a corrected move moves its bunch because the DATABASE says so (072).
-    return insertSuperseding(supabase, userId, original, { id: clientId, ts, payload, reason, voided: false })
+    return insertSuperseding(supabase, userId, original, { id: clientId, ts, createdAt: parseCreatedAt(body.created_at), payload, reason, voided: false })
   } catch (err) {
     if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }
     throw err
@@ -182,7 +183,7 @@ export async function voidEvent(supabase: SupabaseClient, userId: string, id: st
   try {
     const reason = reasonOf(body.reason)
     const clientId = idOf(body.id)
-    return insertSuperseding(supabase, userId, original, { id: clientId, ts: original.ts, payload: original.payload, reason, voided: true })
+    return insertSuperseding(supabase, userId, original, { id: clientId, ts: original.ts, createdAt: parseCreatedAt(body.created_at), payload: original.payload, reason, voided: true })
   } catch (err) {
     if (err instanceof ValidationError) return { ok: false, status: 400, error: err.message }
     throw err

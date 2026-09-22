@@ -1,6 +1,6 @@
 import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
-import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
+import { buildManualPayload, isManualEventType, parseCreatedAt, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
 import { MOVE_NEEDS_BUNCH } from '@/lib/move-line'
 import { GROUP_ACTION_TYPE, GroupActionError, groupActionConsequence, parseGroupAction, recordGroupAction } from '@/lib/cattle/group-action'
@@ -59,6 +59,12 @@ export async function POST(req: NextRequest) {
     try {
       const input = parseGroupAction(body as Record<string, unknown>)
       const done = await recordGroupAction(supabase, input)
+      // Block 27: the working — and the placement a split writes beside it —
+      // are made when the phone made them. record_group_action stamps arrival;
+      // one update after it, on the caller's client, says the phone's moment.
+      if (!done.duplicate && input.createdAt) {
+        await supabase.from('events').update({ created_at: input.createdAt }).or(`id.eq.${done.eventId},payload->>origin_event_id.eq.${done.eventId}`)
+      }
       const { data: event } = await supabase.from('events').select(EVENT_COLS).eq('id', done.eventId).maybeSingle()
       return NextResponse.json(
         { event, ...(done.duplicate ? { duplicate: true } : {}), consequence: groupActionConsequence(done.payload) },
@@ -77,10 +83,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let ts: string
+  let ts: string, createdAt: string
   let payload
   try {
-    ts = parseEventTs(body.ts)
+    createdAt = parseCreatedAt(body.created_at)
+    ts = parseEventTs(body.ts, createdAt)
     payload = buildManualPayload(body.type, body)
   } catch (err) {
     if (err instanceof ValidationError) return NextResponse.json({ error: err.message }, { status: 400 })
@@ -135,6 +142,7 @@ export async function POST(req: NextRequest) {
       device_id: null,
       type: body.type,
       ts,
+      created_at: createdAt,   // Block 27: made on the phone
       lat: null,
       lng: null,
       payload,
@@ -167,5 +175,5 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ event: row, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 201 })
 }
 
-const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, payload, schema_version, ingested_at'
+const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, created_at, payload, schema_version, ingested_at'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

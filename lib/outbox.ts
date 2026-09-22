@@ -225,18 +225,23 @@ export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0
   // Block 15 (ruling 2): a FIX re-saves under the same id. The refused item is
   // replaced in place — same id, new body, back to Saved — so the ranch sees
   // one record and a retry after a landed fix is still a duplicate, never two.
+  // Block 27: the body carries the moment the record was MADE on this phone,
+  // so the ranch orders it by then and not by when it arrived. A FIX keeps the
+  // first moment: the record was made then; the fix corrected it before it
+  // ever left the phone.
   const existing = read().find(i => i.id === id)
   if (existing) {
-    const fixed: OutboxItem = { ...existing, body: { ...body, id }, label, state: 'local', attempts: 0, lastError: undefined, holdUntil: Date.now() + hold, undoable: false, consequence: undefined, followUp: undefined, ...(opts.endpoint ? { endpoint: opts.endpoint } : {}), ...(opts.link ? { link: opts.link } : {}) }
+    const fixed: OutboxItem = { ...existing, body: { ...body, id, created_at: new Date(existing.createdAt).toISOString() }, label, state: 'local', attempts: 0, lastError: undefined, holdUntil: Date.now() + hold, undoable: false, consequence: undefined, followUp: undefined, ...(opts.endpoint ? { endpoint: opts.endpoint } : {}), ...(opts.link ? { link: opts.link } : {}) }
     write(read().map(i => (i.id === id ? fixed : i)))
     scheduleFlush(hold)
     return fixed
   }
+  const madeAt = Date.now()
   const item: OutboxItem = {
     id,
-    body: { ...body, id },
+    body: { ...body, id, created_at: new Date(madeAt).toISOString() },
     label,
-    createdAt: Date.now(),
+    createdAt: madeAt,
     state: 'local',
     attempts: 0,
     holdUntil: Date.now() + hold,

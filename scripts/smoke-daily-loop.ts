@@ -3039,6 +3039,51 @@ async function main() {
       await page.mouse.click(10, 10).catch(() => {})
     })
 
+    // ── Block 27 — a record carries the moment it was made on the phone ──────
+    // PK's falsifier: record a feeding offline at 10:00, reconnect at 16:00. It
+    // orders and reads as 10:00. The phone's clock is the page's clock (a fixed
+    // fake time; timers keep running), the server's is real.
+    await section('Block 27 — a record carries the moment it was made on the phone', async () => {
+      const probe073 = await admin.from('events').select('created_at').limit(1)
+      if (probe073.error && /created_at/.test(probe073.error.message)) {
+        record('27: CAPABILITY GAP — migration 073 is not applied on this database; nothing below can be read', false, probe073.error.message.slice(0, 80))
+        return
+      }
+      const today = ranchDay()
+      const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.clock.setFixedTime(tenAM)
+      await page.context().setOffline(true)
+      await logFeed(page, 7)
+      const off27 = await watchStates(page, 'Sent', 4_000, 'Fed 7 bales')
+      const queued = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 7)
+      const madeOnPhone = typeof queued?.body.created_at === 'string' ? new Date(queued.body.created_at as string) : null
+      await page.clock.setFixedTime(fourPM)
+      await page.context().setOffline(false)
+      const on27 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      await page.clock.setFixedTime(new Date())
+      const { data: row27 } = queued ? await admin.from('events').select('id, ts, created_at, ingested_at').eq('id', queued.id).maybeSingle() : { data: null }
+      const r27 = row27 as { id: string; ts: string; created_at: string; ingested_at: string } | null
+      const minutesOff = (a: string | Date | null | undefined, b: Date) => a ? Math.abs(new Date(a).getTime() - b.getTime()) / 60_000 : Infinity
+      record('27: made offline at 10:00, sent at 16:00 — the record says made 10:00 and happened 10:00; arrival is 16:00\'s business, kept apart',
+        off27[0] === 'Saved' && !off27.includes('Sent') && on27.includes('Sent') && !!r27 && minutesOff(madeOnPhone, tenAM) < 1 && minutesOff(r27.created_at, tenAM) < 1 && minutesOff(r27.ts, tenAM) < 1 && minutesOff(r27.ingested_at, new Date()) < 10,
+        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()}`)
+
+      // It ORDERS as 10:00: newer than a 09:00 record another hand made and sent at once, older than a 12:00 one.
+      const mk = async (hour: number) => { const id = randomUUID(); const t = new Date(`${today}T${String(hour).padStart(2, '0')}:00:00-06:00`).toISOString(); await admin.from('events').insert({ id, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: t, created_at: t, schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: hour, herd_lot_id: null, place_id: placeId } }); return id }
+      const nine = await mk(9), noon = await mk(12)
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      const order = await page.locator('li[data-id]').evaluateAll((els, ids) => (ids as string[]).map(id => els.findIndex(e => e.getAttribute('data-id') === id)), [noon, queued?.id ?? '', nine])
+      record('27: on the record it sits between a 09:00 and a 12:00 entry — ordered by when it was made, not when it arrived', order.every(i => i >= 0) && order[0] < order[1] && order[1] < order[2], `positions noon ${order[0]} · ours ${order[1]} · nine ${order[2]}`)
+
+      // And it READS as 10:00: the entry page says Recorded 10:00, and does not call it back-dated.
+      await page.goto(`/ranch/activity/${queued?.id}`, { waitUntil: 'domcontentloaded' })
+      const recorded = ((await page.locator('[data-audit="event-recorded"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const backdatedNote = await page.locator('[data-audit="event-backdated"]').count()
+      const reached = await page.locator('[data-audit="event-reached-the-ranch"]').count()
+      record('27: the entry reads Recorded 10:00, is not called back-dated, and arrival gets no line of its own on the same day', /10:00/.test(recorded) && backdatedNote === 0 && reached === 0, `recorded "${recorded}" · back-dated note ${backdatedNote} · reached line ${reached}`)
+    })
+
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
     // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
     // line, Undo is tappable without scrolling or dismissing anything, and the
