@@ -3598,7 +3598,8 @@ async function main() {
               const anims = document.getAnimations().map(a => (a.animationName || a.transitionProperty || a.constructor.name) + '@' + ((a.effect && a.effect.target && (a.effect.target.getAttribute('data-audit') || a.effect.target.tagName)) || '?') + ':' + a.playState);
               return { disabled: el.disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetScroll: sheet ? sheet.scrollTop + '/' + sheet.scrollHeight + '/' + sheet.clientHeight : '', busy: !!(document.querySelector('[data-audit="record-save"]') || {}).disabled, anims: anims.slice(0, 8) };
             })()`).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
-            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
+            const why = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(l => /intercepts|receives|retrying|from <|subtree|scrolling|stable/.test(l)).slice(0, 6).join(' · ')
+            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · ${why} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
           }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
           const preview = await text('[data-audit="count-preview"]')
