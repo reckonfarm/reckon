@@ -2895,16 +2895,35 @@ async function main() {
       const mv26 = randomUUID()
       const moved26 = await page.request.post('/api/log', { data: { id: mv26, type: 'cattle_moved', head: 220, herd_lot_id: lot26, to_place_id: p26.id, place_id: p26.id, ts: new Date(Date.now() - 3 * 86_400_000).toISOString() } })
 
-      // Pixels on the shapes' canvas that carry this colour — 0 means nothing of that colour was painted.
-      const painted = (hex: string) => page.evaluate((h: string) => {
+      // THE FILL, READ PROPERLY (PK): frame the map to the place first, then read
+      // a healthy patch from the MIDDLE of the map — which, framed, is the inside
+      // of that place. A count of matching pixels anywhere on the canvas can be
+      // passed by antialiasing on an edge; a filled interior cannot. Returns the
+      // share of the patch that is that colour, and the share that is painted at all.
+      const frame = async (placeIdToFrame: string) => {
+        await page.locator(`[data-audit="ranch-map-place-button"][data-place="${placeIdToFrame}"]`).evaluate(el => (el as HTMLButtonElement).click())
+        await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ timeout: 8_000 }).catch(() => {})
+        await page.mouse.click(10, 10).catch(() => {})                       // close the sheet; the framing stays
+        await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        await page.waitForTimeout(900)
+      }
+      const interior = (hex: string) => page.evaluate((h: string) => {
         const want = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
-        let hits = 0, any = 0
+        const box = document.querySelector('[data-audit="ranch-map"] .leaflet-container')?.getBoundingClientRect()
+        if (!box || !Number.isFinite(want[0])) return { patch: 0, colour: 0, painted: 0 }
+        let patch = 0, colour = 0, paintedPx = 0
+        // The middle 30% × 30% of the map, in each canvas's own pixels.
+        const x0 = box.left + box.width * 0.35, x1 = box.left + box.width * 0.65, y0 = box.top + box.height * 0.35, y1 = box.top + box.height * 0.65
         for (const c of Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas')) as HTMLCanvasElement[]) {
-          const ctx2 = c.getContext('2d'); if (!ctx2 || !c.width || !c.height) continue
-          const d = ctx2.getImageData(0, 0, c.width, c.height).data
-          for (let i = 0; i < d.length; i += 16) { if (d[i + 3] > 20) { any++; if (Math.abs(d[i] - want[0]) < 14 && Math.abs(d[i + 1] - want[1]) < 14 && Math.abs(d[i + 2] - want[2]) < 14) hits++ } }
+          const r = c.getBoundingClientRect(), ctx2 = c.getContext('2d'); if (!ctx2 || !r.width) continue
+          const k = c.width / r.width
+          const sx = Math.max(0, Math.round((x0 - r.left) * k)), sy = Math.max(0, Math.round((y0 - r.top) * k))
+          const sw = Math.min(c.width - sx, Math.round((x1 - x0) * k)), sh = Math.min(c.height - sy, Math.round((y1 - y0) * k))
+          if (sw <= 0 || sh <= 0) continue
+          const d = ctx2.getImageData(sx, sy, sw, sh).data
+          for (let i = 0; i < d.length; i += 4) { patch++; if (d[i + 3] > 20) { paintedPx++; if (Math.abs(d[i] - want[0]) < 14 && Math.abs(d[i + 1] - want[1]) < 14 && Math.abs(d[i + 2] - want[2]) < 14) colour++ } }
         }
-        return { hits, any }
+        return { patch, colour: patch ? colour / patch : 0, painted: patch ? paintedPx / patch : 0 }
       }, hex)
       const rgbToHex = (rgb: string) => { const m = rgb.match(/\d+/g) ?? []; return '#' + m.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('') }
 
@@ -2914,13 +2933,25 @@ async function main() {
       await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
       await page.waitForTimeout(1500)
       const swatch = rgbToHex(await chip.locator('span').first().evaluate(e => getComputedStyle(e).backgroundColor).catch(() => ''))
-      const paint = await painted(swatch)
+      await frame(p26.id)
+      const paint = await interior(swatch)
+      // THE CONTROL — this read must be able to FAIL. A second pasture, drawn,
+      // with no bunch on it: framed the same way and read for the same colour,
+      // it has to come back empty, or the read proves nothing.
+      const ringEmpty = [[-110.06, 46.91], [-110.04, 46.91], [-110.04, 46.9], [-110.06, 46.9], [-110.06, 46.91]]
+      const { data: pEmpty } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 26 empty pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ringEmpty] }, acres: 410 }).select('id').single()
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await frame(pEmpty!.id)
+      const control = await interior(swatch)
+      record('26: THE CONTROL — a drawn pasture with NO bunch, framed and read the same way, shows none of the bunch\'s colour: the fill read can go red',
+        control.patch > 2000 && control.colour < 0.02, `patch ${control.patch}px · bunch colour ${(control.colour * 100).toFixed(1)}% (want ~0) · painted at all ${(control.painted * 100).toFixed(1)}%`)
       const mapBox = await page.locator('[data-audit="ranch-map"] .leaflet-container').boundingBox().catch(() => null)
       const mapWords = ((await page.locator('[data-audit="ranch-map"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p')).map(p => (p as HTMLElement).innerText).join(' | ')).catch(() => '')) ?? '').trim()
       const firstOnToday = await page.evaluate(() => { const m = document.querySelector('[data-audit="ranch-map"]'); const col = document.querySelector('main'); if (!m || !col) return false; return m.getBoundingClientRect().top - col.getBoundingClientRect().top < 260 })
       record('26: the map is first on Today at about 40% of the screen; the pasture is FILLED in its bunch\'s colour (read off the canvas) and the bunch\'s name is the key; no words on the map',
-        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.hits > 5 && mapWords === '',
-        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · key ${swatch} · painted ${paint.hits} of ${paint.any} · words "${mapWords}"`)
+        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.patch > 2000 && paint.colour > 0.8 && mapWords === '',
+        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · key ${swatch} · framed interior ${paint.patch}px, ${(paint.colour * 100).toFixed(1)}% the bunch's colour (want > 80) · words "${mapWords}"`)
 
       await chip.click()
       const sheet = page.locator('[data-audit="ranch-map-sheet"]')
@@ -2953,11 +2984,12 @@ async function main() {
       await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
       await page.waitForTimeout(2500)
       const tilesShown = await page.locator('[data-audit="ranch-map"] img.leaflet-tile-loaded').count()
-      const paintOff = await painted(swatch)
+      await frame(p26.id)
+      const paintOff = await interior(swatch)
       await page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 }).click().catch(() => {})
       const tapOff = await sheet.waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
       record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
-        ledgersUp && tilesShown === 0 && paintOff.hits > 5 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · painted ${paintOff.hits} of ${paintOff.any} · tap ${tapOff}`)
+        ledgersUp && tilesShown === 0 && paintOff.patch > 2000 && paintOff.colour > 0.8 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · framed interior ${(paintOff.colour * 100).toFixed(1)}% the bunch's colour · tap ${tapOff}`)
       await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
       await page.mouse.click(10, 10).catch(() => {})
     }

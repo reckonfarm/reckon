@@ -16,6 +16,10 @@ const ago = (iso: string) => { const d = days(iso); return d === 0 ? 'today' : d
 
 export default function RanchMapClient({ map }: { map: RanchMap }) {
   const [openId, setOpenId] = useState<string | null>(null)
+  // Picked from the key (or the list below), the map frames that place: a name
+  // cannot point at ground the way a finger on the shape already has.
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
+  const pick = (id: string) => { setFocus(f => ({ id, n: (f?.n ?? 0) + 1 })); setOpenId(id) }
   const open = map.places.find(p => p.id === openId) ?? null
   const swipe = useSwipeDown(() => setOpenId(null), !!open)
 
@@ -25,21 +29,32 @@ export default function RanchMapClient({ map }: { map: RanchMap }) {
   return (
     <section className="mb-6" data-audit="ranch-map" aria-label="Ranch map">
       {shapes.length > 0 && (
-        <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} />
+        <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} />
       )}
       {(map.keyed.length > 0 || undrawn.length > 0) && (
         <ul className="mt-2 flex flex-wrap gap-2" data-audit="ranch-map-key">
           {map.keyed.map(k => (
             <li key={k.lotId}>
-              <button type="button" onClick={() => setOpenId(k.placeId)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-rule bg-surface px-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="ranch-map-bunch-chip">
+              <button type="button" onClick={() => pick(k.placeId)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-rule bg-surface px-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="ranch-map-bunch-chip">
                 <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm" style={{ background: k.color }} />{k.name}
               </button>
             </li>
           ))}
           {undrawn.filter(p => !map.keyed.some(k => k.placeId === p.id)).map(p => (
             <li key={p.id}>
-              <button type="button" onClick={() => setOpenId(p.id)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-dashed border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-undrawn-chip">{p.name}</button>
+              <button type="button" onClick={() => pick(p.id)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-dashed border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-undrawn-chip">{p.name}</button>
             </li>
+          ))}
+        </ul>
+      )}
+
+      {/* The shapes are paint on a canvas: a screen reader and a keyboard cannot
+          reach them. Every drawn place is a real button here, out of sight, into
+          the same sheet — and it frames the map as the key does. */}
+      {shapes.length > 0 && (
+        <ul className="sr-only" data-audit="ranch-map-places">
+          {map.places.filter(p => p.ring).map(p => (
+            <li key={p.id}><button type="button" onClick={() => pick(p.id)} data-audit="ranch-map-place-button" data-place={p.id}>{p.name}</button></li>
           ))}
         </ul>
       )}

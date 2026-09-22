@@ -196,6 +196,27 @@ function FlyTo({ target }: { target: { p: LatLng; n: number } | null }) {
   return null
 }
 
+// Block 26 — frame ONE place. Picked from the key, a place may be a speck on a
+// ranch-wide view; this brings it up to fill the map. It ends "whole ranch"
+// follow (or the next render would fit everything again) and flags its own
+// move so it is not read as a finger.
+function FocusPlace({ focus, shapes, markers, setAuto, onFocus }: { focus: { id: string; n: number } | null; shapes: PlaceMapProps['shapes']; markers: NonNullable<PlaceMapProps['markers']>; setAuto: (v: boolean) => void; onFocus: () => void }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!focus) return
+    const shape = shapes.find(s => s.id === focus.id), marker = markers.find(m => m.id === focus.id)
+    if (!shape && !marker) return
+    onFocus()
+    setAuto(true)
+    if (shape) map.fitBounds(shape.ring.map(c => [c.lat, c.lng] as LL), { padding: [30, 30], animate: false })
+    else map.setView([marker!.position.lat, marker!.position.lng], Math.max(map.getZoom(), 16), { animate: false })
+    const t = setTimeout(() => setAuto(false), 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-fires on focus.n only; shapes are read at that moment
+  }, [map, focus?.id, focus?.n])
+  return null
+}
+
 // Block 26 — a tap on open ground takes the overview full screen. A tap on a
 // place never reaches here: the shape stops it and opens its sheet instead.
 function GroundTap({ onTap }: { onTap: () => void }) {
@@ -206,15 +227,15 @@ function GroundTap({ onTap }: { onTap: () => void }) {
 // Block 26 — Follow me: keep the person centred while they have not taken the map.
 // Its own moves are flagged so they are never mistaken for a finger: a zoom the
 // map makes for itself fires zoomstart exactly as a pinch does.
-function MeFollower({ here, auto }: { here: LatLng | null; auto: { current: boolean } }) {
+function MeFollower({ here, setAuto }: { here: LatLng | null; setAuto: (v: boolean) => void }) {
   const map = useMap()
   useEffect(() => {
     if (!here) return
-    auto.current = true
+    setAuto(true)
     map.setView([here.lat, here.lng], Math.max(map.getZoom(), 15), { animate: true })
-    const t = setTimeout(() => { auto.current = false }, 800)
+    const t = setTimeout(() => setAuto(false), 800)
     return () => clearTimeout(t)
-  }, [map, here, auto])
+  }, [map, here, setAuto])
   return null
 }
 
@@ -243,6 +264,7 @@ export default function PlaceMapClient({
   markers = [],
   onPlaceTap,
   overview = false,
+  focus = null,
 }: PlaceMapProps) {
   const [basemap, setBasemap] = useState<Basemap>('satellite')
   const [followUser, setFollowUser] = useState(true)
@@ -271,6 +293,7 @@ export default function PlaceMapClient({
   const [followMe, setFollowMe] = useState(false)
   const [mePaused, setMePaused] = useState(false)
   const autoMove = useRef(false)
+  const setAuto = useCallback((v: boolean) => { autoMove.current = v }, [])
   const [me, setMe] = useState<{ p: LatLng; accuracyM: number } | null>(null)
   useEffect(() => {
     if (!followMe || typeof navigator === 'undefined' || !navigator.geolocation) return
@@ -365,11 +388,12 @@ export default function PlaceMapClient({
         <ImageryLayer basemap={basemap} onPlain={setPlain} />
 
         <FollowController boundsKey={boundsKey} following={following && !track && !followMe} onUserMove={() => { if (autoMove.current) return; setFollowUser(false); if (followMe) setMePaused(true) }} />
-        <MeFollower here={followMe && !mePaused ? me?.p ?? null : null} auto={autoMove} />
+        <MeFollower here={followMe && !mePaused ? me?.p ?? null : null} setAuto={setAuto} />
         <SizeKeeper key={full ? 'full' : 'inline'} />
         {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
+        <FocusPlace focus={focus} shapes={shapes} markers={markers} setAuto={setAuto} onFocus={() => setFollowUser(false)} />
         {overview && !full && <GroundTap onTap={() => setExpanded(true)} />}
 
         {/* Fight #4: nothing already on the map is interactive while drawing. */}
