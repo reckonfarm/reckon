@@ -32,7 +32,8 @@ export interface ActivityRow {
   id: string
   type: string
   ts: string             // when it happened on the ranch (work time)
-  ingested_at: string    // when the ranch's record received it (recording time)
+  ingested_at: string    // when the ranch's record received it (arrival)
+  created_at: string     // Block 27: when it was MADE on the phone — orders the ledger and "since you checked"
   user_id: string
   device_id: string | null
   payload: Record<string, unknown>
@@ -44,7 +45,7 @@ export interface ActivityRow {
   voided_at?: string | null
   correction_reason?: string | null
 }
-export const ACTIVITY_COLS = 'id, type, ts, ingested_at, user_id, device_id, payload, supersedes_event_id, superseded_by, voided_at, correction_reason'
+export const ACTIVITY_COLS = 'id, type, ts, created_at, ingested_at, user_id, device_id, payload, supersedes_event_id, superseded_by, voided_at, correction_reason'
 export interface Names {
   place: (id: unknown) => string | null
   lot: (id: unknown) => string | null
@@ -227,7 +228,7 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
   if (filters.lot) q = q.eq('payload->>herd_lot_id', filters.lot)
   if (filters.from && DAY.test(filters.from)) q = q.gte('ts', ranchDayStartIso(filters.from))
   if (filters.to && DAY.test(filters.to)) q = q.lt('ts', ranchDayEndIso(filters.to))
-  if (filters.since && !Number.isNaN(Date.parse(filters.since))) q = q.gt('ingested_at', new Date(filters.since).toISOString())
+  if (filters.since && !Number.isNaN(Date.parse(filters.since))) q = q.gt('created_at', new Date(filters.since).toISOString())   // Block 27: made since, not arrived since
   if (cursor) {
     const [cts, cid] = cursor.split('|')
     if (cts && cid) q = q.or(`ts.lt.${cts},and(ts.eq.${cts},id.lt.${cid})`)

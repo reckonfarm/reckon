@@ -178,8 +178,22 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
 
 // Request ts → ISO string. Missing means now. Rejects unparseable, more than
 // a day in the future, or older than the year 2000 (a wrong-century phone).
-export function parseEventTs(v: unknown): string {
-  if (v == null || v === '') return new Date().toISOString()
+/**
+ * Block 27: when the record was MADE on the phone. Same bounds as a work
+ * time; absent (an old phone, a script) = now, which is arrival.
+ */
+export function parseCreatedAt(v: unknown): string {
+  try { return parseEventTs(v) } catch (e) {
+    if (e instanceof ValidationError) throw new ValidationError(e.message.replace(/^ts /, 'created_at '))
+    throw e
+  }
+}
+
+export function parseEventTs(v: unknown, fallback?: string): string {
+  // Block 27: a record with no work time chosen happened when it was MADE —
+  // the phone's moment, never the server's. Before this a feeding made at a
+  // gate at 10:00 and sent at 16:00 said it happened at 16:00.
+  if (v == null || v === '') return fallback ?? new Date().toISOString()
   if (typeof v !== 'string') throw new ValidationError('ts must be an ISO timestamp')
   const d = new Date(v)
   if (Number.isNaN(d.getTime())) throw new ValidationError('ts must be an ISO timestamp')

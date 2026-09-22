@@ -169,7 +169,7 @@ export default function CorrectionActions({ event }: { event: Editable }) {
 
   async function submit(kind: 'correct' | 'void') {
     setError(null)
-    const body: Record<string, unknown> = { id: clientId, reason: draft.reason }
+    const body: Record<string, unknown> = { id: clientId, reason: draft.reason, created_at: new Date().toISOString() }   // Block 27: made now, on this phone
     if (kind === 'correct') {
       const p = patch()
       if (Object.keys(p).length === 0 && draft.reason.trim() === (event.reason ?? '').trim()) { setError('Nothing changed — change a value, the time, or the reason; or cancel.'); return }

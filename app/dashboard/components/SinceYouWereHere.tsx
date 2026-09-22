@@ -28,7 +28,7 @@ const SHOW = 5
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-interface Row { id: string; user_id: string; type: string; ts: string; ingested_at: string; payload: Record<string, unknown>; supersedes_event_id: string | null; voided_at: string | null }
+interface Row { id: string; user_id: string; type: string; ts: string; created_at: string; payload: Record<string, unknown>; supersedes_event_id: string | null; voided_at: string | null }
 
 function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: unknown) => string | null, bunch: (id: unknown) => MovedBunch | null): string {
   const p = r.payload
@@ -82,17 +82,19 @@ export default async function SinceYouWereHere() {
   const [{ data }, { count }] = await Promise.all([
     notSuperseded(supabase
       .from('events')
-      .select('id, user_id, type, ts, ingested_at, payload, supersedes_event_id, voided_at')
+      .select('id, user_id, type, ts, created_at, payload, supersedes_event_id, voided_at')
       .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
-      .gt('ingested_at', since)
+      // Block 27: new = MADE since you checked, in the order it was made — a
+      // record from a gate at 10:00, sent at 16:00, is 10:00's news.
+      .gt('created_at', since)
       .neq('user_id', user.id)
-      .order('ingested_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(SHOW),
     notSuperseded(supabase
       .from('events')
       .select('id', { count: 'exact', head: true })
       .in('type', [...MANUAL_EVENT_TYPES, 'alert']))
-      .gt('ingested_at', since)
+      .gt('created_at', since)
       .neq('user_id', user.id),
   ])
   const rows = (data ?? []) as Row[]

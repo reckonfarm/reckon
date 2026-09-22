@@ -69,7 +69,7 @@ export default async function RanchPage() {
   // the 12.8 check found this reading 0 for a hand's fresh entries because the
   // owner had no cursor — a null cursor is not "nothing is new".
   const lastSeen = (member.data as { last_seen_at?: string | null } | null)?.last_seen_at ?? new Date(Date.now() - 24 * 3_600_000).toISOString()
-  const unseen = standing.filter(r => (r.ingested_at ?? r.ts) > lastSeen && r.user_id !== user.id).length
+  const unseen = standing.filter(r => r.created_at > lastSeen && r.user_id !== user.id).length   // Block 27: made since
 
   // The last thing recorded at all, for a quiet day.
   const last = standing[0] ?? null

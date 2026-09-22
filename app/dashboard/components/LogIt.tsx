@@ -701,9 +701,6 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           // these same words; said here first so a corral never waits on it.
           if (!lot) { setError(MOVE_NEEDS_BUNCH); setBusy(false); return }
           body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot
-          // Block 25b: where a bunch is goes by the move's OWN time. Left to the
-          // server, a move queued at a gate would be timed when it arrived.
-          if (!when) body.ts = new Date().toISOString()
           body.place_id = toId   // where they are now
           break
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
