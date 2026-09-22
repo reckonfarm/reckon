@@ -7,6 +7,8 @@ import SiteHeader from '@/app/components/SiteHeader'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import HayInventoryCard from '@/app/dashboard/components/HayInventoryCard'
 import { LedgerLoading } from '@/app/dashboard/components/LedgerTabs'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
 
 // ─── /ranch/hay (Block 6A) — the Hay section ──────────────────────────────────
 // The same self-gating hay card Today carries (a counted baseline, on hand,
@@ -19,10 +21,12 @@ export default async function HayPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/hay')
+  const through = await ledgerThrough(supabase)   // Block 32: what this render read, before the card reads
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <LedgerStamp through={through} />
         <p className={EYEBROW}>Ranch · Hay</p>
         <h1 className="mt-1 type-page-heading text-ink">Hay</h1>
         <div className="mt-4">

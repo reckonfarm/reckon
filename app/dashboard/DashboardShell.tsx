@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
 import { Suspense } from 'react'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -270,6 +272,8 @@ export async function DashboardShell({
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
   const user = session.user
+  // Block 32: what THIS render read, taken before any ledger card below starts its own read.
+  const through = priv && route === 'today' && user ? await ledgerThrough(supabase) : null
   // The operation's name leads the page when the signed-in person's ranch has
   // one; a blank name is no name (the county stays the subject, exactly as for
   // a signed-out visitor). Never a placeholder.
@@ -446,6 +450,7 @@ export async function DashboardShell({
           page is wider; an element that needs more width is the wrong element. */}
       <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
+        {priv && route === 'today' && user && <LedgerStamp through={through} />}
         {/* Block 6B — one short first-visit banner on the public county page; the county data stays first. */}
         {!priv && !user && selectedCounty && <CountyBanner />}
 
