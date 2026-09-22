@@ -524,7 +524,17 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         const last = readLastPlace()
         setPlace(prev => prev.id || prev.newName !== null ? prev : (list.some(p => p.id === last) ? { id: last, newName: null } : EMPTY_SLOT))
       })
-      .catch(() => { /* offline: select still offers blank + new */ })
+      .catch(() => {
+        // Block 20: no signal. The phone's copy of the ranch map (RecordPicker
+        // keeps it) names every place, so the select can still SHOW the place
+        // that was picked instead of a blank over a record that carries it.
+        if (cancelled) return
+        try {
+          const raw = localStorage.getItem('dryline_ranch_map_v1')
+          const cached = raw ? (JSON.parse(raw) as { places?: { id: string; name: string; kind: string }[] }) : null
+          if (cached?.places?.length) setPlaces(cached.places.map(pl => ({ id: pl.id, name: pl.name, kind: pl.kind })))
+        } catch { /* nothing kept: the select offers blank + new, as before */ }
+      })
     return () => { cancelled = true }
   }, [open])
 
