@@ -3383,7 +3383,9 @@ async function main() {
             await pb.waitForFunction((w: string | null) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== w, was, { timeout: 10_000 }).catch(() => {})
           }
         }
-        await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(() => {})
+        let why29 = ''
+        await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(e => { why29 = (e instanceof Error ? e.message : String(e)).split('\n').filter(l => /Timeout|intercept|waiting for|not visible|detached/.test(l)).slice(0, 2).join(' · ').slice(0, 220) })
+        const where29 = `${pb.url().replace(BASE, '')} · Reviewed buttons ${await pb.locator('[data-audit="mark-reviewed"]').count()} · rows ${await pb.locator('li[data-id]').count()} · next links ${await pb.locator('a[href*="cursor="]').count()} · last-page note ${await pb.locator('[data-audit="review-on-last-page"]').count()}${why29 ? ` · click: ${why29}` : ''}`
         await pb.waitForTimeout(1500)
         await pb.unroute('**/api/seen')
         await pb.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -3394,7 +3396,7 @@ async function main() {
         const seenAt = (seenRow as { last_seen_at?: string } | null)?.last_seen_at ?? ''
         record('29: seen is exact — a record made on a phone 40 minutes ahead is new until Reviewed, and Reviewed sends the newest made-at it showed and clears it',
           sawIt && !!sent && Date.parse(sent) > Date.now() + 30 * 60_000 && Date.parse(seenAt) >= Date.parse(sent) && rowsAfter === 0 && quiet === 1,
-          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet}${rawSeen()}`)
+          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet} · [${where29}]${rawSeen()}`)
       } finally { await ctxB29.close().catch(() => {}) }
       } finally { await ctx27.close().catch(() => {}); page = main }
     })
