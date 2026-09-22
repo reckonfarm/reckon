@@ -792,10 +792,10 @@ async function main() {
       const look = await page.context().newPage()
       await look.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await look.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(in trash\\)`) }).count()
       await look.close()
-      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as deleted',
-        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as deleted ${stillNamed}`)
+      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as in the trash',
+        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as in trash ${stillNamed}`)
       const undone = await pressUndo(page)
       for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) === 0; i++) await page.waitForTimeout(250)
       const rowsBack = await page.locator('[data-audit="lot-row"]').count()
