@@ -29,11 +29,13 @@
 --
 -- No backfill; installing this changes no row. Needs 034 (tables), 049 (the
 -- role check), 052 (home_county_fips), and the counties table.
+--
+-- ONE TRANSACTION, NO TRANSACTION CONTROL. The SQL editor runs a whole paste
+-- as one transaction; a begin/rollback inside it rolls back everything above
+-- it — the first paste of this file lost the function that way. Every check
+-- here is a read. The tests that CALL the function live in
+-- 075_create_ranch_verify.sql, and none of them writes either. Re-runnable.
 -- ============================================================
-
--- 0) PRE-FLIGHT (paste back) — the policies as they stand: ONE row each, both SELECT.
-select tablename, policyname, cmd, roles from pg_policies
- where schemaname = 'public' and tablename in ('ranches', 'ranch_members') order by 1, 2;
 
 -- 1) The function -----------------------------------------------------------------
 create or replace function public.create_ranch(p_name text, p_county_fips text default null)
@@ -77,42 +79,25 @@ comment on function public.create_ranch(text, text) is
 revoke all on function public.create_ranch(text, text) from public, anon;
 grant execute on function public.create_ranch(text, text) to authenticated;
 
--- 2) Verify (paste back) ------------------------------------------------------------
--- (a) DEFINER, search_path pinned in the definition, and the grant is authenticated only.
-select p.proname, p.prosecdef as security_definer, p.proconfig as pinned_config
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public' and p.proname = 'create_ranch';
-select grantee, privilege_type from information_schema.role_routine_grants
- where routine_schema = 'public' and routine_name = 'create_ranch' order by 1;
--- (b) it takes no user id: the argument list is (name, county) and nothing else.
-select pg_get_function_identity_arguments(p.oid) as args
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public' and p.proname = 'create_ranch';
--- (c) the policies have not moved: still ONE row each, both SELECT — no client write policy was added.
-select tablename, policyname, cmd, roles from pg_policies
- where schemaname = 'public' and tablename in ('ranches', 'ranch_members') order by 1, 2;
--- (d) nothing changed on any ranch: every ranch and every membership, as they are.
-select r.id, r.name, r.home_county_fips, (select count(*) from public.ranch_members m where m.ranch_id = r.id) as members
-  from public.ranches r order by r.created_at;
-
--- 3) The rules, run as the roles that matter (paste back) ----------------------------
--- Nothing below writes: every branch that could write is one the rules refuse.
--- (e) no session → refused as not_authenticated, not an error.
-begin;
-  select set_config('request.jwt.claim.sub', '', true);
-  select public.create_ranch('Nobody''s ranch', null) as with_no_session;
-rollback;
--- (f) a user already on Kiehl Ranch → refused; Kiehl Ranch unchanged. (The first owner of the
---     oldest ranch stands in for "a user already on a ranch".)
-begin;
-  select set_config('request.jwt.claim.sub', (select m.user_id::text from public.ranch_members m join public.ranches r on r.id = m.ranch_id order by r.created_at, m.created_at limit 1), true);
-  select public.create_ranch('A second ranch', null) as as_an_existing_member;
-  select count(*) as ranches_now from public.ranches;
-rollback;
--- (g) anon cannot even call it.
-begin;
-  set local role anon;
-  select has_function_privilege('anon', 'public.create_ranch(text, text)', 'execute') as anon_may_execute;
-rollback;
-select has_function_privilege('authenticated', 'public.create_ranch(text, text)', 'execute') as authenticated_may_execute,
-       has_function_privilege('anon', 'public.create_ranch(text, text)', 'execute') as anon_may_execute;
+-- 2) Verify — ONE table, every check as a row (paste back) --------------------
+with fn as (
+  select p.oid, p.prosecdef, p.proconfig, pg_get_function_identity_arguments(p.oid) as args
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'create_ranch'
+), pol as (
+  select tablename, count(*) as n, string_agg(cmd, ',') as cmds from pg_policies
+   where schemaname = 'public' and tablename in ('ranches', 'ranch_members') group by tablename
+), checks(check_name, expected, actual) as (
+  values
+    ('create_ranch exists',                'true',  (select (count(*) = 1)::text from fn)),
+    ('security definer',                   'true',  (select prosecdef::text from fn)),
+    ('search_path pinned in definition',   'true',  (select (coalesce(array_to_string(proconfig, ','), '') like '%search_path=public%')::text from fn)),
+    ('takes no user id — args',            'p_name text, p_county_fips text', (select args from fn)),
+    ('authenticated may execute',          'true',  has_function_privilege('authenticated', 'public.create_ranch(text, text)', 'execute')::text),
+    ('anon may execute',                   'false', has_function_privilege('anon', 'public.create_ranch(text, text)', 'execute')::text),
+    ('public may execute',                 'false', has_function_privilege('public', 'public.create_ranch(text, text)', 'execute')::text),
+    ('ranches: one policy, SELECT only',   'true',  (select (n = 1 and cmds = 'SELECT')::text from pol where tablename = 'ranches')),
+    ('ranch_members: one policy, SELECT only', 'true', (select (n = 1 and cmds = 'SELECT')::text from pol where tablename = 'ranch_members')),
+    ('ranch_members: no INSERT/UPDATE/DELETE policy', 'true', (select (count(*) = 0)::text from pg_policies where schemaname = 'public' and tablename = 'ranch_members' and cmd <> 'SELECT'))
+)
+select check_name, expected, coalesce(actual, 'NULL') as actual, (actual is not distinct from expected) as ok from checks;
