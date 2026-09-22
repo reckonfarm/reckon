@@ -3142,8 +3142,17 @@ async function main() {
       // It ORDERS as 10:00: newer than a 09:00 record another hand made and sent at once, older than a 12:00 one.
       const mk = async (hour: number) => { const id = randomUUID(); const t = new Date(`${today}T${String(hour).padStart(2, '0')}:00:00-06:00`).toISOString(); await admin.from('events').insert({ id, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: t, created_at: t, schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: hour, herd_lot_id: null, place_id: placeId } }); return id }
       const nine = await mk(9), noon = await mk(12)
+      // The record is paged (50 a page); by now the ranch has more rows than
+      // one page, so the three are read across pages in list order.
+      const ids: string[] = []
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
-      const order = await page.locator('li[data-id]').evaluateAll((els, ids) => (ids as string[]).map(id => els.findIndex(e => e.getAttribute('data-id') === id)), [noon, queued?.id ?? '', nine])
+      for (let pg = 0; pg < 4; pg++) {
+        ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
+        const next = page.locator('a[href*="cursor="]').first()
+        if (!(await next.count())) break
+        await next.click(); await page.waitForLoadState('domcontentloaded'); await page.waitForTimeout(400)
+      }
+      const order = [noon, queued?.id ?? '', nine].map(id => ids.indexOf(id))
       record('27: on the record it sits between a 09:00 and a 12:00 entry — ordered by when it was made, not when it arrived', order.every(i => i >= 0) && order[0] < order[1] && order[1] < order[2], `positions noon ${order[0]} · ours ${order[1]} · nine ${order[2]}`)
 
       // And it READS as 10:00: the entry page says Recorded 10:00, and does not call it back-dated.
