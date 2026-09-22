@@ -21,10 +21,11 @@ import type { LatLng } from '@/lib/places/geo'
 //
 // Bunch colours: existing brand tokens only, handed out in the order the
 // bunches were made so a bunch keeps its colour from day to day. Never a USDM
-// colour — on this app those mean drought.
-export const BUNCH_COLORS = ['#225F87', '#D4A017', '#8B3A2B', '#2D6A4F', '#8A4B08', '#1B4332'] as const
+// colour, never amber, never red — on this app those mean trouble.
+// Block 26c (PK): never amber or red — those are reserved for problems.
+export const BUNCH_COLORS = ['#225F87', '#2D6A4F', '#5B4B9C', '#0E7C86', '#6B7FD7', '#1B4332'] as const
 
-export interface MapBunch { id: string; label: string; color: string; since: { ts: string; eventId: string; line: string } | null }
+export interface MapBunch { id: string; label: string; name: string; head: number; color: string; since: { ts: string; eventId: string; line: string } | null }
 export interface MapPlace {
   id: string; name: string; kind: string
   ring: LatLng[] | null
@@ -32,7 +33,12 @@ export interface MapPlace {
   bunches: MapBunch[]
   latest: { id: string | null; line: string; ts: string } | null
 }
-export interface RanchMap { places: MapPlace[]; centre: LatLng; keyed: { lotId: string; placeId: string; label: string; name: string; color: string }[] }
+export interface RanchMap {
+  places: MapPlace[]; centre: LatLng
+  keyed: { lotId: string; placeId: string; label: string; name: string; color: string }[]
+  /** Block 26c: bunches with no recorded place — listed, never missing. */
+  unplaced: { lotId: string; label: string; color: string }[]
+}
 
 const TYPE_WORDS: Record<string, string> = { hay_fed: 'Hay fed', bales_stacked: 'Bales stacked', hay_inventory: 'Hay counted', rain: 'Rain recorded', cattle_moved: 'Cattle moved', cattle_worked: 'Cattle worked', cattle_counted: 'Cattle counted', group_action: 'Cattle worked' }
 
@@ -60,7 +66,7 @@ export async function getRanchMap(supabase: SupabaseClient, userId: string): Pro
   const bunchesAt = (placeId: string): MapBunch[] => (lots as Lot[]).filter(l => l.place_id === placeId).map(l => {
     const w = where[l.id]
     return {
-      id: l.id, label: bunchLabel(l), color: colorOf.get(l.id)!,
+      id: l.id, label: bunchLabel(l), name: l.name?.trim() || bunchLabel(l).split(' · ')[0], head: l.head_count, color: colorOf.get(l.id)!,
       since: w?.moved ? { ts: w.moved.ts, eventId: w.moved.eventId, line: moveLine(null, l, null, placeName.get(placeId) ?? null, w.moved.placement === true) } : null,
     }
   })
@@ -72,5 +78,6 @@ export async function getRanchMap(supabase: SupabaseClient, userId: string): Pro
   }))
   const centre = await resolveMapCentre(supabase, userId, places.filter(p => p.ring).map(p => p.ring!))
   const keyed = (lots as Lot[]).filter(l => l.place_id && placeName.has(l.place_id)).map(l => ({ lotId: l.id, placeId: l.place_id!, label: bunchLabel(l), name: l.name?.trim() || bunchLabel(l).split(' · ')[0], color: colorOf.get(l.id)! }))
-  return { places, centre, keyed }
+  const unplaced = (lots as Lot[]).filter(l => !l.place_id || !placeName.has(l.place_id)).map(l => ({ lotId: l.id, label: bunchLabel(l), color: colorOf.get(l.id)! }))
+  return { places, centre, keyed, unplaced }
 }

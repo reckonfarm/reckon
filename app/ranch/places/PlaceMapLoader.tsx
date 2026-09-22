@@ -24,6 +24,10 @@ export interface MapShape {
   draft?: boolean
   /** Block 26: a place with a bunch on it is filled in that bunch's colour. */
   fill?: string
+  /** Block 26c: the label inside an occupied place — head · bunch name. */
+  label?: string
+  /** Block 26c: a move landed here moments ago — one settle of the outline, then still. */
+  pulse?: boolean
 }
 
 /** Block 26: a place with no shape but a known position — a pin, tappable like a shape. */
