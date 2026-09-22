@@ -112,7 +112,7 @@ export default async function RanchPage() {
               <div className="flex items-center justify-between gap-3 border-t border-rule px-4 py-3" data-audit="ranch-since">
                 <p className="font-dm-sans text-[16px] text-ink">{unseen} {unseen === 1 ? 'entry' : 'entries'} since you last checked.</p>
                 {/* 6H: Reviewed is an action, never a page load. */}
-                <ReviewedButton count={unseen} />
+                <ReviewedButton count={unseen} through={standing.filter(r => r.user_id !== user.id).map(r => r.created_at).sort().pop() ?? null} />
               </div>
             )}
           </Card>

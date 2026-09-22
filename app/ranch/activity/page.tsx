@@ -154,7 +154,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             )}
 
             {/* 6H: the review boundary moves only from a page that has every entry since the last review on it. */}
-            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} />}
+            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={page.rows.map(r => r.created_at).sort().pop() ?? null} />}
             {filters.since && page.nextCursor && <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="review-on-last-page">Reviewed is offered on the last page, once every entry is in front of you.</p>}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">
