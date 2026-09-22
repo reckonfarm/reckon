@@ -3265,6 +3265,8 @@ async function main() {
       record('20: with a fix inside a pasture, an action tapped first takes the place under the fix', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'none'}`)
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.context().setGeolocation(null).catch(() => {})
+    })
+
     // ── Block 31 — a new rancher can create their ranch ───────────────────────
     // PK's falsifier: sign up a brand-new account. You see only the setup screen.
     // Name the ranch, pick a county, and you land on Today with an empty ranch
