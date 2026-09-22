@@ -60,7 +60,7 @@ const skip = (check: string, detail: string) => { results.push({ check, pass: tr
 // PK, 2026-09-15: known flakes are NAMED AND SKIPPED, never replayed. A pass is
 // a pass; a fail is a named skip that keeps its detail, so a real failure
 // shows up twice across two runs instead of costing a replay each time.
-const KNOWN_FLAKES = ['force-quit receipt', '6B place timeline', 'Weather day chips'] as const
+const KNOWN_FLAKES = ['force-quit receipt', 'Weather day chips'] as const
 const flaky = (name: typeof KNOWN_FLAKES[number], check: string, pass: boolean, detail = '') => {
   if (pass) { record(check, true, detail); return }
   skip(check, `known flake "${name}" — ${detail}`)
@@ -1627,8 +1627,20 @@ async function main() {
     // with what it replaced one tap away; the Activity record (audit history)
     // shows every revision, the replaced original struck and marked.
     await section('Block 6 (6B): superseded entries marked the same way on every timeline', async () => {
-      const { data: four } = await admin.from('events').select('id, supersedes_event_id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '4').not('supersedes_event_id', 'is', null).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
-      if (!four) skip('6B: timelines', 'the gate-4 correction (6 → 4) is not on the record')
+      // Block 26b (3): this skipped EVERY run. It looked for the gate-4 correction
+      // (made ~40 checks earlier) on the place timeline, which shows the ten
+      // newest standing rows — and by now the sections between have written
+      // more than ten newer entries at this place, so it was never there. The
+      // rule under test is the timeline's, not that one row's: so make a fresh
+      // 6-bale feeding here, now, correct it to 4 through the same route the
+      // phone uses, and read the timeline with the correction guaranteed inside
+      // its window. Nothing is skipped and nothing is flaky about it.
+      const sixId = randomUUID()
+      await admin.from('events').insert({ id: sixId, user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 6, herd_lot_id: null, place_id: placeId } })
+      const fixed6 = await page.request.post(`/api/activity/${sixId}/correct`, { data: { id: randomUUID(), bales: 4, reason: 'was 4, typed 6' } })
+      const fourRowJson = (await fixed6.json().catch(() => ({}))) as { event?: { id: string; supersedes_event_id: string | null } }
+      const four = fixed6.status() === 201 && fourRowJson.event ? { id: fourRowJson.event.id, supersedes_event_id: fourRowJson.event.supersedes_event_id } : null
+      if (!four) record('6B: timelines — the 6 → 4 correction could not be made', false, `correct ${fixed6.status()}`)
       else {
         // One list, read the same way everywhere: rows as [text, marker, chain text].
         const readList = async (p: Page, sel: string) => p.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({
@@ -1649,7 +1661,7 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         await openFolds(page)
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
-        flaky('6B place timeline', '6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
+        record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
         // Block 12 (12.8): the hub no longer lists rows; the record below is the surface.
         // Block 12 (12.13): Today's Activity tab is gone — its rows were a subset of
         // the record. The same assertion stands on the Ranch hub above and on the
