@@ -3072,67 +3072,6 @@ async function main() {
       const moveForm = await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
       const moveLot = await page.locator('[data-audit="lot-for-move"]').inputValue().catch(() => '')
       record('26c: a bunch with no recorded place is listed under the map as Unplaced, and its tap opens a move with that bunch already picked', listed && moveForm && moveLot === lotU, `listed ${listed} · move form ${moveForm} · bunch picked ${moveLot === lotU}`)
-
-      // ── Block 29: "N changes" steps the map through what B recorded ───────────
-      // A sees B's changes. B moves lot26 back to West stack (a move with two
-      // drawn ends), then feeds at 26 pasture; A opens Today: the stepper says
-      // 2 changes, a step frames the ground, the move draws ONE straight line
-      // (read off the canvas at its midpoint, absent off the line), the step
-      // says who and when it was MADE; Reviewed clears the changes and the
-      // Unplaced bunch — a problem — stays.
-      await admin.from('ranch_members').update({ last_seen_at: new Date().toISOString() }).eq('user_id', userId).eq('ranch_id', ranchId)
-      await page.waitForTimeout(1200)
-      const mvB = randomUUID()
-      const ctxB26 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
-      try {
-        const pb = await signIn(ctxB26, EMAIL_B)
-        const m = await pb.request.post('/api/log', { data: { id: mvB, type: 'cattle_moved', head: 220, herd_lot_id: lot26, from_place_id: p26.id, to_place_id: placeId, place_id: placeId } })
-        const f = await pb.request.post('/api/log', { data: { id: randomUUID(), type: 'hay_fed', bales: 3, place_id: p26.id } })
-        if (m.status() !== 201 || f.status() !== 201) throw new Error(`B could not record: move ${m.status()} feed ${f.status()}`)
-      } finally { await ctxB26.close().catch(() => {}) }
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      const stepper = page.locator('[data-audit="changes-stepper"]')
-      await stepper.waitFor({ timeout: 25_000 }).catch(() => {})
-      const summary = ((await page.locator('[data-audit="changes-summary"]').innerText().catch(() => '')) ?? '').trim()
-      const sinceRows = await page.locator('[data-audit="since-row"]').count()
-      // Step until the move is the current change.
-      let stepped = 0, onMove = false, madeText = '', whoLine = ''
-      for (let i = 0; i < 6 && !onMove; i++) {
-        await page.locator('[data-audit="changes-next"]').click({ timeout: 8_000 }).catch(() => {})
-        await page.waitForTimeout(900); stepped++
-        const id = await page.locator('[data-audit="changes-step"]').getAttribute('data-change').catch(() => null)
-        if (id === mvB) { onMove = true; madeText = ((await page.locator('[data-audit="changes-made"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' '); whoLine = ((await page.locator('[data-audit="changes-step"] p').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') }
-      }
-      // The line: its midpoint on the canvas carries the bunch's colour; a point well off the segment does not.
-      const lineRead = await page.evaluate(`(() => {
-        const c = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); const map = c && c.__leafletMap; if (!map) return { mid: -1, off: -1 };
-        const ring26 = ${JSON.stringify(ring26)}, west = null;
-        const canvases = Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas'));
-        const box = c.getBoundingClientRect();
-        const sample = (px, py, hex) => { const want = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)]; for (const cv of canvases) { const r = cv.getBoundingClientRect(), ctx = cv.getContext('2d'); if (!ctx) continue; const sc = cv.width / r.width; const sx = Math.round((px - r.left) * sc) - 5, sy = Math.round((py - r.top) * sc) - 5; if (sx < 0 || sy < 0 || sx + 10 > cv.width || sy + 10 > cv.height) continue; const d = ctx.getImageData(sx, sy, 10, 10).data; for (let i = 0; i < d.length; i += 4) if (d[i+3] > 60 && Math.abs(d[i]-want[0]) < 30 && Math.abs(d[i+1]-want[1]) < 30 && Math.abs(d[i+2]-want[2]) < 30) return 1 } return 0 };
-        const label = Array.from(document.querySelectorAll('.dryline-place-label span')).map(s => getComputedStyle(s).color)[0] || '';
-        const m = label.match(/\\d+/g) || []; const hex = '#' + m.slice(0,3).map(n => Number(n).toString(16).padStart(2,'0')).join('');
-        const centre = (pts) => ({ lat: (Math.min(...pts.map(p=>p[1])) + Math.max(...pts.map(p=>p[1]))) / 2, lng: (Math.min(...pts.map(p=>p[0])) + Math.max(...pts.map(p=>p[0]))) / 2 });
-        const a = centre(ring26); const west = ${JSON.stringify([[-110.02, 46.91],[-110.0,46.91],[-110.0,46.9],[-110.02,46.9]])}; const b = centre(west);
-        const pa = map.latLngToContainerPoint([a.lat, a.lng]), pb = map.latLngToContainerPoint([b.lat, b.lng]);
-        const mid = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }; const dx = pb.x - pa.x, dy = pb.y - pa.y; const len = Math.hypot(dx, dy) || 1;
-        const off = { x: mid.x - dy / len * 40, y: mid.y + dx / len * 40 };
-        return { hex, mid: sample(box.left + mid.x, box.top + mid.y, hex), off: sample(box.left + off.x, box.top + off.y, hex), len: Math.round(len) };
-      })()`).catch(() => ({ mid: -1, off: -1, hex: '', len: 0 })) as { mid: number; off: number; hex: string; len: number }
-      record('29: "N changes" counts what the card counts; stepping to the move frames the ground, draws one straight line from where they were to where they went (its midpoint painted, off the line not), and says who and when it was made',
-        /^2 changes/.test(summary) && sinceRows === 2 && onMove && lineRead.mid === 1 && lineRead.off === 0 && lineRead.len > 40 && /made /.test(madeText) && /moved/.test(whoLine),
-        `summary "${summary}" · card rows ${sinceRows} · stepped ${stepped} onto the move ${onMove} · line ${lineRead.hex} mid ${lineRead.mid} off ${lineRead.off} len ${lineRead.len}px · "${whoLine.slice(0, 60)}" · "${madeText.slice(0, 50)}"`)
-      // Seen ≠ handled: Reviewed clears the changes; the Unplaced bunch stays, in the colour reserved for a problem.
-      await page.locator('[data-audit="changes-next"]').click({ timeout: 5_000 }).catch(() => {})
-      await page.waitForTimeout(600)
-      const unplacedBefore = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
-      await page.locator('[data-audit="changes-stepper"] [data-audit="mark-reviewed"], [data-audit="mark-reviewed"]').first().click({ timeout: 8_000 }).catch(() => {})
-      await page.waitForTimeout(1500)
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="ranch-map"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      const stepperAfter = await page.locator('[data-audit="changes-stepper"]').count()
-      const unplacedAfter = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
-      record('29: seen and handled are different — Reviewed clears the changes, and the bunch with no recorded place stays listed as a problem', unplacedBefore >= 1 && stepperAfter === 0 && unplacedAfter === unplacedBefore, `unplaced ${unplacedBefore} → ${unplacedAfter} · stepper after review ${stepperAfter}`)
       // Cancel, not Escape: a form with a bunch picked is a draft, and a draft left
       // behind reopens the sheet on every page after this (by design) — the first
       // 26c run left one and every later section found the sheet over the page.
@@ -3162,6 +3101,67 @@ async function main() {
       record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
         ledgersUp && tilesShown === 0 && paintOff.edges >= 4 && paintOff.hit / paintOff.edges >= 0.6 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · edge ${paintOff.hit} of ${paintOff.edges} in the bunch's colour · tap ${tapOff}`)
       await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
+
+      // ── Block 29: "N changes" steps the map through what B recorded ───────────
+      // A sees B's changes. B moves lot26 to the empty pasture (a move with two
+      // drawn ends), then feeds at 26 pasture; A opens Today: the stepper says
+      // 2 changes, a step frames the ground, the move draws ONE straight line
+      // (read off the canvas at its midpoint, absent off the line), the step
+      // says who and when it was MADE; Reviewed clears the changes and the
+      // Unplaced bunch — a problem — stays.
+      await admin.from('ranch_members').update({ last_seen_at: new Date().toISOString() }).eq('user_id', userId).eq('ranch_id', ranchId)
+      await page.waitForTimeout(1200)
+      const mvB = randomUUID()
+      const ctxB26 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const pb = await signIn(ctxB26, EMAIL_B)
+        const m = await pb.request.post('/api/log', { data: { id: mvB, type: 'cattle_moved', head: 220, herd_lot_id: lot26, from_place_id: p26.id, to_place_id: pEmpty!.id, place_id: pEmpty!.id } })
+        const f = await pb.request.post('/api/log', { data: { id: randomUUID(), type: 'hay_fed', bales: 3, place_id: p26.id } })
+        if (m.status() !== 201 || f.status() !== 201) throw new Error(`B could not record: move ${m.status()} feed ${f.status()}`)
+      } finally { await ctxB26.close().catch(() => {}) }
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const stepper = page.locator('[data-audit="changes-stepper"]')
+      await stepper.waitFor({ timeout: 25_000 }).catch(() => {})
+      const summary = ((await page.locator('[data-audit="changes-summary"]').innerText().catch(() => '')) ?? '').trim()
+      const sinceRows = await page.locator('[data-audit="since-row"]').count()
+      // Step until the move is the current change.
+      let stepped = 0, onMove = false, madeText = '', whoLine = ''
+      for (let i = 0; i < 6 && !onMove; i++) {
+        await page.locator('[data-audit="changes-next"]').click({ timeout: 8_000 }).catch(() => {})
+        await page.waitForTimeout(900); stepped++
+        const id = await page.locator('[data-audit="changes-step"]').getAttribute('data-change').catch(() => null)
+        if (id === mvB) { onMove = true; madeText = ((await page.locator('[data-audit="changes-made"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' '); whoLine = ((await page.locator('[data-audit="changes-step"] p').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') }
+      }
+      // The line: its midpoint on the canvas carries the bunch's colour; a point well off the segment does not.
+      const lineRead = await page.evaluate(`(() => {
+        const c = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); const map = c && c.__leafletMap; if (!map) return { mid: -1, off: -1 };
+        const ring26 = ${JSON.stringify(ring26)};
+        const canvases = Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas'));
+        const box = c.getBoundingClientRect();
+        const sample = (px, py, hex) => { const want = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)]; for (const cv of canvases) { const r = cv.getBoundingClientRect(), ctx = cv.getContext('2d'); if (!ctx) continue; const sc = cv.width / r.width; const sx = Math.round((px - r.left) * sc) - 5, sy = Math.round((py - r.top) * sc) - 5; if (sx < 0 || sy < 0 || sx + 10 > cv.width || sy + 10 > cv.height) continue; const d = ctx.getImageData(sx, sy, 10, 10).data; for (let i = 0; i < d.length; i += 4) if (d[i+3] > 60 && Math.abs(d[i]-want[0]) < 30 && Math.abs(d[i+1]-want[1]) < 30 && Math.abs(d[i+2]-want[2]) < 30) return 1 } return 0 };
+        const label = Array.from(document.querySelectorAll('.dryline-place-label span')).map(s => getComputedStyle(s).color)[0] || '';
+        const m = label.match(/\\d+/g) || []; const hex = '#' + m.slice(0,3).map(n => Number(n).toString(16).padStart(2,'0')).join('');
+        const centre = (pts) => ({ lat: (Math.min(...pts.map(p=>p[1])) + Math.max(...pts.map(p=>p[1]))) / 2, lng: (Math.min(...pts.map(p=>p[0])) + Math.max(...pts.map(p=>p[0]))) / 2 });
+        const a = centre(ring26); const b = centre(${JSON.stringify(ringEmpty)});
+        const pa = map.latLngToContainerPoint([a.lat, a.lng]), pb = map.latLngToContainerPoint([b.lat, b.lng]);
+        const mid = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }; const dx = pb.x - pa.x, dy = pb.y - pa.y; const len = Math.hypot(dx, dy) || 1;
+        const off = { x: mid.x - dy / len * 40, y: mid.y + dx / len * 40 };
+        return { hex, mid: sample(box.left + mid.x, box.top + mid.y, hex), off: sample(box.left + off.x, box.top + off.y, hex), len: Math.round(len) };
+      })()`).catch(() => ({ mid: -1, off: -1, hex: '', len: 0 })) as { mid: number; off: number; hex: string; len: number }
+      record('29: "N changes" counts what the card counts; stepping to the move frames the ground, draws one straight line from where they were to where they went (its midpoint painted, off the line not), and says who and when it was made',
+        /^2 changes/.test(summary) && sinceRows === 2 && onMove && lineRead.mid === 1 && lineRead.off === 0 && lineRead.len > 40 && /made /.test(madeText) && /moved/.test(whoLine),
+        `summary "${summary}" · card rows ${sinceRows} · stepped ${stepped} onto the move ${onMove} · line ${lineRead.hex} mid ${lineRead.mid} off ${lineRead.off} len ${lineRead.len}px · "${whoLine.slice(0, 60)}" · "${madeText.slice(0, 50)}"`)
+      // Seen ≠ handled: Reviewed clears the changes; the Unplaced bunch stays, in the colour reserved for a problem.
+      await page.locator('[data-audit="changes-next"]').click({ timeout: 5_000 }).catch(() => {})
+      await page.waitForTimeout(600)
+      const unplacedBefore = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
+      await page.locator('[data-audit="changes-stepper"] [data-audit="mark-reviewed"], [data-audit="mark-reviewed"]').first().click({ timeout: 8_000 }).catch(() => {})
+      await page.waitForTimeout(1500)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const stepperAfter = await page.locator('[data-audit="changes-stepper"]').count()
+      const unplacedAfter = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
+      record('29: seen and handled are different — Reviewed clears the changes, and the bunch with no recorded place stays listed as a problem', unplacedBefore >= 1 && stepperAfter === 0 && unplacedAfter === unplacedBefore, `unplaced ${unplacedBefore} → ${unplacedAfter} · stepper after review ${stepperAfter}`)
       // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
       await page.keyboard.press('Escape').catch(() => {})
     })
@@ -3239,7 +3239,9 @@ async function main() {
       await page.clock.setFixedTime(new Date(Date.now() + 40 * 60_000))
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await logFeed(page, 11)
-      await watchStates(page, 'Sent', 45_000, 'Fed 11 bales')
+      const states11 = await watchStates(page, 'Sent', 45_000, 'Fed 11 bales')
+      const { data: row11 } = await admin.from('events').select('id, created_at, ts').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '11').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const r11 = row11 as { id: string; created_at: string; ts: string } | null
       const ctxB29 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       try {
         const pb = await signIn(ctxB29, EMAIL_B)
@@ -3259,7 +3261,7 @@ async function main() {
         const seenAt = (seenRow as { last_seen_at?: string } | null)?.last_seen_at ?? ''
         record('29: seen is exact — a record made on a phone 40 minutes ahead is new until Reviewed, and Reviewed sends the newest made-at it showed and clears it',
           sawIt && !!sent && Date.parse(sent) > Date.now() + 30 * 60_000 && Date.parse(seenAt) >= Date.parse(sent) && rowsAfter === 0 && quiet === 1,
-          `saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet}`)
+          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet}${rawSeen()}`)
       } finally { await ctxB29.close().catch(() => {}) }
       } finally { await ctx27.close().catch(() => {}); page = main }
     })
