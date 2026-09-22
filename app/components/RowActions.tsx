@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSwipeDown } from '@/lib/swipe-down'
+import BottomSheet from '@/app/components/BottomSheet'
 
 // ─── Press and hold on any row → Fix · Delete (Block 12 12.3, Block 13) ───────
 // One gesture everywhere: an entry, a place, a bunch, a device, a machine
@@ -75,7 +75,6 @@ const BTN = 'min-h-[56px] w-full rounded-lg border px-4 text-left font-dm-sans t
 export default function RowActions({ links, children, className = '' }: { links: RowActionLinks; children: ReactNode; className?: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const swipe = useSwipeDown(() => { if (!busy) setOpen(false) }, open)
   const [busy, setBusy] = useState(false)
   const timer = useRef<number | null>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
@@ -157,9 +156,7 @@ export default function RowActions({ links, children, className = '' }: { links:
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => { if (!busy) setOpen(false) }} role="dialog" aria-modal="true" aria-label={`Actions for ${links.label}`} data-audit="row-actions-sheet">
-          <div className="sheet-in w-full max-w-md rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4 sm:rounded-2xl sm:pb-5" onClick={e => e.stopPropagation()} {...swipe}>
-            <div aria-hidden className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-forest-green/20 sm:hidden" />
+        <BottomSheet open onClose={() => { if (!busy) setOpen(false) }} label={`Actions for ${links.label}`} audit="row-actions-sheet">
             <p className="font-dm-sans text-[16px] font-semibold text-ink" data-audit="row-actions-label">{links.label}</p>
             <div className="mt-3 grid gap-2">
               {links.openHref && (
@@ -181,10 +178,8 @@ export default function RowActions({ links, children, className = '' }: { links:
               ) : links.deleteNote ? (
                 <p className="min-h-[56px] rounded-lg bg-forest-green/[0.06] px-4 py-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="row-action-delete-note">{links.deleteNote}</p>
               ) : null}
-              <button type="button" disabled={busy} onClick={() => setOpen(false)} className="min-h-[48px] px-4 font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="row-action-cancel">Cancel</button>
             </div>
-          </div>
-        </div>
+        </BottomSheet>
       )}
     </div>
   )

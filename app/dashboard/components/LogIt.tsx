@@ -4,7 +4,7 @@ import RecordPicker from './RecordPicker'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
-import { useSwipeDown } from '@/lib/swipe-down'
+import BottomSheet from '@/app/components/BottomSheet'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
@@ -541,9 +541,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     editWhen ||
     asOf !== '' ||
     [place, fromPlace, toPlace].some(s => s.newName !== null && s.newName.trim() !== '')
-  const dismiss = dirty ? undefined : close
   // Block 15 (ruling 6): a pull down on the sheet closes it — asking first if something was typed.
-  const swipe = useSwipeDown(() => { if (!dirty || window.confirm('Discard what you typed?')) close() }, open)
 
   useEffect(() => {
     if (!open) return
@@ -560,8 +558,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         else if (!e.shiftKey && document.activeElement === lastNode) { e.preventDefault(); firstNode.focus() }
         return
       }
-      if (e.key !== 'Escape') return
-      if (!dirty || window.confirm('Discard what you typed?')) close()
+      // Block 26c: Escape is the sheet's (BottomSheet), with the same dirty check.
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey); requestAnimationFrame(() => opener?.focus()) }
@@ -1001,31 +998,15 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       )}
 
       {sheet && open && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={dismiss}
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Record work"
-        >
-          <Card
-            shadow="soft"
-            className="sheet-in max-h-[90vh] w-full max-w-md overflow-y-auto rounded-b-none px-5 py-5 sm:rounded-b-xl"
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            {...swipe}
-            data-audit="record-sheet"
-          >
-            <div aria-hidden className="mx-auto -mt-2 mb-3 h-1.5 w-10 rounded-full bg-forest-green/20 sm:hidden" />
+        <BottomSheet open onClose={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }} label="Record work" z={60} panelAudit="record-sheet" panelRef={dialogRef}>
             <div className="flex items-center justify-between">
               <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
-              <button
-                type="button"
-                onClick={type ? () => { eventId.current = null; setType(null); setError(null); setNewBunch(false) } : close}
-                className="min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-ink hover:text-forest-green"
-              >
-                {type ? 'Back' : 'Close'}
-              </button>
+              {/* Block 26c: no Close — the pull-down and the dim are the close. Back stays: it is a different act. */}
+              {type && (
+                <button type="button" onClick={() => { eventId.current = null; setType(null); setError(null); setNewBunch(false) }} className="min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-ink hover:text-forest-green">
+                  Back
+                </button>
+              )}
             </div>
 
             {!type ? (
@@ -1117,8 +1098,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 </div>
               </form>
             )}
-          </Card>
-        </div>
+        </BottomSheet>
       )}
     </>
   )

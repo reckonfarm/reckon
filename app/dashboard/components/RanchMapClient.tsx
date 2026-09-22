@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import PlaceMapLoader from '@/app/ranch/places/PlaceMapLoader'
 import RecordHere from '@/app/ranch/places/RecordHere'
-import { useSwipeDown } from '@/lib/swipe-down'
+import { openLogIt } from '@/app/dashboard/components/LogIt'
+import BottomSheet from '@/app/components/BottomSheet'
 import { fmtAcres } from '@/lib/places/geo'
 import type { RanchMap } from '@/lib/ranch-map'
 
@@ -21,9 +22,16 @@ export default function RanchMapClient({ map }: { map: RanchMap }) {
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
   const pick = (id: string) => { setFocus(f => ({ id, n: (f?.n ?? 0) + 1 })); setOpenId(id) }
   const open = map.places.find(p => p.id === openId) ?? null
-  const swipe = useSwipeDown(() => setOpenId(null), !!open)
 
-  const shapes = useMemo(() => map.places.filter(p => p.ring).map(p => ({ id: p.id, ring: p.ring!, ...(p.bunches[0] ? { fill: p.bunches[0].color } : {}) })), [map.places])
+  // Block 26c: an occupied place carries its label (head · bunch name) and, when
+  // a move landed there in the last few minutes, one settle of its outline.
+  // "Moments ago" is judged once, when the map lands, so the settle plays once.
+  const [landedAt] = useState(() => Date.now())
+  const shapes = useMemo(() => map.places.filter(p => p.ring).map(p => {
+    const b = p.bunches[0]
+    const fresh = !!b?.since?.ts && landedAt - new Date(b.since.ts).getTime() < 3 * 60_000
+    return { id: p.id, ring: p.ring!, ...(b ? { fill: b.color, label: `${b.head.toLocaleString('en-US')} · ${b.name}`, pulse: fresh } : {}) }
+  }), [map.places, landedAt])
   const undrawn = map.places.filter(p => !p.ring)
 
   return (
@@ -31,21 +39,32 @@ export default function RanchMapClient({ map }: { map: RanchMap }) {
       {shapes.length > 0 && (
         <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} />
       )}
-      {(map.keyed.length > 0 || undrawn.length > 0) && (
-        <ul className="mt-2 flex flex-wrap gap-2" data-audit="ranch-map-key">
-          {map.keyed.map(k => (
-            <li key={k.lotId}>
-              <button type="button" onClick={() => pick(k.placeId)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-rule bg-surface px-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="ranch-map-bunch-chip">
-                <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm" style={{ background: k.color }} />{k.name}
-              </button>
-            </li>
-          ))}
-          {undrawn.filter(p => !map.keyed.some(k => k.placeId === p.id)).map(p => (
-            <li key={p.id}>
-              <button type="button" onClick={() => pick(p.id)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-dashed border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-undrawn-chip">{p.name}</button>
-            </li>
-          ))}
-        </ul>
+      {/* Block 26c: the labels are on the map, so nothing is keyed twice. Below
+          it sit only the things the map cannot draw: a place with no shape,
+          and — never missing — the bunches with no recorded place, each a tap
+          to record where they are. */}
+      {(undrawn.length > 0 || map.unplaced.length > 0) && (
+        <div className="mt-2 flex flex-col gap-2">
+          {undrawn.length > 0 && (
+            <ul className="flex flex-wrap gap-2" data-audit="ranch-map-key">
+              {undrawn.map(p => (
+                <li key={p.id}>
+                  <button type="button" onClick={() => pick(p.id)} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-dashed border-control-border bg-surface px-3 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-undrawn-chip">{p.name}</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {map.unplaced.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" data-audit="ranch-map-unplaced">
+              <span className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">Unplaced</span>
+              {map.unplaced.map(b => (
+                <button key={b.lotId} type="button" onClick={() => openLogIt({ type: 'cattle_moved', lot: b.lotId })} className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-rule bg-surface px-3 font-dm-sans text-[16px] font-semibold text-ink" data-audit="ranch-map-unplaced-bunch" data-lot={b.lotId}>
+                  <span aria-hidden className="h-3.5 w-3.5 shrink-0 rounded-sm" style={{ background: b.color }} />{b.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* The shapes are paint on a canvas: a screen reader and a keyboard cannot
@@ -60,9 +79,7 @@ export default function RanchMapClient({ map }: { map: RanchMap }) {
       )}
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setOpenId(null)} role="dialog" aria-modal="true" aria-label={open.name} data-audit="ranch-map-sheet">
-          <div className="sheet-in w-full max-w-md rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4 sm:rounded-2xl sm:pb-5" onClick={e => e.stopPropagation()} {...swipe}>
-            <div aria-hidden className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-forest-green/20 sm:hidden" />
+        <BottomSheet open onClose={() => setOpenId(null)} label={open.name} audit="ranch-map-sheet">
             <p className="font-fraunces text-[22px] font-semibold leading-tight text-ink">
               <Link href={`/ranch/places/${open.id}`} className="underline-offset-2 hover:underline" data-audit="sheet-place">{open.name}</Link>
               {fmtAcres(open.acres) && <span className="ml-2 font-dm-sans text-[16px] font-normal text-secondary-ink" data-audit="sheet-acres">{fmtAcres(open.acres)}</span>}
@@ -88,8 +105,7 @@ export default function RanchMapClient({ map }: { map: RanchMap }) {
               </p>
             )}
             <div className="mt-4" onClick={() => setOpenId(null)}><RecordHere placeId={open.id} placeName={open.name} /></div>
-          </div>
-        </div>
+        </BottomSheet>
       )}
     </section>
   )

@@ -1,5 +1,6 @@
 'use client'
 
+import BottomSheet from '@/app/components/BottomSheet'
 import { useState } from 'react'
 import { useOutbox, useStorageFull, STATE_LABEL, type OutboxItem } from '@/lib/outbox'
 import { useUndoOwnsTheSlot } from '@/lib/undo'
@@ -40,8 +41,7 @@ export default function WaitingLine() {
         </button>
       </div>
       {open && (
-        <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label="Waiting to send" data-audit="waiting-sheet">
-          <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-4 sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <BottomSheet open onClose={() => setOpen(false)} label="Waiting to send" z={65} maxHeight="80vh" audit="waiting-sheet">
             <p className="font-dm-sans text-[17px] font-semibold text-ink">{line}</p>
             {full && (
               <p className="mt-2 rounded-lg border border-rust/40 bg-rust/5 p-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="waiting-storage">
@@ -51,9 +51,7 @@ export default function WaitingLine() {
             <ul className="mt-3 divide-y divide-rule" data-audit="waiting-list">
               {waiting.slice().reverse().map(item => <WaitingRow key={item.id} item={item} onFix={() => setOpen(false)} />)}
             </ul>
-            <button type="button" onClick={() => setOpen(false)} className="mt-3 min-h-[48px] w-full font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="waiting-close">Close</button>
-          </div>
-        </div>
+        </BottomSheet>
       )}
     </>
   )
