@@ -492,7 +492,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
             {where[lot.id] && (
               <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-where">
                 At <Link href={`/ranch/places/${where[lot.id].placeId}`} className="font-semibold underline underline-offset-2" data-audit="lot-where-place">{where[lot.id].placeName}</Link>
-                {where[lot.id].moved && <span className="text-secondary-ink"> · <Link href={`/ranch/activity/${where[lot.id].moved!.eventId}`} className="underline underline-offset-2">moved {agoLabel(where[lot.id].moved!.ts)}</Link></span>}
+                {where[lot.id].moved && <span className="text-secondary-ink"> · <Link href={`/ranch/activity/${where[lot.id].moved!.eventId}`} className="underline underline-offset-2">{where[lot.id].moved!.placement ? 'placed' : 'moved'} {agoLabel(where[lot.id].moved!.ts)}</Link></span>}
               </p>
             )}
             {/* Block 14: the last count, one line, with the difference — and the

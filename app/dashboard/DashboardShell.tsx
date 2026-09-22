@@ -46,6 +46,7 @@ import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
+import RanchMapCard, { RanchMapHold } from './components/RanchMapCard'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
@@ -463,6 +464,8 @@ export async function DashboardShell({
             self-gating, RLS-scoped components as the county view's Today. */}
         {priv && route === 'today' && !selectedCounty && (
           <div className="mb-8 space-y-4">
+            {/* Block 26: the ranch, first. Its own Suspense — nothing below waits for it. */}
+            <Suspense fallback={<RanchMapHold />}><RanchMapCard /></Suspense>
             {/* Block 5E order: live job · since you last checked · quick record · hay on hand (the ledger strip opens on Hay). */}
             <Suspense fallback={null}>
               <LiveJobCard />
@@ -617,6 +620,8 @@ export async function DashboardShell({
                         Same self-gating components; every card that has nothing to say renders nothing. */}
                     {priv && route === 'today' && (
                       <>
+                        {/* Block 26: the ranch, first. Its own Suspense — nothing below waits for it. */}
+                        <Suspense fallback={<RanchMapHold />}><RanchMapCard /></Suspense>
                         {/* 2. Live job — conditional behaviour untouched; it renders
                             nothing unless a machine is working. Nothing is reserved for
                             it, because reserving space for a card that is usually absent

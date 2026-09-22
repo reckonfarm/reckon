@@ -196,6 +196,13 @@ function FlyTo({ target }: { target: { p: LatLng; n: number } | null }) {
   return null
 }
 
+// Block 26 — a tap on open ground takes the overview full screen. A tap on a
+// place never reaches here: the shape stops it and opens its sheet instead.
+function GroundTap({ onTap }: { onTap: () => void }) {
+  useMapEvents({ click() { onTap() } })
+  return null
+}
+
 // Block 26 — Follow me: keep the person centred while they have not taken the map.
 // Its own moves are flagged so they are never mistaken for a finger: a zoom the
 // map makes for itself fires zoomstart exactly as a pinch does.
@@ -363,6 +370,7 @@ export default function PlaceMapClient({
         {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
+        {overview && !full && <GroundTap onTap={() => setExpanded(true)} />}
 
         {/* Fight #4: nothing already on the map is interactive while drawing. */}
         {shapes.map(s => (
@@ -379,7 +387,7 @@ export default function PlaceMapClient({
             <Polygon
               positions={s.ring.map(c => [c.lat, c.lng] as LL)}
               interactive={tappable && !s.draft}
-              eventHandlers={tappable && !s.draft ? { click: () => onPlaceTap!(s.id) } : {}}
+              eventHandlers={tappable && !s.draft ? { click: e => { L.DomEvent.stopPropagation(e); onPlaceTap!(s.id) } } : {}}
               pathOptions={s.draft
                 ? { color: DRAFT_COLOR, weight: 3, fillColor: DRAFT_COLOR, fillOpacity: 0.2 }
                 : s.fill
@@ -396,7 +404,7 @@ export default function PlaceMapClient({
             position={[m.position.lat, m.position.lng]}
             icon={placeIcon(m.fill ?? cream)}
             interactive={tappable}
-            eventHandlers={tappable ? { click: () => onPlaceTap!(m.id) } : {}}
+            eventHandlers={tappable ? { click: e => { L.DomEvent.stopPropagation(e); onPlaceTap!(m.id) } } : {}}
           />
         ))}
 

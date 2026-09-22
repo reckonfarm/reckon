@@ -78,7 +78,7 @@ export interface LastCount { ts: string; eventId: string; counted: number; expec
 // herd_lots.place_id is the answer; the move is its as-of. A place with no move
 // behind it (set when the bunch was made) is shown with no as-of rather than a
 // borrowed one: only a move whose destination IS the bunch's place may date it.
-export interface BunchWhere { placeId: string; placeName: string; moved?: { ts: string; eventId: string } }
+export interface BunchWhere { placeId: string; placeName: string; moved?: { ts: string; eventId: string; placement?: boolean } }
 export async function whereByLot(supabase: SupabaseClient, lots: { id: string; place_id?: string | null }[]): Promise<Record<string, BunchWhere>> {
   const placed = lots.filter(l => !!l.place_id)
   if (placed.length === 0) return {}
@@ -93,7 +93,7 @@ export async function whereByLot(supabase: SupabaseClient, lots: { id: string; p
     const name = names.get(l.place_id as string)
     if (!name) continue
     const last = ((moves.data ?? []) as { id: string; ts: string; payload: Record<string, unknown> }[]).find(m => m.payload.herd_lot_id === l.id && typeof m.payload.to_place_id === 'string')
-    out[l.id] = { placeId: l.place_id as string, placeName: name, ...(last && last.payload.to_place_id === l.place_id ? { moved: { ts: last.ts, eventId: last.id } } : {}) }
+    out[l.id] = { placeId: l.place_id as string, placeName: name, ...(last && last.payload.to_place_id === l.place_id ? { moved: { ts: last.ts, eventId: last.id, ...(last.payload.placement === true ? { placement: true } : {}) } } : {}) }
   }
   return out
 }

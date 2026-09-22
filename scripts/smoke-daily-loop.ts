@@ -2879,6 +2879,89 @@ async function main() {
       }
     }
 
+    // ── Block 26 — the ranch map on Today ─────────────────────────────────────
+    // PK's falsifier: move a bunch to a pasture. On Today the pasture fills with
+    // the bunch's colour, and tapping it shows name · class · head, the days
+    // since that move, and the move itself. Kill the network: Today still paints
+    // and the polygons still draw. The shapes are painted on a CANVAS, so the
+    // paint is read off the canvas — never off a prop that says it was drawn.
+    {
+      const lot26 = randomUUID(), LOT26 = `${PREFIX} 26 heifers`
+      await admin.from('herd_lots').insert({ id: lot26, ranch_id: ranchId, class: 'heifers', name: LOT26, head_count: 220, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot26, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+      const ring26 = [[-110.02, 46.91], [-110.0, 46.91], [-110.0, 46.9], [-110.02, 46.9], [-110.02, 46.91]]
+      const { data: p26, error: p26Err } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 26 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring26] }, acres: 420 }).select('id').single()
+      if (p26Err) throw new Error(`26 place: ${p26Err.message}`)
+      const mv26 = randomUUID()
+      const moved26 = await page.request.post('/api/log', { data: { id: mv26, type: 'cattle_moved', head: 220, herd_lot_id: lot26, to_place_id: p26.id, place_id: p26.id, ts: new Date(Date.now() - 3 * 86_400_000).toISOString() } })
+
+      // Pixels on the shapes' canvas that carry this colour — 0 means nothing of that colour was painted.
+      const painted = (hex: string) => page.evaluate((h: string) => {
+        const want = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
+        let hits = 0, any = 0
+        for (const c of Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas')) as HTMLCanvasElement[]) {
+          const ctx2 = c.getContext('2d'); if (!ctx2 || !c.width || !c.height) continue
+          const d = ctx2.getImageData(0, 0, c.width, c.height).data
+          for (let i = 0; i < d.length; i += 16) { if (d[i + 3] > 20) { any++; if (Math.abs(d[i] - want[0]) < 14 && Math.abs(d[i + 1] - want[1]) < 14 && Math.abs(d[i + 2] - want[2]) < 14) hits++ } }
+        }
+        return { hits, any }
+      }, hex)
+      const rgbToHex = (rgb: string) => { const m = rgb.match(/\d+/g) ?? []; return '#' + m.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('') }
+
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const chip = page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 })
+      await chip.waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.waitForTimeout(1500)
+      const swatch = rgbToHex(await chip.locator('span').first().evaluate(e => getComputedStyle(e).backgroundColor).catch(() => ''))
+      const paint = await painted(swatch)
+      const mapBox = await page.locator('[data-audit="ranch-map"] .leaflet-container').boundingBox().catch(() => null)
+      const mapWords = ((await page.locator('[data-audit="ranch-map"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p')).map(p => (p as HTMLElement).innerText).join(' | ')).catch(() => '')) ?? '').trim()
+      const firstOnToday = await page.evaluate(() => { const m = document.querySelector('[data-audit="ranch-map"]'); const col = document.querySelector('main'); if (!m || !col) return false; return m.getBoundingClientRect().top - col.getBoundingClientRect().top < 260 })
+      record('26: the map is first on Today at about 40% of the screen; the pasture is FILLED in its bunch\'s colour (read off the canvas) and the bunch\'s name is the key; no words on the map',
+        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.hits > 5 && mapWords === '',
+        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · key ${swatch} · painted ${paint.hits} of ${paint.any} · words "${mapWords}"`)
+
+      await chip.click()
+      const sheet = page.locator('[data-audit="ranch-map-sheet"]')
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+      const sBunch = ((await sheet.locator('[data-audit="sheet-bunch"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sDays = ((await sheet.locator('[data-audit="sheet-days"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sMoveHref = await sheet.locator('[data-audit="sheet-move"]').getAttribute('href').catch(() => null)
+      const sAcres = ((await sheet.locator('[data-audit="sheet-acres"]').innerText().catch(() => '')) ?? '').trim()
+      const sLatest = ((await sheet.locator('[data-audit="sheet-latest"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sRecord = await sheet.locator('[data-audit="record-here"]').count()
+      record('26: the place sheet — name, acres, the bunch as name · class · head, the days since the move and the move itself, the latest entry with its age, and Record here',
+        sBunch.includes(`${LOT26} · Heifers · 220 head`) && /3 days here/.test(sDays) && sMoveHref === `/ranch/activity/${mv26}` && /acres/i.test(sAcres) && /days ago|today|yesterday/.test(sLatest) && sRecord === 1,
+        `"${sBunch}" · "${sDays}" · move ${sMoveHref === `/ranch/activity/${mv26}` ? 'linked' : sMoveHref} · ${sAcres} · "${sLatest.slice(0, 70)}" · record ${sRecord}`)
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.mouse.click(10, 10).catch(() => {})
+
+      // A place the map cannot draw is a chip into the same sheet — never an invented position.
+      const undrawnChip = page.locator('[data-audit="ranch-map-undrawn-chip"]').first()
+      const undrawnName = ((await undrawnChip.innerText().catch(() => '')) ?? '').trim()
+      await undrawnChip.click().catch(() => {})
+      const undrawnSheet = ((await sheet.locator('[data-audit="sheet-place"]').innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
+      record('26: a place with no shape and no position is a chip in the key, into the same sheet', !!undrawnName && undrawnSheet === undrawnName, `chip "${undrawnName}" → sheet "${undrawnSheet}"`)
+      await page.mouse.click(10, 10).catch(() => {})
+
+      // Kill the tiles (the network the map needs): Today still paints, the polygons still draw, the tap still works.
+      await page.route(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/, r => r.abort())
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const ledgersUp = await page.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      await page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 }).waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.waitForTimeout(2500)
+      const tilesShown = await page.locator('[data-audit="ranch-map"] img.leaflet-tile-loaded').count()
+      const paintOff = await painted(swatch)
+      await page.locator('[data-audit="ranch-map-bunch-chip"]').filter({ hasText: LOT26 }).click().catch(() => {})
+      const tapOff = await sheet.waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+      record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
+        ledgersUp && tilesShown === 0 && paintOff.hits > 5 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · painted ${paintOff.hits} of ${paintOff.any} · tap ${tapOff}`)
+      await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
+      await page.mouse.click(10, 10).catch(() => {})
+    }
+
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
     // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
     // line, Undo is tappable without scrolling or dismissing anything, and the
