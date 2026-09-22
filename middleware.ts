@@ -5,11 +5,17 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Block 31 — does this person belong to a ranch? One indexed read on the
 // service key (middleware has no user-scoped client; ranch_members_user_idx
 // serves it). The answer decides the one redirect below.
-async function hasRanch(userId: string): Promise<boolean> {
-  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
-  const { data, error } = await db.from('ranch_members').select('ranch_id').eq('user_id', userId).limit(1)
-  if (error) return true   // the read failed: never trap a member on /setup for a hiccup
-  return (data ?? []).length > 0
+async function hasRanch(userId: string): Promise<{ member: boolean; said: string }> {
+  try {
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
+    const { data, error } = await db.from('ranch_members').select('ranch_id').eq('user_id', userId).limit(1)
+    // The read failed: never trap a member on /setup for a hiccup — but SAY so
+    // on the response, so a redirect that did not happen can be read back.
+    if (error) return { member: true, said: `error:${error.code ?? ''}:${error.message.slice(0, 60)}` }
+    return { member: (data ?? []).length > 0, said: (data ?? []).length > 0 ? 'member' : 'no-ranch' }
+  } catch (e) {
+    return { member: true, said: `threw:${e instanceof Error ? e.message.slice(0, 60) : String(e)}` }
+  }
 }
 // The screens that are a ranch's. A person with none is sent to set one up
 // instead of being shown an empty state that reads as a working ranch.
