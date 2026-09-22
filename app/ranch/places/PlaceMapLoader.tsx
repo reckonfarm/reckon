@@ -76,6 +76,8 @@ export interface PlaceMapProps {
   onPlaceTap?: (id: string) => void
   /** Block 26: the ranch overview — expands to full screen, and offers Follow me. */
   overview?: boolean
+  /** Block 29: one straight line, origin → destination — a move, never a drawn route. */
+  line?: { from: LatLng; to: LatLng; color: string } | null
   /** Block 26: frame the map to ONE place — set when a place is picked from the key, where the map cannot know which ground was meant. `n` re-fires it for the same place. */
   focus?: { id: string; n: number } | null
   /** Pin mode: the map opens on the pin, follow is off, and the pin is the subject. */

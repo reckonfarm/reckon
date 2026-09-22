@@ -199,7 +199,7 @@ function FlyTo({ target }: { target: { p: LatLng; n: number } | null }) {
 // ranch-wide view; this brings it up to fill the map. It ends "whole ranch"
 // follow (or the next render would fit everything again) and flags its own
 // move so it is not read as a finger.
-function FocusPlace({ focus, shapes, markers, setAuto, onFocus }: { focus: { id: string; n: number } | null; shapes: PlaceMapProps['shapes']; markers: NonNullable<PlaceMapProps['markers']>; setAuto: (v: boolean) => void; onFocus: () => void }) {
+function FocusPlace({ focus, shapes, markers, line, setAuto, onFocus }: { focus: { id: string; n: number } | null; shapes: PlaceMapProps['shapes']; markers: NonNullable<PlaceMapProps['markers']>; line: PlaceMapProps['line']; setAuto: (v: boolean) => void; onFocus: () => void }) {
   const map = useMap()
   useEffect(() => {
     if (!focus) return
@@ -207,7 +207,9 @@ function FocusPlace({ focus, shapes, markers, setAuto, onFocus }: { focus: { id:
     if (!shape && !marker) return
     onFocus()
     setAuto(true)
-    if (shape) map.fitBounds(shape.ring.map(c => [c.lat, c.lng] as LL), { padding: [30, 30], animate: false })
+    // Block 29: a move frames both ends of its line, so the whole trip is in view.
+    if (line) map.fitBounds([[line.from.lat, line.from.lng], [line.to.lat, line.to.lng], ...(shape ? shape.ring.map(c => [c.lat, c.lng] as LL) : [])], { padding: [40, 40], animate: false })
+    else if (shape) map.fitBounds(shape.ring.map(c => [c.lat, c.lng] as LL), { padding: [30, 30], animate: false })
     else map.setView([marker!.position.lat, marker!.position.lng], Math.max(map.getZoom(), 16), { animate: false })
     const t = setTimeout(() => setAuto(false), 800)
     return () => clearTimeout(t)
@@ -289,6 +291,7 @@ export default function PlaceMapClient({
   onPlaceTap,
   overview = false,
   focus = null,
+  line = null,
 }: PlaceMapProps) {
   const [basemap, setBasemap] = useState<Basemap>('satellite')
   const [followUser, setFollowUser] = useState(true)
@@ -427,7 +430,7 @@ export default function PlaceMapClient({
         {track && <TrackFollower here={track.here} following={followUser} />}
         <CornerPlacer active={drawing} onCorner={addCorner} />
         <FlyTo target={flyTo} />
-        <FocusPlace focus={focus} shapes={shapes} markers={markers} setAuto={setAuto} onFocus={() => setFollowUser(false)} />
+        <FocusPlace focus={focus} shapes={shapes} markers={markers} line={line} setAuto={setAuto} onFocus={() => setFollowUser(false)} />
         {overview && !drawing && <GroundTap onTap={() => setExpanded(e => !e)} />}
 
         {/* Fight #4: nothing already on the map is interactive while drawing. */}
@@ -466,6 +469,15 @@ export default function PlaceMapClient({
           </Fragment>
         ))}
 
+        {/* Block 29: a move, as one straight segment from where they were to where
+            they went. Two points, solid — never a route, never a claim of a path. */}
+        {line && (
+          <>
+            <Polyline positions={[[line.from.lat, line.from.lng], [line.to.lat, line.to.lng]]} interactive={false} pathOptions={{ color: '#111827', weight: 7, opacity: 0.6 }} />
+            <Polyline positions={[[line.from.lat, line.from.lng], [line.to.lat, line.to.lng]]} interactive={false} pathOptions={{ color: line.color, weight: 3.5, opacity: 1 }} />
+            <CircleMarker center={[line.to.lat, line.to.lng]} radius={7} interactive={false} pathOptions={{ color: cream, weight: 2, fillColor: line.color, fillOpacity: 1 }} />
+          </>
+        )}
         {/* Block 26: a place with no shape is a pin — the same tap, the same colour rule. */}
         {markers.map(m => (
           <Marker

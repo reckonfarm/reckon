@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { getRanchMap } from '@/lib/ranch-map'
+import { getChangesSince } from '@/lib/since'
 import RanchMapClient from './RanchMapClient'
 
 // ─── Block 26: the ranch map at the top of Today ─────────────────────────────
@@ -10,9 +11,9 @@ export default async function RanchMapCard() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const map = await getRanchMap(supabase, user.id).catch(() => null)
+  const [map, since] = await Promise.all([getRanchMap(supabase, user.id).catch(() => null), getChangesSince(supabase, user.id).catch(() => null)])
   if (!map) return null
-  return <RanchMapClient map={map} />
+  return <RanchMapClient map={map} changes={since?.changes ?? []} total={since?.total ?? 0} newest={since?.newest ?? null} />
 }
 
 /** The space the map will take, held while it loads, so Today does not jump when it arrives. */

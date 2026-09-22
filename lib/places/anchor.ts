@@ -2,7 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
 import { getRanch } from '@/lib/ranch-membership'
-import { ringFromGeoJSON, type LatLng } from '@/lib/places/geo'
+import { centreOf, ringFromGeoJSON, type LatLng } from '@/lib/places/geo'
 import { live } from '@/lib/ledger-effective'
 
 // ─── Where the map opens ──────────────────────────────────────────────────────
@@ -28,14 +28,6 @@ import { live } from '@/lib/ledger-effective'
 
 export const MONTANA_CENTRE: LatLng = { lat: 46.9, lng: -110.0 }
 
-function centreOf(points: LatLng[]): LatLng | null {
-  if (points.length === 0) return null
-  const lats = points.map(p => p.lat), lngs = points.map(p => p.lng)
-  return {
-    lat: (Math.min(...lats) + Math.max(...lats)) / 2,
-    lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
-  }
-}
 
 export async function resolveMapCentre(
   supabase: SupabaseClient,
