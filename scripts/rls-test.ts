@@ -580,6 +580,48 @@ async function removedMemberChecks() {
   }
 }
 
+// ── Block 31 (075): create_ranch is the one door into a ranch ─────────────────
+// A new user F (E stays ranchless for 7E) makes a ranch and owns it; a second
+// call is refused; an existing owner is refused and their ranch is untouched;
+// anon cannot call it; and F's first record then lands on F's own ranch.
+async function setupChecks() {
+  const a = fx.A!
+  const A = await userClient('A')
+  const probe = await admin.rpc('create_ranch', { p_name: 'probe', p_county_fips: null })
+  if (probe.error?.code === '42883') { record('(gap)', '31: create_ranch — CAPABILITY GAP: migration 075 is not applied on this database', false, 'six setup checks cannot be read until 075 is run'); return }
+  const fEmail = `rls-test-f@dryline.farm`, fPass = `${PREFIX}pass-F-${Date.now()}`
+  const { data: fu } = await admin.auth.admin.createUser({ email: fEmail, password: fPass, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}F` } })
+  const F = createClient(URL_!, ANON!, { auth: { autoRefreshToken: false, persistSession: false } })
+  const { error: fErr } = await F.auth.signInWithPassword({ email: fEmail, password: fPass })
+  if (fErr || !fu?.user) { record('user F (new)', '31: user F could not sign in', false, fErr?.message ?? 'no user'); return }
+  const fId = fu.user.id
+  const before = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', fId)
+  const made = await F.rpc('create_ranch', { p_name: `${PREFIX} F ranch`, p_county_fips: '30027' })
+  const r1 = made.data as { ok?: boolean; ranch_id?: string; reason?: string } | null
+  const { data: fm } = await admin.from('ranch_members').select('ranch_id, role').eq('user_id', fId)
+  const { data: fr } = r1?.ranch_id ? await admin.from('ranches').select('name, home_county_fips').eq('id', r1.ranch_id).maybeSingle() : { data: null }
+  record('user F (new)', '31: a brand-new account makes a ranch through create_ranch and owns it, county set', (before.count ?? 0) === 0 && !made.error && r1?.ok === true && (fm ?? []).length === 1 && fm![0].role === 'owner' && fm![0].ranch_id === r1.ranch_id && (fr as { home_county_fips?: string } | null)?.home_county_fips === '30027',
+    `${made.error?.message ?? (r1?.ok ? 'ok' : r1?.reason)} · memberships ${(fm ?? []).length} · role ${fm?.[0]?.role} · county ${(fr as { home_county_fips?: string } | null)?.home_county_fips}`)
+  const again = await F.rpc('create_ranch', { p_name: 'Another', p_county_fips: null })
+  const r2 = again.data as { ok?: boolean; reason?: string } | null
+  const { count: fRanches } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', fId)
+  record('user F (new)', '31: the same account again is refused, and still owns exactly one ranch', r2?.ok === false && r2?.reason === 'already_on_a_ranch' && fRanches === 1, `${r2?.reason ?? again.error?.message} · memberships ${fRanches}`)
+  const aBefore = await admin.from('ranch_members').select('user_id, role').eq('ranch_id', a.ranchId)
+  const asOwner = await A.rpc('create_ranch', { p_name: 'A second ranch', p_county_fips: null })
+  const r3 = asOwner.data as { ok?: boolean; reason?: string } | null
+  const aAfter = await admin.from('ranch_members').select('user_id, role').eq('ranch_id', a.ranchId)
+  const { count: aOwns } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', a.userId)
+  record('user A (owner)', '31: a member of an existing ranch is refused, and nothing changes on that ranch', r3?.ok === false && r3?.reason === 'already_on_a_ranch' && JSON.stringify(aBefore.data) === JSON.stringify(aAfter.data) && aOwns === 1, `${r3?.reason ?? asOwner.error?.message} · A's ranch members ${aBefore.data?.length} → ${aAfter.data?.length} · A on ${aOwns} ranch(es)`)
+  const anon = await anonClient().rpc('create_ranch', { p_name: 'Anon ranch', p_county_fips: null })
+  record('anonymous (no JWT)', '31: anon cannot call create_ranch', !!anon.error || (anon.data as { ok?: boolean } | null)?.ok === false, anon.error ? `${anon.error.code ?? ''} ${anon.error.message.slice(0, 60)}` : JSON.stringify(anon.data).slice(0, 80))
+  const wrote = await api(F, '/api/log', { type: 'rain', inches: 0.2 })
+  const ev = (wrote.json.event ?? {}) as { ranch_id?: string }
+  record('user F (new)', '31: F\'s first record lands, on F\'s own ranch', wrote.status === 201 && ev.ranch_id === r1?.ranch_id, `${wrote.status} · ranch ${ev.ranch_id === r1?.ranch_id ? 'F\'s' : ev.ranch_id ?? 'none'}`)
+  // Tidy: F's ranch (cascades the membership), F's rows, F.
+  if (r1?.ranch_id) { await admin.from('events').delete().eq('user_id', fId); await admin.from('ranches').delete().eq('id', r1.ranch_id) }
+  await admin.auth.admin.deleteUser(fId)
+}
+
 async function anonymousChecks() {
   const c = anonClient()
   for (const table of ['events', 'places', 'devices', 'ranch_members', 'ranches'] as const) {
@@ -1688,6 +1730,7 @@ async function main() {
     await logRouteChecks()      // Block 7E — /api/log; BEFORE invitations, while C is still ranchless
     await ingestChecks()
     await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
+    await setupChecks()         // Block 31 — create_ranch, the one door; needs 075 (named RED without it)
     await lotsChecks()          // Block 4A — needs migration 050
     await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
     await correctionChecks()    // Block 5B — needs migration 054 (skips without it)

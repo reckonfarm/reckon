@@ -2,44 +2,24 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// Resolve the county a logged-in user's dashboard should open to by default:
-// their Home county first, then their most-recently saved county. Uses the
-// service role (RLS-independent, matching the rest of the app's reads). Returns
-// null if they have neither, so brand-new users still get the empty state.
-// home_county_fips may not exist until migration 013 runs — that query failing
-// just falls through to the watchlist, so this is safe pre-migration.
-async function resolveDefaultFips(userId: string): Promise<string | null> {
-  const db = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } },
-  )
-
+// Block 31 — does this person belong to a ranch? One indexed read on the
+// service key (middleware has no user-scoped client; ranch_members_user_idx
+// serves it). The answer decides the one redirect below.
+async function hasRanch(userId: string): Promise<{ member: boolean; said: string }> {
   try {
-    const { data: profile } = await db
-      .from('profiles')
-      .select('home_county_fips')
-      .eq('id', userId)
-      .maybeSingle()
-    if (profile?.home_county_fips) return profile.home_county_fips
-  } catch {
-    // home_county_fips column absent (pre-migration) — fall through to watchlist.
-  }
-
-  try {
-    const { data: watch } = await db
-      .from('user_watchlist')
-      .select('counties(fips)')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    const fips = (watch?.counties as unknown as { fips: string } | null)?.fips
-    return fips ?? null
-  } catch {
-    return null
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
+    const { data, error } = await db.from('ranch_members').select('ranch_id').eq('user_id', userId).limit(1)
+    // The read failed: never trap a member on /setup for a hiccup — but SAY so
+    // on the response, so a redirect that did not happen can be read back.
+    if (error) return { member: true, said: `error:${error.code ?? ''}:${error.message.slice(0, 60)}` }
+    return { member: (data ?? []).length > 0, said: (data ?? []).length > 0 ? 'member' : 'no-ranch' }
+  } catch (e) {
+    return { member: true, said: `threw:${e instanceof Error ? e.message.slice(0, 60) : String(e)}` }
   }
 }
+// The screens that are a ranch's. A person with none is sent to set one up
+// instead of being shown an empty state that reads as a working ranch.
+const RANCH_PATHS = /^\/(today|ranch|markets|weather|account|jobs|hay)(\/|$)/
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -85,6 +65,30 @@ export async function middleware(request: NextRequest) {
     const redirectResponse = NextResponse.redirect(dest)
     supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
     return redirectResponse
+  }
+
+  // Block 31 — no screen pretends a ranch exists. Signed in and on a ranch
+  // screen with no ranch → the one setup screen; on /setup with a ranch →
+  // Today. Public county pages (?fips=) and the invite landing are never
+  // touched: an invited person has no ranch until they accept. The read's
+  // answer rides on the response (x-dryline-ranch), so a redirect that did
+  // not happen can be read back.
+  if (user && !request.nextUrl.searchParams.has('fips')) {
+    const path = request.nextUrl.pathname
+    const onSetup = path === '/setup'
+    if (onSetup || RANCH_PATHS.test(path)) {
+      const { member, said } = await hasRanch(user.id)
+      supabaseResponse.headers.set('x-dryline-ranch', said)
+      if (onSetup ? member : !member) {
+        const dest = request.nextUrl.clone()
+        dest.pathname = onSetup ? '/today' : '/setup'
+        dest.search = ''
+        const redirectResponse = NextResponse.redirect(dest)
+        redirectResponse.headers.set('x-dryline-ranch', said)
+        supabaseResponse.cookies.getAll().forEach(c => redirectResponse.cookies.set(c))
+        return redirectResponse
+      }
+    }
   }
 
   return supabaseResponse

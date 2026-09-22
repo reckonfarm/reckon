@@ -120,7 +120,7 @@ const LOT_NAME = 'Smoke steers'
 
 async function teardown(label: string) {
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
-  const ids = (users?.users ?? []).filter(u => u.email === EMAIL || u.email === EMAIL_B).map(u => u.id)
+  const ids = (users?.users ?? []).filter(u => u.email === EMAIL || u.email === EMAIL_B || u.email === 'smoke-daily-loop-new@dryline.farm').map(u => u.id)
   let n = 0
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
@@ -3153,7 +3153,11 @@ async function main() {
         ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
         const next = page.locator('a[href*="cursor="]').first()
         if (!(await next.count())) break
-        await next.click(); await page.waitForLoadState('domcontentloaded'); await page.waitForTimeout(400)
+        // A client-side page turn: wait for the LIST to change, not for a load event that already fired.
+        const firstBefore = ids[ids.length - 50] ?? ids[0]
+        await next.click()
+        await page.waitForFunction((was: string) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== was, firstBefore, { timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(300)
       }
       const order = [noon, queued?.id ?? '', nine].map(id => ids.indexOf(id))
       record('27: on the record it sits between a 09:00 and a 12:00 entry — ordered by when it was made, not when it arrived', order.every(i => i >= 0) && order[0] < order[1] && order[1] < order[2], `positions noon ${order[0]} · ours ${order[1]} · nine ${order[2]}`)
@@ -3226,7 +3230,7 @@ async function main() {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button
       // Location AND network off.
       await page.context().setGeolocation(null).catch(() => {})
       await page.context().setOffline(true)
@@ -3261,6 +3265,48 @@ async function main() {
       record('20: with a fix inside a pasture, an action tapped first takes the place under the fix', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'none'}`)
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.context().setGeolocation(null).catch(() => {})
+    // ── Block 31 — a new rancher can create their ranch ───────────────────────
+    // PK's falsifier: sign up a brand-new account. You see only the setup screen.
+    // Name the ranch, pick a county, and you land on Today with an empty ranch
+    // you own. Try again with the same account: refused. Its own browser
+    // context: a different person.
+    await section('Block 31 — a new rancher can create their ranch', async () => {
+      const EMAIL_C = 'smoke-daily-loop-new@dryline.farm'
+      const { data: cu } = await admin.auth.admin.createUser({ email: EMAIL_C, email_confirm: true, user_metadata: { smoke: true } })
+      const ctxC = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const pc = await signIn(ctxC, EMAIL_C)
+        const landed = async () => { await pc.waitForTimeout(1500); return pc.url().replace(BASE, '').split('?')[0] }
+        // Ranch screens all send a ranchless person to the one setup screen.
+        const seen: string[] = []
+        for (const path of ['/today', '/ranch/activity', '/account', '/ranch/cattle']) { await pc.goto(path, { waitUntil: 'domcontentloaded' }); seen.push(await landed()) }
+        const h1 = ((await pc.locator('main h1').first().innerText().catch(() => '')) ?? '').trim()
+        const controls = await pc.locator('[data-audit="setup-form"] button:not([data-audit="setup-county-option"]), [data-audit="setup-form"] input').count()
+        record('31: signed in with no ranch, every ranch screen is the one setup screen — "Name your ranch", the county, one button, nothing else',
+          seen.every(p => p === '/setup') && h1 === 'Name your ranch' && controls === 3, `${seen.join(' ')} · h1 "${h1}" · controls ${controls}`)
+        await pc.locator('[data-audit="setup-name"]').fill(`${PREFIX} New ranch`)
+        await pc.locator('[data-audit="setup-county-search"]').fill('Fergus')
+        await pc.locator('[data-audit="setup-county-option"][data-fips="30027"]').click({ timeout: 10_000 }).catch(() => {})
+        await pc.locator('[data-audit="setup-save"]').click()
+        await pc.waitForURL(u => u.pathname === '/today', { timeout: 30_000 }).catch(() => {})
+        const err = ((await pc.locator('[data-audit="setup-error"]').innerText().catch(() => '')) ?? '').trim()
+        const { data: cm } = await admin.from('ranch_members').select('ranch_id, role').eq('user_id', cu!.user!.id)
+        const { data: cr } = cm?.[0] ? await admin.from('ranches').select('name, home_county_fips').eq('id', cm[0].ranch_id).maybeSingle() : { data: null }
+        await pc.locator('header [data-audit="account-button"]').waitFor({ timeout: 20_000 }).catch(() => {})
+        const headerText = ((await pc.locator('main').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+        record('31: name it, pick a county, and you land on Today with an empty ranch you own — county set on the ranch',
+          pc.url().replace(BASE, '').startsWith('/today') && (cm ?? []).length === 1 && cm![0].role === 'owner' && (cr as { name?: string; home_county_fips?: string } | null)?.name === `${PREFIX} New ranch` && (cr as { home_county_fips?: string } | null)?.home_county_fips === '30027' && headerText.includes(`${PREFIX} New ranch`),
+          `${pc.url().replace(BASE, '')} · ${err ? `error "${err}"` : ''} memberships ${(cm ?? []).length} · role ${cm?.[0]?.role} · ranch "${(cr as { name?: string } | null)?.name}" county ${(cr as { home_county_fips?: string } | null)?.home_county_fips}`)
+        // Again with the same account: the screen is gone (Today), and the door refuses.
+        await pc.goto('/setup', { waitUntil: 'domcontentloaded' })
+        const backTo = await landed()
+        const twice = await pc.request.post('/api/setup', { data: { name: 'Second', county_fips: null } })
+        const twiceJson = (await twice.json().catch(() => ({}))) as { code?: string }
+        const { count: still } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', cu!.user!.id)
+        record('31: try it again with the same account — /setup goes to Today, and the door refuses; still one ranch', backTo === '/today' && twice.status() === 409 && twiceJson.code === 'already_on_a_ranch' && still === 1, `/setup → ${backTo} · again ${twice.status()} ${twiceJson.code ?? ''} · memberships ${still}`)
+      } finally {
+        await ctxC.close().catch(() => {})
+      }
     })
 
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
