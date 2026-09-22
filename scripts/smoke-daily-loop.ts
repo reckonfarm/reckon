@@ -372,7 +372,8 @@ async function main() {
       try { await body() } catch (e) {
         // The first line names the verb; the 'waiting for' line names the locator — both, or a timeout says nothing.
         const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
-        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy/.test(l)).slice(0, 2)].join(' · ').slice(0, 260)
+        // The verb, the locator, and WHAT STOOD IN THE WAY: an element that intercepts pointer events is the line that names the culprit.
+        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy|intercepts|receives|retrying|from <|subtree/.test(l)).slice(0, 5)].join(' · ').slice(0, 700)
         record(`${name}: died before its checks finished — ${said}`, false, 'every check of this section after that point is unrun')
         await ctx.setOffline(false).catch(() => {})
         if (page.isClosed()) page = await ctx.newPage()
