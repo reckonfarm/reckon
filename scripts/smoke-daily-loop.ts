@@ -3585,7 +3585,7 @@ async function main() {
               const boxes: string[] = []
               for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)].join(',')); await frame(); await frame() }
               const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null
-              const anims = document.getAnimations().map(a => `${(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? a.constructor.name}@${(a.effect?.target as HTMLElement | null)?.getAttribute('data-audit') ?? (a.effect?.target as HTMLElement | null)?.tagName ?? '?'}:${a.playState}`)
+              const anims = document.getAnimations().map(a => `${(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? a.constructor.name}@${((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.getAttribute('data-audit') ?? ((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.tagName ?? '?'}:${a.playState}`)
               return { disabled: (el as HTMLButtonElement).disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled'), anims: anims.slice(0, 8) }
             }).catch(() => null)
             throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)}`)
