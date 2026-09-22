@@ -3150,7 +3150,11 @@ async function main() {
         ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
         const next = page.locator('a[href*="cursor="]').first()
         if (!(await next.count())) break
-        await next.click(); await page.waitForLoadState('domcontentloaded'); await page.waitForTimeout(400)
+        // A client-side page turn: wait for the LIST to change, not for a load event that already fired.
+        const firstBefore = ids[ids.length - 50] ?? ids[0]
+        await next.click()
+        await page.waitForFunction((was: string) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== was, firstBefore, { timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(300)
       }
       const order = [noon, queued?.id ?? '', nine].map(id => ids.indexOf(id))
       record('27: on the record it sits between a 09:00 and a 12:00 entry — ordered by when it was made, not when it arrived', order.every(i => i >= 0) && order[0] < order[1] && order[1] < order[2], `positions noon ${order[0]} · ours ${order[1]} · nine ${order[2]}`)
