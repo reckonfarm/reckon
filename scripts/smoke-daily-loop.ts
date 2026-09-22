@@ -3239,6 +3239,8 @@ async function main() {
       await page.clock.setFixedTime(new Date(Date.now() + 40 * 60_000))
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await logFeed(page, 11)
+      // A fixed clock is FROZEN: the outbox's hold never elapses unless the clock is moved past it.
+      await page.clock.setFixedTime(new Date(Date.now() + 40 * 60_000 + 20_000))
       const states11 = await watchStates(page, 'Sent', 45_000, 'Fed 11 bales')
       const { data: row11 } = await admin.from('events').select('id, created_at, ts').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '11').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       const r11 = row11 as { id: string; created_at: string; ts: string } | null
