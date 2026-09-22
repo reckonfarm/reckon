@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import PlaceMapLoader from '@/app/ranch/places/PlaceMapLoader'
 import RecordHere from '@/app/ranch/places/RecordHere'
+import SaveStatus from '@/app/dashboard/components/SaveStatus'
+import { enqueue, newEventId } from '@/lib/outbox'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 import BottomSheet from '@/app/components/BottomSheet'
 import { fmtAcres } from '@/lib/places/geo'
@@ -132,12 +134,18 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
                   <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm" style={{ background: b.color }} />{b.label}
                 </p>
                 {/* Days here exist only when a move backs the date. No move, no number. */}
+                {/* Block 30: "Moved in <date> · seen <age> by <name>". The move is the
+                    date and the link; a sighting says someone laid eyes on them
+                    here since — a feeding never counts, and seeing never moves. */}
                 {b.since && (
                   <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-days">
-                    <span className="font-semibold tabular-nums">{days(b.since.ts) === 0 ? 'Here since today' : `${days(b.since.ts)} ${days(b.since.ts) === 1 ? 'day' : 'days'} here`}</span>
-                    {' · '}<Link href={`/ranch/activity/${b.since.eventId}`} className="underline underline-offset-2" data-audit="sheet-move">{b.since.line}</Link>
+                    <Link href={`/ranch/activity/${b.since.eventId}`} className="underline underline-offset-2" data-audit="sheet-move"><span className="font-semibold">Moved in {fmtDay(b.since.ts)}</span></Link>
+                    <span className="text-secondary-ink"> · {days(b.since.ts) === 0 ? 'today' : `${days(b.since.ts)} ${days(b.since.ts) === 1 ? 'day' : 'days'} here`}</span>
+                    {b.seen && <span data-audit="sheet-seen"> · seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</span>}
                   </p>
                 )}
+                {!b.since && b.seen && <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-seen">seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</p>}
+                <SeenHere lotId={b.id} label={b.label} placeId={open.id} placeName={open.name} />
               </div>
             ))}
             {open.latest && (
@@ -150,5 +158,32 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
         </BottomSheet>
       )}
     </section>
+  )
+}
+
+// ─── Block 30: Seen here — one tap, one record ───────────────────────────────
+// Records that THIS bunch was seen at THIS place, by this person, now. It goes
+// through the outbox like every record, with the same ten seconds to take it
+// back, and it never touches where the bunch is — only a move does that.
+function SeenHere({ lotId, label, placeId, placeName }: { lotId: string; label: string; placeId: string; placeName: string }) {
+  const [madeId, setMadeId] = useState<string | null>(null)
+  const [full, setFull] = useState(false)
+  const tap = () => {
+    try {
+      const id = newEventId()
+      enqueue({ id, type: 'bunch_seen', herd_lot_id: lotId, place_id: placeId }, `Seen ${label} at ${placeName}`, 10_000)
+      setMadeId(id)
+    } catch { setFull(true) }
+  }
+  return (
+    <div className="mt-2" onClick={e => e.stopPropagation()}>
+      {full ? (
+        <p className="font-dm-sans text-[16px] text-ink" data-audit="seen-here-full">This phone is full, so nothing was saved. Free some space on the phone, then tap again.</p>
+      ) : madeId ? (
+        <SaveStatus itemId={madeId} />
+      ) : (
+        <button type="button" onClick={tap} className="inline-flex min-h-[48px] items-center rounded-lg border border-forest-green/30 bg-surface px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="seen-here" data-lot={lotId}>Seen here</button>
+      )}
+    </div>
   )
 }

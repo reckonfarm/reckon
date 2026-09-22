@@ -157,6 +157,7 @@ const TILE_VERB: Record<SheetType, string> = {
   cattle_worked: 'Record cattle work',
   hay_inventory: 'Count hay',
   cattle_counted: 'Count cattle',
+  bunch_seen: 'Seen here',   // Block 30: one tap on the place sheet; never in the picker
 }
 const SAVE_LABEL: Record<SheetType, string> = {
   preg_check: 'Record preg check',
@@ -168,6 +169,7 @@ const SAVE_LABEL: Record<SheetType, string> = {
   cattle_worked: 'Record work',
   hay_inventory: 'Record count',
   cattle_counted: 'Record count',
+  bunch_seen: 'Record sighting',
 }
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
 const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check', 'split']
@@ -342,6 +344,7 @@ function describe(
     case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
     case 'hay_inventory': return `${bales(n)} on hand${at}`
     case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
+    case 'bunch_seen': return `Seen ${lot ?? 'cattle'}${at}`   // Block 30 (never opened from the sheet; the label lives on the place sheet)
     case 'preg_check': return `Preg check · ${n} checked${lot ? ` · ${lot}` : ''}`
     case 'split': return `Split · ${n} head${lot ? ` from ${lot}` : ''}`
   }

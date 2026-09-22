@@ -35,7 +35,7 @@ export async function placeRows(supabase: SupabaseClient): Promise<PlaceRows> {
   const shaped = list.map(pl => ({ ...pl, ring: placeRing(pl.geometry), acres: typeof pl.acres === 'number' ? pl.acres : null }))
   if (shaped.length === 0) return { live: [], retired: [] }
   // 7D: skip the deleted filter on a database without 061 (temporary).
-  const { data: events } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', [...MANUAL_EVENT_TYPES]).eq('payload->>source', 'manual'))
+  const { data: events } = await effective(supabase.from('events').select('id, type, ts, payload').in('type', MANUAL_EVENT_TYPES.filter(t => t !== 'bunch_seen')))   // Block 30: a sighting is not work.eq('payload->>source', 'manual'))
     .order('ts', { ascending: false }).limit(1000)
   const work = new Map<string, { ts: string; type: string }>()
   const rain = new Map<string, { ts: string; inches: number }>()

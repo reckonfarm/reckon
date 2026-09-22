@@ -93,6 +93,15 @@ export async function consequenceFor(
         lines.push(`${movedWho(head, lot)}${there ? ` — now at ${placeName}` : placeName ? ` moved to ${placeName}` : ' moved'}${unnamed(lot)}`)
         return { lines }
       }
+      case 'bunch_seen': {
+        // Block 30: the receipt names the bunch and where it was seen — read
+        // back off the bunch, and it never says the bunch's place changed.
+        const lotId = typeof payload.herd_lot_id === 'string' ? payload.herd_lot_id : null
+        const { data: lotRow } = lotId ? await supabase.from('herd_lots').select('name, class').eq('id', lotId).maybeSingle() : { data: null }
+        const lot = lotRow as { name: string | null; class: MovedBunch['class'] } | null
+        lines.push(`${movedWho(null, lot)} seen${placeName ? ` at ${placeName}` : ''}`)
+        return { lines }
+      }
       case 'cattle_worked': {
         const head = num('head')
         const what = typeof payload.what === 'string' ? payload.what : ''
