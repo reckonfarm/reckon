@@ -2805,12 +2805,17 @@ async function main() {
         }
         // The outbox does not add a key — it REWRITES its own, bigger. So the
         // proof of a full shelf is that a 64-byte growth of a key already
-        // there is refused. Restore the value when it is not.
+        // there is refused. Restore the value when it is not. The app's own
+        // outbox rewrites its key on a timer and can free a few bytes between
+        // the fill and the probe (one run in five did), so the fill is topped
+        // up and probed again, a few times, before the shelf is called not full.
         let full = false
         const k = '__fill_0'
-        const v = localStorage.getItem(k)
-        if (v == null) return { n, full: false }
-        try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        for (let attempt = 0; attempt < 4 && !full; attempt++) {
+          for (;;) { if (n > 3000) break; try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(64)); n++ } catch { break } }
+          const v = localStorage.getItem(k) ?? ''
+          try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        }
         return { n, full }
       })
       const clearFill = async () => page.evaluate(() => {
