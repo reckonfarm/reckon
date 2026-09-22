@@ -3573,6 +3573,10 @@ async function main() {
       if (l14) skip('14: count checks', `fixture: ${l14.message.slice(0, 80)}`)
       else if (!(await probe069(ranchId, userId))) { skip('14: count and new-bunch checks', 'migration 069 not applied on this database'); await admin.from('herd_lots').delete().eq('id', lot14) }
       else {
+        const navs14: string[] = [], errs14: string[] = []
+        const onNav = (f: { url: () => string; parentFrame: () => unknown }) => { if (!f.parentFrame()) navs14.push(f.url().replace(BASE, '').slice(0, 60)) }
+        const onErr = (m: { type: () => string; text: () => string }) => { if (m.type() === 'error') errs14.push(m.text().slice(0, 100)) }
+        page.on('framenavigated', onNav); page.on('console', onErr); page.on('pageerror', e => errs14.push(`pageerror ${e.message.slice(0, 100)}`))
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         const countOnce = async (n: number) => {
           await recordControl(page).click()
@@ -3589,8 +3593,8 @@ async function main() {
               const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null
               const anims = document.getAnimations().map(a => `${(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? a.constructor.name}@${((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.getAttribute('data-audit') ?? ((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.tagName ?? '?'}:${a.playState}`)
               return { disabled: (el as HTMLButtonElement).disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled'), anims: anims.slice(0, 8) }
-            }).catch(() => null)
-            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)}`)
+            }).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
+            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
           }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
           const preview = await text('[data-audit="count-preview"]')
