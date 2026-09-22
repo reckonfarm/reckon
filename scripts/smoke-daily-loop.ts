@@ -3049,6 +3049,12 @@ async function main() {
         record('27: CAPABILITY GAP — migration 073 is not applied on this database; nothing below can be read', false, probe073.error.message.slice(0, 80))
         return
       }
+      // Its OWN page: a fixed fake clock is per page and cannot be handed back to
+      // real time, and a frozen Date.now() would leave every later section's
+      // outbox waiting on a hold that never elapses (the first run showed it).
+      const main = page
+      page = await ctx.newPage()
+      try {
       const today = ranchDay()
       const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -3061,7 +3067,6 @@ async function main() {
       await page.clock.setFixedTime(fourPM)
       await page.context().setOffline(false)
       const on27 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
-      await page.clock.setFixedTime(new Date())
       const { data: row27 } = queued ? await admin.from('events').select('id, ts, created_at, ingested_at').eq('id', queued.id).maybeSingle() : { data: null }
       const r27 = row27 as { id: string; ts: string; created_at: string; ingested_at: string } | null
       const minutesOff = (a: string | Date | null | undefined, b: Date) => a ? Math.abs(new Date(a).getTime() - b.getTime()) / 60_000 : Infinity
@@ -3082,6 +3087,7 @@ async function main() {
       const backdatedNote = await page.locator('[data-audit="event-backdated"]').count()
       const reached = await page.locator('[data-audit="event-reached-the-ranch"]').count()
       record('27: the entry reads Recorded 10:00, is not called back-dated, and arrival gets no line of its own on the same day', /10:00/.test(recorded) && backdatedNote === 0 && reached === 0, `recorded "${recorded}" · back-dated note ${backdatedNote} · reached line ${reached}`)
+      } finally { await page.close().catch(() => {}); page = main }
     })
 
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
