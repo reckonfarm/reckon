@@ -34,6 +34,9 @@ export default function BottomSheet({ open, onClose, label, children, z = 70, au
   const start = useRef<{ y: number; t: number; scrolled: boolean } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [dy, setDy] = useState(0)
+  // The pull so far, readable the instant the finger lifts — a flick can start
+  // and end inside one tick, before React has re-rendered the state.
+  const pulled = useRef(0)
   const [leaving, setLeaving] = useState(false)
   // Every caller renders this under `open &&`, so a closed sheet is an unmounted one and state starts fresh.
   // A keyboard has no swipe: Escape is its pull-down.
@@ -54,15 +57,17 @@ export default function BottomSheet({ open, onClose, label, children, z = 70, au
     const s = start.current
     if (!s || s.scrolled) return
     const d = e.touches[0].clientY - s.y
-    if (d > 0 && (panel.current?.scrollTop ?? 0) <= 0) setDy(d)
+    if (d > 0 && (panel.current?.scrollTop ?? 0) <= 0) { pulled.current = d; setDy(d) }
   }
   const onTouchEnd = () => {
     const s = start.current
     start.current = null
     setDragging(false)
     if (!s) return
-    const v = dy / Math.max(1, Date.now() - s.t)
-    if (dy >= DISMISS_PX || (dy > 24 && v >= FLICK_PX_PER_MS)) { setLeaving(true); setTimeout(onClose, 120) }
+    const d = pulled.current
+    pulled.current = 0
+    const v = d / Math.max(1, Date.now() - s.t)
+    if (d >= DISMISS_PX || (d > 24 && v >= FLICK_PX_PER_MS)) { setLeaving(true); setTimeout(onClose, 120) }
     else setDy(0)
   }
 
@@ -71,7 +76,7 @@ export default function BottomSheet({ open, onClose, label, children, z = 70, au
       <div
         ref={el => { panel.current = el; if (panelRef) panelRef.current = el }}
         onClick={e => e.stopPropagation()}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={() => { start.current = null; setDragging(false); setDy(0) }}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={() => { start.current = null; pulled.current = 0; setDragging(false); setDy(0) }}
         className={`sheet-in w-full max-w-md overflow-y-auto rounded-t-2xl bg-cream px-5 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-3 sm:rounded-2xl sm:pb-5 ${className}`}
         style={{ maxHeight, transform: dy || leaving ? `translateY(${leaving ? '110%' : `${dy}px`})` : undefined, transition: dragging ? 'none' : 'transform 160ms ease-out' }}
         data-audit={panelAudit}
