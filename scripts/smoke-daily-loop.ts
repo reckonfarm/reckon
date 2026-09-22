@@ -2999,7 +2999,8 @@ async function main() {
       const swatch = rgbToHex(await page.locator('[data-audit="ranch-map"] .leaflet-tooltip.dryline-place-label span').filter({ hasText: LOT26 }).first().evaluate(e => getComputedStyle(e).color).catch(() => ''))
       const paint = await outline(swatch, ring26)
       const pillButtons = await page.locator('[data-audit="ranch-map"] [data-audit="map-pill"] button').count()
-      const floating = await page.locator('[data-audit="ranch-map"] .leaflet-container ~ * button, [data-audit="ranch-map"] [data-audit="map-expand"], [data-audit="ranch-map"] [data-audit="map-whole-ranch"]').count()
+      // Anything floating over the map that is not the pill: Leaflet's own zoom control, or any button positioned inside the map's frame.
+      const floating = await page.locator('[data-audit="ranch-map"] .leaflet-container').first().evaluate(el => { const frame = el.parentElement!; const over = Array.from(frame.querySelectorAll('button, a')).filter(b => !b.closest('[data-audit="map-pill"]') && !b.closest('.leaflet-control-attribution') && getComputedStyle(b).position !== 'static' || !!b.closest('.leaflet-control-zoom')); return over.length })
       // THE CONTROL — this read must be able to FAIL. A second pasture, drawn,
       // with no bunch on it: framed the same way and read for the same colour,
       // it has to come back empty, or the read proves nothing.
@@ -3040,10 +3041,11 @@ async function main() {
       // Full screen is a tap on open ground, and a tap takes it back.
       const container = page.locator('[data-audit="ranch-map"] .leaflet-container')
       const cb = await container.boundingBox()
-      if (cb) { await page.mouse.click(cb.x + 8, cb.y + cb.height - 8); await page.waitForTimeout(700) }
+      // Open ground: top-centre, above the framed place and clear of the zoom control (top-left), the pill (top-right) and the attribution (bottom-left).
+      if (cb) { await page.mouse.click(cb.x + cb.width / 2, cb.y + 10); await page.waitForTimeout(700) }
       const fullNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height > window.innerHeight * 0.85 })
       const cb2 = await container.boundingBox()
-      if (cb2) { await page.mouse.click(cb2.x + 8, cb2.y + cb2.height - 8); await page.waitForTimeout(700) }
+      if (cb2) { await page.mouse.click(cb2.x + cb2.width / 2, cb2.y + 10); await page.waitForTimeout(700) }
       const backNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height < window.innerHeight * 0.6 })
       record('26c: full screen is a tap on the map — one tap on open ground fills the screen, another brings it back — with no button for it', fullNow && backNow, `full ${fullNow} · back ${backNow}`)
       // Unplaced: a bunch with no recorded place is listed, and its tap opens a move with it prefilled.
@@ -3057,8 +3059,11 @@ async function main() {
       const moveForm = await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
       const moveLot = await page.locator('[data-audit="lot-for-move"]').inputValue().catch(() => '')
       record('26c: a bunch with no recorded place is listed under the map as Unplaced, and its tap opens a move with that bunch already picked', listed && moveForm && moveLot === lotU, `listed ${listed} · move form ${moveForm} · bunch picked ${moveLot === lotU}`)
-      await page.keyboard.press('Escape').catch(() => {})
-      await page.mouse.click(10, 10).catch(() => {})
+      // Cancel, not Escape: a form with a bunch picked is a draft, and a draft left
+      // behind reopens the sheet on every page after this (by design) — the first
+      // 26c run left one and every later section found the sheet over the page.
+      await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
+      await page.locator('[data-audit="record-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
 
       // A place the map cannot draw is a chip into the same sheet — never an invented position.
       const undrawnChip = page.locator('[data-audit="ranch-map-undrawn-chip"]').first()
