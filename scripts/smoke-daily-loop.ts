@@ -822,9 +822,9 @@ async function main() {
     await section('Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding', async () => {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
-      const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
-      // Block 12 (12.2): the picker reads Work · Count · Ground; Count hay sits under Count and keeps its hint.
-      const countApart = (await page.locator('[data-audit="picker-group-count"]').count()) === 1 && (await page.locator('[data-audit="picker-group-work"]').count()) === 1 && (await page.locator('[data-audit="picker-group-ground"]').count()) === 1
+      // Block 20: the picker is the ranch map and ONE row — Feed · Move · Count · Rain · Work · Place, each an icon with its word.
+      const tiles = await page.locator('[data-audit="record-actions"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
+      const countApart = tiles.join(' | ') === 'Feed | Move | Count | Rain | Work | Place'
       await page.locator('[data-audit="tile-hay_fed"]').click()
       await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
@@ -834,7 +834,7 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A/12.2/14: the sheet offers Work · Count · Ground, Count cattle and Count hay under Count; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count cattle | Count hay | Preg check' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+      record('6A/12.2/14/20: the sheet opens on one row of six — Feed · Move · Count · Rain · Work · Place; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
     })
 
     // ── Block 6A (9): the copy queue, as rendered ──
@@ -2493,13 +2493,16 @@ async function main() {
       await page.locator('[data-audit="record-fab"]').waitFor({ timeout: 15_000 }).catch(() => {})
       await page.locator('[data-audit="record-fab"]').click().catch(() => {})
       await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 10_000 }).catch(() => {})
-      const groups = await Promise.all(['work', 'count', 'ground'].map(g => text(`[data-audit="picker-group-${g}"]`)))
-      const workTiles = await page.locator('[data-audit="record-picker"] [data-audit^="tile-"]:not([data-audit^="tile-place-"]):not([data-audit="tile-preg-check"])').count()
-      const groundLinks = await page.locator('[data-audit^="tile-place-"]').count()
-      const preg = await page.locator('[data-audit="tile-preg-check"]').count()
-      record('12.2/14: the pill opens Work · Count · Ground — seven workings with Count cattle and Count hay under Count, Preg check under Count, three ways to mark ground',
-        groups.join('|') === 'Work|Count|Ground' && workTiles === 7 && preg === 1 && groundLinks === 3,
-        `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
+      // Block 20: one row of six, icon + word; the three rarer workings as words under it; Place opens the three ways to mark ground.
+      const rowWords = await page.locator('[data-audit="record-actions"] button span').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const rowIcons = await page.locator('[data-audit="record-actions"] button svg').count()
+      const rare = await page.locator('[data-audit="record-rare"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      await page.locator('[data-audit="tile-place"]').click().catch(() => {})
+      const groundLinks = await page.locator('[data-audit="record-place-menu"] a').count()
+      const mapWords = ((await page.locator('[data-audit="record-picker"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p, span, button')).map(x => (x as HTMLElement).innerText).filter(Boolean).join(' | ')).catch(() => '')) ?? '').trim()
+      record('12.2/20: Record opens on the ranch map with one row — Feed · Move · Count · Rain · Work · Place, each icon with its word — Preg check · Count hay · Add bales as words below, Place offers the three ways to mark ground, and no text on the map',
+        rowWords.join('|') === 'Feed|Move|Count|Rain|Work|Place' && rowIcons === 6 && rare.join('|') === 'Preg check|Count hay|Add bales to a stack' && groundLinks === 3 && mapWords === '',
+        `row [${rowWords.join(', ')}] icons ${rowIcons} · rare [${rare.join(', ')}] · ground ${groundLinks} · map words "${mapWords}"`)
       await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
 
       // 12.11 — every dropdown looks like one: a chevron beside every select.
@@ -3133,6 +3136,54 @@ async function main() {
       record('28: restore from the trash brings the place back with its history — the bunch is there again and the move reads its name plain',
         restored.status() === 200 && afterRestore === p28!.id && whatBack.includes(`${PREFIX} 28 pasture`) && !/in trash/.test(whatBack),
         `restore ${restored.status()} · bunch → ${afterRestore === p28!.id ? 'at it' : afterRestore ?? 'no place'} · "${whatBack.slice(0, 90)}"`)
+    })
+
+    // ── Block 20 — Record goes map-first ──────────────────────────────────────
+    // PK's falsifier: location and network off, open Record, feed a bunch at a
+    // place. It saves to the outbox with the place you picked. Then, with a
+    // fix: an action tapped first takes the place under the fix.
+    await section('Block 20 — Record goes map-first', async () => {
+      const ring20 = [[-110.06, 46.93], [-110.04, 46.93], [-110.04, 46.92], [-110.06, 46.92], [-110.06, 46.93]]
+      const { data: p20 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 20 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring20] }, acres: 380 }).select('id').single()
+      // Online once first, so the phone has seen the ranch (the map is kept on the phone for when there is no signal).
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      // Location AND network off.
+      await page.context().setGeolocation(null).catch(() => {})
+      await page.context().setOffline(true)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' }).catch(() => {})
+      await recordControl(page).click()
+      const picker = page.locator('[data-audit="record-picker"]')
+      await picker.waitFor({ timeout: 15_000 }).catch(() => {})
+      const mapState = await picker.getAttribute('data-map').catch(() => null)
+      const polygonsOff = await page.locator('[data-audit="record-picker"] .leaflet-overlay-pane canvas').count()
+      await page.locator(`[data-audit="record-place-chip"][data-place="${p20!.id}"]`).click()
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      const whereOff = await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
+      await page.getByLabel('Hay fed').fill('4')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click()
+      const off20 = await watchStates(page, 'Sent', 4_000, 'Fed 4 bales')
+      const queued20 = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 4 && (i.body as { place_id?: string }).place_id === p20!.id)
+      record('20: location and network off — Record opens on the map from the phone\'s copy, a place then Feed prefills it, and the feeding saves to the outbox with that place',
+        mapState === 'drawn' && polygonsOff >= 1 && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
+        `map ${mapState} · polygons ${polygonsOff} · where "${whereOff.slice(0, 40)}" · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
+      await page.context().setOffline(false)
+      await watchStates(page, 'Sent', 45_000, 'Fed 4 bales')
+
+      // With a fix inside the pasture: Feed tapped first takes the place under the fix.
+      await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await page.context().setGeolocation({ latitude: 46.925, longitude: -110.05, accuracy: 5 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="record-picker"][data-fix="yes"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const under = await page.locator('[data-audit="record-picker"]').getAttribute('data-under-fix').catch(() => '')
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      const chosen = await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
+      record('20: with a fix inside a pasture, an action tapped first takes the place under the fix', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'none'}`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.context().setGeolocation(null).catch(() => {})
     })
 
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──

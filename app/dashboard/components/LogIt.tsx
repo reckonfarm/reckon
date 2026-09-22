@@ -1,6 +1,6 @@
 'use client'
 
-import { CAPTURE_EVENT } from '@/lib/places/capture-event'
+import RecordPicker from './RecordPicker'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
@@ -20,7 +20,6 @@ import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
-import Link from 'next/link'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
 // each at most three visible fields, time defaults to now (change it behind a
@@ -170,20 +169,8 @@ const SAVE_LABEL: Record<SheetType, string> = {
   hay_inventory: 'Record count',
   cattle_counted: 'Record count',
 }
-const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
 const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check', 'split']
-const TILE_HINT: Record<SheetType, string> = {
-  preg_check: 'checked, bred, open — the opens become a bunch',
-  split: 'some head leave and become their own bunch',
-  rain: 'inches in the gauge',
-  hay_fed: 'bales put out',
-  bales_stacked: 'bales into the stack',
-  cattle_moved: 'head, from → to',
-  cattle_worked: 'head and what you did',
-  hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
-  cattle_counted: 'head you counted in one bunch \u2014 the bunch\u2019s number does not change',
-}
 
 // The day a form is recording, in the words a person would use. '' means now.
 // Named days only go back one: past that a bare "Sep 8" is clearer than
@@ -277,6 +264,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
       <Select
         value={slot.id}
         disabled={disabled}
+        data-audit="place-select"
         onChange={e => {
           if (e.target.value === '__new__') { onChange({ id: '', newName: '' }); return }
           onChange({ id: e.target.value, newName: null })
@@ -1041,47 +1029,17 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
             </div>
 
             {!type ? (
-              <div className="mt-4" data-audit="record-picker">
-                {/* Block 12 (12.2): the list reads as WHAT AM I RECORDING — Work,
-                    Count, Ground — not as a flat menu of event types. 11.9: the
-                    tile subtitles are gone; only Count hay keeps its hint, because
-                    "not a stock movement" is a rule a person can get wrong. */}
-                <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-work">Work</p>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  {MOVEMENT_TYPES.map(t => (
-                    <button key={t} type="button" onClick={() => setType(t)} className="min-h-[64px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit={`tile-${t}`}>
-                      <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB[t]}</span>
-                    </button>
-                  ))}
-                </div>
-                {/* Count stands apart: it states what is there; it never adds or takes stock. */}
-                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-count">Count</p>
-                <button type="button" onClick={() => setType('cattle_counted')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-cattle_counted">
-                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.cattle_counted}</span>
-                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.cattle_counted}</span>
-                </button>
-                <button type="button" onClick={() => setType('hay_inventory')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-hay_inventory">
-                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
-                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>
-                </button>
-                <button type="button" onClick={() => setType('preg_check')} className="mt-2 flex min-h-[56px] w-full items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit="tile-preg-check">
-                  <span>Preg check</span><span className="font-normal text-secondary-ink">{TILE_HINT.preg_check}</span>
-                </button>
-                {/* Ground: a place is recorded with the phone already in your hand,
-                    standing in it — the same moment as recording work (8B.1). */}
-                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-ground">Ground</p>
-                <div className="mt-2 grid grid-cols-1 gap-2">
-                  {([
-                    ['drop', 'Drop a point where you stand', 'a stack, a gate, a tank'],
-                    ['ride', 'Ride the perimeter', 'a field, a pasture, a corral'],
-                    ['draw', 'Draw a place on the map', 'tap the corners'],
-                  ] as const).map(([mode, label, hint]) => (
-                    <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`} onClick={() => { close(); if (mode !== 'draw' && window.location.pathname === '/ranch/places') window.dispatchEvent(new CustomEvent(CAPTURE_EVENT, { detail: mode })) }} className="flex min-h-[56px] items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit={`tile-place-${mode}`}>
-                      <span>{label}</span><span className="font-normal text-secondary-ink">{hint}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              // Block 20: the picker is the ranch map and one row of actions.
+              // A place tapped first is the record's place; an action tapped
+              // first takes the place under the fix, or the form asks.
+              <RecordPicker
+                onPick={(a, placeId) => {
+                  setType(a); setError(null)
+                  if (placeId) { if (a === 'cattle_moved') setToPlace({ id: placeId, newName: null }); else setPlace({ id: placeId, newName: null }) }
+                }}
+                onRare={(a, placeId) => { setType(a); setError(null); if (placeId) setPlace({ id: placeId, newName: null }) }}
+                onClose={close}
+              />
             ) : (
               <form
                 className="mt-4 flex flex-col gap-4"
