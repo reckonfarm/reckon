@@ -3043,9 +3043,41 @@ async function main() {
       const sAcres = ((await sheet.locator('[data-audit="sheet-acres"]').innerText().catch(() => '')) ?? '').trim()
       const sLatest = ((await sheet.locator('[data-audit="sheet-latest"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       const sRecord = await sheet.locator('[data-audit="record-here"]').count()
-      record('26: the place sheet — name, acres, the bunch as name · class · head, the days since the move and the move itself, the latest entry with its age, and Record here',
-        sBunch.includes(`${LOT26} · Heifers · 220 head`) && /3 days here/.test(sDays) && sMoveHref === `/ranch/activity/${mv26}` && /acres/i.test(sAcres) && /days ago|today|yesterday/.test(sLatest) && sRecord === 1,
+      record('26/30: the place sheet — name, acres, the bunch as name · class · head, "Moved in <date> · N days here" with the move itself, the latest entry with its age, and Record here',
+        sBunch.includes(`${LOT26} · Heifers · 220 head`) && /Moved in /.test(sDays) && /3 days here/.test(sDays) && sMoveHref === `/ranch/activity/${mv26}` && /acres/i.test(sAcres) && /days ago|today|yesterday/.test(sLatest) && sRecord === 1,
         `"${sBunch}" · "${sDays}" · move ${sMoveHref === `/ranch/activity/${mv26}` ? 'linked' : sMoveHref} · ${sAcres} · "${sLatest.slice(0, 70)}" · record ${sRecord}`)
+      // ── Block 30: Seen here ──────────────────────────────────────────────────
+      // PK's rule: one tap records that the bunch was observed in that place,
+      // by whom, when; the sheet then reads "Moved in <date> · seen <age> by
+      // <name>"; a feeding or any other record never counts as a sighting;
+      // confirming never changes where the bunch is.
+      const placeBefore30 = ((await admin.from('herd_lots').select('place_id').eq('id', lot26).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { count: movesBefore30 } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot26)
+      await sheet.locator(`[data-audit="seen-here"][data-lot="${lot26}"]`).click({ timeout: 8_000 })
+      const seenStates = await watchStates(page, 'Sent', 30_000, `Seen ${LOT26}`)
+      const { data: seenRows } = await admin.from('events').select('id, user_id, created_at, payload').eq('type', 'bunch_seen').eq('payload->>herd_lot_id', lot26)
+      const seenRow = ((seenRows ?? []) as { id: string; user_id: string; created_at: string; payload: Record<string, unknown> }[])[0] ?? null
+      const placeAfter30 = ((await admin.from('herd_lots').select('place_id').eq('id', lot26).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { count: movesAfter30 } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot26)
+      record('30: one tap on Seen here records that THIS bunch was seen at THIS place, by this person, now — and the bunch\'s place is untouched, with no move written',
+        seenStates.includes('Sent') && (seenRows ?? []).length === 1 && seenRow?.user_id === userId && seenRow?.payload.place_id === p26.id && Math.abs(Date.now() - Date.parse(seenRow?.created_at ?? '')) < 120_000 && placeAfter30 === placeBefore30 && placeAfter30 === p26.id && movesAfter30 === movesBefore30,
+        `[${seenStates.join(' → ')}] · rows ${(seenRows ?? []).length} · by me ${seenRow?.user_id === userId} · at the pasture ${seenRow?.payload.place_id === p26.id} · place ${placeBefore30 === placeAfter30 ? 'unchanged' : `${placeBefore30} → ${placeAfter30}`} · moves ${movesBefore30} → ${movesAfter30}${rawSeen()}`)
+      // The sheet now reads it — and a NEWER feeding at the place does not become the sighting.
+      const fedLater = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'hay_fed', bales: 2, herd_lot_id: lot26, place_id: p26.id } })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+      const line30 = ((await sheet.locator('[data-audit="sheet-days"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const seenHref = await sheet.locator('[data-audit="sheet-seen"] a').first().getAttribute('href').catch(() => null)
+      record('30: the sheet reads "Moved in <date> · N days here · seen <age> by <name>", the sighting linked — and a feeding recorded after it is not the sighting',
+        fedLater.status() === 201 && /^Moved in /.test(line30) && /3 days here/.test(line30) && /seen today by /.test(line30) && seenHref === `/ranch/activity/${seenRow?.id}`,
+        `feed ${fedLater.status()} · "${line30.slice(0, 110)}" · seen link ${seenHref === `/ranch/activity/${seenRow?.id}` ? 'the sighting' : seenHref}`)
+      await page.mouse.click(10, 10).catch(() => {})
+      await sheet.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+
       // Block 26c: the dim closes the sheet; no Close button exists.
       const closeButtons = await sheet.getByRole('button', { name: /^Close$/ }).count()
       await page.mouse.click(10, 10).catch(() => {})

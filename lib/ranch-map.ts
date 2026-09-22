@@ -1,7 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getRanchLots } from '@/lib/herd-lots'
-import { whereByLot } from '@/lib/ranch-summary'
+import { whereByLot, seenByLot } from '@/lib/ranch-summary'
 import { placeRows } from '@/lib/places/rows'
 import { resolveMapCentre } from '@/lib/places/anchor'
 import { describeEvent, listActivity } from '@/lib/activity'
@@ -25,7 +25,7 @@ import type { LatLng } from '@/lib/places/geo'
 // Block 26c (PK): never amber or red — those are reserved for problems.
 export const BUNCH_COLORS = ['#225F87', '#2D6A4F', '#5B4B9C', '#0E7C86', '#6B7FD7', '#1B4332'] as const
 
-export interface MapBunch { id: string; label: string; name: string; head: number; color: string; since: { ts: string; eventId: string; line: string } | null }
+export interface MapBunch { id: string; label: string; name: string; head: number; color: string; since: { ts: string; eventId: string; line: string } | null; seen: { ts: string; eventId: string; by: string } | null }
 export interface MapPlace {
   id: string; name: string; kind: string
   ring: LatLng[] | null
@@ -50,6 +50,7 @@ export async function getRanchMap(supabase: SupabaseClient, userId: string): Pro
   ])
   if (live.length === 0) return null
   const where = await whereByLot(supabase, lots).catch(() => ({} as Awaited<ReturnType<typeof whereByLot>>))
+  const seen = await seenByLot(supabase, lots, where).catch(() => ({} as Awaited<ReturnType<typeof seenByLot>>))
   const colorOf = new Map(lots.map((l, i) => [l.id, BUNCH_COLORS[i % BUNCH_COLORS.length]]))
   const placeName = new Map(live.map(p => [p.id, p.name]))
 
@@ -68,6 +69,7 @@ export async function getRanchMap(supabase: SupabaseClient, userId: string): Pro
     return {
       id: l.id, label: bunchLabel(l), name: l.name?.trim() || bunchLabel(l).split(' · ')[0], head: l.head_count, color: colorOf.get(l.id)!,
       since: w?.moved ? { ts: w.moved.ts, eventId: w.moved.eventId, line: moveLine(null, l, null, placeName.get(placeId) ?? null, w.moved.placement === true) } : null,
+      seen: seen[l.id] ?? null,
     }
   })
 

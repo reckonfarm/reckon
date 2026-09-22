@@ -15,6 +15,8 @@ export const MANUAL_EVENT_TYPES = [
   'cattle_worked',
   'hay_inventory',
   'cattle_counted',
+  // Block 30: a sighting — the bunch was SEEN at a place, by whom, when. Never a move.
+  'bunch_seen',
 ] as const
 export type ManualEventType = (typeof MANUAL_EVENT_TYPES)[number]
 
@@ -30,6 +32,7 @@ export const MANUAL_EVENT_LABELS: Record<ManualEventType, string> = {
   cattle_worked: 'Cattle worked',
   hay_inventory: 'Bales on hand',
   cattle_counted: 'Cattle counted',
+  bunch_seen: 'Seen',
 }
 
 export const MANUAL_SCHEMA_VERSION = 1
@@ -63,6 +66,8 @@ export type ManualPayload = {
   // A count NEVER changes the bunch's head count — nothing reads this type
   // for that; "Change bunch to N?" is a separate head_count_set.
   | { counted: number; expected: number | null; herd_lot_id: string }
+  // Block 30: a sighting — which bunch was SEEN at place_id. Never a move.
+  | { herd_lot_id: string }
 )
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -152,6 +157,13 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         what,
         herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch was worked — optional
       }
+    }
+    case 'bunch_seen': {
+      // Block 30: which bunch, and where. Both, or it says nothing.
+      const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')
+      if (!lot) throw new ValidationError('Pick the bunch you saw.')
+      if (!base.place_id) throw new ValidationError('Say where you saw them.')
+      return { ...base, herd_lot_id: lot }
     }
     case 'cattle_counted': {
       const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')

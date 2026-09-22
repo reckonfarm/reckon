@@ -1,6 +1,7 @@
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { effective } from '@/lib/ledger-effective'
+import { createServiceClient } from '@/lib/supabase'
 import { getRanchLots } from '@/lib/herd-lots'
 import { getHayLedger } from '@/lib/hay/queries'
 import { ranchYearStart } from '@/lib/jobs/format'
@@ -95,5 +96,33 @@ export async function whereByLot(supabase: SupabaseClient, lots: { id: string; p
     const last = ((moves.data ?? []) as { id: string; ts: string; payload: Record<string, unknown> }[]).find(m => m.payload.herd_lot_id === l.id && typeof m.payload.to_place_id === 'string')
     out[l.id] = { placeId: l.place_id as string, placeName: name, ...(last && last.payload.to_place_id === l.place_id ? { moved: { ts: last.ts, eventId: last.id, ...(last.payload.placement === true ? { placement: true } : {}) } } : {}) }
   }
+  return out
+}
+
+// ─── Block 30: when each bunch was last SEEN where it is, and by whom ─────────
+// A sighting counts only for the bunch's current place and only after the move
+// (or placement) that put it there: a sighting at a place it has since left
+// says nothing about now. Nothing else counts — a feeding is never a sighting.
+export interface BunchSeen { ts: string; eventId: string; by: string }
+export async function seenByLot(supabase: SupabaseClient, lots: { id: string; place_id?: string | null }[], where: Record<string, BunchWhere>): Promise<Record<string, BunchSeen>> {
+  const placed = lots.filter(l => !!l.place_id)
+  if (placed.length === 0) return {}
+  const { data } = await effective(supabase.from('events').select('id, ts, user_id, payload').eq('type', 'bunch_seen'))
+    .in('payload->>herd_lot_id', placed.map(l => l.id)).order('ts', { ascending: false }).limit(400)
+  const rows = (data ?? []) as { id: string; ts: string; user_id: string; payload: Record<string, unknown> }[]
+  const pick: Record<string, { ts: string; eventId: string; userId: string }> = {}
+  for (const l of placed) {
+    const movedAt = where[l.id]?.moved?.ts ?? null
+    const r = rows.find(x => x.payload.herd_lot_id === l.id && x.payload.place_id === l.place_id && (!movedAt || x.ts >= movedAt))
+    if (r) pick[l.id] = { ts: r.ts, eventId: r.id, userId: r.user_id }
+  }
+  const userIds = [...new Set(Object.values(pick).map(p => p.userId))]
+  const names = new Map<string, string>()
+  if (userIds.length) {
+    const { data: profiles } = await createServiceClient().from('profiles').select('id, display_name, email').in('id', userIds)
+    for (const p of (profiles ?? []) as { id: string; display_name: string | null; email: string | null }[]) names.set(p.id, p.display_name?.trim() || p.email || 'Someone on the ranch')
+  }
+  const out: Record<string, BunchSeen> = {}
+  for (const [lot, p] of Object.entries(pick)) out[lot] = { ts: p.ts, eventId: p.eventId, by: names.get(p.userId) ?? 'Someone on the ranch' }
   return out
 }

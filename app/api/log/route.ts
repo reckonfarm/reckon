@@ -111,9 +111,10 @@ export async function POST(req: NextRequest) {
 
   // Block 25: a move names its bunch — one bunch, this ranch's, still on it.
   // Same read a count makes, and the same words when the bunch is not there.
-  if (body.type === 'cattle_moved') {
+  // Block 30: a sighting the same.
+  if (body.type === 'cattle_moved' || body.type === 'bunch_seen') {
     const lotId = (payload as { herd_lot_id: string | null }).herd_lot_id
-    if (!lotId) return NextResponse.json({ error: MOVE_NEEDS_BUNCH }, { status: 400 })
+    if (!lotId) return NextResponse.json({ error: body.type === 'bunch_seen' ? 'Pick the bunch you saw.' : MOVE_NEEDS_BUNCH }, { status: 400 })
     const { data: lotRow } = await supabase.from('herd_lots').select('id, retired_at, deleted_at').eq('id', lotId).maybeSingle()
     const lot = lotRow as { id: string; retired_at: string | null; deleted_at: string | null } | null
     if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })

@@ -1110,6 +1110,11 @@ async function placeProjectionChecks() {
     bAfter !== a.placeId, `B\'s row ${m2.error ? `refused (${m2.error.code})` : 'landed on B'} · B\'s bunch → ${bAfter === a.placeId ? 'A\'S PLACE' : bAfter ?? 'no place'}`)
 
   const viaRoute = await api(B, '/api/log', { id: randomUUID(), type: 'cattle_moved', head: 5, herd_lot_id: a.lotId, to_place_id: b.placeId, place_id: b.placeId })
+  // Block 30: a sighting the same — B cannot say A's bunch was seen anywhere.
+  const seenId = randomUUID()
+  const viaSeen = await api(B, '/api/log', { id: seenId, type: 'bunch_seen', herd_lot_id: a.lotId, place_id: b.placeId })
+  const { count: seenLanded } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', seenId)
+  record('user B (other ranch)', '30: the record route refuses a sighting naming another ranch\'s bunch, and nothing lands', viaSeen.status === 400 && /not on your ranch/i.test(String(viaSeen.json.error ?? '')) && (seenLanded ?? 0) === 0, `${viaSeen.status} "${String(viaSeen.json.error ?? '').slice(0, 50)}" · rows ${seenLanded ?? 0}`)
   record('user B (other ranch)', '25: the record route refuses a move naming another ranch\'s bunch, and A\'s bunch is unmoved',
     viaRoute.status === 400 && (await placeOf(a.lotId)) === aBefore, `${viaRoute.status} "${String(viaRoute.json.error ?? '').slice(0, 50)}"`)
 

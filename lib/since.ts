@@ -19,7 +19,7 @@ import { fmtDay, plural } from '@/lib/jobs/format'
 // cursor is stamped no earlier than that — a phone ahead of the server can no
 // longer keep its own last records "new" (lib/program-alerts.ts:19-31 argued
 // against a bare timestamp cursor for exactly this reason).
-export type ChangeKind = 'move' | 'feeding' | 'rain' | 'work' | 'count' | 'stack' | 'inventory' | 'alert'
+export type ChangeKind = 'move' | 'feeding' | 'rain' | 'work' | 'count' | 'stack' | 'inventory' | 'sighting' | 'alert'
 export interface Change {
   id: string
   kind: ChangeKind
@@ -46,7 +46,7 @@ export interface Since {
 }
 
 export const SHOW = 5
-const KIND: Record<string, ChangeKind> = { cattle_moved: 'move', hay_fed: 'feeding', rain: 'rain', cattle_worked: 'work', cattle_counted: 'count', bales_stacked: 'stack', hay_inventory: 'inventory', alert: 'alert' }
+const KIND: Record<string, ChangeKind> = { cattle_moved: 'move', hay_fed: 'feeding', rain: 'rain', cattle_worked: 'work', cattle_counted: 'count', bales_stacked: 'stack', hay_inventory: 'inventory', bunch_seen: 'sighting', alert: 'alert' }
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const isoHoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
@@ -65,6 +65,7 @@ function what(r: Row, placeName: (id: unknown) => string | null, lotName: (id: u
     case 'cattle_moved': { const l = moveLine(num(p.head), bunch(p.herd_lot_id), placeName(p.from_place_id), placeName(p.to_place_id), isPlacement(p)); return l[0].toLowerCase() + l.slice(1) }
     case 'cattle_worked': { const h = num(p.head); const w = str(p.what); return `${w ?? 'worked'} ${h == null ? 'cattle' : `${h.toLocaleString()} head`}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const l = lotName(p.herd_lot_id); return `counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${l ? ` of ${l}` : ''}` }
+    case 'bunch_seen': { const l = lotName(p.herd_lot_id); return `saw ${l ?? 'cattle'}${suffix}` }   // Block 30
     case 'alert': { const county = str(p.county_name); return `LFP alert${county ? ` for ${county}` : ''}` }
     default: return r.type.replace(/_/g, ' ')
   }
