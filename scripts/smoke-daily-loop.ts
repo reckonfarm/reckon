@@ -363,7 +363,12 @@ async function main() {
     // online, every route unblocked, a fresh page if it was closed) and the
     // next section runs. Before this a single ride timeout left every check
     // after it unrun, and a run that stops is not a result.
+    // ONLY=<regex> runs just the sections whose names match — for chasing a red
+    // that only shows after certain sections, without the whole loop. A run
+    // with ONLY set is a PARTIAL and says so on its summary line.
+    const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null
     const section = async (name: string, body: () => Promise<void>) => {
+      if (only && !only.test(name)) return
       try { await body() } catch (e) {
         // The first line names the verb; the 'waiting for' line names the locator — both, or a timeout says nothing.
         const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
@@ -3571,8 +3576,13 @@ async function main() {
           await recordControl(page).click()
           await page.locator('[data-audit="tile-cattle_counted"]').waitFor({ timeout: 15_000 })
           await page.locator('[data-audit="tile-cattle_counted"]').click()
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).waitFor({ timeout: 15_000 })
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).click()
+          const opt = page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`)
+          await opt.waitFor({ state: 'attached', timeout: 15_000 })
+          try { await opt.click({ timeout: 15_000 }) } catch (e) {
+            // What was it, when it could not be tapped? Said in the death, not guessed at afterwards.
+            const st = await opt.evaluate(el => { const b = el.getBoundingClientRect(); const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null; return { disabled: (el as HTMLButtonElement).disabled, box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)].join(','), vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetAnim: sheet ? getComputedStyle(sheet).animationName : '', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled') } }).catch(() => null)
+            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)}`)
+          }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
           const preview = await text('[data-audit="count-preview"]')
           await page.locator('[data-audit="record-save"]').first().click()
@@ -3736,7 +3746,7 @@ async function main() {
   const skips = results.filter(r => r.skip).length
   // The commit rides WITH the counts (PK 2026-09-18): a number without the
   // code it came from is a partial, not a result.
-  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}${process.env.ONLY ? `  — PARTIAL (ONLY=${process.env.ONLY})` : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 
