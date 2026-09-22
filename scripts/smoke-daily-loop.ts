@@ -3210,7 +3210,7 @@ async function main() {
       // The record is paged (50 a page); by now the ranch has more rows than
       // one page, so the three are read across pages in list order.
       const ids: string[] = []
-      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.goto(`/ranch/activity?from=${today}&to=${today}`, { waitUntil: 'domcontentloaded' })   // today's rows only: the three are today's
       for (let pg = 0; pg < 4; pg++) {
         ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
         const next = page.locator('a[href*="cursor="]').first()
