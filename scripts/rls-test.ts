@@ -100,13 +100,15 @@ async function teardown(label: string) {
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    // Block 28 (074): bunches before places, and places in passes (a parent is refused while a child lives).
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
+    for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
   }
   n += (await admin.from('devices').delete().like('hardware_id', `${PREFIX}%`).select('id')).data?.length ?? 0
-  n += (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
+  n += (await admin.from('herd_lots').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
+  for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
   n += (await admin.from('ranches').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
   for (const id of ids) { await admin.auth.admin.deleteUser(id); n++ }
   console.log(`teardown (${label}): removed ${n} row(s)/user(s)`)
