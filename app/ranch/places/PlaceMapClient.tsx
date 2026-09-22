@@ -392,7 +392,10 @@ export default function PlaceMapClient({
   return (
     <div className={full
       ? 'fixed inset-0 z-[60] flex flex-col bg-white'
-      : 'relative overflow-hidden rounded-xl border border-forest-green/10'}
+      // isolate: Leaflet's panes carry z-indexes of 400 and up, and without a
+      // stacking context of its own the map floated above every sheet on the
+      // page where they overlapped — a tap on the record sheet hit the map.
+      : 'relative isolate overflow-hidden rounded-xl border border-forest-green/10'}
       role={drawing ? 'dialog' : undefined}
       aria-label={drawing ? 'Draw a place' : undefined}
       aria-modal={drawing || undefined}

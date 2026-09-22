@@ -363,11 +363,17 @@ async function main() {
     // online, every route unblocked, a fresh page if it was closed) and the
     // next section runs. Before this a single ride timeout left every check
     // after it unrun, and a run that stops is not a result.
+    // ONLY=<regex> runs just the sections whose names match — for chasing a red
+    // that only shows after certain sections, without the whole loop. A run
+    // with ONLY set is a PARTIAL and says so on its summary line.
+    const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null
     const section = async (name: string, body: () => Promise<void>) => {
+      if (only && !only.test(name)) return
       try { await body() } catch (e) {
         // The first line names the verb; the 'waiting for' line names the locator — both, or a timeout says nothing.
         const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
-        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy/.test(l)).slice(0, 2)].join(' · ').slice(0, 260)
+        // The verb, the locator, and WHAT STOOD IN THE WAY: an element that intercepts pointer events is the line that names the culprit.
+        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy|intercepts|receives|retrying|from <|subtree/.test(l)).slice(0, 5)].join(' · ').slice(0, 700)
         record(`${name}: died before its checks finished — ${said}`, false, 'every check of this section after that point is unrun')
         await ctx.setOffline(false).catch(() => {})
         if (page.isClosed()) page = await ctx.newPage()
@@ -3077,7 +3083,8 @@ async function main() {
       await undrawnChip.click().catch(() => {})
       const undrawnSheet = ((await sheet.locator('[data-audit="sheet-place"]').innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
       record('26: a place with no shape and no position is a chip in the key, into the same sheet', !!undrawnName && undrawnSheet === undrawnName, `chip "${undrawnName}" → sheet "${undrawnSheet}"`)
-      await page.mouse.click(10, 10).catch(() => {})
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
 
       // Kill the tiles (the network the map needs): Today still paints, the polygons still draw, the tap still works.
       await page.route(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/, r => r.abort())
@@ -3093,7 +3100,8 @@ async function main() {
       record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
         ledgersUp && tilesShown === 0 && paintOff.edges >= 4 && paintOff.hit / paintOff.edges >= 0.6 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · edge ${paintOff.hit} of ${paintOff.edges} in the bunch's colour · tap ${tapOff}`)
       await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
-      await page.mouse.click(10, 10).catch(() => {})
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
     })
 
     // ── Block 27 — a record carries the moment it was made on the phone ──────
@@ -3617,13 +3625,33 @@ async function main() {
       if (l14) skip('14: count checks', `fixture: ${l14.message.slice(0, 80)}`)
       else if (!(await probe069(ranchId, userId))) { skip('14: count and new-bunch checks', 'migration 069 not applied on this database'); await admin.from('herd_lots').delete().eq('id', lot14) }
       else {
+        const navs14: string[] = [], errs14: string[] = []
+        const onNav = (f: { url: () => string; parentFrame: () => unknown }) => { if (!f.parentFrame()) navs14.push(f.url().replace(BASE, '').slice(0, 60)) }
+        const onErr = (m: { type: () => string; text: () => string }) => { if (m.type() === 'error') errs14.push(m.text().slice(0, 100)) }
+        page.on('framenavigated', onNav); page.on('console', onErr); page.on('pageerror', e => errs14.push(`pageerror ${e.message.slice(0, 100)}`))
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         const countOnce = async (n: number) => {
           await recordControl(page).click()
           await page.locator('[data-audit="tile-cattle_counted"]').waitFor({ timeout: 15_000 })
           await page.locator('[data-audit="tile-cattle_counted"]').click()
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).waitFor({ timeout: 15_000 })
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).click()
+          const opt = page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`)
+          await opt.waitFor({ state: 'attached', timeout: 15_000 })
+          try { await opt.click({ timeout: 15_000 }) } catch (e) {
+            // What was it, when it could not be tapped? Said in the death, not guessed at afterwards.
+            // A string, not a function: tsx rewrites inner functions with a helper the page does not have.
+            const st = await page.evaluate(`(async () => {
+              const el = document.querySelector('[data-audit="count-bunch-option"][data-lot="${lot14}"]');
+              if (!el) return 'option not in the document';
+              const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+              const boxes = [];
+              for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([b.left, b.top, b.width, b.height].map(Math.round).join(',')); await frame(); await frame(); }
+              const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]');
+              const anims = document.getAnimations().map(a => (a.animationName || a.transitionProperty || a.constructor.name) + '@' + ((a.effect && a.effect.target && (a.effect.target.getAttribute('data-audit') || a.effect.target.tagName)) || '?') + ':' + a.playState);
+              return { disabled: el.disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetScroll: sheet ? sheet.scrollTop + '/' + sheet.scrollHeight + '/' + sheet.clientHeight : '', busy: !!(document.querySelector('[data-audit="record-save"]') || {}).disabled, anims: anims.slice(0, 8) };
+            })()`).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
+            const why = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(l => /intercepts|receives|retrying|from <|subtree|scrolling|stable/.test(l)).slice(0, 6).join(' · ')
+            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · ${why} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
+          }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
           const preview = await text('[data-audit="count-preview"]')
           await page.locator('[data-audit="record-save"]').first().click()
@@ -3787,7 +3815,7 @@ async function main() {
   const skips = results.filter(r => r.skip).length
   // The commit rides WITH the counts (PK 2026-09-18): a number without the
   // code it came from is a partial, not a result.
-  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}${process.env.ONLY ? `  — PARTIAL (ONLY=${process.env.ONLY})` : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 
