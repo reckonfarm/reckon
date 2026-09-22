@@ -3049,23 +3049,26 @@ async function main() {
         record('27: CAPABILITY GAP — migration 073 is not applied on this database; nothing below can be read', false, probe073.error.message.slice(0, 80))
         return
       }
-      // Its OWN page: a fixed fake clock is per page and cannot be handed back to
-      // real time, and a frozen Date.now() would leave every later section's
-      // outbox waiting on a hold that never elapses (the first run showed it).
+      // Its OWN BROWSER CONTEXT, signed in on its own: Playwright's fake clock is
+      // context-wide and cannot be handed back to real time, and a frozen
+      // Date.now() left every later section's outbox waiting on a hold that
+      // never elapsed — the first two runs showed it, on a page and then on a
+      // fresh page of the same context. The context dies with the section.
       const main = page
-      page = await ctx.newPage()
+      const ctx27 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      page = await signIn(ctx27)
       try {
       const today = ranchDay()
       const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.clock.setFixedTime(tenAM)
-      await page.context().setOffline(true)
+      await ctx27.setOffline(true)
       await logFeed(page, 7)
       const off27 = await watchStates(page, 'Sent', 4_000, 'Fed 7 bales')
       const queued = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 7)
       const madeOnPhone = typeof queued?.body.created_at === 'string' ? new Date(queued.body.created_at as string) : null
       await page.clock.setFixedTime(fourPM)
-      await page.context().setOffline(false)
+      await ctx27.setOffline(false)
       const on27 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
       const { data: row27 } = queued ? await admin.from('events').select('id, ts, created_at, ingested_at').eq('id', queued.id).maybeSingle() : { data: null }
       const r27 = row27 as { id: string; ts: string; created_at: string; ingested_at: string } | null
@@ -3087,7 +3090,7 @@ async function main() {
       const backdatedNote = await page.locator('[data-audit="event-backdated"]').count()
       const reached = await page.locator('[data-audit="event-reached-the-ranch"]').count()
       record('27: the entry reads Recorded 10:00, is not called back-dated, and arrival gets no line of its own on the same day', /10:00/.test(recorded) && backdatedNote === 0 && reached === 0, `recorded "${recorded}" · back-dated note ${backdatedNote} · reached line ${reached}`)
-      } finally { await page.close().catch(() => {}); page = main }
+      } finally { await ctx27.close().catch(() => {}); page = main }
     })
 
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
