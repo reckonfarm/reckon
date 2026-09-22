@@ -39,12 +39,12 @@ export default function TrashList({ items }: { items: TrashItem[] }) {
             label: item.label,
             fixNote: 'It is in the trash. Put it back to fix it.',
             extra: [{ label: 'Put it back', onSelect: () => restore(item) }],
-            deleteNote: `It goes for good on ${fmtDay(item.goneOn)}. Nothing here deletes sooner.`,
+            deleteNote: item.kept ? 'Kept — the record still points at this place, so it is never deleted for good. Put it back any time.' : `It goes for good on ${fmtDay(item.goneOn)}. Nothing here deletes sooner.`,
           }}>
             <div className="flex min-h-[64px] items-center justify-between gap-3 px-4 py-3">
               <span className="min-w-0">
                 <span className="block font-dm-sans text-[17px] text-ink">{item.label}</span>
-                <span className="block font-dm-sans text-[14px] text-secondary-ink">Deleted {fmt(item.deletedAt)} · gone for good {fmtDay(item.goneOn)}</span>
+                <span className="block font-dm-sans text-[14px] text-secondary-ink">Deleted {fmt(item.deletedAt)} · {item.kept ? 'kept — the record points at it' : `gone for good ${fmtDay(item.goneOn)}`}</span>
               </span>
               <span aria-hidden className="shrink-0 font-dm-sans text-[14px] text-secondary-ink">hold</span>
             </div>

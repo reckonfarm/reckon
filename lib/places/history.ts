@@ -25,7 +25,7 @@ export interface PlaceMemory {
 }
 
 export interface PlaceHistory {
-  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null; updated_at: string; updated_by: string | null; retired_at: string | null; parent_id: string | null; pinned_at: string | null } | null
+  place: { id: string; name: string; kind: string; created_at: string; geometry: unknown; acres: number | null; updated_at: string; updated_by: string | null; retired_at: string | null; deleted_at?: string | null; parent_id: string | null; pinned_at: string | null } | null
   memory: PlaceMemory[]           // present kinds only, most recent first
   counts: { entries: number; sinceIso: string | null }
   /** Block 7A: the place this one sits inside (live only), and the live places inside it. */
@@ -50,7 +50,7 @@ export async function getPlaceHistory(supabase: SupabaseClient, placeId: string)
   try {
     // Tolerant read (040's precedent): `acres` does not exist before migration
     // 056, and asking for it would fail the select and 404 the whole page.
-    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres, updated_at, updated_by, retired_at, parent_id, pinned_at').eq('id', placeId).maybeSingle()
+    const withAcres = await supabase.from('places').select('id, name, kind, created_at, geometry, acres, updated_at, updated_by, retired_at, deleted_at, parent_id, pinned_at').eq('id', placeId).maybeSingle()
     const place = withAcres.error
       ? (await supabase.from('places').select('id, name, kind, created_at, geometry').eq('id', placeId).maybeSingle()).data
       : withAcres.data

@@ -23,7 +23,7 @@ export async function ranchNumbers(supabase: SupabaseClient, userId: string): Pr
     getRanchLots(supabase, userId).catch(() => []),
     getHayLedger(supabase, { sinceWithoutBaseline: ranchYearStart() }).catch(() => null),
     // Live places only; tolerant of a database without 057.
-    supabase.from('places').select('id', { count: 'exact', head: true }).is('retired_at', null)
+    supabase.from('places').select('id', { count: 'exact', head: true }).is('retired_at', null).is('deleted_at', null)   // Block 28: the trash is not a place count
       .then(r => (r.error ? supabase.from('places').select('id', { count: 'exact', head: true }) : r)),
     supabase.from('devices').select('id', { count: 'exact', head: true }),
     supabase.from('jobs').select('id', { count: 'exact', head: true }).gte('started_at', ranchYearStart()),
@@ -83,7 +83,7 @@ export async function whereByLot(supabase: SupabaseClient, lots: { id: string; p
   const placed = lots.filter(l => !!l.place_id)
   if (placed.length === 0) return {}
   const [places, moves] = await Promise.all([
-    supabase.from('places').select('id, name').in('id', [...new Set(placed.map(l => l.place_id as string))]),
+    supabase.from('places').select('id, name').is('deleted_at', null).in('id', [...new Set(placed.map(l => l.place_id as string))]),   // Block 28: a place in the trash is no place
     effective(supabase.from('events').select('id, ts, payload').eq('type', 'cattle_moved'))
       .in('payload->>herd_lot_id', placed.map(l => l.id)).order('ts', { ascending: false }).limit(400),
   ])

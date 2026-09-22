@@ -1,4 +1,4 @@
-import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
+import { moveLine, isPlacement, removedName, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './supabase'
@@ -185,11 +185,11 @@ async function namesFor(supabase: SupabaseClient, userId: string, rows: Activity
     getRanchLotsIncludingRetired(supabase, userId),
     lotIds.size ? supabase.from('herd_lots').select('id, name, class, deleted_at').in('id', [...lotIds]).not('deleted_at', 'is', null) : Promise.resolve({ data: [] as { id: string; name: string | null; class: string; deleted_at: string }[] }),
   ])
-  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, (p as { deleted_at?: string | null }).deleted_at ? `${p.name as string} (deleted)` : p.name as string]))
+  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, removedName(p.name as string, !!(p as { deleted_at?: string | null }).deleted_at)]))
   const people = new Map((profiles.data ?? []).map(p => [p.id as string, ((p.display_name as string | null)?.trim() || (p.email as string | null) || 'Someone on the ranch')]))
   const lotNames = new Map((lots as Lot[]).map(l => [l.id, lotLabel(l)]))
   const bunches = new Map<string, MovedBunch>((lots as Lot[]).map(l => [l.id, { name: l.name, class: l.class }]))
-  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, `${l.name?.trim() || l.class} (deleted)`)
+  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, removedName(l.name?.trim() || l.class, true))
   for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!bunches.has(l.id)) bunches.set(l.id, { name: l.name, class: l.class as Lot['class'], deleted: true })
   return {
     place: id => { const s = str(id); return s ? placeNames.get(s) ?? null : null },

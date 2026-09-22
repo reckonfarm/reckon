@@ -1,4 +1,4 @@
-import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
+import { moveLine, isPlacement, removedName, type MovedBunch } from '@/lib/move-line'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase'
@@ -119,11 +119,11 @@ export default async function SinceYouWereHere() {
     const l = str(r.payload.herd_lot_id); if (l) lotIds.add(l)
   }
   const [placesRes, profilesRes, herdRes] = await Promise.all([
-    placeIds.size ? supabase.from('places').select('id, name').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    placeIds.size ? supabase.from('places').select('id, name, deleted_at').in('id', [...placeIds]) : Promise.resolve({ data: [] as { id: string; name: string; deleted_at: string | null }[] }),
     createServiceClient().from('profiles').select('id, display_name').in('id', [...userIds]),
     lotIds.size ? getRanchLots(supabase, user.id) : Promise.resolve([] as Lot[]),
   ])
-  const placeNames = new Map((placesRes.data ?? []).map(p => [p.id as string, p.name as string]))
+  const placeNames = new Map((placesRes.data ?? []).map(p => [p.id as string, removedName(p.name as string, !!(p as { deleted_at?: string | null }).deleted_at)]))   // Block 28
   const authors = new Map((profilesRes.data ?? []).map(p => [p.id as string, (p.display_name as string | null)?.trim() || null]))
   const lotNames = new Map(herdRes.map(l => [l.id, lotLabel(l)]))   // the RANCH's lots (Block 4A), so a hand's feeding keeps its name for everyone
   const placeName = (id: unknown) => { const s = str(id); return s ? placeNames.get(s) ?? null : null }

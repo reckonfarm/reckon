@@ -127,10 +127,13 @@ async function teardown(label: string) {
     n += (await admin.from('job_annotations').delete().in('user_id', ids).select('job_id')).data?.length ?? 0   // 6J fixtures
     n += (await admin.from('jobs').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    // Block 28 (074): a place that history points at is never hard-deleted —
+    // the events went first; the bunches go before the places; and a parent is
+    // refused while a child still lives, so places go in passes until none go.
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
+    for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
     n += (await admin.from('hay_listings').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
   }
@@ -789,10 +792,10 @@ async function main() {
       const look = await page.context().newPage()
       await look.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await look.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(in trash\\)`) }).count()
       await look.close()
-      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as deleted',
-        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as deleted ${stillNamed}`)
+      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as in the trash',
+        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as in trash ${stillNamed}`)
       const undone = await pressUndo(page)
       for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) === 0; i++) await page.waitForTimeout(250)
       const rowsBack = await page.locator('[data-audit="lot-row"]').count()
@@ -2802,12 +2805,17 @@ async function main() {
         }
         // The outbox does not add a key — it REWRITES its own, bigger. So the
         // proof of a full shelf is that a 64-byte growth of a key already
-        // there is refused. Restore the value when it is not.
+        // there is refused. Restore the value when it is not. The app's own
+        // outbox rewrites its key on a timer and can free a few bytes between
+        // the fill and the probe (one run in five did), so the fill is topped
+        // up and probed again, a few times, before the shelf is called not full.
         let full = false
         const k = '__fill_0'
-        const v = localStorage.getItem(k)
-        if (v == null) return { n, full: false }
-        try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        for (let attempt = 0; attempt < 4 && !full; attempt++) {
+          for (;;) { if (n > 3000) break; try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(64)); n++ } catch { break } }
+          const v = localStorage.getItem(k) ?? ''
+          try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        }
         return { n, full }
       })
       const clearFill = async () => page.evaluate(() => {
@@ -3093,6 +3101,54 @@ async function main() {
       } finally { await ctx27.close().catch(() => {}); page = main }
     })
 
+    // ── Block 28 — a place history points at is never hard-deleted ────────────
+    // PK's falsifier: move a bunch to a place, delete the place. The move still
+    // reads its name (marked removed), the bunch reads no place recorded, and
+    // restore brings both back. Then the part only the database can prove: the
+    // purge, run past its window, keeps the place and takes an empty one.
+    await section('Block 28 — a place history points at is never hard-deleted', async () => {
+      const probe074 = await admin.rpc('place_is_referenced', { p_place: '00000000-0000-0000-0000-000000000000' })
+      if (probe074.error?.code === '42883') { record('28: CAPABILITY GAP — migration 074 is not applied on this database; nothing below can be read', false, ''); return }
+      const lot28 = randomUUID(), LOT28 = `${PREFIX} 28 bunch`
+      await admin.from('herd_lots').insert({ id: lot28, ranch_id: ranchId, class: 'cows', name: LOT28, head_count: 30, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot28, reason: 'created', source: 'manual', head_after: 30, head_before: null, schema_version: 1 } })
+      const { data: p28 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 28 pasture`, kind: 'pasture' }).select('id').single()
+      const { data: pEmpty } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 28 empty`, kind: 'pasture' }).select('id').single()
+      const mv28 = randomUUID()
+      const moved = await page.request.post('/api/log', { data: { id: mv28, type: 'cattle_moved', head: 30, herd_lot_id: lot28, to_place_id: p28!.id, place_id: p28!.id } })
+      const placeOf = async () => ((await admin.from('herd_lots').select('place_id').eq('id', lot28).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const before = await placeOf()
+      const del = await page.request.delete(`/api/places/${p28!.id}`)
+      const afterDelete = await placeOf()
+      await page.goto(`/ranch/activity/${mv28}`, { waitUntil: 'domcontentloaded' })
+      const what = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const row = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT28 }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').trim()
+      const inPickers = await page.request.get('/api/places').then(r => r.json()).then((j: { places?: { id: string }[] }) => (j.places ?? []).some(p => p.id === p28!.id)).catch(() => true)
+      record('28: delete a place a move points at — the move still reads its name marked in trash, the bunch reads no place recorded, and the place is off the pickers',
+        moved.status() === 201 && before === p28!.id && del.status() === 200 && afterDelete === null && what.includes(`${PREFIX} 28 pasture (in trash)`) && row === NO_PLACE_RECORDED && !inPickers,
+        `move ${moved.status()} · delete ${del.status()} · bunch ${before === p28!.id ? 'at it' : before} → ${afterDelete ?? 'no place'} · "${what.slice(0, 90)}" · row "${row}" · in pickers ${inPickers}`)
+
+      // The purge, past its window: the referenced place is kept, the empty one goes.
+      await admin.from('places').update({ deleted_at: new Date(Date.now() - 9 * 86_400_000).toISOString() }).in('id', [p28!.id, pEmpty!.id])
+      const purged = await admin.rpc('purge_trash', { p_days: 7 })
+      const stillThere = (await admin.from('places').select('id, deleted_at').eq('id', p28!.id).maybeSingle()).data as { id: string; deleted_at: string | null } | null
+      const emptyGone = ((await admin.from('places').select('id').eq('id', pEmpty!.id)).data ?? []).length === 0
+      const hard = await admin.from('places').delete().eq('id', p28!.id).select('id')
+      record('28: the purge past its window keeps the place history points at and takes the empty one; a direct hard delete is refused and it stays in the trash',
+        !purged.error && !!stillThere?.deleted_at && emptyGone && (hard.data ?? []).length === 0 && !!((await admin.from('places').select('deleted_at').eq('id', p28!.id).maybeSingle()).data as { deleted_at: string | null } | null)?.deleted_at,
+        `purge ${purged.error ? purged.error.message : JSON.stringify(purged.data)} · kept ${!!stillThere} · empty gone ${emptyGone} · hard delete removed ${(hard.data ?? []).length}`)
+
+      // Restore brings both back.
+      const restored = await page.request.post('/api/trash', { data: { table: 'places', id: p28!.id } })
+      const afterRestore = await placeOf()
+      await page.goto(`/ranch/activity/${mv28}`, { waitUntil: 'domcontentloaded' })
+      const whatBack = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('28: restore from the trash brings the place back with its history — the bunch is there again and the move reads its name plain',
+        restored.status() === 200 && afterRestore === p28!.id && whatBack.includes(`${PREFIX} 28 pasture`) && !/in trash/.test(whatBack),
+        `restore ${restored.status()} · bunch → ${afterRestore === p28!.id ? 'at it' : afterRestore ?? 'no place'} · "${whatBack.slice(0, 90)}"`)
+    })
+
     // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
     // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
     // line, Undo is tappable without scrolling or dismissing anything, and the
@@ -3284,7 +3340,7 @@ async function main() {
       const undone2 = await pressUndo(page)
       const { data: back2 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
       record('13 (place): hold → Delete with an entry and a device attached — no confirm, both survive and still name it, the entry shows it as deleted; Undo puts it back',
-        s2b && noConfirm && entryKept && deviceKept && /\(deleted\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        s2b && noConfirm && entryKept && deviceKept && /\(in trash\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
         `sheet ${s2b} · no confirm ${noConfirm} · entry kept ${entryKept} · device kept ${deviceKept} · row "${namesGone.slice(0, 60)}" · undo ${undone2}`)
 
       // 3 · Device: Fix edits name and where it sits, and says what the device sets itself; Delete → Undo.

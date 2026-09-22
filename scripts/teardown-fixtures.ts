@@ -19,7 +19,10 @@ export async function sweep(label = 'sweep'): Promise<number> {
   const ids = (users?.users ?? []).filter(u => EMAIL_RE.test(u.email ?? '')).map(u => u.id)
   let n = 0
   if (ids.length) {
-    for (const t of ['events', 'devices', 'places', 'herd_lots', 'operation_profiles', 'ranch_members', 'invitations']) {
+    // Block 28 (074): a place that history points at is never hard-deleted —
+    // events and bunches go first, and places in passes (a parent is refused
+    // while a child still lives).
+    for (const t of ['events', 'devices', 'herd_lots', 'places', 'places', 'places', 'operation_profiles', 'ranch_members', 'invitations']) {
       const col = t === 'herd_lots' ? 'created_by' : t === 'invitations' ? 'created_by' : 'user_id'
       n += (await admin.from(t).delete().in(col, ids).select('*')).data?.length ?? 0
     }
