@@ -1,5 +1,6 @@
 'use client'
 
+import { CAPTURE_EVENT } from '@/lib/places/capture-event'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
@@ -93,6 +94,7 @@ function metresBetween(a: LatLng, b: LatLng): number {
 
 const fmtAcres = (a: number) => (a >= 10 ? a.toFixed(1) : a.toFixed(2))
 const chip = (on: boolean) => `min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${on ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`
+
 
 export default function CapturePlace({ initialCenter, otherShapes = [] }: { initialCenter: LatLng; otherShapes?: MapShape[] }) {
   const cap = useCapture()
@@ -202,11 +204,22 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
   // request, not state.
   // Started on a task, not in the effect body (the same shape as
   // RecordSheetHost's DiscardedOnSwitch): the hash is an external request.
+  //
+  // Block 26b: read on mount AND on every change. Read once, the request was
+  // lost whenever this was already on the page: from Places itself, Record →
+  // Ground → "Ride the perimeter" is a same-page link, so the hash changed
+  // and nothing mounted — the tap did nothing, silently. (The suite hit the
+  // same race from the other side: its two gotos sometimes set the hash after
+  // hydration, sometimes before.) A tap on the SAME hash twice fires no
+  // hashchange, so the record sheet also says it outright (CAPTURE_EVENT).
   useEffect(() => {
-    const h = typeof window !== 'undefined' ? window.location.hash : ''
-    if (h !== '#capture-drop' && h !== '#capture-ride') return
-    const t = setTimeout(() => { void (h === '#capture-drop' ? beginDrop() : beginRide()) }, 0)
-    return () => clearTimeout(t)
+    const start = (h: string) => { if (h === '#capture-drop' || h === '#capture-ride') void (h === '#capture-drop' ? beginDrop() : beginRide()) }
+    const onHash = () => start(window.location.hash)
+    const onAsk = (e: Event) => start(`#capture-${(e as CustomEvent<string>).detail}`)
+    const t = setTimeout(() => start(window.location.hash), 0)
+    window.addEventListener('hashchange', onHash)
+    window.addEventListener(CAPTURE_EVENT, onAsk)
+    return () => { clearTimeout(t); window.removeEventListener('hashchange', onHash); window.removeEventListener(CAPTURE_EVENT, onAsk) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
