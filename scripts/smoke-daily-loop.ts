@@ -3586,14 +3586,17 @@ async function main() {
           await opt.waitFor({ state: 'attached', timeout: 15_000 })
           try { await opt.click({ timeout: 15_000 }) } catch (e) {
             // What was it, when it could not be tapped? Said in the death, not guessed at afterwards.
-            const st = await opt.evaluate(async el => {
-              const frame = () => new Promise<void>(r => requestAnimationFrame(() => r()))
-              const boxes: string[] = []
-              for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)].join(',')); await frame(); await frame() }
-              const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]') as HTMLElement | null
-              const anims = document.getAnimations().map(a => `${(a as CSSAnimation).animationName ?? (a as CSSTransition).transitionProperty ?? a.constructor.name}@${((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.getAttribute('data-audit') ?? ((a.effect as KeyframeEffect | null)?.target as HTMLElement | null)?.tagName ?? '?'}:${a.playState}`)
-              return { disabled: (el as HTMLButtonElement).disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', busy: document.querySelector('[data-audit="record-save"]')?.hasAttribute('disabled'), anims: anims.slice(0, 8) }
-            }).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
+            // A string, not a function: tsx rewrites inner functions with a helper the page does not have.
+            const st = await page.evaluate(`(async () => {
+              const el = document.querySelector('[data-audit="count-bunch-option"][data-lot="${lot14}"]');
+              if (!el) return 'option not in the document';
+              const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+              const boxes = [];
+              for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([b.left, b.top, b.width, b.height].map(Math.round).join(',')); await frame(); await frame(); }
+              const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]');
+              const anims = document.getAnimations().map(a => (a.animationName || a.transitionProperty || a.constructor.name) + '@' + ((a.effect && a.effect.target && (a.effect.target.getAttribute('data-audit') || a.effect.target.tagName)) || '?') + ':' + a.playState);
+              return { disabled: el.disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetScroll: sheet ? sheet.scrollTop + '/' + sheet.scrollHeight + '/' + sheet.clientHeight : '', busy: !!(document.querySelector('[data-audit="record-save"]') || {}).disabled, anims: anims.slice(0, 8) };
+            })()`).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
             throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
           }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
