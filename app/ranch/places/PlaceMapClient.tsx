@@ -397,6 +397,9 @@ export default function PlaceMapClient({
       aria-label={drawing ? 'Draw a place' : undefined}
       aria-modal={drawing || undefined}
     >
+      {/* react-leaflet reads `style` ONCE at mount, so a live change (full screen
+          on a tap) must size this wrapper, not the map: the map fills it. */}
+      <div style={full ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }} className="relative">
       <MapContainer
         {...(pin
           ? { center: [pin.position.lat, pin.position.lng] as LL, zoom: 18 }
@@ -408,7 +411,7 @@ export default function PlaceMapClient({
         preferCanvas
         attributionControl={false}
         zoomControl={!overview}   // Block 26c: nothing floats on the overview but the pill — pinch and double-tap zoom it
-        style={{ ...(full ? { flex: '1 1 auto', minHeight: 0, width: '100%' } : { height, width: '100%' }), background: PLAIN_GROUND }}
+        style={{ height: '100%', width: '100%', background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >
         <ImageryLayer basemap={basemap} onPlain={setPlain} />
@@ -572,6 +575,7 @@ export default function PlaceMapClient({
           />
         )}
       </MapContainer>
+      </div>
 
       {/* Fight #2: plain siblings above the panes, never Leaflet controls.
           Both stack in the top-RIGHT corner: Leaflet's own zoom control owns

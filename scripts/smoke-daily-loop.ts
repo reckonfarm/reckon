@@ -365,7 +365,10 @@ async function main() {
     // after it unrun, and a run that stops is not a result.
     const section = async (name: string, body: () => Promise<void>) => {
       try { await body() } catch (e) {
-        record(`${name}: died before its checks finished — ${e instanceof Error ? e.message.split('\n')[0].slice(0, 140) : String(e).slice(0, 140)}`, false, 'every check of this section after that point is unrun')
+        // The first line names the verb; the 'waiting for' line names the locator — both, or a timeout says nothing.
+        const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
+        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy/.test(l)).slice(0, 2)].join(' · ').slice(0, 260)
+        record(`${name}: died before its checks finished — ${said}`, false, 'every check of this section after that point is unrun')
         await ctx.setOffline(false).catch(() => {})
         if (page.isClosed()) page = await ctx.newPage()
         await page.unroute('**').catch(() => {})
