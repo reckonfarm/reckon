@@ -3169,15 +3169,19 @@ async function main() {
       // A string, not a function: tsx wraps a named inner arrow in __name, which the page does not have.
       const order44 = await page.evaluate(`(function(){ var at = function(sel){ var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1 }; return { programs: at('[data-audit="weather-programs"]'), forecast: at('[data-audit="weather-forecast"]'), reads: at('[data-audit="weather-reads"]') } })()`) as { programs: number; forecast: number; reads: number }
       const mapOpen = await page.locator('[data-audit="weather-drought-map"] .leaflet-container, [data-audit="weather-drought-map"] img').count()
-      // The source line sits behind the sources disclosure; innerText is layout-aware, so open it first (as the 6B check does).
+      // 44: "one line naming the source, arithmetic one tap away" is TWO things — the visible line
+      // (rain-summary-source) and the sources paragraph behind its disclosure. Read the line as
+      // painted; open the disclosure before reading the paragraph (innerText is layout-aware —
+      // closed, it reads "", which is what the first run of this check reported as a missing footer).
+      const sourceLine44 = (await page.locator('[data-audit="rain-summary-source"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       await page.locator('[data-audit="rain-sources-summary"]').click().catch(() => {})
       await page.waitForTimeout(400)
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       const prompts44 = await page.locator('[data-audit="rain-none"], [data-audit="rain-since"], [data-audit="weather-place-picker"]').count()
       const lines44 = await page.locator('[data-audit^="read-"][data-audit$="-line"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
       record('44: the weather tab — programs above the forecast, the drought map open on the page, the source in one line, nothing nagging about rain, and four reads of my own ground with their arithmetic a tap away',
-        order44.programs >= 0 && order44.forecast > order44.programs && order44.reads > order44.forecast && mapOpen >= 1 && footer.length > 0 && footer.length < 90 && prompts44 === 0 && lines44.length === 4 && lines44.every(l => l.length > 0),
-        `programs y=${order44.programs} · forecast y=${order44.forecast} · reads y=${order44.reads} · map open ${mapOpen} · footer "${footer}" · prompts ${prompts44} · reads [${lines44.join(' | ')}]`)
+        order44.programs >= 0 && order44.forecast > order44.programs && order44.reads > order44.forecast && mapOpen >= 1 && sourceLine44.length > 0 && sourceLine44.length < 90 && footer.length > 0 && prompts44 === 0 && lines44.length === 4 && lines44.every(l => l.length > 0),
+        `programs y=${order44.programs} · forecast y=${order44.forecast} · reads y=${order44.reads} · map open ${mapOpen} · source line "${sourceLine44}" · behind the tap "${footer.slice(0, 40)}" · prompts ${prompts44} · reads [${lines44.join(' | ')}]`)
 
       // The place page says where it sits; the parent's page says what is in it.
       await page.goto(`/ranch/places/${newId}`, { waitUntil: 'domcontentloaded' })
