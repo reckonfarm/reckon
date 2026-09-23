@@ -486,7 +486,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
           <div className="min-w-0">
             <p className="font-dm-sans text-[17px] font-semibold text-ink">
               {/* Block 37: the head count IS the control — tap it, type, Done; a head_count_set anchor through the outbox with its Undo. */}
-              <TapValue value={lot.head_count} label={`${lotLabel(lot)} head count`} audit="lot-head" min={1} max={20_000} className="tabular-nums font-dm-sans text-[17px] font-semibold text-ink" onSave={n => { const id = newEventId(); try { enqueue({ id, head_count: n }, `${n} head · ${lotLabel(lot)}`, UNDO_HOLD_MS, { endpoint: `/api/herd/lots/${lot.id}/head` }); return id } catch { return null } }} /> head · {lotLabel(lot)}
+              <TapValue value={lot.head_count} label={`Bunch size, ${lotLabel(lot)}`} audit="lot-head" min={1} max={20_000} className="tabular-nums font-dm-sans text-[17px] font-semibold text-ink" onSave={n => { const id = newEventId(); try { enqueue({ id, head_count: n }, `${n} head · ${lotLabel(lot)}`, UNDO_HOLD_MS, { endpoint: `/api/herd/lots/${lot.id}/head` }); return id } catch { return null } }} /> head · {lotLabel(lot)}
             </p>
             <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
               {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}

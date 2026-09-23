@@ -18,7 +18,7 @@ export default function TapValue({ value, format, label, audit, kind = 'number',
   value: number | string
   /** How the value paints (default: the number with thousands separators, or the text). */
   format?: (v: number | string) => string
-  /** The accessible name — "Hay on hand, tap to change". */
+  /** The accessible name — a short noun phrase that no form field on the same screens uses. */
   label: string
   audit: string
   kind?: 'number' | 'text'
@@ -87,7 +87,7 @@ export default function TapValue({ value, format, label, audit, kind = 'number',
         <button
           type="button"
           onClick={e => { e.stopPropagation(); start() }}
-          aria-label={`${label}, tap to change`}
+          aria-label={label}
           className={`min-h-[44px] rounded-md underline decoration-dotted decoration-1 underline-offset-4 hover:bg-forest-green/5 ${className}`}
           data-audit={audit}
           data-tap-value

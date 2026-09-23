@@ -13,7 +13,7 @@ export default function HayOnHandTap({ bales, className }: { bales: number; clas
   return (
     <TapValue
       value={bales}
-      label="Hay on hand"
+      label="Stack count"
       audit="hay-on-hand"
       min={0}
       max={100_000}

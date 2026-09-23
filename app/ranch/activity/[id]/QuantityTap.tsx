@@ -12,7 +12,7 @@ export default function QuantityTap({ eventId, bales, className }: { eventId: st
     <TapValue
       value={bales}
       format={v => `${Number(v).toLocaleString('en-US')} ${Number(v) === 1 ? 'bale' : 'bales'}`}
-      label="Bales fed"
+      label="Bales in this entry"
       audit="event-quantity"
       min={1}
       max={10_000}
