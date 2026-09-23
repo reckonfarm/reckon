@@ -77,11 +77,11 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 ## Ground truth worth keeping
 
 - Tokens: forest-green `#1B4332`, cream `#FDFBF7`, rust `#8B3A2B`, USDM D0–D4; Tailwind v4 config in
-  `app/globals.css`; containers `max-w-6xl`, ranch `max-w-2xl`.
-- Membership is the sole RLS gate (`ranch_members`), which never gets a client write policy.
-- Head counts are a projection: `head_count_set` anchors plus live `group_action` deltas. Every bunch needs an
-  anchor, a hand-inserted fixture too.
-- Sources: USDM county statistics, ACIS precip vs normal, NWS, NOAA map services. FSA LFP tiers 1–6
-  (OBBBA, July 2025) verified against the NDMC tool; always say FSA makes the final determination.
+  `app/globals.css`; containers `max-w-6xl`, ranch `max-w-2xl`. Membership is the sole RLS gate (`ranch_members`),
+  which never gets a client write policy.
+- Head counts are a projection: `head_count_set` anchors plus live `group_action` deltas. Every bunch needs one,
+  a hand-inserted fixture too.
+- Sources: USDM county statistics, ACIS precip vs normal, NWS, NOAA map services. FSA LFP tiers 1–6 (OBBBA, July
+  2025) verified against the NDMC tool; always say FSA makes the final determination.
 - Not to build: no SMS before email proves demand, no payments or escrow in hay, no predictive engine without
-  history, no equipment ledger before hay, no native app, no farm-management sprawl.
+  history, no equipment ledger before hay, no native app, no sprawl.
