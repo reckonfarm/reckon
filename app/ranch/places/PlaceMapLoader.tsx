@@ -78,6 +78,8 @@ export interface PlaceMapProps {
   overview?: boolean
   /** Leaflet's + / − buttons. Default: off on the overview (26c: nothing floats but the pill), on elsewhere. */
   zoomControl?: boolean
+  /** Block 42: Locate found the phone — the overview's owner decides what that ground means. */
+  onLocate?: (p: LatLng, accuracyM: number) => void
   /** Block 29: one straight line, origin → destination — a move, never a drawn route. */
   line?: { from: LatLng; to: LatLng; color: string } | null
   /** Block 26: frame the map to ONE place — set when a place is picked from the key, where the map cannot know which ground was meant. `n` re-fires it for the same place. */

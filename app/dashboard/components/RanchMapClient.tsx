@@ -6,6 +6,7 @@ import RecordHere from '@/app/ranch/places/RecordHere'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
+import { pointInPolygon, projectXY, type LatLng } from '@/lib/places/geo'
 import BottomSheet from '@/app/components/BottomSheet'
 import { fmtAcres } from '@/lib/places/geo'
 import type { RanchMap } from '@/lib/ranch-map'
@@ -46,6 +47,14 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
   // "Moments ago" is judged once, when the map lands, so the settle plays once.
   const [landedAt] = useState(() => Date.now())
   const placedCount = map.places.reduce((n, p) => n + p.bunches.length, 0)
+  // Block 42 (ruling 5): Locate names the pasture you are standing in and opens it.
+  // Outside every drawn pasture the line under the map says so; a tap on one picks it.
+  const [here, setHere] = useState<{ placeId: string | null } | null>(null)
+  const locate = (p: LatLng) => {
+    const hit = map.places.find(pl => { if (!pl.ring) return false; const [pt, ...ring] = projectXY([p, ...pl.ring], p.lat); return pointInPolygon(pt, ring) })
+    setHere({ placeId: hit?.id ?? null })
+    if (hit) setOpenId(hit.id)
+  }
   const shapes = useMemo(() => map.places.filter(p => p.ring).map(p => {
     const b = p.bunches[0]
     const fresh = !!b?.since?.ts && landedAt - new Date(b.since.ts).getTime() < 3 * 60_000
@@ -56,9 +65,10 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
   return (
     <section className="mb-6" data-audit="ranch-map" aria-label="Ranch map">
       {shapes.length > 0 && (
-        <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} line={lineFor(current)} />
+        <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} line={lineFor(current)} onLocate={locate} />
       )}
       {/* Block 39: what is live now, in one line — never a list. */}
+      {here && !here.placeId && <p className="mt-2 font-dm-sans text-[16px] font-semibold text-ink" data-audit="locate-note">Not inside a drawn pasture — tap one</p>}
       <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-line">{placedCount} {placedCount === 1 ? 'bunch' : 'bunches'} placed · {todayCount} {todayCount === 1 ? 'entry' : 'entries'} today</p>
       {/* Block 29: the changes, stepped. Under the map, in words. */}
       {total > 0 && (
@@ -129,8 +139,11 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
         <BottomSheet open onClose={() => setOpenId(null)} label={open.name} audit="ranch-map-sheet">
             <p className="font-fraunces text-[22px] font-semibold leading-tight text-ink">
               <Link href={`/ranch/places/${open.id}`} className="underline-offset-2 hover:underline" data-audit="sheet-place">{open.name}</Link>
+              {here?.placeId === open.id && <span className="ml-2 font-dm-sans text-[16px] font-normal text-forest-green" data-audit="sheet-here">you&rsquo;re here</span>}
               {fmtAcres(open.acres) && <span className="ml-2 font-dm-sans text-[16px] font-normal text-secondary-ink" data-audit="sheet-acres">{fmtAcres(open.acres)}</span>}
             </p>
+            {/* Block 42: count cattle INTO this pasture — the tally, with this place as where they are going. */}
+            <Link href={`/ranch/tally?to=${open.id}`} className="mt-3 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white" data-audit="sheet-count-in">Count cattle in</Link>
             {open.bunches.map(b => (
               <div key={b.id} className="mt-3" data-audit="sheet-bunch">
                 <p className="flex items-center gap-2 font-dm-sans text-[17px] font-semibold text-ink">

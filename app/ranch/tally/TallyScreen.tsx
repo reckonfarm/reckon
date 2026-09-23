@@ -12,8 +12,7 @@ import { useWakeLock, wakeNote } from '@/lib/use-wake-lock'
 import { confirmTap, confirmUndo, hapticKind, HAPTIC_WORDS } from '@/lib/haptics'
 import {
   TAP_SIZES, addTap, againstLine, clearTally, loadTally, startTally, tallyWasDropped,
-  total, undoTap, type Tally, type TapSize,
-} from '@/lib/tally'
+  total, undoTap, type Tally, type TapSize, saveTally } from '@/lib/tally'
 
 // ─── The tally at the gate (Block 22) ────────────────────────────────────────
 //
@@ -47,7 +46,9 @@ type Ending = 'set_head' | 'new_bunch' | 'observation'
 
 const FLASH_MS = 260
 
-export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initialLotId: string | null }) {
+export interface TallyPlace { id: string; name: string; kind: string }
+
+export default function TallyScreen({ lots, initialLotId, initialToId = null, initialFromId = null, places = [] }: { lots: Lot[]; initialLotId: string | null; initialToId?: string | null; initialFromId?: string | null; places?: TallyPlace[] }) {
   const [mode, setMode] = useState<Mode>('idle')
   const [tally, setTally] = useState<Tally | null>(null)
   const [held, setHeld] = useState<Tally | null>(null)      // a count the phone was holding when this opened
@@ -62,6 +63,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [ending, setEnding] = useState<Ending>('set_head')
   const [newName, setNewName] = useState('')
+  const [changing, setChanging] = useState(false)   // Block 42: the top line opened to change bunch / from / to
   const eventId = useRef<string | null>(null)
   // Block 10's hook, unchanged: it takes the lock while a count is live and
   // gives it back when one is not. Declarative, so nothing here has to
@@ -71,6 +73,11 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
 
   const lotId = tally?.lotId ?? initialLotId
   const source = lots.find(l => l.id === lotId) ?? null
+  // Block 42: where they are going (the pasture you stand in) and where they came from (the bunch's place).
+  const toId = tally ? (tally.toPlaceId ?? null) : initialToId
+  const fromId = tally ? (tally.fromPlaceId ?? null) : (initialFromId ?? source?.place_id ?? null)
+  const placeName = (id: string | null) => (id ? places.find(pl => pl.id === id)?.name ?? null : null)
+  const countingIn = !!toId
   const through = tally ? total(tally.taps) : 0
   const against = source ? { name: lotLabel(source), head: source.head_count } : null
 
@@ -88,10 +95,10 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   }, [flash?.n, flash])
 
   const begin = useCallback((seed: Tally | null) => {
-    const t = seed ?? startTally(initialLotId)
+    const t = seed ?? startTally(initialLotId, initialFromId ?? lots.find(l => l.id === initialLotId)?.place_id ?? null, initialToId)
     setTally(t); setHeld(null); setRemoved(null); setRefused(false)
     setMode('counting')
-  }, [initialLotId])
+  }, [initialLotId, initialFromId, initialToId, lots])
 
   function tap(size: TapSize) {
     if (!tally) return
@@ -114,18 +121,31 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     confirmUndo()
   }
 
+  // Block 42: the line at the top changes the bunch, where from, where to — kept with the count.
+  function retarget(next: { lotId?: string | null; fromPlaceId?: string | null; toPlaceId?: string | null }) {
+    if (!tally) return
+    const t: Tally = { ...tally, ...next }
+    if ('lotId' in next && !('fromPlaceId' in next)) t.fromPlaceId = lots.find(l => l.id === next.lotId)?.place_id ?? null
+    saveTally(t); setTally(t)
+  }
+
   function throwAway() {
     clearTally(); setTally(null); setHeld(null); setLeaving(false); setMode('idle')
   }
 
   // ── Ruling 6: finishing chooses the meaning ────────────────────────────────
   function save() {
-    if (!tally || !source && ending !== 'observation') { setSaveErr('Pick what this count means.'); return }
+    if (!tally || !source && ending !== 'observation') { setSaveErr(countingIn ? 'Pick the bunch you counted.' : 'Pick what this count means.'); return }
     setSaveErr(null)
     const id = eventId.current ?? (eventId.current = newEventId())
     let body: Record<string, unknown>
     let label: string
-    if (ending === 'new_bunch' && source) {
+    if (countingIn && source && toId) {
+      // Block 42 (ruling 1): the count and the move are ONE record — the move's head is
+      // what came through, and set_head makes the bunch read it, in the same act.
+      body = { id, type: 'cattle_moved', head: through, herd_lot_id: source.id, from_place_id: fromId, to_place_id: toId, place_id: toId, set_head: true }
+      label = `Counted ${through} into ${placeName(toId) ?? 'the pasture'} · ${lotLabel(source)} set to ${through}`
+    } else if (ending === 'new_bunch' && source) {
       // One split implementation (Block 19): this calls the same builder the
       // split sheet and the preg check call, and 071 does the arithmetic.
       const name = (newName.trim() || defaultSplitName(source, ranchToday())).slice(0, 40)
@@ -173,6 +193,7 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
     return (
       <Card className="mt-4 p-4 sm:p-5" data-audit="tally-start">
         {source && <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="tally-subject">{lotLabel(source)} · {bunchDetail(source)}</p>}
+        {initialToId && <p className="mt-1 font-dm-sans text-[17px] font-semibold text-ink" data-audit="tally-into">Into {placeName(initialToId) ?? 'the pasture'}</p>}
         <button type="button" onClick={() => begin(null)} className={`${source ? 'mt-4' : ''} min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream`} data-audit="tally-begin">Start counting</button>
         {/* What this phone will do when a tap lands — said once, before he
             starts, so the counting screen carries nothing but the count. A
@@ -194,6 +215,21 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   }
 
   // ── Finishing: what does this number mean? (ruling 6) ──────────────────────
+  if (mode === 'finish' && tally && countingIn) {
+    // Block 42: Save writes the move and the count together. One button.
+    return (
+      <Card className="mt-4 p-4 sm:p-5" data-audit="tally-finish">
+        <p className="type-main-number text-ink" data-audit="tally-finish-total">{through.toLocaleString('en-US')}</p>
+        <p className="mt-1 font-dm-sans text-[17px] text-ink" data-audit="tally-finish-line">{source ? lotLabel(source) : 'Pick the bunch'} · from {placeName(fromId) ?? '—'} → {placeName(toId) ?? '—'}</p>
+        {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-save-error">{saveErr}</p>}
+        <div className="mt-4 flex flex-col gap-2">
+          <button type="button" onClick={save} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Save</button>
+          <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back">Keep counting</button>
+        </div>
+      </Card>
+    )
+  }
+
   if (mode === 'finish' && tally) {
     const opts: { key: Ending; label: string; hint: string; can: boolean }[] = [
       { key: 'set_head', label: `Set ${source ? lotLabel(source) : 'the bunch'} to ${through.toLocaleString('en-US')}`, hint: source ? `It says ${source.head_count.toLocaleString('en-US')} now. The gate is what is true.` : 'Start the count from a bunch to use this.', can: !!source },
@@ -239,16 +275,35 @@ export default function TallyScreen({ lots, initialLotId }: { lots: Lot[]; initi
   const flashing = flash !== null
   return (
     <div data-audit="tally-counting">
-      <div className="mt-2 flex items-center justify-between">
-        <button type="button" onClick={() => setLeaving(true)} className="inline-flex min-h-[48px] items-center gap-1.5 font-dm-sans text-[16px] font-semibold text-secondary-ink" data-audit="tally-leave">
-          <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-          Leave
+      {/* Block 42 (ruling 2): one small line — which bunch, from where, to where — tap it
+          to change any of them. Finish is the only other thing above the number. */}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <button type="button" onClick={() => setChanging(c => !c)} aria-expanded={changing}
+          className="min-h-[48px] min-w-0 flex-1 truncate text-left font-dm-sans text-[16px] font-semibold text-ink underline decoration-dotted underline-offset-4"
+          data-audit="tally-line">
+          {source ? lotLabel(source) : 'Pick the bunch'}{countingIn ? ` · from ${placeName(fromId) ?? '—'} → ${placeName(toId) ?? '—'}` : ''}
         </button>
-        <button type="button" onClick={() => setMode('finish')} className="inline-flex min-h-[48px] items-center gap-1.5 rounded-lg border border-forest-green px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="tally-finish-open">
+        <button type="button" onClick={() => setMode('finish')} className="inline-flex min-h-[48px] shrink-0 items-center gap-1.5 rounded-lg border border-forest-green px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="tally-finish">
           <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
           Finish
         </button>
       </div>
+      {changing && (
+        <div className="mt-2 grid grid-cols-1 gap-2 rounded-lg border border-forest-green/15 bg-white p-3" data-audit="tally-change">
+          <select value={lotId ?? ''} onChange={e => retarget({ lotId: e.target.value || null })} aria-label="Bunch" className="min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="tally-change-bunch">
+            <option value="">Pick the bunch</option>
+            {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          </select>
+          <select value={fromId ?? ''} onChange={e => retarget({ fromPlaceId: e.target.value || null })} aria-label="From" className="min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="tally-change-from">
+            <option value="">From — no place</option>
+            {places.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+          </select>
+          <select value={toId ?? ''} onChange={e => retarget({ toPlaceId: e.target.value || null })} aria-label="To" className="min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="tally-change-to">
+            <option value="">To — just a count</option>
+            {places.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* THE NUMBER, and under it what is still behind you. */}
       <div className="mt-2 rounded-xl border border-forest-green/15 bg-surface px-4 py-6 text-center transition-colors duration-100"
