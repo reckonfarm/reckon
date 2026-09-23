@@ -283,7 +283,7 @@ function MessagesInner() {
       {isClosed && (
         <div className="mb-3 rounded-xl border border-forest-green/15 bg-forest-green/5 px-4 py-3">
           <p className="font-dm-sans text-[16px] font-medium text-forest-green">Deal closed.</p>
-          <Link href={`/hay/${meta?.listing_id}`} className="inline-flex min-h-[48px] items-center mt-1 inline-block font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
+          <Link href={`/hay/${meta?.listing_id}`} className="inline-flex min-h-[48px] items-center mt-1 font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
             Leave a review →
           </Link>
         </div>
