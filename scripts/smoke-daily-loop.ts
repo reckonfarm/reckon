@@ -3169,6 +3169,9 @@ async function main() {
       // A string, not a function: tsx wraps a named inner arrow in __name, which the page does not have.
       const order44 = await page.evaluate(`(function(){ var at = function(sel){ var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1 }; return { programs: at('[data-audit="weather-programs"]'), forecast: at('[data-audit="weather-forecast"]'), reads: at('[data-audit="weather-reads"]') } })()`) as { programs: number; forecast: number; reads: number }
       const mapOpen = await page.locator('[data-audit="weather-drought-map"] .leaflet-container, [data-audit="weather-drought-map"] img').count()
+      // The source line sits behind the sources disclosure; innerText is layout-aware, so open it first (as the 6B check does).
+      await page.locator('[data-audit="rain-sources-summary"]').click().catch(() => {})
+      await page.waitForTimeout(400)
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       const prompts44 = await page.locator('[data-audit="rain-none"], [data-audit="rain-since"], [data-audit="weather-place-picker"]').count()
       const lines44 = await page.locator('[data-audit^="read-"][data-audit$="-line"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
