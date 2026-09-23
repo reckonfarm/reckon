@@ -2820,10 +2820,12 @@ async function main() {
       const rare = await page.locator('[data-audit="record-rare"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       await page.locator('[data-audit="tile-place"]').click().catch(() => {})
       const groundLinks = await page.locator('[data-audit="record-place-menu"] a').count()
-      const mapWords = ((await page.locator('[data-audit="record-picker"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p, span, button')).map(x => (x as HTMLElement).innerText).filter(Boolean).join(' | ')).catch(() => '')) ?? '').trim()
-      record('12.2/20: Record opens on the ranch map with one row — Feed · Move · Count · Rain · Work · Place, each icon with its word — Preg check · Count hay · Add bales as words below, Place offers the three ways to mark ground, and no text on the map',
-        rowWords.join('|') === 'Feed|Move|Count|Rain|Work|Place' && rowIcons === 6 && rare.join('|') === 'Preg check|Count hay|Add bales to a stack' && groundLinks === 3 && mapWords === '',
-        `row [${rowWords.join(', ')}] icons ${rowIcons} · rare [${rare.join(', ')}] · ground ${groundLinks} · map words "${mapWords}"`)
+      // Block 38: no map in Record at all, and the row of actions is the FIRST thing in the picker.
+      const maps = await page.locator('[data-audit="record-picker"] .leaflet-container, [data-audit="record-place-chips"]').count()
+      const firstChild = await page.locator('[data-audit="record-picker"] > *').first().getAttribute('data-audit').catch(() => null)
+      record('12.2/38: Record opens straight to the actions — Feed · Move · Count · Rain · Work · Place, each icon with its word, nothing above them and no map — Preg check · Count hay · Add bales as words below, and Place offers the three ways to mark ground',
+        rowWords.join(',') === 'Feed,Move,Count,Rain,Work,Place' && rowIcons === 6 && rare.join(',') === 'Preg check,Count hay,Add bales to a stack' && groundLinks === 3 && maps === 0 && firstChild === 'record-actions',
+        `row [${rowWords.join(', ')}] icons ${rowIcons} · rare [${rare.join(', ')}] · ground ${groundLinks} · maps ${maps} · first in the picker: ${firstChild}`)
       await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button — the pull-down, the dim, or Escape
 
       // 12.11 — every dropdown looks like one: a chevron beside every select.
@@ -3690,21 +3692,31 @@ async function main() {
         `restore ${restored.status()} · bunch → ${afterRestore === p28!.id ? 'at it' : afterRestore ?? 'no place'} · "${whatBack.slice(0, 90)}"`)
     })
 
-    // ── Block 20 — Record goes map-first ──────────────────────────────────────
-    // PK's falsifier: location and network off, open Record, feed a bunch at a
-    // place. It saves to the outbox with the place you picked. Then, with a
-    // fix: an action tapped first takes the place under the fix.
-    await section('Block 20 — Record goes map-first', async () => {
+    // ── Block 38 — Record loses the map (reverses Block 20, ruling 1) ─────────
+    // PK's falsifier: location and network off, open Record. Every action is on
+    // one screen with no scrolling, and a feeding saves to the outbox with the
+    // right place — the bunch's (Block 33). Block 20's ruling 3 stands exactly:
+    // no fix, no tiles, no signal, every action still opens and saves. And with
+    // a fix inside a pasture, an action tapped first still takes that ground.
+    await section('Block 38 — Record loses the map', async () => {
       const ring20 = [[-110.06, 46.93], [-110.04, 46.93], [-110.04, 46.92], [-110.06, 46.92], [-110.06, 46.93]]
-      const { data: p20 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 20 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring20] }, acres: 380 }).select('id').single()
-      // Online once first, so the phone has seen the ranch (the map is kept on the phone for when there is no signal).
+      const { data: p20 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 38 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring20] }, acres: 380 }).select('id').single()
+      // A bunch that lives there, placed by a move through the route (072 decides the place).
+      const lot38 = randomUUID(); const name38 = `${PREFIX} 38 bunch`
+      await admin.from('herd_lots').insert({ id: lot38, ranch_id: ranchId, class: 'cows', name: name38, head_count: 44, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date(Date.now() - 2 * 86_400_000).toISOString(), schema_version: 1, payload: { lot_id: lot38, reason: 'created', source: 'manual', head_count: 44 } })
+      const mv38 = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 44, herd_lot_id: lot38, to_place_id: p20!.id, place_id: p20!.id, ts: new Date(Date.now() - 86_400_000).toISOString() } })
+      if (!mv38.ok()) throw new Error(`38 move: ${mv38.status()}`)
+      // Online once first, so the phone has seen the ranch (the copy that names places when there is no signal).
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
-      await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      // The phone keeps the ranch once it has seen it: wait for that copy to be written before the signal goes.
-      // The copy must be the one that names THIS pasture — an older copy from an earlier section's visit is not it.
+      await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 20_000 }).catch(() => {})
       const cached = await page.waitForFunction((pid: string) => { try { return (localStorage.getItem('dryline_ranch_map_v1') ?? '').includes(pid) } catch { return false } }, p20!.id as string, { timeout: 15_000 }).then(() => true).catch(() => false)
-      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button
+      // The bunches too: the sheet's own copy, so Fed-to can name the bunch with no signal.
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})
       // Location AND network off.
       await page.context().setGeolocation(null).catch(() => {})
       await page.context().setOffline(true)
@@ -3712,33 +3724,40 @@ async function main() {
       await recordControl(page).click()
       const picker = page.locator('[data-audit="record-picker"]')
       await picker.waitFor({ timeout: 15_000 }).catch(() => {})
-      const mapState = await picker.getAttribute('data-map').catch(() => null)
-      const polygonsOff = await page.locator('[data-audit="record-picker"] .leaflet-overlay-pane canvas').count()
-      await page.locator(`[data-audit="record-place-chip"][data-place="${p20!.id}"]`).click({ timeout: 20_000 })
+      const tiles = await page.locator('[data-audit="record-actions"] button').count()
+      const rare = await page.locator('[data-audit="record-rare"] button').count()
+      const maps = await page.locator('[data-audit="record-picker"] .leaflet-container, [data-audit="record-place-chips"]').count()
+      // One screen, no scrolling: the sheet's panel holds everything without a scrollbar, and the row sits inside the viewport.
+      const fits = await page.locator('[data-audit="record-sheet"]').first().evaluate(el => { const panel = el.querySelector('[data-audit="bottom-sheet"]') ?? el; return { scroll: panel.scrollHeight, client: panel.clientHeight } }).catch(() => ({ scroll: -1, client: -1 }))
+      const rowBox = await page.locator('[data-audit="record-actions"]').boundingBox().catch(() => null)
+      const vh = page.viewportSize()?.height ?? 0
+      const oneScreen = fits.scroll > 0 && fits.scroll <= fits.client + 1 && !!rowBox && rowBox.y >= 0 && rowBox.y + rowBox.height <= vh
+      // Feed: the bunch answers Where (Block 33), with no signal.
       await page.locator('[data-audit="tile-hay_fed"]').click()
-      // The select shows the place once its options are there: wait for the value, do not sample the first paint.
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await selectBunch(page, '[data-audit="fed-to"]', name38).catch(() => {})
       const selectShows = async (id: string) => page.waitForFunction((want: string) => (document.querySelector('form [data-audit="place-select"]') as HTMLSelectElement | null)?.value === want, id, { timeout: 10_000 }).then(() => true).catch(() => false)
       const whereOff = (await selectShows(p20!.id)) ? p20!.id : await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
       await page.getByLabel('Hay fed').fill('4')
       await page.getByRole('button', { name: 'Record feeding', exact: true }).click()
       const off20 = await watchStates(page, 'Sent', 4_000, 'Fed 4 bales')
       const queued20 = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 4 && (i.body as { place_id?: string }).place_id === p20!.id)
-      record('20: location and network off — Record opens on the map from the phone\'s copy, a place then Feed prefills it, and the feeding saves to the outbox with that place',
-        cached && mapState === 'drawn' && polygonsOff >= 1 && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
-        `cached ${cached} · map ${mapState} · polygons ${polygonsOff} · where "${whereOff.slice(0, 40)}" · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
+      record('38: location and network off — Record opens straight to the actions, every one on one screen with no scrolling and no map, and a feeding saves to the outbox with the bunch\'s place',
+        cached && tiles === 6 && rare === 3 && maps === 0 && oneScreen && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
+        `cached ${cached} · tiles ${tiles} · rare ${rare} · maps ${maps} · one screen ${oneScreen} (panel ${fits.scroll}/${fits.client}, row bottom ${rowBox ? Math.round(rowBox.y + rowBox.height) : '?'} of ${vh}) · where ${whereOff === p20!.id ? 'the bunch\'s place' : whereOff || 'blank'} · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
       await page.context().setOffline(false)
       await watchStates(page, 'Sent', 45_000, 'Fed 4 bales')
 
-      // With a fix inside the pasture: Feed tapped first takes the place under the fix.
+      // With a fix inside the pasture: Rain (no bunch to answer) tapped first takes the ground under the fix.
       await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
       await page.context().setGeolocation({ latitude: 46.925, longitude: -110.05, accuracy: 5 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       await page.locator('[data-audit="record-picker"][data-fix="yes"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const under = await page.locator('[data-audit="record-picker"]').getAttribute('data-under-fix').catch(() => '')
-      await page.locator('[data-audit="tile-hay_fed"]').click()
+      await page.locator('[data-audit="tile-rain"]').click()
       const chosen = (await selectShows(p20!.id)) ? p20!.id : await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
-      record('20: with a fix inside a pasture, an action tapped first takes the place under the fix', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'none'}`)
+      record('38: with a fix inside a pasture, an action tapped first still takes the ground under the fix (Block 20, ruling 2 kept)', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'blank'}`)
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.context().setGeolocation(null).catch(() => {})
     })
