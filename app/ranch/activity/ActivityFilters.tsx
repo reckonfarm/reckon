@@ -26,7 +26,7 @@ export default function ActivityFilters({ active, filtering, children }: {
         <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
           className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink"
           data-audit="activity-filter-toggle">
-          {open ? 'Hide filters' : 'Filter'}
+          Filter <span aria-hidden className="ml-1 text-secondary-ink">{open ? '▴' : '▾'}</span>
         </button>
         {active && (
           <span className="font-dm-sans text-[16px] font-semibold text-brand" data-audit="activity-filter-active">

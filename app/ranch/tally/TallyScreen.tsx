@@ -224,7 +224,7 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
         {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-save-error">{saveErr}</p>}
         <div className="mt-4 flex flex-col gap-2">
           <button type="button" onClick={save} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Save</button>
-          <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back">Keep counting</button>
+          <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back">Back</button>
         </div>
       </Card>
     )
@@ -260,7 +260,7 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
         {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-save-error">{saveErr}</p>}
         <div className="mt-4 flex flex-col gap-2">
           <button type="button" onClick={save} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Record the count</button>
-          <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back-to-counting">Keep counting</button>
+          <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back-to-counting">Back</button>
         </div>
       </Card>
     )
@@ -346,7 +346,7 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
         <div className="mt-3 rounded-lg border p-3" style={{ borderColor: warning }} role="alert" data-audit="tally-leave-guard">
           <p className="font-dm-sans text-[17px] font-semibold text-ink">Leave a count of {through.toLocaleString('en-US')}?</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => setLeaving(false)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="tally-stay">Keep counting</button>
+            <button type="button" onClick={() => setLeaving(false)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="tally-stay">Keep going</button>
             <button type="button" onClick={() => { setLeaving(false); setMode('idle'); setHeld(loadTally()) }} className="min-h-[52px] rounded-lg border border-control-border px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="tally-leave-keep">Leave it for later</button>
             <button type="button" onClick={throwAway} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="tally-leave-discard">Throw it away</button>
           </div>

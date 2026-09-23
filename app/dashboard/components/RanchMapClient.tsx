@@ -76,7 +76,7 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
           <div className="flex items-center justify-between gap-3">
             <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="changes-summary">{total} {total === 1 ? 'change' : 'changes'}{step != null ? ` · ${step + 1} of ${changes.length}` : ''}</p>
             <div className="flex gap-2">
-              {step != null && step > 0 && <button type="button" onClick={() => goTo(step - 1)} className="min-h-[44px] rounded-lg border border-control-border px-3 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="changes-prev">Back</button>}
+              {step != null && step > 0 && <button type="button" onClick={() => goTo(step - 1)} className="min-h-[44px] rounded-lg border border-control-border px-3 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="changes-prev">Previous</button>}
               {(step == null || step < changes.length - 1) && <button type="button" onClick={() => goTo(step == null ? 0 : step + 1)} className="min-h-[44px] rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="changes-next">{step == null ? 'Show me' : 'Next'}</button>}
             </div>
           </div>
