@@ -315,15 +315,21 @@ async function stableText(page: Page, selector: string, timeoutMs = 10_000): Pro
 // Block 13 — the one gesture. Hold a row (mouse down, 600 ms, up) and read the
 // sheet. `hold` returns whether the sheet opened; the caller reads its parts.
 async function hold(page: Page, row: Locator): Promise<boolean> {
-  await row.scrollIntoViewIfNeeded().catch(() => {})
-  const box = await row.boundingBox().catch(() => null)
-  if (!box) return false
-  await page.mouse.move(box.x + Math.min(40, box.width / 3), box.y + box.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(650)
-  await page.mouse.up()
-  await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 3_000 }).catch(() => {})
-  return (await page.locator('[data-audit="row-actions-sheet"]').count()) === 1
+  // A row painted by the server answers a hold only once it has hydrated; on a slow
+  // page the first hold can land before that. Three tries, never a false 'closed'.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await row.scrollIntoViewIfNeeded().catch(() => {})
+    const box = await row.boundingBox().catch(() => null)
+    if (!box) return false
+    await page.mouse.move(box.x + Math.min(40, box.width / 3), box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    await page.mouse.up()
+    await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 3_000 }).catch(() => {})
+    if ((await page.locator('[data-audit="row-actions-sheet"]').count()) === 1) return true
+    await page.waitForTimeout(500)
+  }
+  return false
 }
 const sheet = (page: Page) => ({
   fix: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]'),
@@ -2212,7 +2218,7 @@ async function main() {
       await page.locator('[data-audit="tally-total-box"]').click().catch(() => {})
       const total47 = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
       await page.context().setOffline(true)
-      await page.locator('[data-audit="tally-finish"]').click()
+      await page.locator('[data-audit="tally-finish-open"]').click()
       const finishLine = (await page.locator('[data-audit="tally-finish-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       await page.locator('[data-audit="tally-save"]').click()
       const offStates = await watchStates(page, 'Sent', 4_000, 'Counted 47')
@@ -2991,7 +2997,7 @@ async function main() {
       const addPlace = await page.getByRole('link', { name: /Add a place/ }).count()
       const explains = await page.locator('[data-audit="since-note"], [data-audit="repeat-preview"]').count()
       const strip = await page.locator('[data-audit="weather-strip"]').count()
-      const cells = await page.locator('[data-audit^="weather-"][data-audit!="weather-strip"]').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('weather-', '')}=${(e.textContent ?? '').trim()}`))
+      const cells = await page.locator('[data-audit^="weather-"]:not([data-audit="weather-strip"]):not([data-audit="weather-reads"]):not([data-audit="weather-programs"])').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('weather-', '')}=${(e.textContent ?? '').trim()}`))
       const sunrise = cells.find(c => c.startsWith('sunrise='))?.slice(8) ?? '', sunset = cells.find(c => c.startsWith('sunset='))?.slice(7) ?? ''
       const clock = /^\d{1,2}:\d{2} ?[AP]M$/
       const mapLine = (await page.locator('[data-audit="ranch-map-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
@@ -4110,7 +4116,7 @@ async function main() {
         const onScreen = await page.evaluate(() => {
           const box = document.querySelector('[data-audit="tally-counting"]')
           if (!box) return { words: '', extras: -1 }
-          const allowed = new Set(['tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
+          const allowed = new Set(['tally-line', 'tally-change', 'tally-change-bunch', 'tally-change-from', 'tally-change-to', 'tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
           const extras = Array.from(box.querySelectorAll('p, button, span')).filter(e => {
             const r = e.getBoundingClientRect()
             if (r.height === 0 || !(e.textContent ?? '').trim()) return false

@@ -283,7 +283,7 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
           data-audit="tally-line">
           {source ? lotLabel(source) : 'Pick the bunch'}{countingIn ? ` · from ${placeName(fromId) ?? '—'} → ${placeName(toId) ?? '—'}` : ''}
         </button>
-        <button type="button" onClick={() => setMode('finish')} className="inline-flex min-h-[48px] shrink-0 items-center gap-1.5 rounded-lg border border-forest-green px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="tally-finish">
+        <button type="button" onClick={() => setMode('finish')} className="inline-flex min-h-[48px] shrink-0 items-center gap-1.5 rounded-lg border border-forest-green px-4 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="tally-finish-open">
           <svg aria-hidden width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
           Finish
         </button>
