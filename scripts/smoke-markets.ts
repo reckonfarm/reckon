@@ -181,9 +181,10 @@ async function main() {
     // ── Block 2.6B — title unit = axis unit in every view × measure ──
     // The chart title and the "Vertical axis · …" caption read the same `unit`;
     // this walks every combination and checks the two RENDERED strings agree.
-    // Block 6B: period and comparison are separate controls; Corn lives in Market context (its own instance).
+    // Block 6B: period and comparison are separate controls. Block 40: the Corn
+    // context chart came off Markets with the rest of the national context.
     await openChartControls(page)
-    for (const v of ['This year', '12 mo', 'Corn'] as const) {
+    for (const v of ['This year', '12 mo'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
         if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
