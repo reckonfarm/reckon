@@ -1970,6 +1970,104 @@ async function main() {
       record('33: Today\'s repeat card offers every regularly fed bunch, and a row records ITS bunch at ITS place', covers && rowsOn.length <= 4 && states4.includes('Sent') && p4?.herd_lot_id === trio[0].lotId && p4?.place_id === trio[0].placeId, `rows for ${rowsOn.length} feeding(s) · all three bunches on the card ${covers} · preview "${before1.slice(0, 60)}" · [${states4.join(' → ')}] · row bunch ${p4?.herd_lot_id === trio[0].lotId ? 'bunch 1' : 'other'} at ${p4?.place_id === trio[0].placeId ? 'its place' : p4?.place_id ?? 'no place'}`)
     })
 
+    // ── Block 37: the number is the control ─────────────────────────────────
+    // A number that can change IS its own control: tap it, a keypad on the spot,
+    // Done saves — through the outbox, with its Undo, never blocking on signal.
+    // The falsifier: hay on hand, a head count and a feeding's quantity each cost
+    // one tap plus the number with NO screen change (same URL, no sheet); a
+    // place's name the same; and a long-press on a row in each of the four
+    // lists — Activity, Cattle, Places, the hay ledger — offers Fix and Delete.
+    await section('Block 37: the number is the control', async () => {
+      const sameScreen = async (before: string) => page.url() === before && (await page.locator('[data-audit="record-sheet"], [data-audit="row-actions-sheet"]').count()) === 0
+      const tapAndType = async (audit: string, value: string) => {
+        await page.locator(`[data-audit="${audit}"]`).first().click({ timeout: 10_000 })                    // the tap
+        const box = page.locator(`[data-audit="${audit}-input"]`).first()
+        await box.waitFor({ timeout: 5_000 })
+        await box.fill(value)                                                                                 // the number
+        await box.press('Enter')                                                                              // Done
+      }
+
+      // Hay on hand, on Today.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="hay-on-hand"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const url37 = page.url()
+      const wasOnHand = (await page.locator('[data-audit="hay-on-hand"]').first().innerText().catch(() => '')).replace(/,/g, '')
+      await tapAndType('hay-on-hand', '333')
+      const stillHere = await sameScreen(url37)
+      const states37a = await watchStates(page, 'Sent', 45_000, 'Counted 333 bales')
+      const painted37a = (await page.locator('[data-audit="hay-on-hand"]').first().innerText().catch(() => '')).replace(/,/g, '')
+      const { data: cnt } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'hay_inventory').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const cntBales = ((cnt as { payload?: { bales?: number } } | null)?.payload?.bales) ?? null
+      const routeAfter = ((await (await page.request.get('/api/ranch/hay-on-hand')).json().catch(() => ({}))) as { bales?: number | null }).bales ?? null
+      record('37: hay on hand — tap the number, type, Done: one tap plus the number, no screen change; the count lands and the ranch reads it', stillHere && states37a[0] === 'Saved' && states37a.includes('Sent') && painted37a === '333' && cntBales === 333 && routeAfter === 333, `was ${wasOnHand} · same screen ${stillHere} · [${states37a.join(' → ')}] · painted ${painted37a} · count row ${cntBales} · route ${routeAfter}`)
+
+      // A head count, on Cattle.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const row37 = page.locator('[data-audit="lot-row"]', { hasText: LOT_NAME }).first()
+      await row37.waitFor({ timeout: 20_000 }).catch(() => {})
+      const urlC = page.url()
+      const wasHead = (await row37.locator('[data-audit="lot-head"]').innerText().catch(() => '')).replace(/,/g, '')
+      await row37.locator('[data-audit="lot-head"]').click({ timeout: 10_000 })
+      const headBox = row37.locator('[data-audit="lot-head-input"]')
+      await headBox.waitFor({ timeout: 5_000 }); await headBox.fill('61'); await headBox.press('Enter')
+      const stillC = await sameScreen(urlC)
+      const states37b = await watchStates(page, 'Sent', 45_000, `61 head`)
+      const { data: lotRow } = await admin.from('herd_lots').select('head_count').eq('id', lotId).maybeSingle()
+      const { data: anchorRow } = await admin.from('events').select('payload').eq('ranch_id', ranchId).eq('type', 'head_count_set').eq('payload->>lot_id', lotId).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const anchorHead = ((anchorRow as { payload?: { head_count?: number } } | null)?.payload?.head_count) ?? null
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const paintedHead = (await page.locator('[data-audit="lot-row"]', { hasText: LOT_NAME }).first().locator('[data-audit="lot-head"]').innerText().catch(() => '')).replace(/,/g, '')
+      record('37: a head count — tap the number, type, Done: no screen change; the bunch reads it and the record carries the anchor', stillC && states37b[0] === 'Saved' && states37b.includes('Sent') && (lotRow as { head_count?: number } | null)?.head_count === 61 && anchorHead === 61 && paintedHead === '61', `was ${wasHead} · same screen ${stillC} · [${states37b.join(' → ')}] · bunch ${(lotRow as { head_count?: number } | null)?.head_count ?? '?'} · anchor ${anchorHead} · painted after ${paintedHead}`)
+
+      // A feeding's quantity, on its entry page.
+      const { data: fedRow } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').is('superseded_by', null).is('voided_at', null).eq('payload->>bales', '7').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const fedId = (fedRow as { id: string } | null)?.id ?? ''
+      await page.goto(`/ranch/activity/${fedId}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="event-quantity"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const urlE = page.url()
+      await tapAndType('event-quantity', '9')
+      const stillE = await sameScreen(urlE)
+      const states37c = await watchStates(page, 'Sent', 45_000, 'Fed 9 bales')
+      const { data: corr } = await admin.from('events').select('id, payload, supersedes_event_id').eq('user_id', userId).eq('type', 'hay_fed').eq('supersedes_event_id', fedId).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const corrBales = ((corr as { payload?: { bales?: number } } | null)?.payload?.bales) ?? null
+      const { data: origAfter } = await admin.from('events').select('superseded_by').eq('id', fedId).maybeSingle()
+      record('37: a feeding\'s quantity — tap the number, type, Done: no screen change; a correction supersedes the entry, in the same motion as recording', !!fedId && stillE && states37c[0] === 'Saved' && states37c.includes('Sent') && corrBales === 9 && (origAfter as { superseded_by?: string | null } | null)?.superseded_by === (corr as { id?: string } | null)?.id, `entry ${fedId.slice(0, 8)} · same screen ${stillE} · [${states37c.join(' → ')}] · correction bales ${corrBales} · original superseded ${!!(origAfter as { superseded_by?: string | null } | null)?.superseded_by}`)
+
+      // A place's name, on its page.
+      await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-name"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const urlP = page.url()
+      await tapAndType('place-name', `${PREFIX} West stack renamed`)
+      const stillP = await sameScreen(urlP)
+      const states37d = await watchStates(page, 'Sent', 45_000, 'Renamed to')
+      const { data: plRow } = await admin.from('places').select('name').eq('id', placeId).maybeSingle()
+      record('37: a place\'s name — tap it, type, Done: no screen change; the place is renamed', stillP && states37d[0] === 'Saved' && states37d.includes('Sent') && (plRow as { name?: string } | null)?.name === `${PREFIX} West stack renamed`, `same screen ${stillP} · [${states37d.join(' → ')}] · name now "${(plRow as { name?: string } | null)?.name ?? '?'}"`)
+      // Put the name back: later sections read it.
+      await admin.from('places').update({ name: `${PREFIX} West stack` }).eq('id', placeId)
+
+      // Long-press on a row in each of the four lists → Fix and Delete.
+      const holds: string[] = []
+      let holdsOk = true
+      const tryHold = async (list: string, path: string, rowSel: string, open?: () => Promise<void>) => {
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        if (open) await open()
+        const row = page.locator(rowSel).first()
+        const there = await row.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+        const opened = there && await hold(page, row)
+        const fix = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]').count()
+        const del = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete-warning"]').count()
+        await page.keyboard.press('Escape').catch(() => {})
+        const ok = opened && fix === 1 && del === 1
+        if (!ok) holdsOk = false
+        holds.push(`${list}: row ${there} · held ${opened} · Fix ${fix} · Delete ${del}`)
+      }
+      await tryHold('Activity', '/ranch/activity', '[data-audit="activity-row"]')
+      await tryHold('Cattle', '/ranch/cattle', '[data-audit="lot-row"]')
+      await tryHold('Places', '/ranch/places', '[data-audit="place-rows"] li, [data-audit="place-rows-unplaced"] li')
+      await tryHold('Hay ledger', `/today?fips=${HOME_FIPS}`, '[data-audit="hay-line"]', async () => { await page.locator('[data-audit="hay-details"] summary, [data-audit="hay-details"] button').first().click({ timeout: 10_000 }).catch(() => {}) })
+      record('37: long-press a row in Activity, Cattle, Places and the hay ledger — Fix and Delete, one gesture everywhere', holdsOk, holds.join(' | '))
+    })
+
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
     // Did the hand do what I asked today; is there anything I have not looked
     // at; can I get to everything that left the hub. Replaces the 7B.2 expander
