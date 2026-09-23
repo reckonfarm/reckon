@@ -531,7 +531,8 @@ async function main() {
       record('6I: selecting the heifer lot drives the chart too — class Heifers, the lot\'s own weight band', /^Heifers · 6\d\d/.test(chartTitle) && /Replacement heifers/.test(selLabel), `chart "${chartTitle.slice(0, 60)}" · selector "${selLabel}"`)
       const marketLines = await page.locator('[data-audit="changed-market"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       const editLines = await page.locator('[data-audit="changed-edit"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
-      record('6I: what changed is two labeled lines — the market reference, and the lot\'s own edit — each with its own date', marketLines.length > 0 && marketLines.every(t => /^Market reference: /.test(t)) && editLines.every(t => /^Edited /.test(t))   // Block 46: the edit line is 'Edited {date}', `${marketLines.length} market lines · ${editLines.length} edit lines · "${(editLines[0] ?? marketLines[0] ?? '').slice(0, 80)}"`)
+      // Block 46: the edit line reads 'Edited {date}'.
+      record('6I: what changed is two labeled lines — the market reference, and the lot\'s own edit — each with its own date', marketLines.length > 0 && marketLines.every(t => /^Market reference: /.test(t)) && editLines.every(t => /^Edited /.test(t)), `${marketLines.length} market lines · ${editLines.length} edit lines · "${(editLines[0] ?? marketLines[0] ?? '').slice(0, 80)}"`)
       // 7C: the thin rule now applies to the HERO — one lot in view, so the
       // "about $Nk" headline and its exact arithmetic are the selected lot's.
       const thinN = await page.locator('[data-audit="thin-about"]').count()
