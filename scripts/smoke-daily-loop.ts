@@ -395,7 +395,8 @@ async function main() {
         const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
         // The verb, the locator, and WHAT STOOD IN THE WAY: an element that intercepts pointer events is the line that names the culprit.
         const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy|intercepts|receives|retrying|from <|subtree/.test(l)).slice(0, 5)].join(' · ').slice(0, 700)
-        record(`${name}: died before its checks finished — ${said}`, false, 'every check of this section after that point is unrun')
+        // Identity at death: the page's address says whether the app was even there (a /signin address is a lost session, not a missing button).
+        record(`${name}: died before its checks finished — ${said}`, false, `every check of this section after that point is unrun · page at death ${page.isClosed() ? 'closed' : page.url().replace(BASE, '') || '/'}`)
         await ctx.setOffline(false).catch(() => {})
         if (page.isClosed()) page = await ctx.newPage()
         await page.unroute('**').catch(() => {})
