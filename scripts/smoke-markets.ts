@@ -109,13 +109,24 @@ async function openPriceProtection(page: Page) {
   if (await d.count() && (await d.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="price-protection-more-summary"]').first().click()
 }
 
+// One magic link per RUN, not per browser context. Six contexts each verifying a
+// fresh link for the same address tripped the sign-in rate limit whenever two runs
+// followed each other (2026-09-24: the sixth sign-in landed on /signin and the run
+// crashed, twice). The first context signs in; every later one is handed its
+// cookies — the session is cookie-bound, so the app cannot tell the difference.
+let sessionCookies: Awaited<ReturnType<BrowserContext['cookies']>> | null = null
 async function signIn(ctx: BrowserContext): Promise<Page> {
-  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
   const page = await ctx.newPage()
-  await page.goto(`/auth/callback?token_hash=${link.data!.properties!.hashed_token}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
-  await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  if (sessionCookies) {
+    await ctx.addCookies(sessionCookies)
+  } else {
+    const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: EMAIL })
+    await page.goto(`/auth/callback?token_hash=${link.data!.properties!.hashed_token}&type=magiclink&next=/dashboard`, { waitUntil: 'domcontentloaded' })
+    await page.waitForURL(u => u.pathname.startsWith('/today') || u.pathname.startsWith('/dashboard'), { timeout: 15_000 }).catch(() => {})
+  }
   await page.goto('/today', { waitUntil: 'domcontentloaded' })   // Block 6A: the signed-in home
   await page.locator('header [data-audit="account-button"]').waitFor({ state: 'attached', timeout: 30_000 })   // Block 6A: the email lives on /account
+  if (!sessionCookies) sessionCookies = await ctx.cookies()
   return page
 }
 
