@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Counter from '@/app/components/ui/Counter'
 import { LOT_CLASSES, LOT_CLASS_LABELS, LOT_NAME_MAX, type Lot, type LotClass } from '@/lib/herd'
 import { warning } from '@/lib/brand-colors'
+import { todayKey } from '@/lib/jobs/format'
 
 // ─── A bunch, made on the spot (Block 14) ─────────────────────────────────────
 //
@@ -33,6 +34,7 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
   const [head, setHead] = useState(defaultHead)
   const [klass, setKlass] = useState<LotClass | null>(defaultClass)
   const [placeId, setPlaceId] = useState<string | null>(null)
+  const [asOf, setAsOf] = useState('')   // Block 36: '' = today
   const [places, setPlaces] = useState<PlaceOption[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,7 +54,7 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
     try {
       const res = await fetch('/api/herd/lots', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), class: klass, head_count: headNum, weight_unit: 'lb', ...(placeId ? { place_id: placeId } : {}) }),
+        body: JSON.stringify({ name: name.trim(), class: klass, head_count: headNum, weight_unit: 'lb', ...(placeId ? { place_id: placeId } : {}), ...(asOf ? { as_of: asOf } : {}) }),
       })
       const j = await res.json().catch(() => ({})) as { lot?: Lot; error?: string }
       if (!res.ok || !j.lot) { setError(j.error ?? 'That bunch could not be saved just now.'); return }
@@ -73,6 +75,10 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
       <div className="mt-3">
         <Counter label="Head count" value={head} onChange={setHead} audit="new-bunch-head" min={0} max={20000} />
       </div>
+      {/* Block 36: the day that count was true. Today unless changed. */}
+      <label className="mt-3 block font-dm-sans text-[14px] font-medium text-secondary-ink">As of
+        <input type="date" value={asOf} max={todayKey()} onChange={e => setAsOf(e.target.value)} className="mt-1 block min-h-[48px] w-full rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="new-bunch-as-of" />
+      </label>
 
       <p className="mt-3 font-dm-sans text-[14px] font-medium text-secondary-ink" id="new-bunch-class">Class</p>
       <div className="mt-1 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="new-bunch-class" data-audit="new-bunch-class">

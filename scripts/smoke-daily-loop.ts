@@ -2131,6 +2131,33 @@ async function main() {
       record('34: a four-corner pasture with two zoom taps along the way — four corners, not six; the name and Save are on the shape; five taps and it is saved', zoomThere && cornersSaid === 4 && finishOnShape === 1 && useThisShape === 0 && confirmSteps === 0 && savedCorners === 4 && kindPreselected !== '', `zoom control ${zoomThere} · status "${status.slice(0, 60)}" · corners said ${cornersSaid} · finish on the shape ${finishOnShape} · "Use this shape" ${useThisShape} · confirm screens ${confirmSteps} · saved ring corners ${savedCorners} · kind preselected "${kindPreselected}" → saved "${(drawn as { kind?: string } | null)?.kind ?? 'none'}"`)
     })
 
+    // ── Block 36: a bunch can carry an opening date ─────────────────────────
+    // A new bunch had no work date, so an opening inventory was stamped today
+    // rather than the day it was true. Now New bunch asks "As of" (today unless
+    // changed); the opening count and the placement happen on that day.
+    await section('Block 36: a bunch can carry an opening date', async () => {
+      const dayAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      const opened = dayAgo(6)
+      const name36 = `${PREFIX} 36 late bunch`
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="new-bunch-button"]').first().click({ timeout: 20_000 })
+      await page.locator('[aria-label="Class"] button', { hasText: 'Cows' }).first().click()
+      await page.getByLabel('Name').fill(name36)
+      await page.locator('[data-audit="lot-head-count-input"]').fill('17')
+      const asOfDefault = await page.locator('[data-audit="lot-as-of"]').inputValue().catch(() => 'missing')
+      await page.locator('[data-audit="lot-as-of"]').fill(opened)
+      await page.locator('[data-audit="lot-save"]').click()
+      await page.locator('[data-audit="lot-row"]', { hasText: name36 }).first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const { data: lot36 } = await admin.from('herd_lots').select('id, head_count').eq('ranch_id', ranchId).eq('name', name36).maybeSingle()
+      const lotId36 = (lot36 as { id?: string } | null)?.id ?? ''
+      const { data: anchor36 } = lotId36 ? await admin.from('events').select('id, ts, payload').eq('ranch_id', ranchId).eq('type', 'head_count_set').eq('payload->>lot_id', lotId36).order('ingested_at', { ascending: true }).limit(1).maybeSingle() : { data: null }
+      const anchorTs = (anchor36 as { ts?: string } | null)?.ts ?? ''
+      const anchorDay = anchorTs ? new Date(anchorTs).toLocaleDateString('en-CA', { timeZone: 'America/Denver' }) : ''
+      const anchorId = (anchor36 as { id?: string } | null)?.id ?? ''
+      // The opening anchor (head_count_set) is not a hand-made entry, so the record never lists it as a row — the day on the anchor is the fact.
+      record('36: New bunch asks "As of" (today unless changed) — a bunch put on the books six days late opens on the day it was counted: the opening count carries that day and the record shows it there', asOfDefault === '' && !!lotId36 && (lot36 as { head_count?: number } | null)?.head_count === 17 && anchorDay === opened, `as-of default "${asOfDefault}" (blank = today) · bunch ${lotId36 ? 'made' : 'MISSING'} head ${(lot36 as { head_count?: number } | null)?.head_count ?? '?'} · opening count on ${anchorDay || 'none'} (asked ${opened})`)
+    })
+
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
     // Did the hand do what I asked today; is there anything I have not looked
     // at; can I get to everything that left the hub. Replaces the 7B.2 expander
@@ -2726,7 +2753,7 @@ async function main() {
       const plus = await pt.locator('[data-audit="lot-head-count-plus"]').count()
       const saveBox = await pt.locator('[data-audit="lot-save"]').boundingBox().catch(() => null)
       const saveText = (await pt.locator('[data-audit="lot-save"]').innerText().catch(() => '')).trim()
-      record('15b (rulings 8, 9): New bunch is one button at the top; the form asks class, name, head, place and nothing else; no helper text; head by −/+; Save is full width and says what it does',
+      record('15b (rulings 8, 9) + 36: New bunch is one button at the top; the form asks class, name, head, place, as of, and nothing else; no helper text; head by −/+; Save is full width and says what it does',
         oneNew === 1 && newAbove && /Class/.test(formText) && /Name/.test(formText) && /Head count/.test(formText) && !/Purpose|Average weight|Sharpen/.test(formText) && hints === 0 && plus === 1 && !!saveBox && saveBox.width > 300 && saveText === 'Add the bunch',
         `buttons ${oneNew} top ${newAbove} · fields "${formText.slice(0, 80)}" · hints ${hints} · plus ${plus} · save ${saveBox ? Math.round(saveBox.width) : '?'}px "${saveText}"`)
       const B15 = `${PREFIX} 15b bunch`

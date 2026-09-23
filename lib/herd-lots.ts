@@ -103,12 +103,25 @@ export async function getRanchLotsIncludingRetired(supabase: SupabaseClient, use
 // group actions after them — so the row is written first, and the direct
 // column write below is the same value, kept for a database without 066.
 // Written on the caller's own client: the 043 insert policy is the gate.
-async function recordHeadCountSet(supabase: SupabaseClient, uid: string, ranchId: string, lotId: string, before: number | null, after: number, reason: 'created' | 'edit'): Promise<string | null> {
+async function recordHeadCountSet(supabase: SupabaseClient, uid: string, ranchId: string, lotId: string, before: number | null, after: number, reason: 'created' | 'edit', ts: string = new Date().toISOString()): Promise<string | null> {
   const { error } = await supabase.from('events').insert({
-    user_id: uid, ranch_id: ranchId, device_id: null, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1,
+    user_id: uid, ranch_id: ranchId, device_id: null, type: 'head_count_set', ts, schema_version: 1,
     payload: { source: 'manual', schema_version: 1, lot_id: lotId, head_before: before, head_after: after, reason },
   })
   return error ? error.message : null
+}
+
+// Block 36: 'YYYY-MM-DD' ranch day → the ISO instant the opening happened
+// (noon, ranch time), or today. Not in the future, not before 2000.
+function openingDay(raw: unknown): { ok: true; ts: string } | { ok: false; error: string } {
+  const v = typeof raw === 'object' && raw ? (raw as { as_of?: unknown }).as_of : undefined
+  if (v == null || v === '') return { ok: true, ts: new Date().toISOString() }
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { ok: false, error: 'The opening date must be a day (YYYY-MM-DD).' }
+  const d = new Date(`${v}T12:00:00-06:00`)
+  if (Number.isNaN(d.getTime())) return { ok: false, error: 'The opening date must be a real day.' }
+  if (d.getTime() > Date.now() + 36 * 3600 * 1000) return { ok: false, error: 'The opening date is in the future.' }
+  if (d.getUTCFullYear() < 2000) return { ok: false, error: 'The opening date is too far in the past.' }
+  return { ok: true, ts: d.toISOString() }
 }
 
 export type LotWrite =
@@ -149,13 +162,19 @@ export async function createLot(supabase: SupabaseClient, raw: unknown): Promise
   const { data, error } = ins
   if (error || !data) return { ok: false, status: 500, error: error?.message ?? 'Could not save the bunch.' }
   const created = data as LotRow
-  const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created')
+  // Block 36: a bunch can carry an opening date. The opening count — and the
+  // placement with it — happen on the day the count was TRUE, not the day the
+  // row was typed in; a bunch put on the books a week late still opens on the
+  // day it was counted. Today when none is given.
+  const openedAt = openingDay(raw)
+  if (!openedAt.ok) return { ok: false, status: 400, error: openedAt.error }
+  const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, created.id, null, created.head_count, 'created', openedAt.ts)
   if (ledgerErr) return { ok: false, status: 500, error: 'The bunch was saved but its count could not be written to the record — open it and set the count again.' }
   // Block 25b (PK, 2026-09-21): a place without a move is a PLACEMENT — the same
   // event a move is, marked so it reads "placed at", never "moved".
   if (placeId) {
     const { error: placedErr } = await supabase.from('events').insert({
-      user_id: who.uid, ranch_id: who.ranchId, device_id: null, type: 'cattle_moved', ts: new Date().toISOString(), schema_version: 1,
+      user_id: who.uid, ranch_id: who.ranchId, device_id: null, type: 'cattle_moved', ts: openedAt.ts, schema_version: 1,
       payload: { source: 'manual', schema_version: 1, placement: true, placement_reason: 'created', head: created.head_count, herd_lot_id: created.id, from_place_id: null, to_place_id: placeId, place_id: placeId },
     })
     if (placedErr) return { ok: false, status: 500, error: 'The bunch was saved, but where it is could not be written to the record — open it and pick the place again.' }
