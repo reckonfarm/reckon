@@ -180,7 +180,7 @@ export default function LatestReadingCard({
         <RibbonAndSummary history={history} />
         <p className="mt-3 text-[14px] text-secondary-ink font-dm-sans">
           Source:{' '}
-          <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="underline">
+          <a href="https://droughtmonitor.unl.edu" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center underline">
             U.S. Drought Monitor
           </a>
         </p>

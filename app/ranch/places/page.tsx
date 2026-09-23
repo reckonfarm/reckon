@@ -56,7 +56,7 @@ export default async function PlacesPage() {
             the hub. The 6J rule: every surface reachable from where a person
             would look, not just reachable by URL. */}
         {/* Block 12 (12.7) kept as a name you tap: devices are reached from here. */}
-        <p className="mt-1 font-dm-sans text-[16px]"><Link href="/ranch/devices" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices →</Link></p>
+        <p className="mt-1 font-dm-sans text-[16px]"><Link href="/ranch/devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices →</Link></p>
 
         {drawn.length > 0 && (
           <div className="mt-4" data-audit="places-map">

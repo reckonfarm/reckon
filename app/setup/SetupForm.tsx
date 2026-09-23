@@ -53,7 +53,7 @@ export default function SetupForm() {
           {county ? (
             <div className="mt-1 flex min-h-[48px] items-center justify-between rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] text-ink" data-audit="setup-county">
               <span>{county.name}, {county.state}</span>
-              <button type="button" onClick={() => { setCounty(null); setQuery('') }} className="min-h-[44px] px-2 font-semibold text-forest-green underline underline-offset-2">Change</button>
+              <button type="button" onClick={() => { setCounty(null); setQuery('') }} className="min-h-[48px] px-2 font-semibold text-forest-green underline underline-offset-2">Change</button>
             </div>
           ) : (
             <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Fergus, MT" aria-autocomplete="list" aria-expanded={results.length > 0} data-audit="setup-county-search" />

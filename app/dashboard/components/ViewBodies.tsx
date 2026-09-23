@@ -605,7 +605,7 @@ export async function WeatherViewBody({
 
               {hayNearbyCount === 0 && (
                 <p className="mt-3 text-center font-dm-sans text-[14px] text-secondary-ink">
-                  <Link href="/hay" className="underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
+                  <Link href="/hay" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Post hay for sale</Link> to reach ranchers in drought-affected counties.
                 </p>
               )}
 

@@ -192,7 +192,7 @@ export default function RadarClient() {
                             <li key={m.listing_id} className="flex items-center justify-between gap-3">
                               <Link
                                 href={`/hay/${m.listing_id}`}
-                                className="font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink truncate"
+                                className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink truncate"
                               >
                                 {m.hay_type ?? 'Hay'}{m.county_name ? ` — ${m.county_name}, ${m.state}` : ''}
                                 {m.listing_type !== 'donate' && m.price_per_ton != null ? ` · $${m.price_per_ton}/ton` : ''}

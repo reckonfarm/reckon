@@ -61,7 +61,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className="mb-3 font-dm-sans text-[16px]">
-          <Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
+          <Link href="/ranch/places" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
         {/* Correcting what a place IS (057): name, kind, retire. A retired place
             shows only the way back — the route refuses every other edit on one,
@@ -77,7 +77,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           <p className="mt-2 font-dm-sans text-[17px] text-ink" data-audit="place-hierarchy">
             {parent && (
               <span data-audit="place-parent">
-                In <Link href={`/ranch/places/${parent.id}`} className="font-semibold text-brand underline underline-offset-2">{parent.name}</Link>
+                In <Link href={`/ranch/places/${parent.id}`} className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">{parent.name}</Link>
                 <span className="text-secondary-ink"> · {kindLabel(parent.kind).toLowerCase()}</span>
               </span>
             )}
@@ -138,7 +138,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
               <ul className="space-y-2">
                 {memory.map(m => (
                   <li key={m.kind} className="font-dm-sans text-[17px] leading-snug text-forest-green">
-                    <span className="text-ink">{m.label}:</span> <Link href={`/ranch/activity/${m.eventId}`} className="underline underline-offset-2">{m.answer}</Link>
+                    <span className="text-ink">{m.label}:</span> <Link href={`/ranch/activity/${m.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{m.answer}</Link>
                   </li>
                 ))}
               </ul>

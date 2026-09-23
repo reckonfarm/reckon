@@ -276,7 +276,7 @@ function ActionCards({ year, currentYear }: {
             <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               Call or visit your local FSA office to begin your LFP application. Bring livestock inventory records and grazing land documentation.
             </p>
-            <a href="https://www.farmers.gov/service-center-locator" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+            <a href="https://www.farmers.gov/service-center-locator" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
               Find your FSA office →
             </a>
           </div>
@@ -298,7 +298,7 @@ function ActionCards({ year, currentYear }: {
             <p className="mt-0.5 text-[14px] text-secondary-ink font-dm-sans leading-relaxed">
               Submit the LFP application with supporting documentation to your FSA county office.
             </p>
-            <a href="https://www.fsa.usda.gov/Assets/USDA-FSA-Public/usdafiles/Farm-Bill/pdf/ccc853.pdf" target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
+            <a href="https://www.fsa.usda.gov/Assets/USDA-FSA-Public/usdafiles/Farm-Bill/pdf/ccc853.pdf" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center mt-1 inline-block text-[14px] font-semibold text-forest-green underline underline-offset-2 font-dm-sans">
               Download Form CCC-853 →
             </a>
           </div>
@@ -520,7 +520,7 @@ function LivestockPanel({
               href="https://www.farmers.gov/working-with-us/service-center-locator"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-semibold text-amber-900 underline hover:text-amber-700"
+              className="inline-flex min-h-[48px] items-center font-semibold text-amber-900 underline hover:text-amber-700"
             >
               check with your county FSA office
             </a>.
@@ -835,7 +835,7 @@ function LivestockPanel({
             href="https://droughtmonitor.unl.edu"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline"
+            className="inline-flex min-h-[48px] items-center underline"
           >
             U.S. Drought Monitor
           </a>
@@ -844,7 +844,7 @@ function LivestockPanel({
             href="https://droughtmonitor.unl.edu/fsa"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline"
+            className="inline-flex min-h-[48px] items-center underline"
           >
             NDMC FSA Tool
           </a>

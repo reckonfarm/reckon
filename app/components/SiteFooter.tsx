@@ -11,9 +11,9 @@ export default function SiteFooter() {
   return (
     <footer className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6" data-audit="site-footer">
       <p className="font-dm-sans text-[14px] text-secondary-ink">
-        <Link href="/terms" className="underline hover:text-forest-green">Terms</Link>
+        <Link href="/terms" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Terms</Link>
         {' · '}
-        <Link href="/privacy" className="underline hover:text-forest-green">Privacy Policy</Link>
+        <Link href="/privacy" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Privacy Policy</Link>
       </p>
       <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">
         {OPERATOR_NAME}{CONTACT_EMAIL ? ` · ${CONTACT_EMAIL}` : ''}

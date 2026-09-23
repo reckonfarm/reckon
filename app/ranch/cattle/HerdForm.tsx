@@ -436,7 +436,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
                           type="button"
                           aria-label={`Remove ${formatMonth(m)}`}
                           onClick={() => setDWindows(w => w.filter(x => x !== m))}
-                          className="text-secondary-ink hover:text-warning"
+                          className="inline-flex h-12 w-12 items-center justify-center text-secondary-ink hover:text-warning"
                         >
                           ×
                         </button>
@@ -459,7 +459,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
           <Button variant="primary" onClick={saveDraft} disabled={!draftValid || status === 'saving'} className="w-full min-h-[56px] text-[18px]" data-audit="lot-save">
             {status === 'saving' ? 'Saving…' : editing === 'new' ? 'Add the bunch' : 'Save the bunch'}
           </Button>
-          <button type="button" onClick={cancel} className="min-h-[44px] font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
+          <button type="button" onClick={cancel} className="min-h-[48px] font-dm-sans text-[16px] text-secondary-ink hover:text-ink">
             Cancel
           </button>
         </div>
@@ -510,8 +510,8 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
             {!where[lot.id] && <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-where">{NO_PLACE_RECORDED}</p>}
             {where[lot.id] && (
               <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-where">
-                At <Link href={`/ranch/places/${where[lot.id].placeId}`} className="font-semibold underline underline-offset-2" data-audit="lot-where-place">{where[lot.id].placeName}</Link>
-                {where[lot.id].moved && <span className="text-secondary-ink"> · <Link href={`/ranch/activity/${where[lot.id].moved!.eventId}`} className="underline underline-offset-2">{where[lot.id].moved!.placement ? 'placed' : 'moved'} {agoLabel(where[lot.id].moved!.ts)}</Link></span>}
+                At <Link href={`/ranch/places/${where[lot.id].placeId}`} className="inline-flex min-h-[48px] items-center font-semibold underline underline-offset-2" data-audit="lot-where-place">{where[lot.id].placeName}</Link>
+                {where[lot.id].moved && <span className="text-secondary-ink"> · <Link href={`/ranch/activity/${where[lot.id].moved!.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{where[lot.id].moved!.placement ? 'placed' : 'moved'} {agoLabel(where[lot.id].moved!.ts)}</Link></span>}
               </p>
             )}
             {/* Block 14: the last count, one line, with the difference — and the
@@ -519,10 +519,10 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
                 this button does, through the same save as any edit. */}
             {work?.count && (
               <p className="mt-1 font-dm-sans text-[15px] text-ink" data-audit="lot-last-count">
-                Last count: <Link href={`/ranch/activity/${work.count.eventId}`} className="underline underline-offset-2"><span className="font-semibold">{work.count.counted.toLocaleString()} counted</span>{work.count.expected != null && <> · {work.count.expected.toLocaleString()} expected · {work.count.counted - work.count.expected === 0 ? 'same' : work.count.counted - work.count.expected > 0 ? `+${(work.count.counted - work.count.expected).toLocaleString()}` : `−${(work.count.expected - work.count.counted).toLocaleString()}`}</>}</Link>
+                Last count: <Link href={`/ranch/activity/${work.count.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2"><span className="font-semibold">{work.count.counted.toLocaleString()} counted</span>{work.count.expected != null && <> · {work.count.expected.toLocaleString()} expected · {work.count.counted - work.count.expected === 0 ? 'same' : work.count.counted - work.count.expected > 0 ? `+${(work.count.counted - work.count.expected).toLocaleString()}` : `−${(work.count.expected - work.count.counted).toLocaleString()}`}</>}</Link>
                 <span className="text-secondary-ink"> · {agoLabel(work.count.ts)}</span>
                 {work.count.counted !== lot.head_count && (
-                  <button type="button" disabled={status === 'saving'} onClick={() => void setHeadFromCount(lot, work.count!.counted)} className="ml-3 inline-flex min-h-[44px] items-center rounded-lg border border-forest-green/40 px-3 font-dm-sans text-[15px] font-semibold text-forest-green disabled:opacity-50" data-audit="lot-change-to-count">
+                  <button type="button" disabled={status === 'saving'} onClick={() => void setHeadFromCount(lot, work.count!.counted)} className="ml-3 inline-flex min-h-[48px] items-center rounded-lg border border-forest-green/40 px-3 font-dm-sans text-[15px] font-semibold text-forest-green disabled:opacity-50" data-audit="lot-change-to-count">
                     Change bunch to {work.count.counted.toLocaleString()}?
                   </button>
                 )}
@@ -530,11 +530,11 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
             )}
             {work && (work.bales != null || work.what) && (
               <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="lot-last-work">
-                Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="underline underline-offset-2">{work.what ? `${work.what}${work.head != null ? ` ${work.head.toLocaleString('en-US')} head` : ''}` : work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
+                Last recorded work: <Link href={`/ranch/activity/${work.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{work.what ? `${work.what}${work.head != null ? ` ${work.head.toLocaleString('en-US')} head` : ''}` : work.bales != null ? `fed ${work.bales} ${work.bales === 1 ? 'bale' : 'bales'}` : 'fed hay'} · {new Date(work.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' })}</Link>
               </p>
             )}
             <p className="mt-1">
-              <Link href={`/markets?lot=${lot.id}`} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link">View market comparison →</Link>
+              <Link href={`/markets?lot=${lot.id}`} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link">View market comparison →</Link>
             </p>
           </div>
         </div>

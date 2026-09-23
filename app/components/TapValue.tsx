@@ -88,7 +88,7 @@ export default function TapValue({ value, format, label, audit, kind = 'number',
           type="button"
           onClick={e => { e.stopPropagation(); start() }}
           aria-label={label}
-          className={`min-h-[44px] rounded-md underline decoration-dotted decoration-1 underline-offset-4 hover:bg-forest-green/5 ${className}`}
+          className={`min-h-[48px] rounded-md underline decoration-dotted decoration-1 underline-offset-4 hover:bg-forest-green/5 ${className}`}
           data-audit={audit}
           data-tap-value
         >

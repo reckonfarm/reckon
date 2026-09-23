@@ -150,7 +150,7 @@ export default function RowActions({ links, children, className = '' }: { links:
         aria-label="Actions"
         title={`Actions for ${links.label}`}
         data-audit="row-more"
-        className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-secondary-ink hover:bg-forest-green/5 md:group-hover:inline-flex"
+        className="absolute right-2 top-1/2 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-lg text-secondary-ink hover:bg-forest-green/5 md:group-hover:inline-flex"
       >
         ⋯
       </button>

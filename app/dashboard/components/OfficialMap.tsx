@@ -92,7 +92,7 @@ export default function OfficialMap({ map, title, note, className = '', regional
             href={extractUrl(map.source_url)}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-secondary-ink"
+            className="inline-flex min-h-[48px] items-center underline hover:text-secondary-ink"
           >
             Source
           </a>

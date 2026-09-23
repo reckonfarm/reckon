@@ -97,7 +97,7 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
       {/* The three the row does not carry, one tap each, as words. */}
       <div className="mt-2 flex flex-wrap gap-x-4" data-audit="record-rare">
         {([['preg_check', 'Preg check'], ['hay_inventory', 'Count hay'], ['bales_stacked', 'Add bales to a stack']] as const).map(([k, w]) => (
-          <button key={k} type="button" onClick={() => onRare(k, underFix)} className="min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit={k === 'preg_check' ? 'tile-preg-check' : `tile-${k}`}>{w}</button>
+          <button key={k} type="button" onClick={() => onRare(k, underFix)} className="min-h-[48px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit={k === 'preg_check' ? 'tile-preg-check' : `tile-${k}`}>{w}</button>
         ))}
       </div>
 

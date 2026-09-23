@@ -46,7 +46,7 @@ export default function RanchView({ view, todayCount, cattle, ground, record }: 
             ? <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="hay-rate">{n(h.onHand)} ÷ {h.rate.balesPerDay >= 10 ? Math.round(h.rate.balesPerDay) : h.rate.balesPerDay.toFixed(1)} bales/day = {n(h.daysLeft)} days · the rate is {n(h.rate.bales)} bales over the last {h.rate.windowDays} days (fed on {h.rate.daysWithEntries} of them)</p>
             : <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="hay-rate">{h.withheld === 'nothing_left' ? 'The stack is at zero.' : 'Not enough feeding recorded to give a rate — no days left is said, not guessed.'}</p>}
           {h.fedThisSeason && <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="hay-season">Feed used this season: {n(h.fedThisSeason.bales)} bales · {h.fedThisSeason.entries} feedings over {h.fedThisSeason.days} days</p>}
-          <p className="mt-2 font-dm-sans text-[15px]"><Link href="/ranch/activity?lot=" className="font-semibold text-brand underline underline-offset-2">Every hay line</Link></p>
+          <p className="mt-2 font-dm-sans text-[15px]"><Link href="/ranch/activity?lot=" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Every hay line</Link></p>
         </>
       ),
     })
@@ -60,7 +60,7 @@ export default function RanchView({ view, todayCount, cattle, ground, record }: 
         <>
           <p className="font-dm-sans text-[16px] text-ink" data-audit="rain-arithmetic">{r.entries} {r.entries === 1 ? 'reading' : 'readings'} on {r.places} {r.places === 1 ? 'place' : 'places'} since Jan 1, {r.year}, added up.</p>
           {r.normal != null && diff != null && <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="rain-normal">{inches(r.recorded)} − {inches(r.normal)} normal to date = {diff >= 0 ? '+' : '−'}{inches(Math.abs(diff))} · normal from {r.normalSource}</p>}
-          <p className="mt-2 font-dm-sans text-[15px]"><Link href="/weather" className="font-semibold text-brand underline underline-offset-2">Rain on my places</Link></p>
+          <p className="mt-2 font-dm-sans text-[15px]"><Link href="/weather" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Rain on my places</Link></p>
         </>
       ),
     })

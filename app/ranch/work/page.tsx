@@ -41,7 +41,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>Ranch</p>
         <h1 className="mt-1 type-page-heading text-ink">Work</h1>
-        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Sessions a Scout observed on a machine this season — cutting and baling — each opening its own record. Work recorded by hand is under <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>
+        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Sessions a Scout observed on a machine this season — cutting and baling — each opening its own record. Work recorded by hand is under <Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>
 
         <nav aria-label="Kind" className="mt-4 flex flex-wrap gap-2" data-audit="work-filters">
           {KINDS.map(k => (
@@ -63,7 +63,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
         ) : rows.length === 0 ? (
           <Card className="mt-4 p-5" data-audit="work-empty">
             <p className="font-dm-sans text-[17px] text-ink">{kind === 'all' ? 'No machine work this season.' : `No ${kind} recorded by a machine this season.`}</p>
-            <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">A Scout on a machine records cutting and baling here. <Link href="/ranch/devices" className="font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
+            <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">A Scout on a machine records cutting and baling here. <Link href="/ranch/devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
           </Card>
         ) : groups.map(g => (
           <section key={g.day} className="mt-5" aria-label={fmtDay(`${g.day}T12:00:00-06:00`, 'long')}>
@@ -94,7 +94,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
             </Card>
           </section>
         ))}
-        {res.ok && rows.length > 0 && <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Newest first · this season · <Link href="/ranch/activity?source=machine" className="font-semibold text-brand underline underline-offset-2">every session, with maps →</Link></p>}
+        {res.ok && rows.length > 0 && <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Newest first · this season · <Link href="/ranch/activity?source=machine" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">every session, with maps →</Link></p>}
       </main>
     </>
   )

@@ -62,7 +62,7 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
           <p className="text-[17px] font-semibold text-forest-green" data-audit="receipt-balance">{lines[0]}</p>
           {lines.length > 1 && (
             <details className="mt-1" data-audit="receipt-detail">
-              <summary className="inline-flex min-h-[44px] cursor-pointer items-center text-[16px] font-semibold text-brand underline underline-offset-2">How that adds up</summary>
+              <summary className="inline-flex min-h-[48px] cursor-pointer items-center text-[16px] font-semibold text-brand underline underline-offset-2">How that adds up</summary>
               <ul className="mt-1 space-y-1">
                 {lines.slice(1).map((l, i) => <li key={i} className="text-[16px] text-ink">{l}</li>)}
               </ul>
@@ -71,7 +71,7 @@ export default function SaveReceipt({ headline, label, lines = [], eventId, even
         </div>
       )}
       {to && (
-        <Link href={to} className="mt-2 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
+        <Link href={to} className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="receipt-open-entry">
           {eventLabel} →
         </Link>
       )}

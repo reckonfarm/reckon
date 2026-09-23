@@ -407,7 +407,7 @@ function VectorLayerView({ layer, runtime, center, zoom, countyLabel, selectedFi
           <img src={fallbackImage.url} alt={`${layer.attribution} — ${countyLabel}`} className="w-full rounded-lg object-contain" loading="lazy" />
           <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">
             Source:{' '}
-            <a href={fallbackImage.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-secondary-ink">
+            <a href={fallbackImage.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center underline hover:text-secondary-ink">
               {layer.attribution}
             </a>
           </p>
