@@ -13,6 +13,7 @@ import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import ReviewedButton from '@/app/components/ReviewedButton'
 import LedgerStamp from '@/app/components/LedgerStamp'
 import { ledgerThrough } from '@/lib/ledger-through'
+import { getChangesSince } from '@/lib/since'
 import FilterShell from './ActivityFilters'
 import ActivityDays from './ActivityDays'
 import { Select } from '@/app/components/ui/Field'
@@ -159,7 +160,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             )}
 
             {/* 6H: the review boundary moves only from a page that has every entry since the last review on it. */}
-            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={page.rows.map(r => r.created_at).sort().pop() ?? null} />}
+            {/* Block 32 (found past 50 rows): the list is paged by WORK time, so the newest
+                made-at can sit on page 1 while Reviewed is on the last — send the newest
+                made-at of everything since you checked, the one read the card and the map share. */}
+            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={(await getChangesSince(supabase, user.id))?.newest ?? page.rows.map(r => r.created_at).sort().pop() ?? null} />}
             {filters.since && page.nextCursor && <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="review-on-last-page">Reviewed is offered on the last page, once every entry is in front of you.</p>}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">
