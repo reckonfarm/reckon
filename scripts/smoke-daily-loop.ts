@@ -939,7 +939,7 @@ async function main() {
       const prism = /County estimate/i.test(sourceLine)
       record('6K: the rainfall figures say what they are — a county estimate (PRISM) or a station gauge — never "Actual"', !/YTD Actual|\bActual:/.test(est) && (ytdLabel === '' ? /rather show nothing|No nearby weather station/.test(est) : prism ? /County estimate/.test(ytdLabel) : /Station gauge/.test(ytdLabel)), `label "${ytdLabel}" · source line "${sourceLine}"`)
       // Block 44: the map stands open on the page, so its dated preview line (the closed state's) is not painted — the map being open is what stands in for it.
-      const mapOpen = await page.locator('[data-audit="weather-drought-map"] [aria-expanded="true"]').count()
+      const mapOpen = await page.locator('button[aria-expanded="true"]').filter({ hasText: /^Drought map/ }).count()
       record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && (mapOpen > 0 || /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText)), `map open ${mapOpen} · ${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
     })
 
