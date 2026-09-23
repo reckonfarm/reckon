@@ -25,7 +25,9 @@ export default async function WeatherReads({ lat, lon, forecastPromise, precipPr
   const periods = forecast?.periods ?? []
   const normal = precip && typeof precip === 'object' ? precip.ytdNormal : null
   const reads: { key: string; word: string; read: Read }[] = []
-  if (rain) reads.push({ key: 'rain', word: 'Rain on my ground', read: rainAgainstNormal(rain.ytd.inches, normal, rain.places.filter(p => p.place_id).length) })
+  // Never a zero for no reading: with nothing recorded this season the read says so instead of painting 0.00".
+  if (rain && rain.ytd.entries > 0) reads.push({ key: 'rain', word: 'Rain on my ground', read: rainAgainstNormal(rain.ytd.inches, normal, rain.places.filter(p => p.place_id).length) })
+  else if (rain) reads.push({ key: 'rain', word: 'Rain on my ground', read: { line: 'No rain recorded on my places this season', why: ['A rain reading is what someone on the ranch logged off a gauge. None is logged since Jan 1.'] } })
   reads.push({ key: 'haying', word: 'Haying', read: hayingWindow(periods) })
   reads.push({ key: 'frost', word: 'Frost · snow', read: frostAndSnow(periods) })
   reads.push({ key: 'spray', word: 'Spraying', read: sprayHours(hours ?? []) })

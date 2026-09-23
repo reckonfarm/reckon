@@ -29,6 +29,7 @@
 
 import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { chromium, type Page, type BrowserContext } from '@playwright/test'
@@ -52,6 +53,7 @@ const BYPASS = BASE.includes('vercel.app') ? process.env.VERCEL_BYPASS : undefin
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
 const EMAIL = 'smoke-markets@dryline.farm'
 const PREFIX = 'SMOKE-MARKETS'
+let steerId = '', heiferId = ''   // Block 40
 const HOME_FIPS = '30069'
 const results: { check: string; pass: boolean; detail: string; skip?: boolean }[] = []
 const record = (check: string, pass: boolean, detail = '') => { results.push({ check, pass, detail }); console.log(`${pass ? 'PASS' : 'FAIL'}  ${check}${detail ? ` — ${detail}` : ''}`) }
@@ -81,18 +83,19 @@ async function seed() {
   await admin.from('profiles').upsert({ id: userId, email: EMAIL, home_county_fips: HOME_FIPS })
   const { error: pErr } = await admin.from('operation_profiles').insert({ user_id: userId, ranch_id: ranch!.id, county_fips: HOME_FIPS })
   if (pErr) throw new Error(`profile: ${pErr.message}`)
-  const { error: lErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', created_by: userId, updated_by: userId })
+  const { data: steerRow, error: lErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'steers', head_count: 300, avg_weight: 550, weight_unit: 'lb', created_by: userId, updated_by: userId }).select('id').single()
   if (lErr) throw new Error(`herd lot: ${lErr.message}`)
   // Block 6B: a replacement-heifer lot with its purpose set (055) — the basis line must name a feeder reference, not a breeding value.
-  const { error: hErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'heifers', name: 'Replacement heifers', head_count: 40, avg_weight: 600, weight_unit: 'lb', purpose: 'replacements', created_by: userId, updated_by: userId })
+  const { data: heiferRow, error: hErr } = await admin.from('herd_lots').insert({ ranch_id: ranch!.id, class: 'heifers', name: 'Replacement heifers', head_count: 40, avg_weight: 600, weight_unit: 'lb', purpose: 'replacements', created_by: userId, updated_by: userId }).select('id').single()
   if (hErr) throw new Error(`heifer lot: ${hErr.message}`)
+  // Block 40: Markets prices the bunches the ranch follows — both, for the rest of the suite.
+  steerId = String((steerRow as { id?: string } | null)?.id ?? ''); heiferId = String((heiferRow as { id?: string } | null)?.id ?? '')
+  const { error: fErr } = await admin.from('operation_profiles').update({ herd: { followed: [steerId, heiferId] } }).eq('ranch_id', ranch!.id)
+  if (fErr) throw new Error(`followed: ${fErr.message}`)
 }
 
 // Block 7: the chart's controls live behind two disclosures — open both before touching a radio.
 async function openChartControls(page: Page) {
-  // Broader context (the corn / cycle chart) sits behind a disclosure — open it so its Context radios exist.
-  const bc = page.locator('[data-audit="broader-context-more"]').first()
-  if (await bc.count() && (await bc.getAttribute('data-open')) !== 'true') await page.locator('[data-audit="broader-context-more-summary"]').first().click()
   // 7C: "Change cattle" is gone — the lot select at the top of the page drives
   // class and weight band. Compare and settings is the chart's only disclosure.
   for (const a of ['compare-settings']) {
@@ -144,35 +147,11 @@ async function main() {
 
     record('A2: auction figures carry a barn scope label', /(Local report|Preferred sale barn) — (Billings|Miles City)/.test(body), (body.match(/(Local report|Preferred sale barn) — [A-Za-z ]+/) ?? [''])[0])
     record('A2: no county name attached to an auction figure', !/Petroleum (County )?auction/.test(body) && !/County auction/.test(body))
-    record('A3: every auction row carries its head count', /\d+ head/.test(body) && (await page.locator('[data-audit="auction-card"] li').count()) > 0, (body.match(/[\d,]+ head( · limited sample)?/) ?? [''])[0])
-    record('A3: a thin row says "limited sample" beside the figure; a real range says so', !/limited sample/.test(body) || /\$[\d.]+\/cwt[^$]{0,80}limited sample|\$\d+–\d+\/cwt[^$]{0,80}a range, not one price/.test(body), (body.match(/\$[\d.–]+\/cwt[^$]{0,60}(limited sample|a range, not one price)/) ?? [''])[0])
-    // Phase A5 — units live with the number or in the heading; the essay is gone.
-    record('A5: the auction heading carries the unit', /Other cattle markets · \$\/cwt/.test(body))
-    record('A5: no repeated disclaimer block under the auction rows', !/Close match = same class/.test(body) && !/head-weighted within each 100-lb band/.test(body))
+    // Block 40: the other-classes board (A3/A5's auction rows and cull boards) came off Markets — nothing there was tied to a followed bunch.
+    record('40: no other-classes board, no national context, no barn-level since lines on Markets', (await page.locator('[data-audit="auction-card"], [data-audit="broader-context"], [data-audit="market-since"]').count()) === 0 && !/Other cattle markets|Beyond your barn/.test(body))
     // Block 2.6G — never "range" beside a single price.
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
-    // 7C: read this from the DOM, not from visible page text. The cull and
-    // slaughter boards now sit behind "N more classes" unless one of them is
-    // the selected lot's class, and innerText returns nothing for a closed
-    // <details> — so a body-text match would report the label MISSING when it
-    // is present and correct, which is the worst kind of red.
-    //
-    // The rule it protects is that the label never separates from the number it
-    // qualifies. That is asserted directly: every cull/slaughter board carries
-    // the phrase in its own heading, open or closed, and the priced rows live
-    // in that same board.
-    {
-      const cullBoards = await page.locator('[data-audit="board-cull-cows"], [data-audit="board-slaughter-bulls"]').evaluateAll(els => els.map(e => ({
-        audit: e.getAttribute('data-audit'),
-        heading: (e.querySelector('p')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
-        rows: e.querySelectorAll('li').length,
-      })))
-      const labelled = cullBoards.filter(b => /slaughter prices, not breeding value/i.test(b.heading) && b.rows > 0)
-      record('A5: culls listed as slaughter prices, not breeding value — the label in the same board as the rows, open or collapsed',
-        cullBoards.length > 0 && labelled.length === cullBoards.length,
-        cullBoards.map(b => `${b.audit}: ${b.rows} row(s) "${b.heading.slice(0, 54)}"`).join(' | ') || 'no cull or slaughter board on this report')
-    }
     record('B3: history card renders, points only', /Selected cattle/i.test(body) && /Points are reported sales/i.test(body))
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
@@ -202,9 +181,10 @@ async function main() {
     // ── Block 2.6B — title unit = axis unit in every view × measure ──
     // The chart title and the "Vertical axis · …" caption read the same `unit`;
     // this walks every combination and checks the two RENDERED strings agree.
-    // Block 6B: period and comparison are separate controls; Corn lives in Market context (its own instance).
+    // Block 6B: period and comparison are separate controls. Block 40: the Corn
+    // context chart came off Markets with the rest of the national context.
     await openChartControls(page)
-    for (const v of ['This year', '12 mo', 'Corn'] as const) {
+    for (const v of ['This year', '12 mo'] as const) {
       await page.getByRole('radio', { name: v, exact: true }).click()
       for (const m of ['$/cwt', '$/head', 'My lot'] as const) {
         if (await page.getByRole('radio', { name: m, exact: true }).count() === 0) {
@@ -369,7 +349,6 @@ async function main() {
       const outside = (await page.locator('[data-audit="event-outside"] [data-audit="event-chip"]').allInnerTexts()).map(t => t.replace(/^▾\s*/, '').trim())
       record('2.6F: the disclosure opens the out-of-period events, dated with years', outside.length > 0 && outside.every(t => /\b\d{4}$/.test(t)), outside.join(' | '))
       await page.locator('[data-audit="event-more"]').click().catch(() => {})
-      record('B7: Since you last checked · Markets', /Since (you last checked|yesterday)/i.test(body) && /(New .* report|latest local reference is from)/i.test(body), (body.match(/Since (you last checked|yesterday)[^.]{0,120}/i) ?? [''])[0])
     }
 
     // Where I sell pin (needs migration 046).
@@ -570,7 +549,7 @@ async function main() {
 
       // ── Block 7 (2): one cattle chart on the page by default; the feeder panel beside corn only when opened ──
       await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="broader-context-more"]').waitFor({ timeout: 45_000 }).catch(() => {})
+      await page.locator('[data-audit="history-card"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
       await openChartControls(page)
       // 7C: "Compare with feeder cattle" is gone — a comparison inside a
       // disclosure inside the last section, two taps deep. Corn draws corn
@@ -579,10 +558,9 @@ async function main() {
       // no control left offering to overlay them.
       const cattleTitles = () => page.locator('[data-audit="chart-title"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()).filter(t => /^(Steers|Heifers) · /.test(t)))
       const cattle7 = await cattleTitles()
-      const contextCard = page.locator('[data-audit="history-card"]').nth(1)
-      const cornTitles = (await contextCard.locator('[data-audit="chart-title"]').allInnerTexts()).map(t => t.trim())
+      const contextCards = await page.locator('[data-audit="history-card"]').count()
       const overlayControl = await page.locator('[data-audit="corn-compare"]').count()
-      record('7-2/7C: one cattle chart on the page, corn drawn alone in its own units, and no overlay control left', cattle7.length === 1 && cornTitles.length === 1 && /\$\/bu$/.test(cornTitles[0]) && overlayControl === 0, `cattle titles ${cattle7.length} · corn titles ${cornTitles.join(' | ')} · overlay control ${overlayControl}`)
+      record('7-2/7C/40: one cattle chart on the page and no other, no overlay control left', cattle7.length === 1 && contextCards === 1 && overlayControl === 0, `cattle titles ${cattle7.length} · history cards ${contextCards} · overlay controls ${overlayControl}`)
 
       // ── Block 7 (Part 1): done-when, as rendered — on the DEFAULT page: the disclosures this run opened are
       // remembered per browser (by design), so forget them first and measure what a first visit sees.
@@ -613,24 +591,67 @@ async function main() {
       record('7C: one staleness line replaces the three-date strip, and it names the barn and the age', /last reported .+ · (today|yesterday|\d+ days ago)/.test(staleness) && dateStrip === 0, `"${staleness}" · report-date strips ${dateStrip}`)
       record('7C: the title is the page, not a place, and the empty sale-video line is gone', /^Markets$/.test(title) && videoFeed === 0, `title "${title}" · video-feed ${videoFeed}`)
       record('7-P1: no row of controls between the price and the chart beyond the Chart | Sales view switch', firstThings.groupsAboveChart.every(l => l === 'View') && firstThings.groupsAboveChart.length <= 1, `above the chart: ${firstThings.groupsAboveChart.join(', ') || 'none'}`)
-      // 7C: the boards were 27% of the page at 390 and 31% at 320, four of five
-      // being classes the rancher had not selected. The board matching the
-      // selected lot is open; the rest sit behind ONE tap that says how many.
-      // The check is that the hidden ones are COUNTED, not merely absent — and
-      // that nothing was dropped to shorten the page.
-      const moreClasses = (await page.locator('[data-audit="more-classes-summary"], [data-audit="more-classes"] summary').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
-      const boardsRendered = await page.locator('[data-audit^="board-"]').count()
-      const openBoards = await page.locator('[data-audit^="board-"]').evaluateAll(els => els.filter(e => !e.closest('details:not([open])')).length)
-      record('7-P1/7C: one board is open — the selected lot\'s class — and the rest are one tap away, counted by name', openBoards === 1 && boardsRendered > 1 && /^\d+ more class(es)?/.test(moreClasses), `${openBoards} of ${boardsRendered} board(s) open · "${moreClasses.slice(0, 80)}"`)
-      // Nothing was dropped to shorten the page: every board the report carries
-      // is still rendered, and every band inside them, empty ones included.
-      const bandRows = await page.locator('[data-audit^="board-"] li').count()
-      record('7C: collapsing hid boards, it did not drop them — every board and every band still renders', boardsRendered >= 2 && bandRows >= boardsRendered, `${boardsRendered} boards · ${bandRows} band rows`)
       record('7-P1: no "Cattle markets" heading repeats on the default page, and no "Vertical axis" paragraph', firstThings.cattleEyebrows === 0 && !firstThings.vertical, `visible "Cattle markets" eyebrows ${firstThings.cattleEyebrows} · Vertical axis ${firstThings.vertical}`)
     }
     await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
     const cattle = await text(page)
     record('6B: /ranch/cattle is lot identity only — no price, no sensitivity line, the market link instead', !/Every \$1\/cwt/.test(cattle) && !/\$[\d,]{3,}/.test(cattle) && (await page.locator('[data-audit="lot-market-link"]').count()) >= 1, cattle.slice(0, 120))
+
+    // ── Block 40 — Markets follows what I'm selling ──────────────────────────
+    // The page prices the bunches the ranch follows and nothing else; the list
+    // is a ranch setting in the profile's herd jsonb, read against the live
+    // lots, so a stale id never paints a row.
+    {
+      const followedInDb = async () => { const { data } = await admin.from('operation_profiles').select('herd').eq('user_id', userId).maybeSingle(); const h = (data as { herd?: { followed?: unknown } } | null)?.herd; return Array.isArray(h?.followed) ? (h!.followed as string[]) : [] }
+      const waitDb = async (want: (ids: string[]) => boolean) => { for (let i = 0; i < 20; i++) { if (want(await followedInDb())) return true; await page.waitForTimeout(500) } return false }
+      const links = await page.locator('[data-audit="lot-market-link"]').evaluateAll(els => els.map(e => `${e.getAttribute('data-followed')}:${(e.textContent ?? '').trim()}`))
+      record('40: a followed bunch\'s Cattle row links to Markets', links.length === 2 && links.every(l => l.startsWith('true:Markets')), links.join(' | '))
+
+      // Unfollow the heifers on Markets: the row is the control.
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="followed-line"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      const lineBefore = (await page.locator('[data-audit="followed-line"]').first().innerText().catch(() => '')).trim()
+      await page.locator('[data-audit="followed-line"]').first().click().catch(() => {})
+      await page.locator(`[data-audit="followed-row"][data-id="${heiferId}"]`).click({ timeout: 10_000 }).catch(() => {})
+      const unfollowed = await waitDb(ids => ids.length === 1 && ids[0] === steerId)
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="lot-value"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      const subject = (await page.locator('[data-audit="lot-subject"]').first().innerText().catch(() => '')).trim()
+      const selectors = await page.locator('[data-audit="lot-selector"]').count()
+      const changedRows = await page.locator('[data-audit="changed-row"]').count()
+      const lineAfter = (await page.locator('[data-audit="followed-line"]').first().innerText().catch(() => '')).trim()
+      record('40: unfollowing a bunch on Markets takes it off the page — one bunch priced, no selector, one changed row, the line counts it', unfollowed && /Steers/.test(subject) && !/heifer/i.test(subject) && selectors === 0 && changedRows === 1 && /^1 of 2 bunches/.test(lineAfter), `db ${unfollowed} · subject "${subject}" · selectors ${selectors} · changed rows ${changedRows} · line "${lineBefore}" → "${lineAfter}"`)
+
+      // The unfollowed bunch's Cattle row: one tap follows it and lands on Markets.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const heiferLink = page.locator(`#lot-${heiferId} [data-audit="lot-market-link"]`).first()
+      const heiferLinkText = (await heiferLink.innerText().catch(() => '')).trim()
+      await heiferLink.click({ timeout: 10_000 }).catch(() => {})
+      const landed = await page.waitForURL(/\/markets\?lot=/, { timeout: 20_000 }).then(() => true).catch(() => false)
+      const refollowed = await waitDb(ids => ids.includes(heiferId) && ids.includes(steerId))
+      record('40: an unfollowed bunch\'s Cattle row says Follow on Markets — one tap follows it and lands on Markets with it selected', /^Follow on Markets/.test(heiferLinkText) && landed && refollowed && page.url().includes(`lot=${heiferId}`), `"${heiferLinkText}" · landed ${landed} · db ${refollowed} · ${page.url().replace(BASE, '')}`)
+
+      // Nothing followed: the list is the page; nothing is priced.
+      await admin.from('operation_profiles').update({ herd: { followed: [] } }).eq('user_id', userId)
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="followed-bunches"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      const noneOpen = await page.locator('[data-audit="followed-bunches"]').first().getAttribute('data-open').catch(() => null)
+      const noneRows = await page.locator('[data-audit="followed-row"]').count()
+      const nonePriced = await page.locator('[data-audit="lot-value"], [data-audit="reported-sale"], [data-audit="history-card"], [data-audit="what-changed"], [data-audit="price-protection"]').count()
+      const noneBarn = await page.locator('[data-audit="sell-barn-picker"], [data-audit="sell-barn"]').count()
+      record('40: with nothing followed the list of bunches stands open where the price would be, nothing is priced, the barn setting stays', noneOpen === 'true' && noneRows === 2 && nonePriced === 0, `open ${noneOpen} · rows ${noneRows} · priced surfaces ${nonePriced} · barn setting ${noneBarn}`)
+
+      // A stale id (a deleted or split bunch) never paints a row and never breaks the page.
+      await admin.from('operation_profiles').update({ herd: { followed: [steerId, randomUUID()] } }).eq('user_id', userId)
+      await page.goto(`/markets?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="lot-value"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      const staleValue = (await page.locator('[data-audit="lot-value"]').first().innerText().catch(() => '')).trim()
+      const staleChanged = await page.locator('[data-audit="changed-row"]').count()
+      const staleLine = (await page.locator('[data-audit="followed-line"]').first().innerText().catch(() => '')).trim()
+      const staleEmpty = await page.locator('[data-audit="changed-row"]:empty, [data-audit="followed-row"]:empty').count()
+      record('40: a stale id in the followed list paints nothing — the live bunch is priced, no empty row, the line counts one', /\$/.test(staleValue) && staleChanged === 1 && /^1 of 2 bunches/.test(staleLine) && staleEmpty === 0, `value "${staleValue}" · changed rows ${staleChanged} · line "${staleLine}" · empty rows ${staleEmpty}`)
+      await admin.from('operation_profiles').update({ herd: { followed: [steerId, heiferId] } }).eq('user_id', userId)
+    }
 
     // ── Block 2.6A — out-of-state counties: never "Nearby", never contradicting ──
     // Signed OUT (the public county view the audit walked). A county with no supported

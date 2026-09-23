@@ -13,13 +13,8 @@ import { deliveredCost, roadMiles, type DeliveredCost } from '@/lib/freight'
 import { getOperationProfile } from '@/lib/operation-profile-service'
 import { getLatestLrp, type LrpResult } from '@/lib/lrp-service'
 import { getLocalAuctionRead, type LocalAuctionResult } from '@/lib/local-auction-service'
-import { getNationalBeef, type NationalBeefResult } from '@/lib/national-beef-service'
-import { getLatestCornSettle, type CornResult } from '@/lib/corn-service'
-import { getFeedingRegionMoisture, type MoistureResult } from '@/lib/moisture-service'
-import { getLatestCropCondition, type CropResult } from '@/lib/crop-service'
-import { getCattleCycle, type CycleResult } from '@/lib/cattle-cycle-service'
 import { flagEnabled } from '@/lib/flags'
-import type { Lot } from '@/lib/herd'
+import { bunchLabel, type Lot } from '@/lib/herd'
 import { getHerdAnchor } from '@/lib/herd-anchor'
 import { resolveBarns } from '@/lib/barn-resolver'
 import { getHomeCountyFips } from '@/lib/concierge-service'
@@ -42,11 +37,8 @@ import HayNearbyCards, { type NearbyHayCard } from './HayNearbyCards'
 import HayMapLoader from './HayMapLoader'
 import DashboardAccordion from './DashboardAccordion'
 import LrpMarketsCard from './LrpMarketsCard'
-import LocalAuctionCard from './LocalAuctionCard'
 import ReportedSale from './ReportedSale'
 import { saleAge } from '@/lib/market-scope'
-import NationalBeefCard from './NationalBeefCard'
-import MarketReadShell from './MarketReadShell'
 import Disclosure from '@/app/components/ui/Disclosure'
 import ActiveWarningCard from './ActiveWarningCard'
 import JobsView, { JobsViewSkeleton } from './JobsView'
@@ -55,7 +47,8 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { signHayPhotosForRows } from '@/lib/hay-photos'
 import SellBarnPicker from './SellBarnPicker'
 import MarketsHistory from './MarketsHistory'
-import MarketsSince from './MarketsSince'
+import FollowedBunches from './FollowedBunches'
+import { followedLive } from '@/lib/herd-follow'
 
 // ─── Dashboard view bodies — server components, one per peer view ─────────────
 // Extracted from app/dashboard/page.tsx (perf block, commit 5) so the deferred
@@ -854,8 +847,10 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
+  selectedCounty, lots: allLots, followed, signedIn, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
 }: {
+  followed: string[]   // Block 40 — the ids Markets prices; already read against the live lots
+  signedIn: boolean    // Block 40 — a visitor with no account reads the county's barn, not a list of bunches
   ranchId?: string | null   // Block 4A — the ranch whose herd value history the anchor reads
   selectedLotId?: string | null   // Block 6B — ?lot= from Ranch → Cattle; the comparison and the chart follow it
   titled?: boolean                // Block 6B — the private /markets route owns the page's h1 ("Markets · {area}")
@@ -869,10 +864,15 @@ export async function MarketsViewBody({
   homeFips: string | null
   supabase: Awaited<ReturnType<typeof createClient>>
 }) {
-  // Barns for the county in view, resolved ONCE: the Local auction card reads
-  // them, and when the county in view is the home county the herd anchor
-  // reuses them instead of resolving the same barns a second time. A different
-  // home county resolves its own set, concurrently.
+  // Block 40: Markets prices what a person says they will sell. The followed
+  // list is read against the live lots upstream, so a deleted or split bunch
+  // is simply not here — never an empty row.
+  const lots = followedLive(followed, allLots)
+  const chooser = <FollowedBunches lots={allLots.map(l => ({ id: l.id, label: bunchLabel(l) }))} followed={lots.map(l => l.id)} />
+  // Barns for the county in view, resolved ONCE: the reported sale reads them,
+  // and when the county in view is the home county the herd anchor reuses them
+  // instead of resolving the same barns a second time. A different home county
+  // resolves its own set, concurrently.
   const viewedBarns = resolveBarns(selectedCounty.fips, sellBarn)
   const canAnchor = lots.length > 0 && !!homeFips
   const anchorPromise = canAnchor
@@ -886,33 +886,16 @@ export async function MarketsViewBody({
   // seeded national-index snapshot; the card frames it as the CME national floor, never a
   // state-specific claim. A miss degrades to 'none'/'data_unavailable', never a fake price.
   let lrpResult: LrpResult = { status: 'none' }
-  // Local auction + national beef (Block 2) — same gating and same character as LRP:
-  // pure Supabase SELECTs (the external fetches live in the snapshot crons, never the
-  // request path), fetched concurrently, each degrading to its own honest state.
+  // The reported sale (Block 2) — same gating and same character as LRP: a pure
+  // Supabase SELECT (the external fetch lives in the snapshot cron, never the
+  // request path), degrading to its own honest state.
   let localAuction: LocalAuctionResult = { status: 'no_coverage' }
-  let nationalBeef: NationalBeefResult = { status: 'none' }
 
-  // Market Read chips (§4 Leg 3) — corn settle, feeding-region moisture, crop
-  // condition, cattle cycle: fetched ONLY when the Market Read will render
-  // (hasHerd), and only when this body renders (perf block, commit 5 — these
-  // used to be awaited in the page head for every view). Fast service-role
-  // SELECTs that never throw; none / data_unavailable keep each chip's honest
-  // "warming up" / "temporarily unavailable" state.
-  let corn: CornResult = { status: 'none' }
-  let moisture: MoistureResult = { status: 'none' }
-  let crop: CropResult = { status: 'none' }
-  let cycle: CycleResult = { status: 'none' }
-
-  // The chips are fetched alongside the anchor on the same precondition (lots +
-  // home county) and rendered only if the anchor actually resolved, so the
-  // Market Read gate stays "the anchor exists" without a serial hop.
-  const [lrpRes, localRes, nationalRes, chips, anchor] = await Promise.all([
+  // Block 40: national beef, corn, moisture, crop condition and the cattle
+  // cycle are no longer fetched — nothing on this page was tied to a bunch.
+  const [lrpRes, localRes, anchor] = await Promise.all([
     getLatestLrp('MT'),
     viewedBarns.then(resolved => getLocalAuctionRead(selectedCounty.fips, resolved)),
-    getNationalBeef(),
-    canAnchor
-      ? Promise.all([getLatestCornSettle(), getFeedingRegionMoisture(), getLatestCropCondition(), getCattleCycle()])
-      : Promise.resolve(null),
     anchorPromise,
   ])
   lrpResult = lrpRes
@@ -923,9 +906,6 @@ export async function MarketsViewBody({
     .map(b => ({ slug: b.slug_id, name: b.barn_name, town: b.town.replace(/,\s*[A-Z]{2}$/, '') }))
     .filter((o, i, arr) => arr.findIndex(x => x.slug === o.slug) === i)
     .sort((a, b) => a.name.localeCompare(b.name))
-  nationalBeef = nationalRes
-  if (chips) [corn, moisture, crop, cycle] = chips
-  const hasHerd = anchor != null
 
   const area = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.town.replace(/,\s*[A-Z]{2}$/, '') ?? selectedCounty.name
   const localSlug = (resolvedView.local[0] ?? resolvedView.nearest_comp)?.slug_id ?? null
@@ -948,6 +928,29 @@ export async function MarketsViewBody({
       {titled
         ? <h1 className="type-page-heading text-ink" data-audit="markets-title">Markets</h1>
         : <p className="type-page-heading text-ink" data-audit="markets-title">Markets</p>}
+
+      {/* Block 40: nothing followed → the list of bunches is the page, the barn
+          setting under it; nothing is priced that nobody said they would sell.
+          A visitor with no account has no bunches to follow: the county's
+          reported sale and its history are the public read, as the front door
+          promises. */}
+      {lots.length === 0 && signedIn && (
+        <>
+          {chooser}
+          {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
+        </>
+      )}
+      {lots.length === 0 && !signedIn && (
+        <>
+          <ReportedSale result={localAuction} volume={null} />
+          <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
+            <Suspense fallback={null}>
+              <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={null} />
+            </Suspense>
+          </section>
+        </>
+      )}
+      {lots.length > 0 && <>
 
       {/* 1 — the answer. One lot, the select beneath it, no summed total. */}
       {anchor && (
@@ -975,17 +978,12 @@ export async function MarketsViewBody({
         {anchor && <PriceHistoryPanel trend={anchor.trend} pageBarn={localAuction.status === 'ok' ? localAuction.barnName : null} />}
       </section>
 
-      {/* 4 — what changed: the snapshot lines and the per-lot movement, merged.
-          Both answered "what moved since I last looked" 200px apart. */}
-      {(homeFips || anchor) && (
+      {/* 4 — what changed, per followed bunch. Block 40: the barn's own
+          "since you checked" lines are gone — not tied to a bunch. */}
+      {anchor && (
         <section aria-labelledby="what-changed-h" data-audit="what-changed">
           <h2 id="what-changed-h" className={`${EYEBROW} !text-ink`}>Changes since you checked</h2>
           <Card shadow="none" className="mt-2 px-5 py-4">
-            {homeFips && (
-              <Suspense fallback={null}>
-                <MarketsSince localSlug={localSlug} pinned={!!resolvedView.pinned} reference={resolvedView.local.length === 0 && !!resolvedView.nearest_comp} embedded />
-              </Suspense>
-            )}
             {anchor && (
               <MarketComparisons
                 estimate={anchor.estimate}
@@ -1000,9 +998,6 @@ export async function MarketsViewBody({
           </Card>
         </section>
       )}
-
-      {/* 5 — the other classes at the same barn. */}
-      <LocalAuctionCard result={localAuction} lotClass={(lots.find(l => l.id === selectedLotId) ?? lots[0])?.class ?? null} />
 
       {/* 6 — price protection. One row is the answer; the calculator, per-lot
           floors, endorsements, premiums and basis sit behind one disclosure. */}
@@ -1027,34 +1022,13 @@ export async function MarketsViewBody({
         </Disclosure>
       </section>
 
-      {/* 7 — broader context, last. The empty "No sale-video feed connected."
-          line is gone: an empty state for a feature that does not exist, that
-          nothing links to and nothing can connect. */}
-      <section className="space-y-3" aria-labelledby="broader-context-h" data-audit="broader-context">
-        <h2 id="broader-context-h" className={`${EYEBROW} !text-ink`}>Beyond your barn</h2>
-        {(() => {
-          const fed = nationalBeef.status === 'ok' ? nationalBeef.fedSteer : null
-          const cornOk = corn.status === 'ok' ? corn : null
-          const parts = [
-            fed ? `fed steers $${fed.value.toFixed(2)}/cwt${fed.stale ? ' (latest available)' : ''}` : null,
-            cornOk ? `corn $${(cornOk.settlePrice / 100).toFixed(2)}/bu` : null,
-          ].filter(Boolean)
-          return <p className="font-dm-sans text-[17px] text-ink" data-audit="broader-context-row">National markets and feed costs{parts.length ? ` · ${parts.join(' · ')}` : ''}</p>
-        })()}
-        <Disclosure title="National markets and feed costs" audit="broader-context-more" remember="broader-context" summary="National beef, corn, the cattle cycle, and the market read">
-          <div className="space-y-4">
-            <NationalBeefCard result={nationalBeef} />
-            {hasHerd && <MarketReadShell corn={corn} moisture={moisture} crop={crop} cycle={cycle} />}
-            <Suspense fallback={null}>
-              <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} mode="context" />
-            </Suspense>
-          </div>
-        </Disclosure>
-      </section>
+      {/* Block 40: which bunches this page prices — the list, folded to one line. */}
+      {chooser}
 
       {/* 8 — the setting, at the bottom with the other settings, not above the
           data it configures. */}
       {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
+      </>}
     </>
   )
 }
@@ -1091,6 +1065,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
       // The herd anchor's inputs — lots from the profile, the home county —
       // read here, side by side, exactly as the page head reads them.
       let lots: Lot[] = []
+      let followed: string[] = []
       let homeFips: string | null = null
       let sellBarn: string | null = null
       let ranchId: string | null = null
@@ -1099,15 +1074,16 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
           getOperationProfile({ supabase, user }),
           getHomeCountyFips(user.id).catch(() => null),
         ])
-        const herd = profile.status === 'ok' ? (profile.profile.herd as { lots?: Lot[] } | null) : null
+        const herd = profile.status === 'ok' ? (profile.profile.herd as { lots?: Lot[]; followed?: string[] } | null) : null
         lots = Array.isArray(herd?.lots) ? herd!.lots : []
+        followed = Array.isArray(herd?.followed) ? herd!.followed : []
         homeFips = hf
         sellBarn = profile.status === 'ok' ? profile.profile.sell_barn_slug ?? null : null
         ranchId = profile.status === 'ok' ? profile.profile.ranch_id ?? null : null
       }
       return (
         <Suspense fallback={<JobsViewSkeleton />}>
-          <MarketsViewBody selectedCounty={county} lots={lots} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} ranchId={ranchId} />
+          <MarketsViewBody selectedCounty={county} lots={lots} followed={followed} signedIn={!!user} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} ranchId={ranchId} />
         </Suspense>
       )
     }
