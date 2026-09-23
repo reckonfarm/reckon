@@ -2,20 +2,15 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
-import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { privateTitle } from '@/lib/private-title'
-import { placeRows, placeTree, childrenSummary, type PlaceNode } from '@/lib/places/rows'
+import { placeRows } from '@/lib/places/rows'
+import PlacesByKind from './PlacesByKind'
 import { resolveMapCentre } from '@/lib/places/anchor'
-import { fmtAcres } from '@/lib/places/geo'
-import { kindLabel } from '@/lib/places/kinds'
-import { MANUAL_EVENT_LABELS, isManualEventType } from '@/lib/manual-log'
-import { fmtDay } from '@/lib/jobs/format'
 import RecordHere from './RecordHere'
 import DrawPlace from './DrawPlace'
 import CapturePlace from './CapturePlace'
 import PlaceMapLoader from './PlaceMapLoader'
-import HeldRow from '@/app/components/HeldRow'
 import LitOnHash from '@/app/components/LitOnHash'
 
 // ─── /ranch/places (Block 6A · shapes in slice 1) ─────────────────────────────
@@ -37,7 +32,14 @@ export default async function PlacesPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch/places')
   const { live, retired } = await placeRows(supabase)
-  const tree = placeTree(live)
+  const GROUPS: [string, string, string[]][] = [['pastures', 'Pastures', ['pasture']], ['fields', 'Fields', ['field']], ['yards', 'Yards', ['yard', 'stackyard', 'stack']], ['points', 'Points', ['gate', 'tank']]]
+  const known = new Set(GROUPS.flatMap(g => g[2]))
+  const row = (r: { id: string; name: string; kind: string; acres: number | null }) => ({ id: r.id, name: r.name, kind: r.kind, acres: r.acres })
+  const groups = [
+    ...GROUPS.map(([key, label, kinds]) => ({ key, label, rows: live.filter(r => kinds.includes(r.kind)).map(row) })),
+    { key: 'other', label: 'Other', rows: live.filter(r => !known.has(r.kind)).map(row) },
+    { key: 'off', label: 'Off the list', rows: retired.map(row) },
+  ]
   const drawn = live.filter(r => r.ring)
   const centre = await resolveMapCentre(supabase, user.id, drawn.map(r => r.ring!))
   const undrawn = live.length - drawn.length
@@ -53,9 +55,8 @@ export default async function PlacesPage() {
             has no life of its own — so the way to them is from here, not from
             the hub. The 6J rule: every surface reachable from where a person
             would look, not just reachable by URL. */}
-        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-          Where things happen. Connected machines and loggers are under <Link href="/ranch/devices" className="font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices</Link>.
-        </p>
+        {/* Block 12 (12.7) kept as a name you tap: devices are reached from here. */}
+        <p className="mt-1 font-dm-sans text-[16px]"><Link href="/ranch/devices" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="places-devices-link">Devices →</Link></p>
 
         {drawn.length > 0 && (
           <div className="mt-4" data-audit="places-map">
@@ -71,65 +72,10 @@ export default async function PlacesPage() {
           </div>
         )}
 
-        {live.length === 0 ? (
-          <Card className="mt-4 p-5">
-            <p className="font-dm-sans text-[17px] text-ink">No places named yet. Draw one on the map, or record work and name the place in the same entry — it is created with it.</p>
-          </Card>
-        ) : (
-          <>
-            {/* Block 7A — THE HIERARCHY. Pastures (and anything else that holds
-                places) at the top, each with what sits inside it nested under
-                it; everything that stands on its own in Unplaced, at the
-                bottom. Never hidden: a place whose parent is not on this list
-                renders at the top level (lib/places/rows.ts placeTree). */}
-            {tree.top.length > 0 && (
-              <Card className="mt-4 p-0" data-audit="places-grouped">
-                <ul className="divide-y divide-rule" data-audit="place-rows">
-                  {tree.top.map(n => <PlaceBranch key={n.id} node={n} />)}
-                </ul>
-              </Card>
-            )}
-            {tree.unplaced.length > 0 && (
-              <section className="mt-4" aria-labelledby="places-unplaced">
-                <h2 id="places-unplaced" className={`${EYEBROW} !text-ink`}>Unplaced</h2>
-                <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">Not inside any pasture or field. Open one to put it somewhere.</p>
-                <Card className="mt-2 p-0">
-                  <ul className="divide-y divide-rule" data-audit={tree.top.length === 0 ? 'place-rows' : 'place-rows-unplaced'}>
-                    {tree.unplaced.map(n => <PlaceBranch key={n.id} node={n} />)}
-                  </ul>
-                </Card>
-              </section>
-            )}
-          </>
-        )}
-
-        {/* Block 13: a place taken off the list (the old "retire") is still a
-            place and still names its entries, so it is still a row — held like
-            any other. Nothing on production is in this state; the section is
-            here so nothing can ever be hidden. Fix on one is the way back. */}
-        {retired.length > 0 && (
-          <section className="mt-4" aria-labelledby="places-off">
-            <h2 id="places-off" className={`${EYEBROW} !text-ink`}>Off the list</h2>
-            <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">Still named on the entries that happened there. Open one to put it back.</p>
-            <Card className="mt-2 p-0">
-              <ul className="divide-y divide-rule" data-audit="retired-place-rows">
-                {retired.map(p => (
-                  <li key={p.id}>
-                    <HeldRow label={p.name} openHref={`/ranch/places/${p.id}`} fixNote="This place is off the list. Open it and tap Put it back, then fix it." del={{ kind: 'place', id: p.id }}>
-                    <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="retired-place-row">
-                      <span className="min-w-0">
-                        <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span></span>
-                        <span className="block font-dm-sans text-[15px] text-secondary-ink">Off the list since {fmtDay(p.retiredAt!)}</span>
-                      </span>
-                      <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
-                    </Link>
-                    </HeldRow>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </section>
-        )}
+        {/* Block 43: places sorted by what they are — pastures, fields, yards, points —
+            each a count you tap open; inside, a name and its acres, nothing else. A
+            place taken off the list (the old "retire") is a group of its own. */}
+        <PlacesByKind groups={groups} />
 
         <div className="mt-4 space-y-3">
           {/* Block 8 — capture comes FIRST. Standing in the place is the way
@@ -147,35 +93,5 @@ export default async function PlacesPage() {
         </div>
       </main>
     </>
-  )
-}
-
-// One row, and the rows inside it. Depth is shown by indent and a "·" lead,
-// not by hiding anything: every place is one tap away at every depth.
-function PlaceBranch({ node }: { node: PlaceNode }) {
-  const p = node
-  const inside = childrenSummary(p.children, kindLabel)
-  return (
-    <li data-audit="place-branch" data-depth={p.depth} data-kind={p.kind} id={`place-${p.id}`}>
-      {/* Block 13: hold the row for Fix (the place page, form open) · Delete (to the trash, Undo on the strip). */}
-      <HeldRow label={p.name} openHref={`/ranch/places/${p.id}`} fixHref={`/ranch/places/${p.id}#edit`} del={{ kind: 'place', id: p.id }}>
-      <Link href={`/ranch/places/${p.id}`} className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" style={{ paddingLeft: `${1 + Math.min(p.depth, 4) * 1.25}rem` }} data-audit="place-row" data-id={p.id}>
-        <span className="min-w-0">
-          <span className="block font-dm-sans text-[17px] font-semibold text-ink">{p.depth > 0 && <span aria-hidden className="mr-1 text-secondary-ink">·</span>}{p.name} <span className="font-normal text-secondary-ink">· {kindLabel(p.kind)}</span>{p.acres != null && <span className="font-normal text-secondary-ink"> · {fmtAcres(p.acres)}</span>}</span>
-          <span className="block font-dm-sans text-[15px] text-secondary-ink">
-            {inside && <span data-audit="place-children">{inside[0].toUpperCase() + inside.slice(1)} · </span>}
-            {p.lastWork ? <span data-audit="place-last-work">Last recorded work: {isManualEventType(p.lastWork.type) ? MANUAL_EVENT_LABELS[p.lastWork.type].toLowerCase() : p.lastWork.type}, {fmtDay(p.lastWork.ts)}</span> : <span>Nothing recorded here yet</span>}
-            {p.lastRain && <span data-audit="place-last-rain"> · Last recorded rain: {p.lastRain.inches.toFixed(2)}&quot;, {fmtDay(p.lastRain.ts)}</span>}
-          </span>
-        </span>
-        <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
-      </Link>
-      </HeldRow>
-      {p.children.length > 0 && (
-        <ul className="divide-y divide-rule border-t border-rule" data-audit="place-children-rows">
-          {p.children.map(c => <PlaceBranch key={c.id} node={c} />)}
-        </ul>
-      )}
-    </li>
   )
 }

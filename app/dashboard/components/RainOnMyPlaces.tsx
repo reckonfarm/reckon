@@ -7,7 +7,6 @@ import { getRainLedger, type RainEntry } from '@/lib/rain/queries'
 import { fmtDay } from '@/lib/jobs/format'
 import LogRainButton from './LogRainButton'
 import { weatherPlaces } from '@/lib/rain/weather-places'
-import WeatherPlacePicker from './WeatherPlacePicker'
 import HeldRow from '@/app/components/HeldRow'
 
 // ─── Rain on my places (Block 7, Part 3) ──────────────────────────────────────
@@ -109,7 +108,6 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
           })}
         </ul>
       </Card>
-      <WeatherPlacePicker rest={rest} />
       <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">Recorded rain is what someone on the ranch read off a gauge and logged. A place with no reading has no reading — that is not zero rain.</p>
     </section>
   )
