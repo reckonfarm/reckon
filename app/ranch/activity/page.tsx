@@ -11,6 +11,9 @@ import JobsView from '@/app/dashboard/components/JobsView'
 import { privateTitle } from '@/lib/private-title'
 import ActivityRowItem, { markerFor } from '@/app/components/ActivityRowItem'
 import ReviewedButton from '@/app/components/ReviewedButton'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
+import { getChangesSince } from '@/lib/since'
 import FilterShell from './ActivityFilters'
 import ActivityDays from './ActivityDays'
 import { Select } from '@/app/components/ui/Field'
@@ -37,6 +40,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to), since: pick(sp.since) }
   // Block 6A: /jobs → /ranch/activity?source=machine — the machines' sessions (jobs) under the record.
   if (pick(sp.source) === 'machine') return <MachineActivity user={user} />
+  // Block 32: what this render read — taken before the reads below start.
+  const through = await ledgerThrough(supabase)
   // Five states, five copies (Block 6B): no records · no filter matches · request failed · no permission (not on a ranch) · (no coverage belongs to markets).
   const [pageRes, options] = await Promise.all([
     listActivity(supabase, user.id, filters, pick(sp.cursor)).then(p => ({ ok: true as const, page: p })).catch(() => ({ ok: false as const, page: null })),
@@ -89,6 +94,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <LedgerStamp through={through} />
         <p className={EYEBROW}>The record</p>
         <h1 className="mt-1 type-page-heading text-ink">{heading}</h1>
         {/* Block 12 (12.7): Work left the Ranch hub — machine work is the record's
@@ -103,7 +109,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         {failed ? (
           <Card className="mt-4 p-5" data-audit="activity-failed"><p className="font-dm-sans text-[17px] text-ink">The record couldn&rsquo;t be read just now. Nothing is lost; try again in a moment.</p></Card>
         ) : !page ? (
-          <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p></Card>
+          <Card className="mt-4 p-5" data-audit="activity-no-permission"><p className="font-dm-sans text-[17px] text-ink">You are not on a ranch yet, so there is no record to show.</p><Link href="/setup" className="mt-3 inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="activity-setup-link">Set up my ranch</Link></Card>
         ) : (
           <>
             <FilterShell active={activeFilterLabel} filtering={filtering}>
@@ -154,7 +160,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             )}
 
             {/* 6H: the review boundary moves only from a page that has every entry since the last review on it. */}
-            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} />}
+            {/* Block 32 (found past 50 rows): the list is paged by WORK time, so the newest
+                made-at can sit on page 1 while Reviewed is on the last — send the newest
+                made-at of everything since you checked, the one read the card and the map share. */}
+            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={(await getChangesSince(supabase, user.id))?.newest ?? page.rows.map(r => r.created_at).sort().pop() ?? null} />}
             {filters.since && page.nextCursor && <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="review-on-last-page">Reviewed is offered on the last page, once every entry is in front of you.</p>}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">

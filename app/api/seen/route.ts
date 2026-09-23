@@ -19,9 +19,17 @@ export async function POST(req: NextRequest) {
   if (!ranchId) return NextResponse.json({ ok: false, reason: 'no membership' }, { status: 200 })
   const surface = new URL(req.url).searchParams.get('surface')
   const column = surface === 'markets' ? 'markets_seen_at' : 'last_seen_at'
+  // Block 29: seen is EXACT. The body may carry the newest made-at (a phone's
+  // clock, Block 27) the surface showed; the cursor is the later of now and
+  // that — capped a few hours ahead, so one wrong clock cannot blind the
+  // cursor to a week. No body, or a bad one, means now (the Markets ping).
+  const body = (await req.json().catch(() => null)) as { through?: unknown } | null
+  const through = typeof body?.through === 'string' ? Date.parse(body.through) : NaN
+  const now = Date.now()
+  const seenAt = new Date(Number.isFinite(through) ? Math.min(Math.max(now, through), now + 6 * 3_600_000) : now).toISOString()
   const { error } = await createServiceClient()
     .from('ranch_members')
-    .update({ [column]: new Date().toISOString() })
+    .update({ [column]: seenAt })
     .eq('ranch_id', ranchId)
     .eq('user_id', user.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

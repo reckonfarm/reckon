@@ -27,7 +27,7 @@
 //
 //   BASE=https://<preview>.vercel.app npx tsx scripts/smoke-markets.ts
 
-import { guardWorktree } from './lib/suite-guard'
+import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
@@ -748,7 +748,7 @@ async function main() {
     await teardown('finish')
   }
   const fails = results.filter(r => !r.pass).length, skips = results.filter(r => r.skip).length
-  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}\n`)
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 main().catch(async err => { console.error('\nsmoke crashed:', err instanceof Error ? err.message : err); try { await teardown('after crash') } catch {} ; process.exit(2) })

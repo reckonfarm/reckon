@@ -11,18 +11,45 @@ export interface SaveReceiptProps {
   headline: string             // "Synced to ranch" · "Saved"
   label: string                // what was recorded: "Fed 4 bales to Steer calves at Home pasture"
   lines?: string[]             // what it meant, in order
+  /** Block 23: the transient strip — one line and nothing else. */
+  compact?: boolean
   eventId?: string | null      // the exact entry; omitted when the receipt IS the entry's page
   eventLabel?: string          // link words, default "Open this entry"
   href?: string | null         // Block 7A: where the link goes when the thing saved is not an entry (a place)
   tone?: 'plain' | 'strip'     // strip = inside the status strip (no own box)
 }
 
-export default function SaveReceipt({ headline, label, lines = [], eventId, eventLabel = 'Open this entry', href, tone = 'plain' }: SaveReceiptProps) {
+export default function SaveReceipt({ headline, label, lines = [], eventId, eventLabel = 'Open this entry', href, tone = 'plain', compact = false }: SaveReceiptProps) {
   const to = href ?? (eventId ? `/ranch/activity/${eventId}` : null)
   const box = tone === 'plain' ? 'rounded-lg bg-forest-green/[0.06] px-4 py-3' : ''
+
+  // Block 23 (rulings 3 and 4) — THE TRANSIENT RECEIPT IS ONE LINE AND UNDO.
+  // It is read at arm's length in a corral, in gloves and sun, by someone whose
+  // attention is on cattle: "220 → 198, 22 to Fall Cows". The label, the
+  // arithmetic fold and the link to the entry all come off — anyone who wants
+  // the detail opens the record, and this is not the moment they will. Big and
+  // dark, because a thin green line at 17px is unreadable on a bright day.
+  if (compact) {
+    return (
+      <div className={`font-dm-sans ${box}`} data-audit="save-receipt" data-compact="true">
+        {/* NOT uppercase. The four save words are the words themselves — Saved ·
+            Waiting for signal · Sent · Couldn't send — and a CSS transform
+            changes what a person reads into a shout and what any reader of the
+            page sees into a different string. "Sent" rendered as "SENT" is why
+            a split that had reached the ranch looked stuck for three runs. */}
+        <p className="text-[15px] font-semibold tracking-wide text-forest-green/80" data-audit="receipt-headline" data-save-word>{headline}</p>
+        <p className="mt-0.5 text-[22px] font-semibold leading-tight text-ink" data-audit="receipt-balance">{lines[0] ?? label}</p>
+        {/* The record's own name stays reachable to anything that needs to know
+            WHICH record this is — a screen reader, a check — without spending a
+            second line on a screen read at arm's length. */}
+        {lines[0] && lines[0] !== label && <span className="sr-only" data-audit="receipt-label-sr">{label}</span>}
+      </div>
+    )
+  }
+
   return (
     <div className={`font-dm-sans ${box}`} data-audit="save-receipt">
-      <p className="text-[17px] font-semibold leading-snug text-forest-green" data-audit="receipt-headline">{headline}</p>
+      <p className="text-[17px] font-semibold leading-snug text-forest-green" data-audit="receipt-headline" data-save-word>{headline}</p>
       <p className="mt-0.5 text-[16px] leading-snug text-ink" data-audit="receipt-label">{label}</p>
       {/* Block 11 (11.12): SYNC STATUS, EVENT, BALANCE — and the arithmetic
           one tap away. This was six lines with a full equation in the middle of

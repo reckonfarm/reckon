@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { GROUP_ACTIONS, MAX_GROUP_NAME, MAX_HEAD, isGroupAction, type GroupAction } from './kinds'
 import { LOT_CLASSES, type LotClass } from '@/lib/herd'
+import { parseCreatedAt, parseEventTs } from '@/lib/manual-log'
 
 // ─── Group actions — one event, named result groups (Block 10) ────────────────
 //
@@ -69,6 +70,8 @@ const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : 
 export interface GroupActionInput {
   eventId: string
   ts: string
+  /** Block 27: when the phone made it. */
+  createdAt: string
   action: GroupAction
   sourceLotId: string
   expectedHead: number | null
@@ -89,6 +92,8 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
   const bad = (m: string): never => { throw new GroupActionError(400, m) }
 
   const eventId = typeof body.id === 'string' && UUID_RE.test(body.id) ? body.id.toLowerCase() : bad('id must be a uuid')
+  let createdAt = ''
+  try { createdAt = parseCreatedAt(body.created_at) } catch (e) { bad(e instanceof Error ? e.message : 'created_at') }
   if (!isGroupAction(body.action)) bad(`action must be one of ${GROUP_ACTIONS.join(', ')}`)
   const action = body.action as GroupAction
   const sourceLotId = typeof body.source_lot_id === 'string' && UUID_RE.test(body.source_lot_id)
@@ -150,7 +155,10 @@ export function parseGroupAction(body: Record<string, unknown>): GroupActionInpu
 
   return {
     eventId: eventId as string,
-    ts: typeof body.ts === 'string' ? body.ts : new Date().toISOString(),
+    // Block 27: the same bounds every manual type gets (this bypassed them), and
+    // no work time chosen = when it was made.
+    ts: ((): string => { try { return parseEventTs(body.ts, createdAt) } catch (e) { return bad(e instanceof Error ? e.message : 'ts') } })(),
+    createdAt,
     action,
     sourceLotId: sourceLotId as string,
     expectedHead,
@@ -246,11 +254,14 @@ export function groupActionConsequence(p: GroupActionPayload): { lines: string[]
   // Block 19 (ruling 2): a split is an event, and its receipt says the count
   // the bunch held BEFORE it as well as after — that number stays readable
   // for good, here and in the ledger, rather than being quietly replaced.
+  // Block 23 (ruling 3): ONE LINE. "220 → 198, 22 to Fall Cows" and nothing
+  // else — it is read at arm's length in a corral, in gloves and sun, by
+  // someone whose attention is on cattle. The arithmetic, the class, the
+  // place, what the bunch was called before: all of it is one tap away on the
+  // record, and none of it belongs on a strip at the bottom of a phone.
   if (p.action === 'split') {
-    const out = [`${p.source_name} was ${head(p.source_head_before)} · ${head(p.source_head_after)} now`]
-    for (const r of p.results) out.push(`${head(r.head)} to ${r.name}${r.created ? ' (new)' : ` · now ${r.head_after.toLocaleString()}`}`)
-    if (p.source_head_after === 0) out.push(`${p.source_name} is empty now — it stays on the ranch until you retire it`)
-    return { lines: out }
+    const went = p.results.map(r => `${r.head.toLocaleString()} to ${r.name}`).join(', ')
+    return { lines: [`${p.source_head_before.toLocaleString()} → ${p.source_head_after.toLocaleString()}${went ? `, ${went}` : ''}`] }
   }
   const lines: string[] = [
     `${p.counted.toLocaleString()} counted through${p.source_head_before !== p.counted ? ` · ${p.source_name} said ${p.source_head_before.toLocaleString()}` : ''}`,

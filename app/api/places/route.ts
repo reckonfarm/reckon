@@ -1,3 +1,4 @@
+import { parseCreatedAt, ValidationError } from '@/lib/manual-log'
 import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { NextResponse } from 'next/server'
@@ -189,7 +190,15 @@ export async function POST(req: NextRequest) {
   // A place named from the record sheet inserts exactly the row it always did,
   // so that path keeps working on a deploy that lands before migration 056 is
   // run by hand. Drawing, which genuinely needs the columns, fails loudly.
-  const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry }
+  // Block 27: a place ridden at dawn and sent at noon was made at dawn — the
+  // outbox says when; the row and its evidence both carry it.
+  let madeAt: string
+  try { madeAt = parseCreatedAt(body.created_at) } catch (err) {
+    if (err instanceof ValidationError) return NextResponse.json({ error: err.message }, { status: 400 })
+    throw err
+  }
+  if (geometry_provenance && typeof geometry_provenance === 'object') (geometry_provenance as Record<string, unknown>).created_at = madeAt
+  const row: Record<string, unknown> = { user_id: user.id, ranch_id, name, kind, geometry, created_at: madeAt }
   if (clientId) row.id = clientId
   if (parent) row.parent_id = parent.id
 

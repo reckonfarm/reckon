@@ -1,6 +1,7 @@
 import {
   summarizeUsdm, droughtClassWords, droughtAlertLine, droughtAlertEmail, fmtValidDate,
 } from '../lib/drought-words'
+import { suiteIdentity } from './lib/suite-guard'
 
 // ─── Block 16 (ruling 2) harness — the Thursday alert's words ─────────────────
 //
@@ -99,5 +100,5 @@ const PROGRAM_WORDS = /\bLFP\b|\btier\b|\bpayment|\beligib|\bFSA\b|\bRMA\b|\benr
     fmtValidDate(VALID) === 'Sep 15, 2026' && fmtValidDate('not-a-date') === 'not-a-date', fmtValidDate(VALID))
 }
 
-console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}`)
+console.log(`\n${failures ? `${failures} FAILURE(S)` : 'all clear'}  —  ${suiteIdentity()}`)
 process.exit(failures ? 1 : 0)

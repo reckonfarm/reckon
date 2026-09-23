@@ -22,6 +22,19 @@ export interface MapShape {
   ring: LatLng[]
   /** Draft shapes draw in the draw colour so they read as not-yet-saved. */
   draft?: boolean
+  /** Block 26: a place with a bunch on it is filled in that bunch's colour. */
+  fill?: string
+  /** Block 26c: the label inside an occupied place — head · bunch name. */
+  label?: string
+  /** Block 26c: a move landed here moments ago — one settle of the outline, then still. */
+  pulse?: boolean
+}
+
+/** Block 26: a place with no shape but a known position — a pin, tappable like a shape. */
+export interface MapMarker {
+  id: string
+  position: LatLng
+  fill?: string
 }
 
 /**
@@ -55,7 +68,20 @@ export interface PlaceMapProps {
   track?: MapTrack
   /** Where to open when there is nothing drawn to fit to. */
   initialCenter: LatLng
-  height?: number
+  /** Pixels, or any CSS length ("40vh") — the Today overview is sized to the screen. */
+  height?: number | string
+  /** Block 26: places with no shape. */
+  markers?: MapMarker[]
+  /** Block 26: a tap on a saved shape or a marker. Off while drawing (fight #4). */
+  onPlaceTap?: (id: string) => void
+  /** Block 26: the ranch overview — expands to full screen, and offers Follow me. */
+  overview?: boolean
+  /** Leaflet's + / − buttons. Default: off on the overview (26c: nothing floats but the pill), on elsewhere. */
+  zoomControl?: boolean
+  /** Block 29: one straight line, origin → destination — a move, never a drawn route. */
+  line?: { from: LatLng; to: LatLng; color: string } | null
+  /** Block 26: frame the map to ONE place — set when a place is picked from the key, where the map cannot know which ground was meant. `n` re-fires it for the same place. */
+  focus?: { id: string; n: number } | null
   /** Pin mode: the map opens on the pin, follow is off, and the pin is the subject. */
   pin?: MapPin
   /** Draw mode: corner placement on, follow off, toolbar visible. */

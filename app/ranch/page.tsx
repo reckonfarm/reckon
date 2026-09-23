@@ -8,6 +8,8 @@ import { privateTitle } from '@/lib/private-title'
 import { ranchNumbers } from '@/lib/ranch-summary'
 import { listActivity, describeEvent, standingRows } from '@/lib/activity'
 import ReviewedButton from '@/app/components/ReviewedButton'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
 import { dayKey, fmtTime, plural, todayKey } from '@/lib/jobs/format'
 
 // ─── /ranch — the ranch hub, reinvented (Block 12, 12.7 / 12.8) ───────────────
@@ -40,6 +42,8 @@ export default async function RanchPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch')
 
+  // Block 32: what this render read — taken before the reads below start.
+  const through = await ledgerThrough(supabase)
   const [numbers, recent, member] = await Promise.all([
     ranchNumbers(supabase, user.id),
     listActivity(supabase, user.id, {}, null).catch(() => null),
@@ -69,7 +73,7 @@ export default async function RanchPage() {
   // the 12.8 check found this reading 0 for a hand's fresh entries because the
   // owner had no cursor — a null cursor is not "nothing is new".
   const lastSeen = (member.data as { last_seen_at?: string | null } | null)?.last_seen_at ?? new Date(Date.now() - 24 * 3_600_000).toISOString()
-  const unseen = standing.filter(r => (r.ingested_at ?? r.ts) > lastSeen && r.user_id !== user.id).length
+  const unseen = standing.filter(r => r.created_at > lastSeen && r.user_id !== user.id).length   // Block 27: made since
 
   // The last thing recorded at all, for a quiet day.
   const last = standing[0] ?? null
@@ -84,6 +88,7 @@ export default async function RanchPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <LedgerStamp through={through} />
         <h1 className="type-page-heading text-ink">Ranch</h1>
 
         {/* 12.8 — Today on the ranch */}
@@ -112,7 +117,7 @@ export default async function RanchPage() {
               <div className="flex items-center justify-between gap-3 border-t border-rule px-4 py-3" data-audit="ranch-since">
                 <p className="font-dm-sans text-[16px] text-ink">{unseen} {unseen === 1 ? 'entry' : 'entries'} since you last checked.</p>
                 {/* 6H: Reviewed is an action, never a page load. */}
-                <ReviewedButton count={unseen} />
+                <ReviewedButton count={unseen} through={standing.filter(r => r.user_id !== user.id).map(r => r.created_at).sort().pop() ?? null} />
               </div>
             )}
           </Card>

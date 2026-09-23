@@ -95,6 +95,8 @@ export interface TrashItem {
   deletedAt: string
   /** 'YYYY-MM-DD' ranch day it will be purged. */
   goneOn: string
+  /** Block 28: a place history still points at is never purged — it is kept here until nothing names it. */
+  kept?: boolean
 }
 
 const dayKeyUTC = (ms: number) => new Date(ms).toISOString().slice(0, 10)
@@ -132,7 +134,12 @@ export async function listTrash(supabase: SupabaseClient): Promise<TrashItem[]> 
     for (const i of (invites.data ?? []) as { id: string; invited_email: string; revoked_at: string }[]) {
       out.push({ table: 'invitations', id: i.id, label: `Invitation · ${i.invited_email}`, deletedAt: i.revoked_at, goneOn: gone(i.revoked_at) })
     }
-    for (const p of (places.data ?? []) as { id: string; name: string; deleted_at: string }[]) out.push({ table: 'places', id: p.id, label: `Place · ${p.name}`, deletedAt: p.deleted_at, goneOn: gone(p.deleted_at) })
+    // Block 28: which trashed places history still points at — asked of the
+    // database's own predicate (074), on the service client the cron uses.
+    const trashedPlaces = (places.data ?? []) as { id: string; name: string; deleted_at: string }[]
+    const kept = new Set<string>()
+    for (const p of trashedPlaces) { const r = await createServiceClient().rpc('place_is_referenced', { p_place: p.id }); if (r.data === true) kept.add(p.id) }
+    for (const p of trashedPlaces) out.push({ table: 'places', id: p.id, label: `Place · ${p.name}`, deletedAt: p.deleted_at, goneOn: gone(p.deleted_at), ...(kept.has(p.id) ? { kept: true } : {}) })
     for (const l of (lots.data ?? []) as { id: string; name: string | null; class: string; head_count: number; deleted_at: string }[]) out.push({ table: 'herd_lots', id: l.id, label: `Bunch · ${l.name ?? l.class} · ${l.head_count} head`, deletedAt: l.deleted_at, goneOn: gone(l.deleted_at) })
     for (const d of (devices.data ?? []) as { id: string; name: string; deleted_at: string }[]) out.push({ table: 'devices', id: d.id, label: `Device · ${d.name}`, deletedAt: d.deleted_at, goneOn: gone(d.deleted_at) })
     for (const e of (events.data ?? []) as { id: string; type: string; ts: string; payload: Record<string, unknown> | null; deleted_at: string }[]) {

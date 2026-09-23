@@ -1,8 +1,9 @@
 import { sessionUser } from '@/lib/auth-user'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { setLotHeadFromCount } from '@/lib/herd-lots'
-import { buildManualPayload, isManualEventType, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
+import { buildManualPayload, isManualEventType, parseCreatedAt, parseEventTs, ValidationError, MANUAL_EVENT_TYPES } from '@/lib/manual-log'
 import { consequenceFor } from '@/lib/log-consequence'
+import { MOVE_NEEDS_BUNCH } from '@/lib/move-line'
 import { GROUP_ACTION_TYPE, GroupActionError, groupActionConsequence, parseGroupAction, recordGroupAction } from '@/lib/cattle/group-action'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -59,6 +60,12 @@ export async function POST(req: NextRequest) {
     try {
       const input = parseGroupAction(body as Record<string, unknown>)
       const done = await recordGroupAction(supabase, input)
+      // Block 27: the working — and the placement a split writes beside it —
+      // are made when the phone made them. record_group_action stamps arrival;
+      // one update after it, on the caller's client, says the phone's moment.
+      if (!done.duplicate && input.createdAt) {
+        await supabase.from('events').update({ created_at: input.createdAt }).or(`id.eq.${done.eventId},payload->>origin_event_id.eq.${done.eventId}`)
+      }
       const { data: event } = await supabase.from('events').select(EVENT_COLS).eq('id', done.eventId).maybeSingle()
       return NextResponse.json(
         { event, ...(done.duplicate ? { duplicate: true } : {}), consequence: groupActionConsequence(done.payload) },
@@ -77,10 +84,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let ts: string
+  let ts: string, createdAt: string
   let payload
   try {
-    ts = parseEventTs(body.ts)
+    createdAt = parseCreatedAt(body.created_at)
+    ts = parseEventTs(body.ts, createdAt)
     payload = buildManualPayload(body.type, body)
   } catch (err) {
     if (err instanceof ValidationError) return NextResponse.json({ error: err.message }, { status: 400 })
@@ -115,6 +123,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Block 25: a move names its bunch — one bunch, this ranch's, still on it.
+  // Same read a count makes, and the same words when the bunch is not there.
+  // Block 30: a sighting the same.
+  if (body.type === 'cattle_moved' || body.type === 'bunch_seen') {
+    const lotId = (payload as { herd_lot_id: string | null }).herd_lot_id
+    if (!lotId) return NextResponse.json({ error: body.type === 'bunch_seen' ? 'Pick the bunch you saw.' : MOVE_NEEDS_BUNCH }, { status: 400 })
+    const { data: lotRow } = await supabase.from('herd_lots').select('id, retired_at, deleted_at').eq('id', lotId).maybeSingle()
+    const lot = lotRow as { id: string; retired_at: string | null; deleted_at: string | null } | null
+    if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })
+  }
+
   const ranch_id = await resolveRanchId(supabase, user.id)
   // Answered here, not by the database. Without this the person gets a 500
   // carrying a row-level-security message, which tells them nothing they can
@@ -138,6 +157,7 @@ export async function POST(req: NextRequest) {
       device_id: null,
       type: body.type,
       ts,
+      created_at: createdAt,   // Block 27: made on the phone
       lat: null,
       lng: null,
       payload,
@@ -156,6 +176,9 @@ export async function POST(req: NextRequest) {
     return consequenceFor(supabase, body.type, payload as unknown as Record<string, unknown>, placeName)
   }
 
+  // Block 25b: the bunch's place is the DATABASE's (072) — a trigger rebuilds it
+  // from the bunch's live moves in the same transaction as this insert. The
+  // route writes the move and nothing else.
   if (error) {
     // 23505 on the primary key = this exact entry already landed. Return it.
     if (error.code === '23505' && id) {
@@ -167,5 +190,5 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ event: row, consequence: await answer(), ...(countFollowUp ? { follow_up: countFollowUp } : {}) }, { status: 201 })
 }
 
-const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, payload, schema_version, ingested_at'
+const EVENT_COLS = 'id, user_id, ranch_id, device_id, type, ts, created_at, payload, schema_version, ingested_at'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

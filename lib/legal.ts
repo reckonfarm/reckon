@@ -1,18 +1,19 @@
 // ─── Legal identity — the one place the operator, contact, and processors live ──
 //
-// /terms and /privacy (content/*.md) and the site footer read these. When the
-// Montana SOS amendment clears, OPERATOR is a one-line swap here and nowhere
-// else. Nothing in this file is a placeholder: an empty CONTACT_EMAIL renders
-// the mailing address alone (never an invented address) until PK supplies it.
+// /terms and /privacy (content/*.md) and the site footer read these. A change
+// of legal name is a one-line swap here and nowhere else (the Montana SOS
+// approved Dryline Technologies LLC on 2026-09-16). Nothing in this file is a
+// placeholder: an empty CONTACT_EMAIL renders the mailing address alone (never
+// an invented address) until PK supplies it.
 
 export const OPERATOR =
-  'Dryline is operated by Montana Cast Iron Solutions LLC, a Montana limited liability company, doing business as Dryline. A name change to Dryline Technologies LLC is pending with the Montana Secretary of State.'
+  'Dryline is operated by Dryline Technologies LLC, a Montana limited liability company.'
 
 /** Short legal name for the footer line. */
-export const OPERATOR_NAME = 'Montana Cast Iron Solutions LLC, doing business as Dryline'
+export const OPERATOR_NAME = 'Dryline Technologies LLC'
 
-/** Business contact address. Interim Gmail until a dryline.farm mailbox exists — one-constant swap. */
-export const CONTACT_EMAIL = 'reckon.farm@gmail.com'
+/** Business contact address. */
+export const CONTACT_EMAIL = 'pk@dryline.farm'
 
 export const MAILING_ADDRESS = '588 Kiehl Ranch Road, Winnett, Montana 59087'
 

@@ -1,3 +1,4 @@
+import { movedWho } from '@/lib/move-line'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
@@ -34,7 +35,11 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const ev = await getEvent(supabase, user.id, id)
   if (!ev) notFound()
   const { row, names, actorRole, line, quantity, placeId, lotId, corrects, correctedBy, head, canCorrect } = ev
-  const backdated = dayKey(row.ts) !== dayKey(row.ingested_at)
+  // Block 27: back-dated means MADE on a later day than the work — the person's
+  // act, not the server's. A record that reached the ranch on a later day than
+  // it was made is a different fact, said on its own line.
+  const backdated = dayKey(row.ts) !== dayKey(row.created_at)
+  const arrivedLater = dayKey(row.created_at) !== dayKey(row.ingested_at)
   const placeName = names.place(placeId)
   const lotName = names.lot(lotId)
   const stockId = typeof row.payload.stock_place_id === 'string' ? row.payload.stock_place_id : null
@@ -55,14 +60,18 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     ['Who', <>{names.person(row.user_id)} <span className="text-secondary-ink">· {actorRole}</span></>],
     ['What', line],
     ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
-    ...(lotName ? [['Bunch', lotName] as [string, React.ReactNode]] : []),
+    // Block 25: a move's bunch reads name · class, and a move with none says so.
+    ...(row.type === 'cattle_moved'
+      ? [['Bunch', <span key="b">{names.bunch(lotId) ? movedWho(null, names.bunch(lotId)) : 'No bunch named'}</span>] as [string, React.ReactNode]]
+      : lotName ? [['Bunch', lotName] as [string, React.ReactNode]] : []),
     ...(placeName && placeId ? [['Place', <Link key="p" href={`/ranch/places/${placeId}`} className="font-semibold text-brand underline underline-offset-2">{placeName}</Link>] as [string, React.ReactNode]] : []),
     // 6E: the optional fields the form asks for read back here — a note, and the
     // stack the hay was taken from. Absent = no row, never a blank.
     ...(stockName && stockId ? [['Taken from', <Link key="s" href={`/ranch/places/${stockId}`} className="font-semibold text-brand underline underline-offset-2">{stockName}</Link>] as [string, React.ReactNode]] : stockId ? [['Taken from', <span key="s2" className="text-secondary-ink">A stack no longer on the list · {stockId.slice(0, 8)}</span>] as [string, React.ReactNode]] : []),
     ...(note ? [['Note', note] as [string, React.ReactNode]] : []),
     ['Work time', when(row.ts)],
-    ['Recorded', when(row.ingested_at)],
+    ['Recorded', when(row.created_at)],
+    ...(arrivedLater ? [['Reached the ranch', when(row.ingested_at)] as [string, React.ReactNode]] : []),
     ['Saved', row.device_id ? 'Received from a device' : 'Sent'],
     ...(original ? [[isVoid ? 'Voids' : 'Corrects', <Link key="o" href={`/ranch/activity/${original.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-corrects-link"><s>{describeEvent(original, names)}</s></Link>] as [string, React.ReactNode]] : []),
     ...(row.supersedes_event_id ? [['Reason', row.correction_reason?.trim() || <span className="text-secondary-ink">No reason given</span>] as [string, React.ReactNode]] : []),
@@ -95,7 +104,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             <p className={EYEBROW}>{head.voided_at ? 'This entry was removed' : 'This entry was corrected'}</p>
             <p className="mt-1 font-dm-sans text-[17px] leading-snug text-ink">
               {head.voided_at ? 'It no longer counts. ' : <>Current: <Link href={`/ranch/activity/${head.id}`} className="font-semibold text-brand underline underline-offset-2" data-audit="event-current-link">{describeEvent(head, names)}</Link>. </>}
-              Changed by {names.person(head.user_id)} on {fmtDay(head.ingested_at)} at {fmtTime(head.ingested_at)}{head.correction_reason?.trim() ? ` — ${head.correction_reason.trim()}` : ''}.
+              Changed by {names.person(head.user_id)} on {fmtDay(head.created_at)} at {fmtTime(head.created_at)}{head.correction_reason?.trim() ? ` — ${head.correction_reason.trim()}` : ''}.
             </p>
           </Card>
         )}
@@ -128,7 +137,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                 return (
                   <li key={r.id} className="py-2 font-dm-sans text-[16px] leading-snug text-ink">
                     {me ? <span className={current ? 'font-semibold' : 'line-through'}>{describeEvent(r, names)}</span> : <Link href={`/ranch/activity/${r.id}`} className={`text-brand underline underline-offset-2 ${current ? 'font-semibold' : 'line-through'}`}>{describeEvent(r, names)}</Link>}
-                    <span className="block text-[14px] text-secondary-ink">{names.person(r.user_id)} · recorded {fmtDay(r.ingested_at)} {fmtTime(r.ingested_at)}{r.correction_reason?.trim() ? ` · ${r.correction_reason.trim()}` : ''}{current ? ' · current' : ''}{me ? ' · this entry' : ''}</span>
+                    <span className="block text-[14px] text-secondary-ink">{names.person(r.user_id)} · recorded {fmtDay(r.created_at)} {fmtTime(r.created_at)}{r.correction_reason?.trim() ? ` · ${r.correction_reason.trim()}` : ''}{current ? ' · current' : ''}{me ? ' · this entry' : ''}</span>
                   </li>
                 )
               })}
@@ -138,7 +147,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
         <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Entry {row.id}</p>
 
-        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null }} />}
+        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null, line }} />}
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Link href={`/activity${placeId ? `?place=${placeId}` : ''}`} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">{placeName ? `All activity at ${placeName}` : 'All activity'}</Link>

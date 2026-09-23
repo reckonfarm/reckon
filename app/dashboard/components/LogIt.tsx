@@ -1,14 +1,16 @@
 'use client'
 
+import RecordPicker from './RecordPicker'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
-import { useSwipeDown } from '@/lib/swipe-down'
+import BottomSheet from '@/app/components/BottomSheet'
 import { Field, Input, Select } from '@/app/components/ui/Field'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { MANUAL_EVENT_LABELS, MANUAL_EVENT_TYPES, type ManualEventType, isManualEventType } from '@/lib/manual-log'
+import { moveLine, movedWho, MOVE_NEEDS_BUNCH, type MovedBunch } from '@/lib/move-line'
 import { lotLabel, LOT_CLASSES, LOT_CLASS_LABELS, type Lot, type LotClass, bunchLabel, bunchDetail } from '@/lib/herd'
 import { splitBody, splitGroup, splitLabel, splitRefusal, defaultSplitClass, defaultSplitName } from '@/lib/cattle/split'
 import { discard } from '@/lib/outbox'
@@ -18,7 +20,6 @@ import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
-import Link from 'next/link'
 
 // "Log it" — the operator writes a line in the ledger by hand. Five tiles,
 // each at most three visible fields, time defaults to now (change it behind a
@@ -156,6 +157,7 @@ const TILE_VERB: Record<SheetType, string> = {
   cattle_worked: 'Record cattle work',
   hay_inventory: 'Count hay',
   cattle_counted: 'Count cattle',
+  bunch_seen: 'Seen here',   // Block 30: one tap on the place sheet; never in the picker
 }
 const SAVE_LABEL: Record<SheetType, string> = {
   preg_check: 'Record preg check',
@@ -167,21 +169,10 @@ const SAVE_LABEL: Record<SheetType, string> = {
   cattle_worked: 'Record work',
   hay_inventory: 'Record count',
   cattle_counted: 'Record count',
+  bunch_seen: 'Record sighting',
 }
-const MOVEMENT_TYPES: readonly ManualEventType[] = ['hay_fed', 'rain', 'bales_stacked', 'cattle_moved', 'cattle_worked']
 // 6G: the entries that can name a bunch. Feed always could; a move and cattle work now can, optionally.
 const LOT_TYPES: readonly SheetType[] = ['hay_fed', 'cattle_moved', 'cattle_worked', 'cattle_counted', 'preg_check', 'split']
-const TILE_HINT: Record<SheetType, string> = {
-  preg_check: 'checked, bred, open — the opens become a bunch',
-  split: 'some head leave and become their own bunch',
-  rain: 'inches in the gauge',
-  hay_fed: 'bales put out',
-  bales_stacked: 'bales into the stack',
-  cattle_moved: 'head, from → to',
-  cattle_worked: 'head and what you did',
-  hay_inventory: 'sets the ranch\u2019s bales on hand, as of a date',
-  cattle_counted: 'head you counted in one bunch \u2014 the bunch\u2019s number does not change',
-}
 
 // The day a form is recording, in the words a person would use. '' means now.
 // Named days only go back one: past that a bare "Sep 8" is clearer than
@@ -275,6 +266,7 @@ function PlaceSelect({ label, slot, places, onChange, disabled }: {
       <Select
         value={slot.id}
         disabled={disabled}
+        data-audit="place-select"
         onChange={e => {
           if (e.target.value === '__new__') { onChange({ id: '', newName: '' }); return }
           onChange({ id: e.target.value, newName: null })
@@ -340,6 +332,7 @@ function UnitInput({ unit, id, invalid, className = '', ...rest }: React.InputHT
 function describe(
   type: SheetType, n: number, what: string,
   lot: string | null, place: string | null, from: string | null, to: string | null,
+  bunch: MovedBunch | null = null,
 ): string {
   const at = place ? ` at ${place}` : ''
   const bales = (k: number) => `${k} ${k === 1 ? 'bale' : 'bales'}`
@@ -347,10 +340,11 @@ function describe(
     case 'rain':          return `${Number.isFinite(n) ? n.toFixed(2) : '?'}" of rain${at}`
     case 'hay_fed':       return `Fed ${bales(n)}${lot ? ` to ${lot}` : ''}${at}`
     case 'bales_stacked': return `Stacked ${bales(n)}${at}`
-    case 'cattle_moved':  return `Moved ${n} head${from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''}`
+    case 'cattle_moved':  return moveLine(Number.isFinite(n) ? n : null, bunch, from, to)   // Block 25: the one move wording
     case 'cattle_worked': return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${n} head${at}`
     case 'hay_inventory': return `${bales(n)} on hand${at}`
     case 'cattle_counted': return `Counted ${n} head${lot ? ` of ${lot}` : ''}`
+    case 'bunch_seen': return `Seen ${lot ?? 'cattle'}${at}`   // Block 30 (never opened from the sheet; the label lives on the place sheet)
     case 'preg_check': return `Preg check · ${n} checked${lot ? ` · ${lot}` : ''}`
     case 'split': return `Split · ${n} head${lot ? ` from ${lot}` : ''}`
   }
@@ -397,6 +391,11 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [onHandNow, setOnHandNow] = useState<number | null>(null)
   const [what, setWhat] = useState('')
   const [place, setPlace] = useState<PlaceSlot>(EMPTY_SLOT)
+  // Block 33 (ruling 1): Where follows the BUNCH — its recorded place, not the
+  // last place this phone used (the audit kept SIM-Corrals for the cows after a
+  // bull move). A place the person picked, or a draft that names one, is kept;
+  // a bunch with no recorded place leaves the last-used default in place.
+  const placeChosen = useRef(false)
   const [fromPlace, setFromPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [toPlace, setToPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [when, setWhen] = useState('')      // '' = now
@@ -418,6 +417,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
     setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT)
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
+    placeChosen.current = false
     writeDraft(null)
   }, [])
 
@@ -427,6 +427,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setType(d.type)
     setN1(d.n1 ?? ''); setWhat(d.what ?? '')
     setPlace(d.place ? { id: d.place, newName: null } : EMPTY_SLOT)
+    placeChosen.current = !!d.place   // a draft that names a place (Record here, Adjust first) chose it
     setFromPlace(d.fromPlace ? { id: d.fromPlace, newName: null } : EMPTY_SLOT)
     setToPlace(d.toPlace ? { id: d.toPlace, newName: null } : EMPTY_SLOT)
     setLot(d.lot ?? ''); setWhen(d.when ?? ''); setEditWhen(!!d.when); setAsOf(d.asOf ?? '')
@@ -520,6 +521,19 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     return () => { cancelled = true }
   }, [open, type, lots])
 
+  // Block 33 (ruling 1): the bunch decides Where. Whenever the chosen bunch has
+  // a recorded place the ranch knows, Where is that place — until the person
+  // picks one themselves. Runs after the lots and the places have loaded, and
+  // again when the bunch changes; a bunch without a place changes nothing.
+  useEffect(() => {
+    if (!open || !type || !['hay_fed', 'cattle_worked', 'cattle_counted'].includes(type) || placeChosen.current) return
+    const pid = lot ? lots?.find(l => l.id === lot)?.place_id : null
+    if (!pid || !places.some(p => p.id === pid)) return
+    // On a task, not in the effect body (the cascading-render rule).
+    const t = setTimeout(() => { if (!placeChosen.current) setPlace(prev => prev.id === pid ? prev : { id: pid, newName: null }) }, 0)
+    return () => clearTimeout(t)
+  }, [open, type, lot, lots, places])
+
   // Load places on open; the last-used place only applies if it still exists.
   useEffect(() => {
     if (!open) return
@@ -533,7 +547,17 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         const last = readLastPlace()
         setPlace(prev => prev.id || prev.newName !== null ? prev : (list.some(p => p.id === last) ? { id: last, newName: null } : EMPTY_SLOT))
       })
-      .catch(() => { /* offline: select still offers blank + new */ })
+      .catch(() => {
+        // Block 20: no signal. The phone's copy of the ranch map (RecordPicker
+        // keeps it) names every place, so the select can still SHOW the place
+        // that was picked instead of a blank over a record that carries it.
+        if (cancelled) return
+        try {
+          const raw = localStorage.getItem('dryline_ranch_map_v1')
+          const cached = raw ? (JSON.parse(raw) as { places?: { id: string; name: string; kind: string }[] }) : null
+          if (cached?.places?.length) setPlaces(cached.places.map(pl => ({ id: pl.id, name: pl.name, kind: pl.kind })))
+        } catch { /* nothing kept: the select offers blank + new, as before */ }
+      })
     return () => { cancelled = true }
   }, [open])
 
@@ -550,9 +574,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     editWhen ||
     asOf !== '' ||
     [place, fromPlace, toPlace].some(s => s.newName !== null && s.newName.trim() !== '')
-  const dismiss = dirty ? undefined : close
   // Block 15 (ruling 6): a pull down on the sheet closes it — asking first if something was typed.
-  const swipe = useSwipeDown(() => { if (!dirty || window.confirm('Discard what you typed?')) close() }, open)
 
   useEffect(() => {
     if (!open) return
@@ -569,8 +591,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         else if (!e.shiftKey && document.activeElement === lastNode) { e.preventDefault(); firstNode.focus() }
         return
       }
-      if (e.key !== 'Escape') return
-      if (!dirty || window.confirm('Discard what you typed?')) close()
+      // Block 26c: Escape is the sheet's (BottomSheet), with the same dirty check.
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey); requestAnimationFrame(() => opener?.focus()) }
@@ -679,7 +700,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         return
       }
 
-      const num = n1.trim() === '' ? NaN : Number(n1)
+      // Block 25: a move left blank is the whole bunch — the number the field
+      // shows in grey, and the one the preview line under it spells out.
+      const wholeBunch = type === 'cattle_moved' ? lots?.find(l => l.id === lot)?.head_count : undefined
+      const num = n1.trim() === '' ? (wholeBunch ?? NaN) : Number(n1)
       // Block 7.4 — an empty field used to travel as NaN, become null in JSON,
       // and be rejected by the server AFTER the entry had already landed in the
       // outbox as 'failed'. Refuse it here, where the person can still fix it.
@@ -691,7 +715,10 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         case 'hay_fed':       body.bales = num; body.herd_lot_id = lot || null; body.place_id = placeId; if (note.trim()) body.note = note.trim(); { const sid = await resolveSlot(stock, setStock); if (sid) body.stock_place_id = sid } break
         case 'bales_stacked': body.count = num; body.place_id = placeId; break
         case 'cattle_moved':
-          body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot || null
+          // Block 25: a move names its bunch. The route refuses without one in
+          // these same words; said here first so a corral never waits on it.
+          if (!lot) { setError(MOVE_NEEDS_BUNCH); setBusy(false); return }
+          body.head = num; body.from_place_id = fromId; body.to_place_id = toId; body.herd_lot_id = lot
           body.place_id = toId   // where they are now
           break
         case 'cattle_worked': body.head = num; body.what = what; body.place_id = placeId; body.herd_lot_id = lot || null; break
@@ -709,7 +736,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       const placeName = (id: string | null) => places.find(p => p.id === id)?.name ?? null
       const lotName = lots?.find(l => l.id === lot)
       body.id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
-      const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId))
+      const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId), lotName ?? null)
       try {
         enqueue(body, label)
       } catch {
@@ -730,7 +757,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   }
 
   const placeField = (label = 'Where') => (
-    <PlaceSelect label={label} slot={place} places={places} onChange={setPlace} disabled={busy} />
+    <PlaceSelect label={label} slot={place} places={places} onChange={s => { placeChosen.current = true; setPlace(s) }} disabled={busy} />
   )
 
   let fields: ReactNode = null
@@ -771,13 +798,13 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   // 6G: which bunch — optional, with "Unassigned" plain. What a move DOES is said
   // on the field: it records the move; it never changes a lot's head count.
-  const lotField = (label: string, hint: string, audit: string) => (<>
+  const lotField = (label: string, hint: string, audit: string, required = false) => (<>
     <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
         <Select value={lot} disabled={busy} onChange={e => { if (e.target.value === '__new__') { setNewBunch(true); return } setLot(e.target.value) }} data-audit={audit}>
-          <option value="">Unassigned</option>
+          <option value="">{required ? 'Pick a bunch' : 'Unassigned'}</option>
           {lots.map(l => <option key={l.id} value={l.id}>{bunchLabel(l)}</option>)}
           <option value="__new__">New bunch…</option>
         </Select>
@@ -785,11 +812,20 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     </Field>
     {newBunch && <NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} />}
   </>)
+  // Block 25: a move names ONE bunch and it is required — picked first, since
+  // it answers "how many" too. Blank head = the whole bunch.
+  const movedLot = lots?.find(l => l.id === lot) ?? null
+  const movedTo = toPlace.newName !== null ? toPlace.newName.trim() : (places.find(p => p.id === toPlace.id)?.name ?? '')
   if (type === 'cattle_moved') fields = (<>
-    <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} />
-    {lotField('Bunch', 'Records the move against this bunch. A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move')}
+    {lotField('Bunch', 'A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move', true)}
+    <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} placeholder={movedLot ? String(movedLot.head_count) : '—'} />
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
+    {movedLot && (
+      <p className="font-dm-sans text-[16px] leading-snug text-ink" data-audit="move-preview">
+        {movedWho(n1.trim() !== '' && Number.isFinite(Number(n1)) ? Number(n1) : movedLot.head_count, movedLot)}{movedTo ? ` → ${movedTo}` : ''}
+      </p>
+    )}
   </>)
   if (type === 'hay_inventory') fields = (<>
     <NumberField label="On hand" unit="bales" value={n1} onChange={setN1} max={100000} placeholder="0" />
@@ -995,75 +1031,29 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       )}
 
       {sheet && open && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
-          onClick={dismiss}
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Record work"
-        >
-          <Card
-            shadow="soft"
-            className="sheet-in max-h-[90vh] w-full max-w-md overflow-y-auto rounded-b-none px-5 py-5 sm:rounded-b-xl"
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            {...swipe}
-            data-audit="record-sheet"
-          >
-            <div aria-hidden className="mx-auto -mt-2 mb-3 h-1.5 w-10 rounded-full bg-forest-green/20 sm:hidden" />
+        <BottomSheet open onClose={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }} label="Record work" z={60} panelAudit="record-sheet" panelRef={dialogRef}>
             <div className="flex items-center justify-between">
               <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
-              <button
-                type="button"
-                onClick={type ? () => { eventId.current = null; setType(null); setError(null); setNewBunch(false) } : close}
-                className="min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-ink hover:text-forest-green"
-              >
-                {type ? 'Back' : 'Close'}
-              </button>
+              {/* Block 26c: no Close — the pull-down and the dim are the close. Back stays: it is a different act. */}
+              {type && (
+                <button type="button" onClick={() => { eventId.current = null; setType(null); setError(null); setNewBunch(false) }} className="min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-ink hover:text-forest-green">
+                  Back
+                </button>
+              )}
             </div>
 
             {!type ? (
-              <div className="mt-4" data-audit="record-picker">
-                {/* Block 12 (12.2): the list reads as WHAT AM I RECORDING — Work,
-                    Count, Ground — not as a flat menu of event types. 11.9: the
-                    tile subtitles are gone; only Count hay keeps its hint, because
-                    "not a stock movement" is a rule a person can get wrong. */}
-                <p className="font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-work">Work</p>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  {MOVEMENT_TYPES.map(t => (
-                    <button key={t} type="button" onClick={() => setType(t)} className="min-h-[64px] rounded-lg border border-forest-green/15 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit={`tile-${t}`}>
-                      <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB[t]}</span>
-                    </button>
-                  ))}
-                </div>
-                {/* Count stands apart: it states what is there; it never adds or takes stock. */}
-                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-count">Count</p>
-                <button type="button" onClick={() => setType('cattle_counted')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-cattle_counted">
-                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.cattle_counted}</span>
-                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.cattle_counted}</span>
-                </button>
-                <button type="button" onClick={() => setType('hay_inventory')} className="mt-2 min-h-[72px] w-full rounded-lg border border-dashed border-forest-green/30 bg-white px-4 py-3 text-left transition-colors hover:bg-forest-green/5" data-audit="tile-hay_inventory">
-                  <span className="block font-dm-sans text-[17px] font-semibold text-forest-green">{TILE_VERB.hay_inventory}</span>
-                  <span className="mt-1 block font-dm-sans text-[16px] text-ink">{TILE_HINT.hay_inventory}</span>
-                </button>
-                <button type="button" onClick={() => setType('preg_check')} className="mt-2 flex min-h-[56px] w-full items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit="tile-preg-check">
-                  <span>Preg check</span><span className="font-normal text-secondary-ink">{TILE_HINT.preg_check}</span>
-                </button>
-                {/* Ground: a place is recorded with the phone already in your hand,
-                    standing in it — the same moment as recording work (8B.1). */}
-                <p className="mt-5 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink" data-audit="picker-group-ground">Ground</p>
-                <div className="mt-2 grid grid-cols-1 gap-2">
-                  {([
-                    ['drop', 'Drop a point where you stand', 'a stack, a gate, a tank'],
-                    ['ride', 'Ride the perimeter', 'a field, a pasture, a corral'],
-                    ['draw', 'Draw a place on the map', 'tap the corners'],
-                  ] as const).map(([mode, label, hint]) => (
-                    <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`} onClick={close} className="flex min-h-[56px] items-center justify-between rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green hover:bg-forest-green/5" data-audit={`tile-place-${mode}`}>
-                      <span>{label}</span><span className="font-normal text-secondary-ink">{hint}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
+              // Block 20: the picker is the ranch map and one row of actions.
+              // A place tapped first is the record's place; an action tapped
+              // first takes the place under the fix, or the form asks.
+              <RecordPicker
+                onPick={(a, placeId) => {
+                  setType(a); setError(null)
+                  if (placeId) { if (a === 'cattle_moved') setToPlace({ id: placeId, newName: null }); else setPlace({ id: placeId, newName: null }) }
+                }}
+                onRare={(a, placeId) => { setType(a); setError(null); if (placeId) setPlace({ id: placeId, newName: null }) }}
+                onClose={close}
+              />
             ) : (
               <form
                 className="mt-4 flex flex-col gap-4"
@@ -1141,8 +1131,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 </div>
               </form>
             )}
-          </Card>
-        </div>
+        </BottomSheet>
       )}
     </>
   )

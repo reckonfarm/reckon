@@ -20,13 +20,14 @@
 //   mid-save (page killed while offline) → reopened → exactly one row;
 //   double-tap Save → one row; a half-typed sheet survives a reload.
 
-import { guardWorktree } from './lib/suite-guard'
+import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
 import { chromium, type Locator, type Page, type BrowserContext } from '@playwright/test'
 import { TEXT_AUDIT, type TextAudit } from './lib/text-audit'
+import { MOVE_NEEDS_BUNCH, NO_PLACE_RECORDED } from '../lib/move-line'
 
 function loadEnv() {
   for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
@@ -59,7 +60,7 @@ const skip = (check: string, detail: string) => { results.push({ check, pass: tr
 // PK, 2026-09-15: known flakes are NAMED AND SKIPPED, never replayed. A pass is
 // a pass; a fail is a named skip that keeps its detail, so a real failure
 // shows up twice across two runs instead of costing a replay each time.
-const KNOWN_FLAKES = ['force-quit receipt', '6B place timeline', 'Weather day chips'] as const
+const KNOWN_FLAKES = ['force-quit receipt', 'Weather day chips'] as const
 const flaky = (name: typeof KNOWN_FLAKES[number], check: string, pass: boolean, detail = '') => {
   if (pass) { record(check, true, detail); return }
   skip(check, `known flake "${name}" — ${detail}`)
@@ -119,17 +120,20 @@ const LOT_NAME = 'Smoke steers'
 
 async function teardown(label: string) {
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 })
-  const ids = (users?.users ?? []).filter(u => u.email === EMAIL || u.email === EMAIL_B).map(u => u.id)
+  const ids = (users?.users ?? []).filter(u => u.email === EMAIL || u.email === EMAIL_B || u.email === 'smoke-daily-loop-new@dryline.farm').map(u => u.id)
   let n = 0
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('job_annotations').delete().in('user_id', ids).select('job_id')).data?.length ?? 0   // 6J fixtures
     n += (await admin.from('jobs').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    // Block 28 (074): a place that history points at is never hard-deleted —
+    // the events went first; the bunches go before the places; and a parent is
+    // refused while a child still lives, so places go in passes until none go.
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
+    for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
     n += (await admin.from('hay_listings').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
     n += (await admin.from('profiles').delete().in('id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
   }
@@ -212,14 +216,34 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
 // labels it shows, until `until` appears or the time runs out.
 const STATES = ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"]
 let lastWatch: string[] = []   // raw strip texts seen by the last watch, for FAIL details
+// Block 32: a ledger page stamps what its render read (data-audit="ledger-through").
+// Wait until the painted stamp is at or past a row's ingested_at — the page's own
+// proof that it caught up — and say how long that took. A page without the stamp
+// is not a ledger page and can never catch up.
+async function stampReaches(page: Page, ingestedAt: string | null, timeoutMs: number): Promise<{ ok: boolean; stamp: string | null; ms: number }> {
+  const t0 = Date.now()
+  let stamp: string | null = null
+  while (Date.now() - t0 < timeoutMs) {
+    stamp = await page.locator('[data-audit="ledger-through"]').first().getAttribute('data-through').catch(() => null)
+    if (ingestedAt && stamp && Date.parse(stamp) >= Date.parse(ingestedAt)) return { ok: true, stamp, ms: Date.now() - t0 }
+    await page.waitForTimeout(250)
+  }
+  return { ok: false, stamp, ms: Date.now() - t0 }
+}
+
 async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
   const raw: string[] = []
   const t0 = Date.now()
   while (Date.now() - t0 < timeoutMs) {
-    const text = (await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const strip = page.locator('[role="status"]').first()
+    const text = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ')
     if (raw[raw.length - 1] !== text) raw.push(text)
-    if (label && !text.includes(label)) { await page.waitForTimeout(50); continue }   // still showing the previous entry
+    // Block 23: a synced receipt is ONE line and may not repeat the record's
+    // name, so which record a strip is about is read from the strip, not from
+    // its words. The text is still accepted, for strips without the attribute.
+    const named = await strip.getAttribute('data-label').catch(() => null)
+    if (label && !text.includes(label) && !(named ?? '').includes(label)) { await page.waitForTimeout(50); continue }
     const s = STATES.find(x => text.includes(x))
     if (s && seen[seen.length - 1] !== s) seen.push(s)
     if (s === until) break
@@ -347,6 +371,32 @@ async function main() {
   })
   try {
     let page = await signIn(ctx)
+    // ── Block 26b (ruling 1): a check that dies is ONE red, and the run goes on ──
+    // Every section below runs inside this. A throw — a Playwright timeout, a
+    // fixture insert refused, anything — is recorded as one FAIL naming the
+    // section and what it died of; then the page is put back on its feet (back
+    // online, every route unblocked, a fresh page if it was closed) and the
+    // next section runs. Before this a single ride timeout left every check
+    // after it unrun, and a run that stops is not a result.
+    // ONLY=<regex> runs just the sections whose names match — for chasing a red
+    // that only shows after certain sections, without the whole loop. A run
+    // with ONLY set is a PARTIAL and says so on its summary line.
+    const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null
+    const section = async (name: string, body: () => Promise<void>) => {
+      if (only && !only.test(name)) return
+      try { await body() } catch (e) {
+        // The first line names the verb; the 'waiting for' line names the locator — both, or a timeout says nothing.
+        const lines = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(Boolean)
+        // The verb, the locator, and WHAT STOOD IN THE WAY: an element that intercepts pointer events is the line that names the culprit.
+        const said = [lines[0], ...lines.filter(l => /waiting for|locator\(|getBy|intercepts|receives|retrying|from <|subtree/.test(l)).slice(0, 5)].join(' · ').slice(0, 700)
+        record(`${name}: died before its checks finished — ${said}`, false, 'every check of this section after that point is unrun')
+        await ctx.setOffline(false).catch(() => {})
+        if (page.isClosed()) page = await ctx.newPage()
+        await page.unroute('**').catch(() => {})
+        await page.context().setGeolocation(null).catch(() => {})
+      }
+    }
+
     record('signed in', page.url().includes('/today'), page.url().replace(BASE, ''))
 
     // ── invariant ──
@@ -407,10 +457,10 @@ async function main() {
     // page — and they sit LAST, below the ledgers. "No news on Today" becomes
     // "news below all of the work": still nothing above the ranch's own business,
     // which is what 7.7 was protecting.
-    {
+    await section('Block 11 (11.12): the receipt leads with the balance', async () => {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
+      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=/Repeat (last|a) feeding/'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       // Block 16 (ruling 1): headlines are BACK on Today — and the order 7.7
       // protects is unchanged, because they sit below everything: the ranch's
@@ -424,14 +474,15 @@ async function main() {
       const droughtPanels = (await page.locator('[data-audit="county-drought"], [data-audit="drought-ribbon"], [data-audit="lfp-alert"]').count())
       record('7.7: the LFP card, the drought designation panels and the deadline strip are off Today', (await page.locator('[data-audit="conditions-strip"]').count()) === 0 && !/LFP status/i.test(body7) && !/Next USDA deadline/i.test(body7) && droughtPanels === 0, `${(body7.match(/LFP status|Next USDA deadline/i) ?? ['no program text'])[0]} · drought panels ${droughtPanels}`)
       record('7.7: no floating Feedback button on Today', (await page.getByRole('button', { name: /send feedback/i }).count()) === 0)
-    }
+    })
     // Block 5C — one receipt: the strip's link opens the exact entry it just made.
-    {
+    await section('Today order: nothing above the ranch\'s own business', async () => {
       const href = await page.locator('[role="status"] [data-audit="receipt-open-entry"]').first().getAttribute('href').catch(() => null)
       const ob = await outbox(page)
       const latestId = ob.length ? ob[ob.length - 1].id : null
       record('5C: the save receipt links to the exact entry', !!href && !!latestId && href === `/ranch/activity/${latestId}`, `${href} vs outbox id ${latestId}`)
-    }
+    })
+    await section('outbox core: one row per id, airplane mode, force-quit, the receipt link', async () => {
     const ob1 = await outbox(page)
     const id1 = ob1.find(i => (i.body as { bales?: number }).bales === 4)?.id ?? ''
     record('exactly one row under the client-minted id', !!id1 && (await rowsFor(id1)) === 1 && (await feedRows()) === 1, `id ${id1.slice(0, 8)}… rows=${id1 ? await rowsFor(id1) : '-'} feeds=${await feedRows()}`)
@@ -491,9 +542,10 @@ async function main() {
     const restored = await page.getByLabel('Hay fed').inputValue().catch(() => '')
     record('half-typed sheet survives a reload, and Today offers a way back to it', /finish/i.test(btn) && restored === '7', `draft control "${btn}" · bales "${restored}"`)
     await page.getByRole('button', { name: 'Cancel' }).click()
+    })
 
     // ── 7.4 + 7.5: what a form says before it saves ────────────────────────
-    {
+    await section('7.4 + 7.5: what a form says before it saves', async () => {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_500)
       // The check before this one deliberately leaves a half-typed sheet
@@ -539,8 +591,9 @@ async function main() {
       record('7.5: Today puts it back to Now', (await page.locator('[data-audit="when-sentence"]').innerText().catch(() => '')).trim() === 'Now.')
       await page.locator('button:has-text("Cancel")').first().click().catch(() => {})
       await page.waitForTimeout(600)
-    }
+    })
 
+    await section('2F: a feeding AT the place, then the place page answers', async () => {
     // ── 2F: a feeding AT the place, then the place page answers ──
     const placeName = `${PREFIX} West stack`
     await logFeed(page, 2, { place: placeName })
@@ -570,7 +623,7 @@ async function main() {
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const same = page.getByRole('button', { name: /^Record \d+ bales? now$/ })
     await same.waitFor({ timeout: 20_000 }).catch(() => {})
-    const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const cardText = (await page.getByText(/^Repeat (last|a) feeding$/).locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2B: Repeat last feeding card shows the last feeding', await same.count() > 0 && /2 bales/.test(cardText) && cardText.includes(placeName), cardText.slice(0, 100))
     await same.click()                                                   // tap 2
     const undo = page.getByRole('button', { name: /^Undo/ })
@@ -725,9 +778,10 @@ async function main() {
     await page.locator('[data-audit="ranch-today"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
     const ownerText = ((await page.locator('[data-audit="ranch-today"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
     record('4A/12.8: the hand\'s feeding shows its lot name to the owner, in the hand\'s line under Today on the ranch', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
+    })
 
     // ── Block 6A (6): the Ranch hub's numbers stand behind something; Archive keeps history ──
-    {
+    await section('Block 6A (6): the Ranch hub\'s numbers stand behind something; Archive keeps history', async () => {
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
       // Block 12 (12.7): three tiles, each with a number only where something
       // stands behind it. This ranch has no devices, so Ground names places
@@ -762,18 +816,18 @@ async function main() {
       const look = await page.context().newPage()
       await look.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await look.locator('[data-audit="activity-list"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(deleted\\)`) }).count()
+      const stillNamed = await look.getByRole('link', { name: new RegExp(`to ${LOT_NAME} \\(in trash\\)`) }).count()
       await look.close()
-      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as deleted',
-        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as deleted ${stillNamed}`)
+      record('13 (lot): hold → Delete goes to the trash with no confirm, the row leaves the list, and every past feeding still names the lot as in the trash',
+        lotSheet2 && stripUp && rowsBefore === 1 && rowsAfter === 0 && stillNamed >= 1, `sheet ${lotSheet2} · strip ${stripUp} · rows ${rowsBefore} → ${rowsAfter} · feedings still naming it as in trash ${stillNamed}`)
       const undone = await pressUndo(page)
       for (let i = 0; i < 40 && (await page.locator('[data-audit="lot-row"]').count()) === 0; i++) await page.waitForTimeout(250)
       const rowsBack = await page.locator('[data-audit="lot-row"]').count()
       record('13 (lot): Undo puts the lot back on the list', undone && rowsBack === 1, `undo ${undone} · rows ${rowsBack}`)
-    }
+    })
 
     // ── Block 6A (7): places rows carry last work only when a line exists; devices empty state + setup page ──
-    {
+    await section('Block 6A (7): places rows carry last work only when a line exists; devices empty state + setup page', async () => {
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="place-rows"]').waitFor({ timeout: 20_000 }).catch(() => {})
       const placeRows = await page.locator('[data-audit="place-row"]').count()
@@ -786,15 +840,15 @@ async function main() {
       const setup = await page.request.get('/ranch/devices/setup')
       const online = await page.locator('main').innerText().then(t => /\bOnline\b|\bOffline\b/.test(t)).catch(() => false)
       record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /No devices connected\. You can record work now\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
-    }
+    })
 
     // ── Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding ──
-    {
+    await section('Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding', async () => {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
-      const tiles = await page.locator('[data-audit="record-picker"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
-      // Block 12 (12.2): the picker reads Work · Count · Ground; Count hay sits under Count and keeps its hint.
-      const countApart = (await page.locator('[data-audit="picker-group-count"]').count()) === 1 && (await page.locator('[data-audit="picker-group-work"]').count()) === 1 && (await page.locator('[data-audit="picker-group-ground"]').count()) === 1
+      // Block 20: the picker is the ranch map and ONE row — Feed · Move · Count · Rain · Work · Place, each an icon with its word.
+      const tiles = await page.locator('[data-audit="record-actions"] button').evaluateAll(els => els.map(e => (e.querySelector('span')?.textContent ?? '').trim()))
+      const countApart = tiles.join(' | ') === 'Feed | Move | Count | Rain | Work | Place'
       await page.locator('[data-audit="tile-hay_fed"]').click()
       await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
       const labels = await page.locator('form label, form [data-audit="feed-preview"], form p').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
@@ -804,11 +858,11 @@ async function main() {
       const preview = (await page.locator('[data-audit="feed-preview"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const saveLabel = (await page.locator('[data-audit="record-save"]').innerText().catch(() => '')).trim()
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
-      record('6A/12.2/14: the sheet offers Work · Count · Ground, Count cattle and Count hay under Count; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', tiles.join(' | ') === 'Feed hay | Record rain | Add bales to a stack | Move cattle | Record cattle work | Count cattle | Count hay | Preg check' && countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
-    }
+      record('6A/12.2/14/20: the sheet opens on one row of six — Feed · Move · Count · Rain · Work · Place; a feeding runs quantity → bunch → place; "Not assigned to a bunch"; a preview line; Record feeding', countApart && order[0] < order[1] && order[1] < order[2] && noLot === 'Not assigned to a bunch' && /^3 bales.*today \d/.test(preview) && saveLabel === 'Record feeding', `tiles [${tiles.join(' | ')}] · count apart ${countApart} · order ${order.join(',')} · no-lot "${noLot}" · preview "${preview}" · save "${saveLabel}"`)
+    })
 
     // ── Block 6A (9): the copy queue, as rendered ──
-    {
+    await section('Block 6A (9): the copy queue, as rendered', async () => {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).catch(() => {})
       const tabs = await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
@@ -824,10 +878,10 @@ async function main() {
       const nameHint = await page.getByText('Name shown on your work entries').count()
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
       record('6A/12.13: copy queue rendered — Jobs this season · Hay tabs (the Activity tab went in 12.13); Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
-    }
+    })
 
     // ── Block 6 (6K): weather copy — no "County County"; the rainfall line says what it is; the Drought Monitor's two dates named apart ──
-    {
+    await section('Block 6 (6K): weather copy — no "County County"; the rainfall line says what it is; the Drought Monitor\'s two dates named apart', async () => {
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="weather-estimate"]').waitFor({ timeout: 30_000 }).catch(() => {})
       const mainText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
@@ -873,10 +927,10 @@ async function main() {
       const prism = /County estimate/i.test(sourceLine)
       record('6K: the rainfall figures say what they are — a county estimate (PRISM) or a station gauge — never "Actual"', !/YTD Actual|\bActual:/.test(est) && (ytdLabel === '' ? /rather show nothing|No nearby weather station/.test(est) : prism ? /County estimate/.test(ytdLabel) : /Station gauge/.test(ytdLabel)), `label "${ytdLabel}" · source line "${sourceLine}"`)
       record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText), `${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
-    }
+    })
 
     // ── Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · drought map ──
-    {
+    await section('Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · drought map', async () => {
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="weather-forecast"]').waitFor({ timeout: 30_000 }).catch(() => {})
       // PAGE ORDER IS NOT ASSERTED HERE ANY MORE — check 7-2 below owns it, in
@@ -919,10 +973,10 @@ async function main() {
       const dead: string[] = []
       for (const h of hrefs) { const r = await page.request.get(h, { maxRedirects: 5 }).catch(() => null); if (!r || r.status() === 404 || r.status() >= 500) dead.push(`${h} → ${r ? r.status() : 'no response'}`) }
       record('6F: every link on the Weather view answers — none is a Page not found', hrefs.length > 0 && dead.length === 0, dead.length ? dead.join(' · ') : `${hrefs.length} links answered`)
-    }
+    })
 
     // ── Block 6B (9): at 200% text size on a phone, Record is still reachable ──
-    {
+    await section('Block 6B (9): at 200% text size on a phone, Record is still reachable', async () => {
       const prior = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -938,10 +992,10 @@ async function main() {
       record('6B: at 200% text size Record stays inside the viewport, clickable, and the page does not scroll sideways', inside && clickable && !overflowX, `fab ${box ? `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}` : 'none'} in ${vp.width}×${vp.height} · sideways ${overflowX}`)
       await page.evaluate(() => { document.documentElement.style.fontSize = '' })
       if (prior) await page.setViewportSize(prior)
-    }
+    })
 
     // ── Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected ──
-    {
+    await section('Block 6A (1): old URLs resolve, the signed-in home is /today, county pages are never redirected', async () => {
       const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }
       const { data: anyEvent } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       const { data: anyPlace } = await admin.from('places').select('id').eq('ranch_id', ranchId).limit(1).maybeSingle()
@@ -959,10 +1013,10 @@ async function main() {
       await page.goto(`/dashboard?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       const countyTitle = await page.title()
       record('6A: no county title on a private page; the county page keeps it', /^Today/.test(title) && !/Drought/.test(title) && /Drought & LFP Eligibility/.test(countyTitle), `/today: "${title}" · /dashboard: "${countyTitle}"`)
-    }
+    })
 
     // ── Block 6A (4): the same ranch in the header on every private page; no county title on any of them ──
-    {
+    await section('Block 6A (4): the same ranch in the header on every private page; no county title on any of them', async () => {
       const walk = [`/today?fips=${HOME_FIPS}`, '/ranch', '/ranch/cattle', '/ranch/activity', '/ranch/places', '/markets', '/weather', '/account']
       const seen: { path: string; ranch: string; title: string }[] = []
       for (const path of walk) {
@@ -973,7 +1027,7 @@ async function main() {
       const names = new Set(seen.map(x => x.ranch))
       const countyTitled = seen.filter(x => /Drought/.test(x.title))
       record('6A: the same ranch name in the header on Today, Ranch, Cattle, Activity, Places, Markets, Weather, Account — and no county title on any', names.size === 1 && !names.has('') && countyTitled.length === 0, `ranch "${[...names].join('|')}" · titles: ${seen.map(x => `${x.path.replace(/\?.*/, '')}="${x.title.replace(/ — Dryline$/, '')}"`).join(' ')}`)
-    }
+    })
 
     // ── Block 6A (3) / 11.4: the bottom bar carries Record on a phone ────────
     // The FAB this used to check is deleted. It floated over real controls on
@@ -985,7 +1039,7 @@ async function main() {
     //
     // The behaviour worth keeping from the old check survives: Record opens
     // the sheet, and it is not offered while the sheet is already up.
-    {
+    await section('Block 6A (3) / 11.4: the bottom bar carries Record on a phone', async () => {
       const prior = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -1010,19 +1064,19 @@ async function main() {
       const openDialogs = await page.getByRole('dialog').count()
       const recWhileOpen = await rec.count()
       const flag = await page.evaluate(() => document.documentElement.dataset.recordSheet ?? '')
-      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button — the pull-down, the dim, or Escape
       await page.waitForTimeout(300)
       const recAfter = await rec.isVisible().catch(() => false)
       record('6A: Record opens the sheet and is not offered while the sheet is up, back when it closes',
         openDialogs === 1 && recWhileOpen === 0 && flag === 'open' && recAfter,
         `dialogs ${openDialogs} · Record while open ${recWhileOpen} · html flag "${flag}" · back after close ${recAfter}`)
       if (prior) await page.setViewportSize(prior)
-    }
+    })
 
     // ── Block 6 (6G): a move and cattle work can name a lot ─────────────────────
     // Optional, "Unassigned" plain; a move records the move and never changes a
     // head count; work against a lot becomes its last recorded work.
-    {
+    await section('Block 6 (6G): a move and cattle work can name a lot', async () => {
       // A fresh lot for this block (the seed lot was archived by an earlier check).
       const lot6g = randomUUID(), LOT6G = `${PREFIX} Pairs`
       const { error: l6Err } = await admin.from('herd_lots').insert({ id: lot6g, ranch_id: ranchId, class: 'cows', name: LOT6G, head_count: 44, avg_weight: 1200, weight_unit: 'lb', created_by: userId, updated_by: userId })
@@ -1048,32 +1102,151 @@ async function main() {
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const lastWork = (await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-last-work"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('6G: the lot card\'s last recorded work is the cattle work', /pregged 12 head/.test(lastWork), lastWork.slice(0, 100))
-      // a move naming the lot — recorded, and the head count untouched
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await recordControl(page).click()
-      await page.getByRole('button', { name: /^Move cattle/ }).click()
+      // ── Block 25: a move names its bunch, and sets the bunch's place ─────────
+      // PK's falsifier, as written: record a move of a bunch to a place; the
+      // bunch's place reads as that place immediately, and the move in Activity
+      // names both. Then once with the network off: it queues, sends on
+      // reconnect, and the place is set. Read from the DATABASE first
+      // (herd_lots.place_id), then from the painted page.
+      const placeOf = async (lot: string) => ((await admin.from('herd_lots').select('place_id').eq('id', lot).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { data: east25, error: e25 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 25 east`, kind: 'pasture' }).select('id').single()
+      if (e25) throw new Error(`25 place: ${e25.message}`)
+      const openMove = async () => {
+        await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await recordControl(page).click()
+        await page.getByRole('button', { name: /^Move cattle/ }).click()
+        await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
+      }
+
+      // (a) no bunch, no move — the sheet's words ARE the route's words.
+      await openMove()
+      await page.locator('[data-audit="lot-for-move"]').selectOption('')
       await page.getByLabel('Moved').fill('5')
-      await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 15_000 })
+      await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
+      await page.getByRole('button', { name: 'Record move', exact: true }).click()
+      const sheetSays = ((await page.getByText(MOVE_NEEDS_BUNCH, { exact: true }).first().innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
+      const bare = await page.request.post('/api/log', { data: { type: 'cattle_moved', head: 5, to_place_id: placeId, place_id: placeId } })
+      const routeSays = ((await bare.json().catch(() => ({}))) as { error?: string }).error ?? ''
+      record('25: a move with no bunch is refused — and the sheet and the route say it in the same words',
+        sheetSays === MOVE_NEEDS_BUNCH && bare.status() === 400 && routeSays === MOVE_NEEDS_BUNCH, `sheet "${sheetSays}" · route ${bare.status()} "${routeSays}"`)
+
+      // (b) a move of a bunch to a place — online.
+      const before25 = await placeOf(lot6g)
       const hintId = await page.locator('[data-audit="lot-for-move"]').getAttribute('aria-describedby')
       const moveHint = hintId ? (await page.locator(`#${hintId}`).innerText().catch(() => '')).replace(/\s+/g, ' ') : ''
       await selectBunch(page, '[data-audit="lot-for-move"]', LOT6G)
-      await page.getByLabel('To').selectOption({ label: `${PREFIX} West stack` })
+      const preview25 = ((await page.locator('[data-audit="move-preview"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       await page.getByRole('button', { name: 'Record move', exact: true }).click()
-      await watchStates(page, 'Sent', 20_000, 'Moved 5 head')
+      const WHO25 = `${LOT6G} · Cows · 5 head`
+      await watchStates(page, 'Sent', 20_000, `Moved ${WHO25}`)
+      const receipt25 = ((await page.locator('[role="status"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const after25 = await placeOf(lot6g)
       const { data: moved } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'cattle_moved').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      record('25: the move sets the bunch’s place in the same request — true in the database the moment it is Sent, and the receipt says where they are now',
+        before25 === null && after25 === placeId && moved?.payload?.herd_lot_id === lot6g && moved?.payload?.place_id === placeId && receipt25.includes(`${WHO25} — now at ${PREFIX} West stack`),
+        `place ${before25} → ${after25} (want ${placeId}) · preview "${preview25}" · receipt "${receipt25.slice(0, 110)}"`)
+
       await page.goto(`/ranch/activity/${moved?.id}`, { waitUntil: 'domcontentloaded' })
       const mLot = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim(), mWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const head1 = await headBefore()
-      record('6G: a move names a bunch, says on the field that it never changes a head count, and the count stays', moved?.payload?.herd_lot_id === lot6g && mLot === LOT6G && /Moved 5 head of SMOKE-DAILY-LOOP Pairs to .*West stack/.test(mWhat) && /never changes a bunch/.test(moveHint) && head1 === head0 && Number.isFinite(head0), `lot "${mLot}" · "${mWhat}" · head ${head0} → ${head1} · hint "${moveHint.slice(0, 60)}"`)
-    }
+      const where25 = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      record('25: the move in Activity names the bunch and where it went; the bunch reads as there, with the move as its as-of; the head count stays',
+        mLot === `${LOT6G} · Cows` && mWhat.includes(`Moved ${WHO25} to ${PREFIX} West stack`) && where25.includes(`At ${PREFIX} West stack`) && /moved today/.test(where25) && /never changes a bunch/.test(moveHint) && head1 === head0 && Number.isFinite(head0),
+        `bunch "${mLot}" · "${mWhat}" · row "${where25}" · head ${head0} → ${head1}`)
+
+      // (c) the same with the network off: it queues, sends on reconnect, and the place is set.
+      await openMove()
+      await selectBunch(page, '[data-audit="lot-for-move"]', LOT6G)
+      await page.getByLabel('To').selectOption({ label: `${PREFIX} 25 east` })
+      await page.context().setOffline(true)
+      await page.getByRole('button', { name: 'Record move', exact: true }).click()
+      // Offline the strip says Saved and STAYS there (the airplane-mode check's own
+      // rule); Waiting for signal is what it says once it starts to send.
+      const offStates = await watchStates(page, 'Sent', 4_000, `Moved ${LOT6G}`)   // must NOT reach Sent
+      const waitingLabel = (await page.locator('[role="status"]').first().getAttribute('data-label').catch(() => '')) ?? ''
+      const heldPlace = await placeOf(lot6g)
+      await page.context().setOffline(false)
+      const onStates = await watchStates(page, 'Sent', 45_000, `Moved ${LOT6G}`)
+      const sentPlace = await placeOf(lot6g)
+      record('25: with no signal the move waits — named, whole bunch — and on reconnect it sends and the bunch is at the new place',
+        offStates[0] === 'Saved' && !offStates.includes('Sent') && heldPlace === placeId && onStates.includes('Sent') && sentPlace === east25.id && waitingLabel.includes(`${LOT6G} · Cows · 44 head`),
+        `offline [${offStates.join(' → ')}] place held ${heldPlace === placeId} · online [${onStates.join(' → ')}] place ${sentPlace} (want ${east25.id}) · label "${waitingLabel}"${rawSeen()}`)
+
+      // (d) an older move arriving late never drags the bunch back; a move with
+      //     no bunch (from before Block 25) is given none and says so.
+      const late = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 44, herd_lot_id: lot6g, to_place_id: placeId, place_id: placeId, ts: new Date(Date.now() - 6 * 3600_000).toISOString() } })
+      const latePlace = await placeOf(lot6g)
+      const old25 = randomUUID()
+      await admin.from('events').insert({ id: old25, user_id: userId, ranch_id: ranchId, type: 'cattle_moved', ts: new Date(Date.now() - 86_400_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, head: 12, place_id: placeId, to_place_id: placeId, from_place_id: null, herd_lot_id: null } })
+      await page.goto(`/ranch/activity/${old25}`, { waitUntil: 'domcontentloaded' })
+      const oldWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' '), oldBunch = (await page.locator('[data-audit="event-bunch"]').innerText().catch(() => '')).trim()
+      record('25: a back-dated move lands but does not move the bunch back; an old move with no bunch is given none, and says so',
+        late.status() === 201 && latePlace === east25.id && oldWhat.includes(`Moved 12 head to ${PREFIX} West stack · no bunch named`) && oldBunch === 'No bunch named',
+        `late ${late.status()} place ${latePlace === east25.id ? 'unchanged' : latePlace} · old "${oldWhat}" · bunch "${oldBunch}"`)
+
+      // ── Block 25b: the DATABASE decides where a bunch is (072) ────────────────
+      // PK's falsifier: A then B; void B → at A; delete A → no place recorded;
+      // change a move's bunch X → Y → X loses the place, Y gains it. Plus: a
+      // place picked on the edit form is a move; a bunch made at a place is a
+      // placement. Capability, not existence — 42883 = 072 is not applied.
+      const probe072 = await admin.rpc('rebuild_lot_place', { p_lot: '00000000-0000-0000-0000-000000000000' })
+      if (probe072.error?.code === '42883') {
+        // A capability gap, named and RED — never a skip to reach green.
+        record('25b: the place projection — CAPABILITY GAP: migration 072 is not applied on this database', false, 'void → A · delete → no place · bunch X→Y · edit-form move · placement: none of these can be read until 072 is run')
+      } else {
+        const post = async (path: string, data: unknown) => { const r = await page.request.post(path, { data }); return { status: r.status(), json: (await r.json().catch(() => ({}))) as Record<string, unknown> } }
+        const movesOf = async (lot: string) => ((await admin.from('events').select('id, ts, payload, superseded_by, voided_at, deleted_at').eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot).order('ts', { ascending: false })).data ?? []) as { id: string; ts: string; payload: Record<string, unknown>; superseded_by: string | null; voided_at: string | null; deleted_at: string | null }[]
+        const live = (await movesOf(lot6g)).filter(m => !m.superseded_by && !m.voided_at && !m.deleted_at)
+        const toB = live.find(m => m.payload.to_place_id === east25.id)
+        // A = West stack (two live moves there: the first, and the back-dated one), B = 25 east.
+        const voided = toB ? await post(`/api/activity/${toB.id}/void`, { id: randomUUID(), reason: '25b falsifier' }) : { status: 0, json: {} }
+        const afterVoid = await placeOf(lot6g)
+        record('25b: void the move to B and the bunch reads as at A — the move before it, by its own time', voided.status === 201 && afterVoid === placeId, `void ${voided.status} · place ${afterVoid === placeId ? 'A' : afterVoid}`)
+
+        for (const m of (await movesOf(lot6g)).filter(m => !m.superseded_by && !m.voided_at && !m.deleted_at)) await page.request.delete(`/api/activity/${m.id}/delete`)
+        const afterDelete = await placeOf(lot6g)
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const noPlace = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').trim()
+        record('25b: delete every live move and the bunch has no place — not the place from before — and the row says so', afterDelete === null && noPlace === NO_PLACE_RECORDED, `place ${afterDelete ?? 'null'} · row "${noPlace}"`)
+
+        const lotY = randomUUID(), LOTY = `${PREFIX} 25b Y`
+        await admin.from('herd_lots').insert({ id: lotY, ranch_id: ranchId, class: 'heifers', name: LOTY, head_count: 12, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lotY, reason: 'created', source: 'manual', head_after: 12, head_before: null, schema_version: 1 } })
+        const mx = randomUUID()
+        const movedX = await post('/api/log', { id: mx, type: 'cattle_moved', head: 44, herd_lot_id: lot6g, to_place_id: east25.id, place_id: east25.id, ts: new Date().toISOString() })
+        const xAt = await placeOf(lot6g)
+        const fixed = await post(`/api/activity/${mx}/correct`, { id: randomUUID(), herd_lot_id: lotY, reason: 'wrong bunch' })
+        record('25b: change a move\'s bunch from X to Y — X loses the place, Y gains it', movedX.status === 201 && xAt === east25.id && fixed.status === 201 && (await placeOf(lot6g)) === null && (await placeOf(lotY)) === east25.id,
+          `move ${movedX.status} X→${xAt === east25.id ? 'B' : xAt} · correct ${fixed.status} · X ${(await placeOf(lot6g)) ?? 'no place'} · Y ${(await placeOf(lotY)) === east25.id ? 'B' : await placeOf(lotY)}`)
+
+        // Ruling 3: the place chip on the bunch EDIT form records a move, through the outbox.
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-fix"]').click()
+        await page.locator('[data-audit="lot-place"]').getByRole('radio', { name: `${PREFIX} West stack`, exact: true }).click()
+        await page.locator('[data-audit="lot-save"]').click()
+        const chipStates = await watchStates(page, 'Sent', 30_000, `Moved ${LOT6G}`)
+        const chipMove = (await movesOf(lot6g)).find(m => !m.deleted_at && !m.superseded_by && !m.voided_at)
+        record('25b: picking a place on the bunch\'s edit form records a MOVE there through the outbox, and the bunch is there', chipStates.includes('Sent') && (await placeOf(lot6g)) === placeId && chipMove?.payload.to_place_id === placeId && chipMove?.payload.placement !== true,
+          `[${chipStates.join(' → ')}] place ${(await placeOf(lot6g)) === placeId ? 'A' : await placeOf(lot6g)} · move ${chipMove ? 'written' : 'MISSING'}${rawSeen()}`)
+
+        // A bunch MADE at a place is a placement: same event, reads "placed at".
+        const madeAt = await post('/api/herd/lots', { name: `${PREFIX} 25b made`, class: 'cows', head_count: 9, weight_unit: 'lb', place_id: east25.id })
+        const madeId = ((madeAt.json.lot ?? {}) as { id?: string }).id ?? ''
+        const placement = (await movesOf(madeId))[0]
+        await page.goto(`/ranch/activity/${placement?.id}`, { waitUntil: 'domcontentloaded' })
+        const placedWhat = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        record('25b: a bunch made at a place records a placement — it reads "placed at", never "moved", and the bunch is there', (madeAt.status === 200 || madeAt.status === 201) && placement?.payload.placement === true && (await placeOf(madeId)) === east25.id && placedWhat.includes(`${PREFIX} 25b made · Cows · 9 head placed at ${PREFIX} 25 east`) && !/moved/i.test(placedWhat),
+          `create ${madeAt.status} · placement ${placement?.payload.placement === true} · "${placedWhat}"`)
+      }
+    })
 
     // ── Block 5B, gate 4: correct 6 to 4 after sync, on the phone ──────────────
     // Original, current value, editor, reason, and the resulting balance all
     // visible. Balance read from the receipt the save lands on and from the
     // status strip before it — the same ledger read (lib/hay/queries, through
     // the chain). Skips without migration 054.
-    {
+    await section('Block 5B, gate 4: correct 6 to 4 after sync, on the phone', async () => {
       const probe = await admin.from('events').select('superseded_by').limit(1)
       if (probe.error) skip('5B: correct 6 → 4 on the phone', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
       else {
@@ -1108,14 +1281,14 @@ async function main() {
           record('5B: a corrected entry offers no second correction (correct the current entry instead)', again === 0, `${again} correct button(s) on the original`)
         }
       }
-    }
+    })
 
     // ── Block 6 (6C): the receipt and the Hay balance state one complete equation ──
     // The audit's receipt left the stacked bales out ("323 from your count of
     // 420 … 102 fed since"), so 420 − 102 = 318 looked like a wrong answer.
     // Stack 5, feed 1, and read the equation off the receipt and off the Hay
     // panel: every term present, it adds up, the numbers agree, ranch scope stated.
-    {
+    await section('Block 6 (6C): the receipt and the Hay balance state one complete equation', async () => {
       const { error: sErr } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'bales_stacked', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, count: 5, place_id: placeId } })
       if (sErr) skip('6C: the equation', `could not stack 5 bales: ${sErr.message}`)
       else {
@@ -1151,14 +1324,14 @@ async function main() {
         const m2 = eq.match(EQ)
         record('6C: the Hay balance states the same equation with the same numbers — one explanation model', !!m2 && !!m && m2.slice(1, 5).join() === m.slice(1, 5).join() && /across the ranch/.test(eq), m2 ? `"${m2[0]}"` : `no equation in: ${eq.slice(0, 160)}`)
       }
-    }
+    })
 
     // ── Block 6 (6J): Work under Ranch — cutting and baling have a surface ──────
     // A Scout session is a job (stable id, derived, never an event). The Work
     // section lists it with type, time, machine, origin, quantity and state,
     // filters it by kind, and the Activity record carries it under the same id.
     // A Scout's bale count is bales made — the hay ledger never reads it.
-    {
+    await section('Block 6 (6J): Work under Ranch — cutting and baling have a surface', async () => {
       const EQ = /= (-?\d+) bales? on hand/
       // WAIT for the equation, do not sample it — and wait for it where it
       // actually lives. 7.7 moved the equation inside the "Details"
@@ -1209,7 +1382,7 @@ async function main() {
         const hayAfter = await onHandNow()
         record('6J: the session is in the Activity record under the same id, opening its job — and the Scout\'s bale count never moved the hay balance', /Baling · 1 h/.test(recText) && /32 bales counted by hand/.test(recText) && recHref === `/jobs/${jobId}` && Number.isFinite(hayBefore) && hayAfter === hayBefore, `"${recText.slice(0, 70)}" → ${recHref} · hay ${hayBefore} → ${hayAfter}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
-    }
+    })
 
     // ── Block 7 (Parts 2–3): Weather in the right order, and Rain on my places ──
     // Two readings by two people at two places, a third place with none. Every
@@ -1218,7 +1391,7 @@ async function main() {
     // expands; Log rain opens the sheet on Rain with the place chosen. And the
     // order: (warning) → forecast → rain on my places → county rainfall summary
     // (chart and sources behind disclosures) → drought leading with its category.
-    {
+    await section('Block 7 (Parts 2–3): Weather in the right order, and Rain on my places', async () => {
       const mk = async (name: string, kind: string) => { const { data, error } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} ${name}`, kind }).select('id').single(); if (error) throw new Error(`7-3 place: ${error.message}`); return data.id as string }
       const northId = await mk('North pasture', 'pasture'), auditId = await mk('Audit field', 'field')
       const rain = async (uid: string, place: string, inchesIn: number, daysAgo: number) => { const { error } = await admin.from('events').insert({ user_id: uid, ranch_id: ranchId, device_id: null, type: 'rain', ts: new Date(Date.now() - daysAgo * 86_400_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, inches: inchesIn, place_id: place } }); if (error) throw new Error(`7-3 rain: ${error.message}`) }
@@ -1328,7 +1501,7 @@ async function main() {
       await page.locator('[data-audit="forecast-strip"] button').first().click().catch(() => {})
       const dayDetail = (await page.locator('[data-audit="forecast-day-detail"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7-2: tapping a forecast day gives the chance of rain, the wind and the text', /chance of rain/.test(dayDetail) && /wind/.test(dayDetail), dayDetail.slice(0, 100))
-    }
+    })
 
     // ── Block 6 (6A): single-field corrections preserve every other field ──────
     // The Sept 8 audit: a quantity-only correction wrote nulls over the lot and
@@ -1336,7 +1509,7 @@ async function main() {
     // effective entry back through the chain, field by field — fast and slow
     // option loads, owner and member entries, a retired lot, a lot the ranch no
     // longer lists at all, and the explicit Clear as the only path to null.
-    {
+    await section('Block 6 (6A): single-field corrections preserve every other field', async () => {
       const probe = await admin.from('events').select('superseded_by').limit(1)
       if (probe.error) skip('6A: single-field corrections', `migration 054 not applied (${probe.error.message.slice(0, 60)})`)
       else {
@@ -1472,7 +1645,7 @@ async function main() {
           await ctxM.close()
         }
       }
-    }
+    })
 
     // ── Block 6 (6B): superseded entries marked the same way on every timeline ──
     // The audit read a place timeline with the original and the correction as
@@ -1480,9 +1653,21 @@ async function main() {
     // hub, Today's Activity tab) show the EFFECTIVE entry marked "corrected"
     // with what it replaced one tap away; the Activity record (audit history)
     // shows every revision, the replaced original struck and marked.
-    {
-      const { data: four } = await admin.from('events').select('id, supersedes_event_id').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '4').not('supersedes_event_id', 'is', null).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
-      if (!four) skip('6B: timelines', 'the gate-4 correction (6 → 4) is not on the record')
+    await section('Block 6 (6B): superseded entries marked the same way on every timeline', async () => {
+      // Block 26b (3): this skipped EVERY run. It looked for the gate-4 correction
+      // (made ~40 checks earlier) on the place timeline, which shows the ten
+      // newest standing rows — and by now the sections between have written
+      // more than ten newer entries at this place, so it was never there. The
+      // rule under test is the timeline's, not that one row's: so make a fresh
+      // 6-bale feeding here, now, correct it to 4 through the same route the
+      // phone uses, and read the timeline with the correction guaranteed inside
+      // its window. Nothing is skipped and nothing is flaky about it.
+      const sixId = randomUUID()
+      await admin.from('events').insert({ id: sixId, user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 6, herd_lot_id: null, place_id: placeId } })
+      const fixed6 = await page.request.post(`/api/activity/${sixId}/correct`, { data: { id: randomUUID(), bales: 4, reason: 'was 4, typed 6' } })
+      const fourRowJson = (await fixed6.json().catch(() => ({}))) as { event?: { id: string; supersedes_event_id: string | null } }
+      const four = fixed6.status() === 201 && fourRowJson.event ? { id: fourRowJson.event.id, supersedes_event_id: fourRowJson.event.supersedes_event_id } : null
+      if (!four) record('6B: timelines — the 6 → 4 correction could not be made', false, `correct ${fixed6.status()}`)
       else {
         // One list, read the same way everywhere: rows as [text, marker, chain text].
         const readList = async (p: Page, sel: string) => p.locator(`${sel} > li`).evaluateAll(els => els.map(li => ({
@@ -1503,7 +1688,7 @@ async function main() {
         await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
         await openFolds(page)
         const placeRows = operational(await readList(page, '[data-audit="place-activity"]'))
-        flaky('6B place timeline', '6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
+        record('6B: the place timeline shows one feeding — the effective "Fed 4 bales" marked corrected, "Fed 6 bales" only inside what it replaced', placeRows.ok, placeRows.detail)
         // Block 12 (12.8): the hub no longer lists rows; the record below is the surface.
         // Block 12 (12.13): Today's Activity tab is gone — its rows were a subset of
         // the record. The same assertion stands on the Ranch hub above and on the
@@ -1514,14 +1699,14 @@ async function main() {
         const struck = await page.locator('[data-audit="activity-list"] li[data-marker="replaced"] s').count()
         record('6B: the Activity record keeps every revision — the original struck and marked replaced, the correction marked corrected', !!hSix && hSix.marker === 'replaced' && /replaced/.test(hSix.text) && !!hFour && hFour.marker === 'corrected' && /corrected/.test(hFour.text) && struck >= 1, `Fed 6 → ${hSix?.marker ?? 'MISSING'} · Fed 4 → ${hFour?.marker ?? 'MISSING'} · struck ${struck}`)
       }
-    }
+    })
 
     // ── Block 6 (6B-2): a void stands on every operational timeline — marked, greyed, not counted ──
     // PK: a void is a fact about the day. The hand who logged it must never find
     // his entry gone with no explanation; "caught up" never means an entry
     // vanished. Void a feeding through the form and read it back off the place,
     // the Ranch hub and Today's Activity tab, marked "voided", with the balance unmoved.
-    {
+    await section('Block 6 (6B-2): a void stands on every operational timeline — marked, greyed, not counted', async () => {
       const EQ = /= (-?\d+) bales? on hand/
       // WAIT for the equation, do not sample it — and wait for it where it
       // actually lives. 7.7 moved the equation inside the "Details"
@@ -1578,14 +1763,14 @@ async function main() {
         record('6B-2: the record keeps the void, marked — never hidden', !!hub && hub.marker === 'voided', `record ${hub?.marker ?? 'MISSING'}`)
         record('6B-2: the void counts toward no balance — the 7 bales fed then voided leave hay on hand where it was', Number.isFinite(before) && fed === before - 7 && after === before, `on hand ${before} → fed ${fed} → voided ${after}${hayEvidence ? ` · ${hayEvidence}` : ''}`)
       }
-    }
+    })
 
     // ── Block 6 (6D): a save refreshes what it changed, from every entry point ──
     // The audit saved a feeding from Ranch: the sheet closed, the hub still read
     // the old bales and the old recent rows. Record from the Ranch hub's FAB and,
     // without navigating, watch the hub's Hay number and its recent list follow
     // the sync — with the receipt strip on that page.
-    {
+    await section('Block 6 (6D): a save refreshes what it changed, from every entry point', async () => {
       const prior6d = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })   // the FAB is the phone's entry point (md:hidden)
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
@@ -1599,18 +1784,197 @@ async function main() {
       const strip = page.locator('[data-audit="global-save-status"] [role="status"]')
       let stripText = ''
       for (let i = 0; i < 80 && !/Sent/.test(stripText); i++) { stripText = ((await strip.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (!/Sent/.test(stripText)) await page.waitForTimeout(250) }
-      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripText) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
-      let afterHay = NaN, firstAfter = ''
-      for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
-      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
+      // Block 23: a sent receipt is one line and says what the feeding MEANT
+      // ("161 bales on hand"), not what was tapped a second ago. It still names
+      // the record it is about — in the strip's own attribute — so this asks
+      // for that rather than for words the ruling took off the screen.
+      const stripNames = ((await page.locator('[data-audit="global-save-status"] [data-audit="save-strip"]').getAttribute('data-label').catch(() => '')) ?? '')
+      record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripNames) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
+      // Block 32: the page proves it caught up — its ledger stamp must reach the
+      // feeding's ingested_at (the 6D/12.8 tile stayed at 28 for 15 s once on
+      // production). The stamp is waited on, then the tile is read ONCE.
+      const { data: fed2Row } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '2').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const fed2At = (fed2Row as { ingested_at?: string } | null)?.ingested_at ?? null
+      const caught6d = await stampReaches(page, fed2At, 60_000)
+      const afterHay = await entriesToday()
+      const firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync — the page\'s stamp reaches the feeding, then the tile reads it', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && caught6d.ok, `entries today ${beforeHay} → ${afterHay} · stamp ${caught6d.stamp ?? 'none'} vs row ${fed2At ?? 'none'} caught up ${caught6d.ok} in ${caught6d.ms} ms · "${firstAfter.slice(0, 70)}"`)
       if (prior6d) await page.setViewportSize(prior6d)
-    }
+    })
+
+    // ── Block 32: one hay number ────────────────────────────────────────────
+    // GPT's audit: after 41 feedings the receipt and Activity said 3,075 and
+    // Today's tile said 3,123 — exactly the last two feedings. The stored total
+    // was right; the tile was a render that predated them. Now every ledger
+    // page stamps what it read and the phone refreshes until the stamp reaches
+    // what it knows landed. The falsifier: ten feedings back to back, and after
+    // each one the receipt, the tile, the route and Activity agree — with no
+    // navigation and no pull. Then a phone that wakes on Today catches up on
+    // what another hand recorded while it slept, without a tap.
+    await section('Block 32: one hay number', async () => {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('#ledger-hay').waitFor({ timeout: 20_000 }).catch(() => {})
+      // Sign-aware: a negative on hand paints with a minus (either glyph) and must read as one.
+      const onHandOf = (s: string) => { const m = s.match(/(-|−)?(\d[\d,]*) bales? on hand/); return m ? (m[1] ? -1 : 1) * parseInt(m[2].replace(/,/g, ''), 10) : null }
+      const tile = async () => onHandOf((await page.locator('#ledger-hay').innerText().catch(() => '')).replace(/\s+/g, ' '))
+      const route = async () => { const r = await page.request.get('/api/ranch/hay-on-hand'); return ((await r.json().catch(() => ({}))) as { bales?: number | null }).bales ?? null }
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      // Activity is read over the wire (a fresh render), never by navigating the page under test.
+      const inActivity = async (id: string) => (await (await page.request.get(`/ranch/activity?from=${day}&to=${day}`)).text()).includes(`data-id="${id}"`)
+      const lines: string[] = []
+      let allAgree = true, slowest = 0
+      // Small feedings: the fixture's stack must stay positive for every section after this one.
+      const feedings: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      const fedLabel = (n: number) => `Fed ${n} bale${n === 1 ? '' : 's'}`
+      for (const bales of feedings) {
+        const t0 = Date.now()
+        await logFeed(page, bales)
+        const states = await watchStates(page, 'Sent', 45_000, fedLabel(bales))
+        const strip = page.locator('[role="status"]').first()
+        const receipt = onHandOf((await strip.innerText().catch(() => '')).replace(/\s+/g, ' '))
+        const { data: row } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', String(bales)).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+        const r = row as { id: string; ingested_at: string } | null
+        const caught = await stampReaches(page, r?.ingested_at ?? null, 30_000)
+        const painted = await tile(), served = await route(), listed = r ? await inActivity(r.id) : false
+        const agree = states.includes('Sent') && receipt != null && painted === receipt && served === receipt && listed && caught.ok
+        slowest = Math.max(slowest, Date.now() - t0)
+        if (!agree) { allAgree = false; lines.push(`fed ${bales}: [${states.join(' → ')}] receipt ${receipt} · tile ${painted} · route ${served} · in Activity ${listed} · stamp ${caught.stamp ?? 'none'} vs ${r?.ingested_at ?? 'no row'} caught up ${caught.ok} in ${caught.ms} ms`) }
+      }
+      record('32: ten feedings back to back — after each one the receipt, the Today tile, the on-hand route and Activity agree, with no navigation and no pull', allAgree, lines.length ? lines.slice(0, 3).join(' | ') : `all ten agreed · slowest feeding-to-agreement ${slowest} ms`)
+
+      // Two saved before the first has sent: the page must catch up to the LAST one.
+      await logFeed(page, 11); await logFeed(page, 12)
+      const states32 = await watchStates(page, 'Sent', 45_000, 'Fed 12 bales')
+      const receipt32 = onHandOf((await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '))
+      const { data: row32 } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '12').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const caught32 = await stampReaches(page, (row32 as { ingested_at?: string } | null)?.ingested_at ?? null, 30_000)
+      const tile32 = await tile(), route32 = await route()
+      record('32: two feedings saved back to back — the tile reaches the second one\'s number, the one the receipt shows', states32.includes('Sent') && receipt32 != null && tile32 === receipt32 && route32 === receipt32 && caught32.ok, `[${states32.join(' → ')}] receipt ${receipt32} · tile ${tile32} · route ${route32} · caught up ${caught32.ok} in ${caught32.ms} ms`)
+
+      // A phone asleep in a pickup: another hand feeds while this page is hidden; on waking it catches up with no tap.
+      const setVisibility = (state: 'hidden' | 'visible') => page.evaluate(`(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => '${state}' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => ${state === 'hidden'} }); document.dispatchEvent(new Event('visibilitychange')) })()`)
+      await setVisibility('hidden')
+      const sleptId = randomUUID()
+      const { data: sleptRow } = await admin.from('events').insert({ id: sleptId, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, place_id: null, bales: 3, herd_lot_id: null } }).select('ingested_at').single()
+      const sleptAt = (sleptRow as { ingested_at?: string } | null)?.ingested_at ?? null
+      const beforeWake = await tile()
+      await page.waitForTimeout(2_500)
+      const stillAsleep = await tile()
+      await setVisibility('visible')
+      const woke = await stampReaches(page, sleptAt, 30_000)
+      const afterWake = await tile(), routeWake = await route()
+      record('32: a phone that wakes on Today catches up on what another hand fed while it slept, without a tap', sleptAt != null && woke.ok && afterWake === routeWake && beforeWake != null && afterWake === beforeWake - 3, `before ${beforeWake} · while hidden ${stillAsleep} · after waking ${afterWake} (route ${routeWake}) · stamp caught up ${woke.ok} in ${woke.ms} ms`)
+    })
+
+    // ── Block 33: feeding in three taps ─────────────────────────────────────
+    // GPT's audit kept SIM-Corrals as Where for the cows after a bull move — it
+    // would have recorded cow feedings in the wrong place. Now the bunch decides
+    // Where, a feeding starts from the bunch (hold the row → Feed → number →
+    // Record: three taps plus the number), and Today's repeat card offers every
+    // regularly fed bunch. The falsifier: three bunches at three places, fed in
+    // a row; each one's Where is where that bunch is.
+    await section('Block 33: feeding in three taps', async () => {
+      const base = { lng: -108.43, lat: 47.12 }
+      const square = (i: number) => { const x = base.lng + i * 0.006, y = base.lat; return [[x, y], [x + 0.003, y], [x + 0.003, y + 0.003], [x, y + 0.003], [x, y]] }
+      const trio: { name: string; lotId: string; placeId: string; placeName: string }[] = []
+      for (let i = 0; i < 3; i++) {
+        const placeName = `${PREFIX} 33 pasture ${i + 1}`
+        const { data: pl, error: pErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: placeName, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [square(i)] }, acres: 120 }).select('id').single()
+        if (pErr) throw new Error(`33 place: ${pErr.message}`)
+        const lotId = randomUUID(); const name = `${PREFIX} 33 bunch ${i + 1}`
+        const { error: lErr } = await admin.from('herd_lots').insert({ id: lotId, ranch_id: ranchId, class: 'cows', name, head_count: 30 + i, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        if (lErr) throw new Error(`33 lot: ${lErr.message}`)
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date(Date.now() - 4 * 86_400_000).toISOString(), schema_version: 1, payload: { lot_id: lotId, reason: 'created', source: 'manual', head_count: 30 + i } })
+        // The move goes through the route so the ranch's own rule (072) places the bunch.
+        const mv = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 30 + i, herd_lot_id: lotId, to_place_id: pl.id, place_id: pl.id, ts: new Date(Date.now() - (3 - i) * 86_400_000).toISOString() } })
+        if (!mv.ok()) throw new Error(`33 move: ${mv.status()} ${(await mv.text()).slice(0, 80)}`)
+        trio.push({ name, lotId, placeId: pl.id as string, placeName })
+      }
+      // Make the last-used place a wrong answer on purpose: the West stack.
+      await logFeed(page, 1, { place: `${PREFIX} West stack` })
+      await watchStates(page, 'Sent', 45_000, 'Fed 1 bale')
+      const whereOf = async () => page.getByLabel('Where').inputValue().catch(() => '')
+      const fedToOf = async () => page.locator('[data-audit="fed-to"]').inputValue().catch(() => '')
+      const rowPlace = async (bales: number) => { const { data } = await admin.from('events').select('payload').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', String(bales)).order('ingested_at', { ascending: false }).limit(1).maybeSingle(); return ((data as { payload?: { place_id?: string | null; herd_lot_id?: string | null } } | null)?.payload) ?? null }
+
+      // From Cattle: hold the bunch → Feed → number → Record. Three taps, and Where is where THAT bunch is.
+      const cattle: string[] = []
+      let cattleOk = true
+      for (let i = 0; i < 3; i++) {
+        const t = trio[i], bales = 2 + i
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row = page.locator('[data-audit="lot-row"]', { hasText: t.name }).first()
+        await row.waitFor({ timeout: 20_000 }).catch(() => {})
+        const held = await hold(page, row)                                                                   // tap 1
+        await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-extra"]', { hasText: 'Feed' }).first().click({ timeout: 10_000 }).catch(() => {})   // tap 2
+        await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        await page.waitForFunction((pid: string) => (document.querySelector('[data-audit="fed-to"]') as HTMLSelectElement | null)?.value === pid || false, t.lotId, { timeout: 10_000 }).catch(() => {})
+        await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), t.placeId, { timeout: 10_000 }).catch(() => {})
+        const fedTo = await fedToOf(), where = await whereOf()
+        await page.getByLabel('Hay fed').fill(String(bales))
+        await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})   // tap 3
+        const states = await watchStates(page, 'Sent', 45_000, `Fed ${bales} bales`)
+        const p = await rowPlace(bales)
+        const ok = held && fedTo === t.lotId && where === t.placeId && states.includes('Sent') && p?.place_id === t.placeId && p?.herd_lot_id === t.lotId
+        if (!ok) cattleOk = false
+        cattle.push(`${t.name.replace(PREFIX + ' ', '')}: held ${held} · fed-to ${fedTo === t.lotId ? 'the bunch' : fedTo || 'none'} · Where ${where === t.placeId ? 'its place' : where || 'blank'} · [${states.join(' → ')}] · row at ${p?.place_id === t.placeId ? 'its place' : p?.place_id ?? 'no place'}`)
+      }
+      record('33: from Cattle — hold the bunch, Feed, the number, Record: three taps, and each of three bunches in a row is fed where THAT bunch is, not where the last feeding was', cattleOk, cattle.join(' | '))
+
+      // From Today: the place's sheet → the bunch's Feed → number → Record. Same three taps.
+      const t2 = trio[1]
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${t2.placeId}"]`).waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${t2.placeId}"]`).evaluate(el => (el as HTMLButtonElement).click()).catch(() => {})   // tap 1
+      const feedBtn = page.locator(`[data-audit="ranch-map-sheet"] [data-audit="sheet-feed"][data-lot="${t2.lotId}"]`)
+      const sawFeed = await feedBtn.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      await feedBtn.click({ timeout: 5_000 }).catch(() => {})                                                                   // tap 2
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), t2.placeId, { timeout: 10_000 }).catch(() => {})
+      const fedTo2 = await fedToOf(), where2 = await whereOf()
+      await page.getByLabel('Hay fed').fill('5')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})       // tap 3
+      const states2 = await watchStates(page, 'Sent', 45_000, 'Fed 5 bales')
+      const p2 = await rowPlace(5)
+      record('33: from Today — the place\'s sheet, the bunch\'s Feed, the number, Record: three taps, fed where the bunch is', sawFeed && fedTo2 === t2.lotId && where2 === t2.placeId && states2.includes('Sent') && p2?.place_id === t2.placeId, `Feed on the sheet ${sawFeed} · fed-to ${fedTo2 === t2.lotId ? 'the bunch' : fedTo2 || 'none'} · Where ${where2 === t2.placeId ? 'its place' : where2 || 'blank'} · [${states2.join(' → ')}] · row at ${p2?.place_id === t2.placeId ? 'its place' : p2?.place_id ?? 'no place'}`)
+
+      // The person's own choice of Where is kept: pick another place after the bunch, and the record carries it.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const row3 = page.locator('[data-audit="lot-row"]', { hasText: trio[2].name }).first()
+      await row3.waitFor({ timeout: 20_000 }).catch(() => {})
+      await hold(page, row3)
+      await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-extra"]', { hasText: 'Feed' }).first().click({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), trio[2].placeId, { timeout: 10_000 }).catch(() => {})
+      await page.getByLabel('Where').selectOption({ label: trio[0].placeName })
+      await page.getByLabel('Hay fed').fill('6')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})
+      const states3 = await watchStates(page, 'Sent', 45_000, 'Fed 6 bales')
+      const p3 = await rowPlace(6)
+      record('33: Where is overridable — a place picked by hand after the bunch is the place the record carries', states3.includes('Sent') && p3?.place_id === trio[0].placeId && p3?.herd_lot_id === trio[2].lotId, `[${states3.join(' → ')}] · row at ${p3?.place_id === trio[0].placeId ? 'the picked place' : p3?.place_id ?? 'no place'}`)
+
+      // Today's repeat card covers every regularly fed bunch: bunches 1 and 2 have two feedings each now
+      // (bunch 2: Cattle + Today; bunch 1: Cattle + one more here), bunch 3 has two as well (Cattle + the override).
+      await logFeed(page, 7, { lot: trio[0].name })
+      await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="repeat-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowsOn = await page.locator('[data-audit="repeat-row"]').evaluateAll(els => els.map(e => e.getAttribute('data-lot') ?? ''))
+      const covers = trio.every(t => rowsOn.includes(t.lotId))
+      // Tap bunch 1's row: the feeding it records is bunch 1's, at bunch 1's place.
+      const row1 = page.locator(`[data-audit="repeat-row"][data-lot="${trio[0].lotId}"]`)
+      const before1 = await page.locator(`[data-audit="repeat-row"][data-lot="${trio[0].lotId}"] [data-audit="repeat-preview"]`).innerText().catch(() => '')
+      await row1.getByRole('button', { name: /^Record \d+ bales? now$/ }).click({ timeout: 10_000 }).catch(() => {})
+      const states4 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      const p4 = await rowPlace(7)
+      record('33: Today\'s repeat card offers every regularly fed bunch, and a row records ITS bunch at ITS place', covers && rowsOn.length <= 4 && states4.includes('Sent') && p4?.herd_lot_id === trio[0].lotId && p4?.place_id === trio[0].placeId, `rows for ${rowsOn.length} feeding(s) · all three bunches on the card ${covers} · preview "${before1.slice(0, 60)}" · [${states4.join(' → ')}] · row bunch ${p4?.herd_lot_id === trio[0].lotId ? 'bunch 1' : 'other'} at ${p4?.place_id === trio[0].placeId ? 'its place' : p4?.place_id ?? 'no place'}`)
+    })
 
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
     // Did the hand do what I asked today; is there anything I have not looked
     // at; can I get to everything that left the hub. Replaces the 7B.2 expander
     // checks, which measured a surface PK ruled out of existence.
-    {
+    await section('Block 12 (12.8): Today on the ranch — what a glance at Ranch is for', async () => {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="ranch-today"]').waitFor({ timeout: 20_000 }).catch(() => {})
@@ -1633,10 +1997,10 @@ async function main() {
       const machinesFilter = await page.locator('[data-audit="activity-machines-link"]').count()
       record('12.7: what left the hub is still reachable from where a person would look — Devices from Ground, machine work from the record, every old route answering',
         routes.every(r => /→ 200$/.test(r)) && devLink === 1 && machinesFilter >= 1, `${routes.join(' · ')} · devices link ${devLink} · machines filter ${machinesFilter}`)
-    }
+    })
 
     // ── Block 16 — headlines back on Today, last; the Thursday alert in USDM's words ──
-    {
+    await section('Block 16 — headlines back on Today, last; the Thursday alert in USDM\'s words', async () => {
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="news-list"], [data-audit="news-error"], [data-audit="news-empty"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
       const ledgers = await page.locator('[role="tablist"][aria-label="Ledgers"]').count()
@@ -1690,7 +2054,7 @@ async function main() {
         namesSource && saysClass && saysValid && noProgram,
         `"${alertText.slice(0, 150)}" · source ${namesSource} · class ${saysClass} · valid ${saysValid} · no program words ${noProgram}`)
       await admin.from('events').delete().eq('id', alertId)
-    }
+    })
 
     // ── Block 9: hay to turnout — the runway gets an end ───────────────────
     // The card already said how long the stack lasts. This says whether that
@@ -1700,7 +2064,7 @@ async function main() {
     // Read with textContent, never innerText: the standing rule. And every
     // figure on screen must survive the envelope check — needed minus on hand
     // IS the short number, or the surface is lying quietly.
-    {
+    await section('Block 9: hay to turnout — the runway gets an end', async () => {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       await page.goto('/ranch/hay', { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="hay-to-turnout"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
@@ -1757,7 +2121,7 @@ async function main() {
       const again = await text('[data-audit="turnout-expected"]')
       record('9: the turnout date is stored on the ranch — it is still there on the next load',
         /May 15/.test(again) && again === expected, `"${again.slice(0, 80)}"`)
-    }
+    })
 
     // ── Block 10 → Block 15: the preg check, in the record sheet, with no service ──
     // The chute is a sheet now. Every check here runs the way PK will: Record,
@@ -1765,6 +2129,7 @@ async function main() {
     // OFFLINE — then signal returns and the ranch gets one record that made
     // two bunches. Without 070 the function refuses the split; these skip and
     // say why.
+    await section('Block 10 → 15: the preg check in the record sheet, offline', async () => {
     if (!(await probe069(ranchId, userId))) {
       skip('10/15: preg check in the sheet', 'migration 069 not applied on this database')
     } else if (!(await probe070(page, ranchId, userId))) {
@@ -1920,6 +2285,7 @@ async function main() {
       await admin.from('herd_lots').delete().eq('id', chuteLotId)
       if (priorChute) await page.setViewportSize(priorChute)
     }
+    })
 
     // ── Block 11 (P0): the save receipt is transient UI ─────────────────────
     // The audit found it surviving navigation AND a full reload, still quoting
@@ -1932,7 +2298,7 @@ async function main() {
     // One check per failure, and one for what must NOT change: unsynced work
     // still crosses a reload, because that is the offline promise and not a
     // receipt.
-    {
+    await section('Block 11 (P0): the save receipt is transient UI', async () => {
       const strip = () => page.locator('[role="status"]').filter({ hasText: 'Sent' })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1_000)
@@ -2016,7 +2382,7 @@ async function main() {
         stillQueued && /Saved|Waiting for signal/.test(pending), `outbox holds it ${stillQueued} · strip "${pending.slice(0, 48)}"`)
       await page.unroute('**/api/log')
       await page.waitForTimeout(4_000)
-    }
+    })
 
     // ── Block 11 (11.4/11.5): nothing floats over anything you can tap ──────
     // PK's ruling: "no floating element may sit over an interactive control on
@@ -2029,6 +2395,7 @@ async function main() {
     // its box, and ask the browser what is actually on top at the centre of
     // every interactive control underneath it. If the answer is the floating
     // element rather than the control, the control cannot be tapped.
+    await section('the floating-element rule, screen by screen', async () => {
     for (const width of [390, 320]) {
       const prior = page.viewportSize()
       await page.setViewportSize({ width, height: 844 })
@@ -2067,6 +2434,9 @@ async function main() {
             // control first, then ask what is on top of it. The body reserve
             // is what lets the last control on a page come clear, and the
             // structural check below holds that separately.
+            // Inside a closed <details> the content keeps a laid-out box but no one can reach it
+            // until the summary opens it — the summary is the control there, not what it hides.
+            if (c.tagName !== 'SUMMARY' && [...c.parentElement ? [c] : []].length && c.closest('details:not([open])')) continue
             c.scrollIntoView({ block: 'center', inline: 'nearest' })
             const r = c.getBoundingClientRect()
             if (r.width === 0 || r.height === 0) continue
@@ -2105,9 +2475,10 @@ async function main() {
 
       if (prior) await page.setViewportSize(prior)
     }
+    })
 
     // ── Block 15 (rulings 2, 6): no retry button anywhere; back from every screen returns you ──
-    {
+    await section('Block 15 (rulings 2, 6): no retry button anywhere; back from every screen returns you', async () => {
       const prior15 = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       const SCREENS15 = ['/ranch', '/ranch/cattle', '/ranch/hay', '/ranch/places', '/ranch/activity', '/markets', '/weather', '/account', '/account/trash', '/ranch/devices', '/ranch/work']
@@ -2134,10 +2505,10 @@ async function main() {
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.evaluate(() => { try { localStorage.removeItem('manual_log_draft_v1') } catch { /* fine */ } })
       if (prior15) await page.setViewportSize(prior15)
-    }
+    })
 
     // ── Block 15b (rulings 6–9): the app feels like an app ──────────────────
-    {
+    await section('Block 15b (rulings 6–9): the app feels like an app', async () => {
       // A phone with a thumb: its own context, touch on, signed in.
       const ctxT = await browser.newContext({ baseURL: BASE, hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       const pt = await signIn(ctxT)
@@ -2205,7 +2576,14 @@ async function main() {
       const lit = pt.locator('[data-audit="lot-row"][data-lit="true"]')
       const litUp = await lit.waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
       const litText = litUp ? ((await lit.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') : ''
-      const litInView = litUp && await lit.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })
+      // The row is brought in by a SMOOTH scroll, so "in view" is a fact about where
+      // it comes to rest, not about the frame it lit up in — a longer list (25b adds
+      // two bunches above it) is still scrolling when the ring appears.
+      let litInView = false
+      for (let i = 0; litUp && i < 30 && !litInView; i++) {
+        litInView = await lit.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight }).catch(() => false)
+        if (!litInView) await pt.waitForTimeout(100)
+      }
       record('15b (ruling 7): after a save the list stays put — the row you made is scrolled into view and lit', litUp && litText.includes(B15) && litInView, `lit ${litUp} · in view ${litInView} · "${litText.slice(0, 60)}"`)
       await admin.from('herd_lots').delete().eq('ranch_id', ranchId).eq('name', B15)
 
@@ -2274,10 +2652,10 @@ async function main() {
       }
 
       await ctxT.close()
-    }
+    })
 
     // ── Block 11 (11.5): one Record control on a phone, and it is the bar ────
-    {
+    await section('Block 11 (11.5): one Record control on a phone, and it is the bar', async () => {
       const prior = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -2289,10 +2667,10 @@ async function main() {
         fab === 1 && inBar === 0 && launcher === 0,
         `pill ${fab} · in bar ${inBar} · draft button ${launcher} (a draft button is correct only with an unsaved draft)`)
       if (prior) await page.setViewportSize(prior)
-    }
+    })
 
     // ── Block 11 (11.13): two actions on an entry, not three ────────────────
-    {
+    await section('Block 11 (11.13): two actions on an entry, not three', async () => {
       const { data: e0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 1, herd_lot_id: null, place_id: placeId } }).select('id').single()
       if (e0) {
         await page.goto(`/ranch/activity/${e0.id}`, { waitUntil: 'domcontentloaded' })
@@ -2303,10 +2681,10 @@ async function main() {
           `[${labels.join(' | ')}]`)
         await admin.from('events').delete().eq('id', e0.id)
       }
-    }
+    })
 
     // ── Block 12: the pill's groups, the gesture, the dropdowns, the copy, the trash ──
-    {
+    await section('Block 12: the pill\'s groups, the gesture, the dropdowns, the copy, the trash', async () => {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
       const prior = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })
@@ -2316,14 +2694,17 @@ async function main() {
       await page.locator('[data-audit="record-fab"]').waitFor({ timeout: 15_000 }).catch(() => {})
       await page.locator('[data-audit="record-fab"]').click().catch(() => {})
       await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 10_000 }).catch(() => {})
-      const groups = await Promise.all(['work', 'count', 'ground'].map(g => text(`[data-audit="picker-group-${g}"]`)))
-      const workTiles = await page.locator('[data-audit="record-picker"] [data-audit^="tile-"]:not([data-audit^="tile-place-"]):not([data-audit="tile-preg-check"])').count()
-      const groundLinks = await page.locator('[data-audit^="tile-place-"]').count()
-      const preg = await page.locator('[data-audit="tile-preg-check"]').count()
-      record('12.2/14: the pill opens Work · Count · Ground — seven workings with Count cattle and Count hay under Count, Preg check under Count, three ways to mark ground',
-        groups.join('|') === 'Work|Count|Ground' && workTiles === 7 && preg === 1 && groundLinks === 3,
-        `groups [${groups.join(', ')}] · work tiles ${workTiles} · preg ${preg} · ground ${groundLinks}`)
-      await page.getByRole('button', { name: 'Close' }).click().catch(() => {})
+      // Block 20: one row of six, icon + word; the three rarer workings as words under it; Place opens the three ways to mark ground.
+      const rowWords = await page.locator('[data-audit="record-actions"] button span').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      const rowIcons = await page.locator('[data-audit="record-actions"] button svg').count()
+      const rare = await page.locator('[data-audit="record-rare"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      await page.locator('[data-audit="tile-place"]').click().catch(() => {})
+      const groundLinks = await page.locator('[data-audit="record-place-menu"] a').count()
+      const mapWords = ((await page.locator('[data-audit="record-picker"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p, span, button')).map(x => (x as HTMLElement).innerText).filter(Boolean).join(' | ')).catch(() => '')) ?? '').trim()
+      record('12.2/20: Record opens on the ranch map with one row — Feed · Move · Count · Rain · Work · Place, each icon with its word — Preg check · Count hay · Add bales as words below, Place offers the three ways to mark ground, and no text on the map',
+        rowWords.join('|') === 'Feed|Move|Count|Rain|Work|Place' && rowIcons === 6 && rare.join('|') === 'Preg check|Count hay|Add bales to a stack' && groundLinks === 3 && mapWords === '',
+        `row [${rowWords.join(', ')}] icons ${rowIcons} · rare [${rare.join(', ')}] · ground ${groundLinks} · map words "${mapWords}"`)
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button — the pull-down, the dim, or Escape
 
       // 12.11 — every dropdown looks like one: a chevron beside every select.
       let bare = 0, total = 0
@@ -2396,13 +2777,13 @@ async function main() {
         }
       }
       if (prior) await page.setViewportSize(prior)
-    }
+    })
 
     // ── Block 7A — a place from where you stand: chips, the pin, the outbox ──
     // The phone's position is emulated (Playwright's geolocation), which is
     // the only honest way to drive a capture headless: the app sees real
     // watchPosition callbacks, settles on five steady readings, and drops.
-    {
+    await section('Block 7A — a place from where you stand: chips, the pin, the outbox', async () => {
       const LAT = 47.1215, LNG = -108.4301
       const { data: pasture } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 7A pasture`, kind: 'pasture' }).select('id').single()
       const pastureId = String((pasture as { id?: string } | null)?.id ?? '')
@@ -2502,13 +2883,13 @@ async function main() {
         `parent link ${parentLink} · edit chip checked ${editChecked} · "${inside}" · child row ${childRow}`)
 
       if (pastureId) await admin.from('places').delete().eq('id', pastureId)
-    }
+    })
 
     // ── Block 21 — the ride never discards the track; Finish here always closes; the map is on ──
     // Same emulated receiver as 7A. An open U is ridden — 80 m east, 80 m
     // north, 80 m west — so the loop can never tie; the checks are that
     // nothing is lost when it does not.
-    {
+    await section('Block 21 — the ride never discards the track; Finish here always closes; the map is on', async () => {
       const LAT = 47.1230, LNG = -108.4320
       const M_LAT = 1 / 111_132, M_LNG = 1 / (111_320 * Math.cos((LAT * Math.PI) / 180))
       const ctx21 = page.context()
@@ -2516,8 +2897,17 @@ async function main() {
       await ctx21.setGeolocation({ latitude: LAT, longitude: LNG, accuracy: 3 })
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       await page.evaluate(() => { try { localStorage.removeItem('dryline_ride_v1') } catch { /* private mode */ } })
-      await page.goto('/ranch/places#capture-ride', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      // Block 26b (2): the ride is started the way a rancher on Places starts it —
+      // Record → Ground → "Ride the perimeter", with the page already mounted.
+      // That link only changes the hash, and before 26b the hash was read once
+      // on mount: the tap did nothing, silently. (The suite's own two gotos hit
+      // the same race from the other side, 2 runs in 6.)
+      await page.locator('[data-audit="capture-choose"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await recordControl(page).click()
+      await page.locator('[data-audit="tile-place"]').click().catch(() => {})   // Block 20: the ways to mark ground sit behind Place
+      await page.getByRole('link', { name: /^Ride the perimeter/ }).click()
+      const rideFromPlaces = await page.locator('[data-audit="capture-ride"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      record('26b (2): from Places itself, Record → Ground → Ride the perimeter starts the ride — a same-page hash link is honoured, not lost', rideFromPlaces, `ride surface ${rideFromPlaces ? 'mounted' : 'NEVER MOUNTED'} · ${page.url().replace(BASE, '')}`)
       await page.locator('[data-audit="capture-ride-map"] .leaflet-container').waitFor({ timeout: 15_000 }).catch(() => {})
       const mapBeforeRide = await page.locator('[data-audit="capture-ride-map"] .leaflet-container').count()
       const at = async (dx: number, dy: number) => { await ctx21.setGeolocation({ latitude: LAT + dy * M_LAT, longitude: LNG + dx * M_LNG, accuracy: 3 }); await page.waitForTimeout(350) }
@@ -2599,14 +2989,14 @@ async function main() {
         handLabel === 1 && ringMap === 1 && /acres/.test(acresText) && seq21.includes('Sent') && !!rp && rp.source === 'ridden' && rp.closed_by_hand === true && rp.status === 'closed_by_hand' && trackLen >= resumed - 2 && draftAfter === null,
         `hand label ${handLabel} · ring map ${ringMap} · "${acresText}" · ${seq21.join(' → ')} · provenance ${rp ? `${String(rp.source)} closed_by_hand=${String(rp.closed_by_hand)} status=${String(rp.status)} track ${trackLen}` : 'none'} · draft after save ${draftAfter === null ? 'cleared' : 'kept'}`)
       if (rideId) await admin.from('places').delete().eq('id', rideId)
-    }
+    })
 
     // ── Block 21 (rulings 4 + 5) — the outbox outranks the draft; a full phone is not a lost signal ──
     // The shelf is filled for real. A ride draft and a wall of filler are put
     // on it until the phone is genuinely out of room, and then a feeding is
     // recorded through the sheet like any other. Nothing here is mocked: the
     // browser's own quota does the refusing.
-    {
+    await section('Block 21 (rulings 4 + 5) — the outbox outranks the draft; a full phone is not a lost signal', async () => {
       // Fill to the EDGE: big chunks while they fit, then smaller, then prove
       // the shelf is genuinely out of room with a 1 KB probe. A phone that is
       // merely nearly full proves nothing — the write would simply succeed.
@@ -2620,12 +3010,19 @@ async function main() {
         }
         // The outbox does not add a key — it REWRITES its own, bigger. So the
         // proof of a full shelf is that a 64-byte growth of a key already
-        // there is refused. Restore the value when it is not.
+        // there is refused. Restore the value when it is not. The app's own
+        // outbox rewrites its key on a timer and can free a few bytes between
+        // the fill and the probe (one run in five did), so the fill is topped
+        // up and probed again, a few times, before the shelf is called not full.
+        // A growth that succeeds is KEPT (it is the bytes the outbox freed), so
+        // the next probe meets a fuller shelf — giving it back let the timer win.
         let full = false
         const k = '__fill_0'
-        const v = localStorage.getItem(k)
-        if (v == null) return { n, full: false }
-        try { localStorage.setItem(k, v + 'y'.repeat(64)); localStorage.setItem(k, v) } catch { full = true }
+        for (let attempt = 0; attempt < 8 && !full; attempt++) {
+          for (;;) { if (n > 3000) break; try { localStorage.setItem(`__fill_${n}`, 'x'.repeat(64)); n++ } catch { break } }
+          const v = localStorage.getItem(k) ?? ''
+          try { localStorage.setItem(k, v + 'y'.repeat(64)) } catch { full = true }
+        }
         return { n, full }
       })
       const clearFill = async () => page.evaluate(() => {
@@ -2671,14 +3068,14 @@ async function main() {
       await clearFill()
       await page.evaluate(() => { for (const k of ['manual_log_draft_v1', 'dryline_ride_v1']) localStorage.removeItem(k) })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-    }
+    })
 
     // ── Block 19 — split a bunch: a first-class action on any bunch ──────────
     // The split the 220 could not have. Held from the bunch row, typed, saved;
     // the parent drops, the new bunch exists, and the count the parent held
     // before it stays on the record. What a split REFUSES is proved against
     // the function itself in scripts/split-harness.ts — this is the screen.
-    {
+    await section('Block 19 — split a bunch: a first-class action on any bunch', async () => {
       const lot19 = randomUUID(), LOT19 = `${PREFIX} 19 split bunch`
       const { error: e19 } = await admin.from('herd_lots').insert({ id: lot19, ranch_id: ranchId, class: 'heifers', name: LOT19, head_count: 220, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
       if (e19) skip('19: split checks', `fixture: ${e19.message.slice(0, 80)}`)
@@ -2734,13 +3131,662 @@ async function main() {
             held && hasSplit === 1 && bunchPrefilled === 1 && /keeps 198/.test(preview) && seq19.includes('Sent')
             && parent?.head_count === 198 && child?.head_count === 22 && child?.class === 'heifers'
             && pay.action === 'split' && pay.source_head_before === 220 && pay.stayed === 198 && pay.moved === 22,
-            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}`)
+            `held ${held} · Split on the row ${hasSplit} · bunch prefilled ${bunchPrefilled} · "${preview.slice(0, 60)}" · ${seq19.join(' → ')} · parent ${parent?.head_count} · new ${child?.head_count} ${child?.class} · event before ${pay.source_head_before} stayed ${pay.stayed}` + rawSeen())
           if (child?.id) await admin.from('herd_lots').delete().eq('id', child.id)
         }
         await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot19)
         await admin.from('herd_lots').delete().eq('id', lot19)
       }
-    }
+    })
+
+    // ── Block 26 — the ranch map on Today ─────────────────────────────────────
+    // PK's falsifier: move a bunch to a pasture. On Today the pasture fills with
+    // the bunch's colour, and tapping it shows name · class · head, the days
+    // since that move, and the move itself. Kill the network: Today still paints
+    // and the polygons still draw. The shapes are painted on a CANVAS, so the
+    // paint is read off the canvas — never off a prop that says it was drawn.
+    await section('Block 26 — the ranch map on Today', async () => {
+      const lot26 = randomUUID(), LOT26 = `${PREFIX} 26 heifers`
+      await admin.from('herd_lots').insert({ id: lot26, ranch_id: ranchId, class: 'heifers', name: LOT26, head_count: 220, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot26, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+      const ring26 = [[-110.02, 46.91], [-110.0, 46.91], [-110.0, 46.9], [-110.02, 46.9], [-110.02, 46.91]]
+      const { data: p26, error: p26Err } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 26 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring26] }, acres: 420 }).select('id').single()
+      if (p26Err) throw new Error(`26 place: ${p26Err.message}`)
+      const mv26 = randomUUID()
+      const moved26 = await page.request.post('/api/log', { data: { id: mv26, type: 'cattle_moved', head: 220, herd_lot_id: lot26, to_place_id: p26.id, place_id: p26.id, ts: new Date(Date.now() - 3 * 86_400_000).toISOString() } })
+
+      // THE OUTLINE AND THE LABEL, READ PROPERLY (PK, 26c): frame the map to the
+      // place, then read the painted canvas AT THE RING'S EDGE — every edge
+      // midpoint projected through the map's own handle to a container point,
+      // a small window of pixels around it looked at for the bunch's colour —
+      // and read the label Leaflet painted inside it. A control on an empty
+      // pasture proves both reads can fail.
+      const frame = async (placeIdToFrame: string) => {
+        await page.locator(`[data-audit="ranch-map-place-button"][data-place="${placeIdToFrame}"]`).evaluate(el => (el as HTMLButtonElement).click())
+        await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ timeout: 8_000 }).catch(() => {})
+        await page.mouse.click(10, 10).catch(() => {})                       // the dim closes the sheet; the framing stays
+        await page.locator('[data-audit="ranch-map-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        await page.waitForTimeout(900)
+      }
+      const outline = (hex: string, ring: number[][]) => page.evaluate(({ h, ring }: { h: string; ring: number[][] }) => {
+        const want = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
+        const c = document.querySelector('[data-audit="ranch-map"] .leaflet-container') as (HTMLElement & { __leafletMap?: { latLngToContainerPoint: (ll: [number, number]) => { x: number; y: number } } }) | null
+        const map = c?.__leafletMap
+        const canvases = Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas')) as HTMLCanvasElement[]
+        if (!map || !c || !canvases.length || !Number.isFinite(want[0])) return { edges: 0, hit: 0 }
+        const box = c.getBoundingClientRect()
+        let edges = 0, hit = 0
+        for (let k = 0; k + 1 < ring.length; k++) {
+          const a = ring[k], b = ring[k + 1]
+          const mid = map.latLngToContainerPoint([(a[1] + b[1]) / 2, (a[0] + b[0]) / 2])
+          const px = box.left + mid.x, py = box.top + mid.y
+          edges++
+          let found = false
+          for (const cv of canvases) {
+            const r = cv.getBoundingClientRect(), ctx2 = cv.getContext('2d'); if (!ctx2 || !r.width) continue
+            const sc = cv.width / r.width
+            const sx = Math.round((px - r.left) * sc) - 6, sy = Math.round((py - r.top) * sc) - 6
+            if (sx < 0 || sy < 0 || sx + 12 > cv.width || sy + 12 > cv.height) continue
+            const d = ctx2.getImageData(sx, sy, 12, 12).data
+            for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 60 && Math.abs(d[i] - want[0]) < 28 && Math.abs(d[i + 1] - want[1]) < 28 && Math.abs(d[i + 2] - want[2]) < 28) { found = true; break }
+            if (found) break
+          }
+          if (found) hit++
+        }
+        return { edges, hit }
+      }, { h: hex, ring })
+      const labelOn = async () => ((await page.locator('[data-audit="ranch-map"] .leaflet-tooltip.dryline-place-label').allInnerTexts().catch(() => [])) ?? []).map(t => t.replace(/\s+/g, ' ').trim())
+      const rgbToHex = (rgb: string) => { const m = rgb.match(/\d+/g) ?? []; return '#' + m.slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('') }
+
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.waitForTimeout(1500)
+      await frame(p26.id)
+      const labels = await labelOn()
+      const swatch = rgbToHex(await page.locator('[data-audit="ranch-map"] .leaflet-tooltip.dryline-place-label span').filter({ hasText: LOT26 }).first().evaluate(e => getComputedStyle(e).color).catch(() => ''))
+      const paint = await outline(swatch, ring26)
+      const pillButtons = await page.locator('[data-audit="ranch-map"] [data-audit="map-pill"] button').count()
+      // Anything floating over the map that is not the pill: Leaflet's own zoom control, or any button positioned inside the map's frame.
+      const floating = await page.locator('[data-audit="ranch-map"] .leaflet-container').first().evaluate(el => { const frame = el.parentElement!; const over = Array.from(frame.querySelectorAll('button, a')).filter(b => !b.closest('[data-audit="map-pill"]') && !b.closest('.leaflet-control-attribution') && getComputedStyle(b).position !== 'static' || !!b.closest('.leaflet-control-zoom')); return over.length })
+      // THE CONTROL — this read must be able to FAIL. A second pasture, drawn,
+      // with no bunch on it: framed the same way and read for the same colour,
+      // it has to come back empty, or the read proves nothing.
+      const ringEmpty = [[-110.06, 46.91], [-110.04, 46.91], [-110.04, 46.9], [-110.06, 46.9], [-110.06, 46.91]]
+      const { data: pEmpty } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 26 empty pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ringEmpty] }, acres: 410 }).select('id').single()
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await frame(pEmpty!.id)
+      const control = await outline(swatch, ringEmpty)
+      const controlLabels = (await labelOn()).filter(t => /26 empty/.test(t))
+      record('26c: THE CONTROL — a drawn pasture with NO bunch, framed and read the same way, has none of the bunch\'s colour on its edge and no label: both reads can go red',
+        control.edges >= 4 && control.hit === 0 && controlLabels.length === 0, `edges ${control.edges} · in the bunch's colour ${control.hit} (want 0) · labels on it ${controlLabels.length}`)
+      const mapBox = await page.locator('[data-audit="ranch-map"] .leaflet-container').boundingBox().catch(() => null)
+      const mapWords = ((await page.locator('[data-audit="ranch-map"] .leaflet-container').evaluate(el => Array.from(el.querySelectorAll('p')).map(p => (p as HTMLElement).innerText).join(' | ')).catch(() => '')) ?? '').trim()
+      const firstOnToday = await page.evaluate(() => { const m = document.querySelector('[data-audit="ranch-map"]'); const col = document.querySelector('main'); if (!m || !col) return false; return m.getBoundingClientRect().top - col.getBoundingClientRect().top < 260 })
+      const label26 = labels.find(t => t.includes(LOT26)) ?? ''
+      record('26/26c: the map is first on Today at about 40% of the screen; the occupied pasture has a steady outline in its bunch\'s colour (read off the canvas at its edge) and a label inside — head · bunch name; one pill of two controls and nothing else floating; no other words on the map',
+        moved26.status() === 201 && firstOnToday && !!mapBox && mapBox.height > 844 * 0.3 && mapBox.height < 844 * 0.5 && paint.edges >= 4 && paint.hit / paint.edges >= 0.6 && label26 === `220 · ${LOT26}` && pillButtons === 2 && floating === 0 && mapWords === '',
+        `move ${moved26.status()} · first ${firstOnToday} · map ${mapBox ? Math.round(mapBox.height) : '?'}px · colour ${swatch} · edge ${paint.hit} of ${paint.edges} in it · label "${label26}" · pill ${pillButtons} · floating ${floating} · words "${mapWords}"`)
+
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
+      const sheet = page.locator('[data-audit="ranch-map-sheet"]')
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+      const sBunch = ((await sheet.locator('[data-audit="sheet-bunch"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sDays = ((await sheet.locator('[data-audit="sheet-days"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sMoveHref = await sheet.locator('[data-audit="sheet-move"]').getAttribute('href').catch(() => null)
+      const sAcres = ((await sheet.locator('[data-audit="sheet-acres"]').innerText().catch(() => '')) ?? '').trim()
+      const sLatest = ((await sheet.locator('[data-audit="sheet-latest"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sRecord = await sheet.locator('[data-audit="record-here"]').count()
+      record('26/30: the place sheet — name, acres, the bunch as name · class · head, "Moved in <date> · N days here" with the move itself, the latest entry with its age, and Record here',
+        sBunch.includes(`${LOT26} · Heifers · 220 head`) && /Moved in /.test(sDays) && /3 days here/.test(sDays) && sMoveHref === `/ranch/activity/${mv26}` && /acres/i.test(sAcres) && /days ago|today|yesterday/.test(sLatest) && sRecord === 1,
+        `"${sBunch}" · "${sDays}" · move ${sMoveHref === `/ranch/activity/${mv26}` ? 'linked' : sMoveHref} · ${sAcres} · "${sLatest.slice(0, 70)}" · record ${sRecord}`)
+      // ── Block 30: Seen here ──────────────────────────────────────────────────
+      // PK's rule: one tap records that the bunch was observed in that place,
+      // by whom, when; the sheet then reads "Moved in <date> · seen <age> by
+      // <name>"; a feeding or any other record never counts as a sighting;
+      // confirming never changes where the bunch is.
+      const placeBefore30 = ((await admin.from('herd_lots').select('place_id').eq('id', lot26).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { count: movesBefore30 } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot26)
+      await sheet.locator(`[data-audit="seen-here"][data-lot="${lot26}"]`).click({ timeout: 8_000 })
+      const seenStates = await watchStates(page, 'Sent', 30_000, `Seen ${LOT26}`)
+      const { data: seenRows } = await admin.from('events').select('id, user_id, created_at, payload').eq('type', 'bunch_seen').eq('payload->>herd_lot_id', lot26)
+      const seenRow = ((seenRows ?? []) as { id: string; user_id: string; created_at: string; payload: Record<string, unknown> }[])[0] ?? null
+      const placeAfter30 = ((await admin.from('herd_lots').select('place_id').eq('id', lot26).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const { count: movesAfter30 } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('type', 'cattle_moved').eq('payload->>herd_lot_id', lot26)
+      record('30: one tap on Seen here records that THIS bunch was seen at THIS place, by this person, now — and the bunch\'s place is untouched, with no move written',
+        seenStates.includes('Sent') && (seenRows ?? []).length === 1 && seenRow?.user_id === userId && seenRow?.payload.place_id === p26.id && Math.abs(Date.now() - Date.parse(seenRow?.created_at ?? '')) < 120_000 && placeAfter30 === placeBefore30 && placeAfter30 === p26.id && movesAfter30 === movesBefore30,
+        `[${seenStates.join(' → ')}] · rows ${(seenRows ?? []).length} · by me ${seenRow?.user_id === userId} · at the pasture ${seenRow?.payload.place_id === p26.id} · place ${placeBefore30 === placeAfter30 ? 'unchanged' : `${placeBefore30} → ${placeAfter30}`} · moves ${movesBefore30} → ${movesAfter30}${rawSeen()}`)
+      // The sheet now reads it — and a NEWER feeding at the place does not become the sighting.
+      const fedLater = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'hay_fed', bales: 2, herd_lot_id: lot26, place_id: p26.id } })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+      const line30 = ((await sheet.locator('[data-audit="sheet-days"]').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const seenHref = await sheet.locator('[data-audit="sheet-seen"] a').first().getAttribute('href').catch(() => null)
+      record('30: the sheet reads "Moved in <date> · N days here · seen <age> by <name>", the sighting linked — and a feeding recorded after it is not the sighting',
+        fedLater.status() === 201 && /^Moved in /.test(line30) && /3 days here/.test(line30) && /seen today by /.test(line30) && seenHref === `/ranch/activity/${seenRow?.id}`,
+        `feed ${fedLater.status()} · "${line30.slice(0, 110)}" · seen link ${seenHref === `/ranch/activity/${seenRow?.id}` ? 'the sighting' : seenHref}`)
+      await page.mouse.click(10, 10).catch(() => {})
+      await sheet.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click())
+      await sheet.waitFor({ timeout: 8_000 }).catch(() => {})
+
+      // Block 26c: the dim closes the sheet; no Close button exists.
+      const closeButtons = await sheet.getByRole('button', { name: /^Close$/ }).count()
+      await page.mouse.click(10, 10).catch(() => {})
+      const dimClosed = await sheet.waitFor({ state: 'detached', timeout: 5_000 }).then(() => true).catch(() => false)
+      record('26c: the place sheet has a grabber and no Close button, and a tap on the dim behind it dismisses it', closeButtons === 0 && dimClosed, `close buttons ${closeButtons} · dim closed ${dimClosed}`)
+      // Full screen is a tap on open ground, and a tap takes it back.
+      const container = page.locator('[data-audit="ranch-map"] .leaflet-container')
+      const cb = await container.boundingBox()
+      // Open ground: top-centre, above the framed place and clear of the zoom control (top-left), the pill (top-right) and the attribution (bottom-left).
+      if (cb) { await page.mouse.click(cb.x + cb.width / 2, cb.y + 10); await page.waitForTimeout(700) }
+      const fullNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height > window.innerHeight * 0.85 })
+      const cb2 = await container.boundingBox()
+      if (cb2) { await page.mouse.click(cb2.x + cb2.width / 2, cb2.y + 10); await page.waitForTimeout(700) }
+      const backNow = await page.evaluate(() => { const el = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); if (!el) return false; const r = el.getBoundingClientRect(); return r.height < window.innerHeight * 0.6 })
+      record('26c: full screen is a tap on the map — one tap on open ground fills the screen, another brings it back — with no button for it', fullNow && backNow, `full ${fullNow} · back ${backNow}`)
+      // Unplaced: a bunch with no recorded place is listed, and its tap opens a move with it prefilled.
+      const lotU = randomUUID(), LOTU = `${PREFIX} 26c unplaced`
+      await admin.from('herd_lots').insert({ id: lotU, ranch_id: ranchId, class: 'cows', name: LOTU, head_count: 15, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lotU, reason: 'created', source: 'manual', head_after: 15, head_before: null, schema_version: 1 } })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const unplacedChip = page.locator(`[data-audit="ranch-map-unplaced-bunch"][data-lot="${lotU}"]`)
+      const listed = await unplacedChip.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      await unplacedChip.click().catch(() => {})
+      const moveForm = await page.locator('[data-audit="lot-for-move"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      const moveLot = await page.locator('[data-audit="lot-for-move"]').inputValue().catch(() => '')
+      record('26c: a bunch with no recorded place is listed under the map as Unplaced, and its tap opens a move with that bunch already picked', listed && moveForm && moveLot === lotU, `listed ${listed} · move form ${moveForm} · bunch picked ${moveLot === lotU}`)
+      // Cancel, not Escape: a form with a bunch picked is a draft, and a draft left
+      // behind reopens the sheet on every page after this (by design) — the first
+      // 26c run left one and every later section found the sheet over the page.
+      await page.getByRole('button', { name: 'Cancel' }).first().click().catch(() => {})
+      await page.locator('[data-audit="record-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+
+      // A place the map cannot draw is a chip into the same sheet — never an invented position.
+      const undrawnChip = page.locator('[data-audit="ranch-map-undrawn-chip"]').first()
+      const undrawnName = ((await undrawnChip.innerText().catch(() => '')) ?? '').trim()
+      await undrawnChip.click().catch(() => {})
+      const undrawnSheet = ((await sheet.locator('[data-audit="sheet-place"]').innerText({ timeout: 5_000 }).catch(() => '')) ?? '').trim()
+      record('26: a place with no shape and no position is a chip in the key, into the same sheet', !!undrawnName && undrawnSheet === undrawnName, `chip "${undrawnName}" → sheet "${undrawnSheet}"`)
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
+
+      // Kill the tiles (the network the map needs): Today still paints, the polygons still draw, the tap still works.
+      await page.route(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/, r => r.abort())
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const ledgersUp = await page.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      await page.locator('[data-audit="ranch-map"] .leaflet-overlay-pane canvas').first().waitFor({ timeout: 25_000 }).catch(() => {})
+      await page.waitForTimeout(2500)
+      const tilesShown = await page.locator('[data-audit="ranch-map"] img.leaflet-tile-loaded').count()
+      await frame(p26.id)
+      const paintOff = await outline(swatch, ring26)
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${p26.id}"]`).evaluate(el => (el as HTMLButtonElement).click()).catch(() => {})
+      const tapOff = await sheet.waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+      record('26 (ruling 4): with every tile refused, Today still paints, the polygons still draw on plain ground, and a tap still opens the place',
+        ledgersUp && tilesShown === 0 && paintOff.edges >= 4 && paintOff.hit / paintOff.edges >= 0.6 && tapOff, `Today ${ledgersUp} · tiles ${tilesShown} · edge ${paintOff.hit} of ${paintOff.edges} in the bunch's colour · tap ${tapOff}`)
+      await page.unroute(/ibasemaps-api\.arcgis\.com|tile\.openstreetmap\.org/)
+
+      // ── Block 29: "N changes" steps the map through what B recorded ───────────
+      // A sees B's changes. B moves lot26 to the empty pasture (a move with two
+      // drawn ends), then feeds at 26 pasture; A opens Today: the stepper says
+      // 2 changes, a step frames the ground, the move draws ONE straight line
+      // (read off the canvas at its midpoint, absent off the line), the step
+      // says who and when it was MADE; Reviewed clears the changes and the
+      // Unplaced bunch — a problem — stays.
+      await admin.from('ranch_members').update({ last_seen_at: new Date().toISOString() }).eq('user_id', userId).eq('ranch_id', ranchId)
+      await page.waitForTimeout(1200)
+      const mvB = randomUUID()
+      const ctxB26 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const pb = await signIn(ctxB26, EMAIL_B)
+        const m = await pb.request.post('/api/log', { data: { id: mvB, type: 'cattle_moved', head: 220, herd_lot_id: lot26, from_place_id: p26.id, to_place_id: pEmpty!.id, place_id: pEmpty!.id } })
+        const f = await pb.request.post('/api/log', { data: { id: randomUUID(), type: 'hay_fed', bales: 3, place_id: p26.id } })
+        if (m.status() !== 201 || f.status() !== 201) throw new Error(`B could not record: move ${m.status()} feed ${f.status()}`)
+      } finally { await ctxB26.close().catch(() => {}) }
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const stepper = page.locator('[data-audit="changes-stepper"]')
+      await stepper.waitFor({ timeout: 25_000 }).catch(() => {})
+      const summary = ((await page.locator('[data-audit="changes-summary"]').innerText().catch(() => '')) ?? '').trim()
+      const sinceRows = await page.locator('[data-audit="since-row"]').count()
+      // Step until the move is the current change.
+      let stepped = 0, onMove = false, madeText = '', whoLine = ''
+      for (let i = 0; i < 6 && !onMove; i++) {
+        await page.locator('[data-audit="changes-next"]').click({ timeout: 8_000 }).catch(() => {})
+        await page.waitForTimeout(900); stepped++
+        const id = await page.locator('[data-audit="changes-step"]').getAttribute('data-change').catch(() => null)
+        if (id === mvB) { onMove = true; madeText = ((await page.locator('[data-audit="changes-made"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' '); whoLine = ((await page.locator('[data-audit="changes-step"] p').first().innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') }
+      }
+      // The line: its midpoint on the canvas carries the bunch's colour; a point well off the segment does not.
+      const lineRead = await page.evaluate(`(() => {
+        const c = document.querySelector('[data-audit="ranch-map"] .leaflet-container'); const map = c && c.__leafletMap; if (!map) return { mid: -1, off: -1 };
+        const ring26 = ${JSON.stringify(ring26)};
+        const canvases = Array.from(document.querySelectorAll('[data-audit="ranch-map"] .leaflet-overlay-pane canvas'));
+        const box = c.getBoundingClientRect();
+        const sample = (px, py, hex) => { const want = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)]; for (const cv of canvases) { const r = cv.getBoundingClientRect(), ctx = cv.getContext('2d'); if (!ctx) continue; const sc = cv.width / r.width; const sx = Math.round((px - r.left) * sc) - 5, sy = Math.round((py - r.top) * sc) - 5; if (sx < 0 || sy < 0 || sx + 10 > cv.width || sy + 10 > cv.height) continue; const d = ctx.getImageData(sx, sy, 10, 10).data; for (let i = 0; i < d.length; i += 4) if (d[i+3] > 60 && Math.abs(d[i]-want[0]) < 30 && Math.abs(d[i+1]-want[1]) < 30 && Math.abs(d[i+2]-want[2]) < 30) return 1 } return 0 };
+        const label = Array.from(document.querySelectorAll('.dryline-place-label span')).map(s => getComputedStyle(s).color)[0] || '';
+        const m = label.match(/\\d+/g) || []; const hex = '#' + m.slice(0,3).map(n => Number(n).toString(16).padStart(2,'0')).join('');
+        const centre = (pts) => ({ lat: (Math.min(...pts.map(p=>p[1])) + Math.max(...pts.map(p=>p[1]))) / 2, lng: (Math.min(...pts.map(p=>p[0])) + Math.max(...pts.map(p=>p[0]))) / 2 });
+        const a = centre(ring26); const b = centre(${JSON.stringify(ringEmpty)});
+        const pa = map.latLngToContainerPoint([a.lat, a.lng]), pb = map.latLngToContainerPoint([b.lat, b.lng]);
+        const mid = { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }; const dx = pb.x - pa.x, dy = pb.y - pa.y; const len = Math.hypot(dx, dy) || 1;
+        const off = { x: mid.x - dy / len * 40, y: mid.y + dx / len * 40 };
+        return { hex, mid: sample(box.left + mid.x, box.top + mid.y, hex), off: sample(box.left + off.x, box.top + off.y, hex), len: Math.round(len) };
+      })()`).catch(() => ({ mid: -1, off: -1, hex: '', len: 0 })) as { mid: number; off: number; hex: string; len: number }
+      record('29: "N changes" counts what the card counts; stepping to the move frames the ground, draws one straight line from where they were to where they went (its midpoint painted, off the line not), and says who and when it was made',
+        /^2 changes/.test(summary) && sinceRows === 2 && onMove && lineRead.mid === 1 && lineRead.off === 0 && lineRead.len > 40 && /made /.test(madeText) && /moved/.test(whoLine),
+        `summary "${summary}" · card rows ${sinceRows} · stepped ${stepped} onto the move ${onMove} · line ${lineRead.hex} mid ${lineRead.mid} off ${lineRead.off} len ${lineRead.len}px · "${whoLine.slice(0, 60)}" · "${madeText.slice(0, 50)}"`)
+      // Seen ≠ handled: Reviewed clears the changes; the Unplaced bunch stays, in the colour reserved for a problem.
+      await page.locator('[data-audit="changes-next"]').click({ timeout: 5_000 }).catch(() => {})
+      await page.waitForTimeout(600)
+      const unplacedBefore = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
+      await page.locator('[data-audit="changes-stepper"] [data-audit="mark-reviewed"], [data-audit="mark-reviewed"]').first().click({ timeout: 8_000 }).catch(() => {})
+      await page.waitForTimeout(1500)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const stepperAfter = await page.locator('[data-audit="changes-stepper"]').count()
+      const unplacedAfter = await page.locator('[data-audit="ranch-map-unplaced-bunch"][data-problem="unplaced"]').count()
+      record('29: seen and handled are different — Reviewed clears the changes, and the bunch with no recorded place stays listed as a problem', unplacedBefore >= 1 && stepperAfter === 0 && unplacedAfter === unplacedBefore, `unplaced ${unplacedBefore} → ${unplacedAfter} · stepper after review ${stepperAfter}`)
+      // Tidy with Escape, never a bare click at (10,10): with no sheet open that lands on the header's link and starts a navigation the next section runs into.
+      await page.keyboard.press('Escape').catch(() => {})
+    })
+
+    // ── Block 27 — a record carries the moment it was made on the phone ──────
+    // PK's falsifier: record a feeding offline at 10:00, reconnect at 16:00. It
+    // orders and reads as 10:00. The phone's clock is the page's clock (a fixed
+    // fake time; timers keep running), the server's is real.
+    await section('Block 27 — a record carries the moment it was made on the phone', async () => {
+      const probe073 = await admin.from('events').select('created_at').limit(1)
+      if (probe073.error && /created_at/.test(probe073.error.message)) {
+        record('27: CAPABILITY GAP — migration 073 is not applied on this database; nothing below can be read', false, probe073.error.message.slice(0, 80))
+        return
+      }
+      // Its OWN BROWSER CONTEXT, signed in on its own: Playwright's fake clock is
+      // context-wide and cannot be handed back to real time, and a frozen
+      // Date.now() left every later section's outbox waiting on a hold that
+      // never elapsed — the first two runs showed it, on a page and then on a
+      // fresh page of the same context. The context dies with the section.
+      const main = page
+      const ctx27 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      page = await signIn(ctx27)
+      // What the page did while the check watched: navigations, loads, errors — so a vanished receipt names its cause.
+      const t27 = Date.now(); const nav27: string[] = []
+      page.on('framenavigated', f => { if (f === page.mainFrame()) nav27.push(`nav ${f.url().replace(BASE, '').slice(0, 40)} @${Date.now() - t27}`) })
+      page.on('load', () => nav27.push(`load @${Date.now() - t27}`))
+      page.on('console', m => { if (m.type() === 'error') nav27.push(`console: ${m.text().slice(0, 90)}`) })
+      page.on('pageerror', e => nav27.push(`pageerror: ${e.message.slice(0, 90)}`))
+      try {
+      const today = ranchDay()
+      const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
+      // The clock is fixed BEFORE the page opens: a receipt strip remembers when its view
+      // opened and calls anything synced before that history, so a view opened at real
+      // time and a sync stamped at a frozen 4 PM would never meet (32's third loop).
+      await page.clock.setFixedTime(tenAM)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('#ledger-hay').waitFor({ timeout: 20_000 }).catch(() => {})
+      await ctx27.setOffline(true)
+      await logFeed(page, 7)
+      const off27 = await watchStates(page, 'Sent', 4_000, 'Fed 7 bales')
+      const queued = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 7)
+      const madeOnPhone = typeof queued?.body.created_at === 'string' ? new Date(queued.body.created_at as string) : null
+      await page.clock.setFixedTime(fourPM)
+      await ctx27.setOffline(false)
+      const on27 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      const { data: row27 } = queued ? await admin.from('events').select('id, ts, created_at, ingested_at').eq('id', queued.id).maybeSingle() : { data: null }
+      const r27 = row27 as { id: string; ts: string; created_at: string; ingested_at: string } | null
+      const minutesOff = (a: string | Date | null | undefined, b: Date) => a ? Math.abs(new Date(a).getTime() - b.getTime()) / 60_000 : Infinity
+      record('27: made offline at 10:00, sent at 16:00 — the record says made 10:00 and happened 10:00; arrival is 16:00\'s business, kept apart',
+        off27[0] === 'Saved' && !off27.includes('Sent') && on27.includes('Sent') && !!r27 && minutesOff(madeOnPhone, tenAM) < 1 && minutesOff(r27.created_at, tenAM) < 1 && minutesOff(r27.ts, tenAM) < 1 && minutesOff(r27.ingested_at, new Date()) < 10,
+        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()} · page: [${nav27.join(' | ').slice(0, 500)}]`)
+
+      // It ORDERS as 10:00: newer than a 09:00 record another hand made and sent at once, older than a 12:00 one.
+      const mk = async (hour: number) => { const id = randomUUID(); const t = new Date(`${today}T${String(hour).padStart(2, '0')}:00:00-06:00`).toISOString(); await admin.from('events').insert({ id, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: t, created_at: t, schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: hour, herd_lot_id: null, place_id: placeId } }); return id }
+      const nine = await mk(9), noon = await mk(12)
+      // The record is paged (50 a page); by now the ranch has more rows than
+      // one page, so the three are read across pages in list order.
+      const ids: string[] = []
+      await page.goto(`/ranch/activity?from=${today}&to=${today}`, { waitUntil: 'domcontentloaded' })   // today's rows only: the three are today's
+      for (let pg = 0; pg < 4; pg++) {
+        ids.push(...await page.locator('li[data-id]').evaluateAll(els => els.map(e => e.getAttribute('data-id') ?? '')))
+        const next = page.locator('a[href*="cursor="]').first()
+        if (!(await next.count())) break
+        // A client-side page turn: wait for the LIST to change, not for a load event that already fired.
+        const firstBefore = ids[ids.length - 50] ?? ids[0]
+        await next.click()
+        await page.waitForFunction((was: string) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== was, firstBefore, { timeout: 10_000 }).catch(() => {})
+        await page.waitForTimeout(300)
+      }
+      const order = [noon, queued?.id ?? '', nine].map(id => ids.indexOf(id))
+      record('27: on the record it sits between a 09:00 and a 12:00 entry — ordered by when it was made, not when it arrived', order.every(i => i >= 0) && order[0] < order[1] && order[1] < order[2], `positions noon ${order[0]} · ours ${order[1]} · nine ${order[2]}`)
+
+      // And it READS as 10:00: the entry page says Recorded 10:00, and does not call it back-dated.
+      await page.goto(`/ranch/activity/${queued?.id}`, { waitUntil: 'domcontentloaded' })
+      const recorded = ((await page.locator('[data-audit="event-recorded"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const backdatedNote = await page.locator('[data-audit="event-backdated"]').count()
+      const reached = await page.locator('[data-audit="event-reached-the-ranch"]').count()
+      record('27: the entry reads Recorded 10:00, is not called back-dated, and arrival gets no line of its own on the same day', /10:00/.test(recorded) && backdatedNote === 0 && reached === 0, `recorded "${recorded}" · back-dated note ${backdatedNote} · reached line ${reached}`)
+
+      // ── Block 29: seen is exact. A's phone runs 40 minutes AHEAD of the server
+      // and records a feeding; B opens Today, sees it, taps Reviewed. Before
+      // 29 the record's made-at (A's clock) was later than B's seen-at (the
+      // server's) and it stayed "new" forever. Now Reviewed sends the newest
+      // made-at it showed and the cursor is stamped no earlier than that.
+      await page.clock.setFixedTime(new Date(Date.now() + 40 * 60_000))
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await logFeed(page, 11)
+      // A fixed clock is FROZEN: the outbox's hold never elapses unless the clock is moved past it.
+      await page.clock.setFixedTime(new Date(Date.now() + 40 * 60_000 + 20_000))
+      const states11 = await watchStates(page, 'Sent', 45_000, 'Fed 11 bales')
+      const { data: row11 } = await admin.from('events').select('id, created_at, ts').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '11').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const r11 = row11 as { id: string; created_at: string; ts: string } | null
+      const ctxB29 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const pb = await signIn(ctxB29, EMAIL_B)
+        await pb.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        const sawIt = await pb.locator('[data-audit="since-row"]').filter({ hasText: 'fed 11 bales' }).waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+        // What Reviewed sends: the newest made-at it was shown.
+        let sent: string | null = null
+        await pb.route('**/api/seen', async (route) => { try { sent = (JSON.parse(route.request().postData() ?? '{}') as { through?: string }).through ?? null } catch { sent = null }; await route.continue() })
+        // By now the card holds more than its five, so Reviewed lives on the last page of View all (6H) — the path a person takes.
+        if (!(await pb.locator('[data-audit="mark-reviewed"]').count())) {
+          await pb.locator('[data-audit="since-view-all"]').click({ timeout: 10_000 }).catch(() => {})
+          // The tap resolves before the navigation does, and Today has rows of its own — wait for View all itself.
+          await pb.waitForURL(/\/ranch\/activity\?since=/, { timeout: 15_000 }).catch(() => {})
+          for (let pg = 0; pg < 6; pg++) {
+            await pb.locator('li[data-id], [data-audit="mark-reviewed"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
+            const next = pb.locator('a[href*="cursor="]').first()
+            if (!(await next.count())) break
+            // The pager's own href, opened directly: what matters here is Reviewed on the last
+            // page, and a tap on a link at the foot of a 50-row page turned nothing in four loops.
+            const href = await next.getAttribute('href')
+            if (!href) break
+            await pb.goto(href, { waitUntil: 'domcontentloaded' })
+          }
+        }
+        let why29 = ''
+        await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(e => { why29 = (e instanceof Error ? e.message : String(e)).split('\n').filter(l => /Timeout|intercept|waiting for|not visible|detached/.test(l)).slice(0, 2).join(' · ').slice(0, 220) })
+        const where29 = `${pb.url().replace(BASE, '')} · Reviewed buttons ${await pb.locator('[data-audit="mark-reviewed"]').count()} · rows ${await pb.locator('li[data-id]').count()} · next links ${await pb.locator('a[href*="cursor="]').count()} · last-page note ${await pb.locator('[data-audit="review-on-last-page"]').count()}${why29 ? ` · click: ${why29}` : ''}`
+        await pb.waitForTimeout(1500)
+        await pb.unroute('**/api/seen')
+        await pb.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+        await pb.locator('[data-audit="since-empty"], [data-audit="since-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+        const rowsAfter = await pb.locator('[data-audit="since-row"]').count()
+        const quiet = await pb.locator('[data-audit="since-empty"]').count()
+        const { data: seenRow } = await admin.from('ranch_members').select('last_seen_at').eq('user_id', userIdB).eq('ranch_id', ranchId).maybeSingle()
+        const seenAt = (seenRow as { last_seen_at?: string } | null)?.last_seen_at ?? ''
+        record('29: seen is exact — a record made on a phone 40 minutes ahead is new until Reviewed, and Reviewed sends the newest made-at it showed and clears it',
+          sawIt && !!sent && Date.parse(sent) > Date.now() + 30 * 60_000 && Date.parse(seenAt) >= Date.parse(sent) && rowsAfter === 0 && quiet === 1,
+          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet} · [${where29}]${rawSeen()}`)
+      } finally { await ctxB29.close().catch(() => {}) }
+      } finally { await ctx27.close().catch(() => {}); page = main }
+    })
+
+    // ── Block 28 — a place history points at is never hard-deleted ────────────
+    // PK's falsifier: move a bunch to a place, delete the place. The move still
+    // reads its name (marked removed), the bunch reads no place recorded, and
+    // restore brings both back. Then the part only the database can prove: the
+    // purge, run past its window, keeps the place and takes an empty one.
+    await section('Block 28 — a place history points at is never hard-deleted', async () => {
+      const probe074 = await admin.rpc('place_is_referenced', { p_place: '00000000-0000-0000-0000-000000000000' })
+      if (probe074.error?.code === '42883') { record('28: CAPABILITY GAP — migration 074 is not applied on this database; nothing below can be read', false, ''); return }
+      const lot28 = randomUUID(), LOT28 = `${PREFIX} 28 bunch`
+      await admin.from('herd_lots').insert({ id: lot28, ranch_id: ranchId, class: 'cows', name: LOT28, head_count: 30, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot28, reason: 'created', source: 'manual', head_after: 30, head_before: null, schema_version: 1 } })
+      const { data: p28 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 28 pasture`, kind: 'pasture' }).select('id').single()
+      const { data: pEmpty } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 28 empty`, kind: 'pasture' }).select('id').single()
+      const mv28 = randomUUID()
+      const moved = await page.request.post('/api/log', { data: { id: mv28, type: 'cattle_moved', head: 30, herd_lot_id: lot28, to_place_id: p28!.id, place_id: p28!.id } })
+      const placeOf = async () => ((await admin.from('herd_lots').select('place_id').eq('id', lot28).maybeSingle()).data as { place_id: string | null } | null)?.place_id ?? null
+      const before = await placeOf()
+      const del = await page.request.delete(`/api/places/${p28!.id}`)
+      const afterDelete = await placeOf()
+      await page.goto(`/ranch/activity/${mv28}`, { waitUntil: 'domcontentloaded' })
+      const what = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const row = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT28 }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').trim()
+      const inPickers = await page.request.get('/api/places').then(r => r.json()).then((j: { places?: { id: string }[] }) => (j.places ?? []).some(p => p.id === p28!.id)).catch(() => true)
+      record('28: delete a place a move points at — the move still reads its name marked in trash, the bunch reads no place recorded, and the place is off the pickers',
+        moved.status() === 201 && before === p28!.id && del.status() === 200 && afterDelete === null && what.includes(`${PREFIX} 28 pasture (in trash)`) && row === NO_PLACE_RECORDED && !inPickers,
+        `move ${moved.status()} · delete ${del.status()} · bunch ${before === p28!.id ? 'at it' : before} → ${afterDelete ?? 'no place'} · "${what.slice(0, 90)}" · row "${row}" · in pickers ${inPickers}`)
+
+      // The purge, past its window: the referenced place is kept, the empty one goes.
+      await admin.from('places').update({ deleted_at: new Date(Date.now() - 9 * 86_400_000).toISOString() }).in('id', [p28!.id, pEmpty!.id])
+      const purged = await admin.rpc('purge_trash', { p_days: 7 })
+      const stillThere = (await admin.from('places').select('id, deleted_at').eq('id', p28!.id).maybeSingle()).data as { id: string; deleted_at: string | null } | null
+      const emptyGone = ((await admin.from('places').select('id').eq('id', pEmpty!.id)).data ?? []).length === 0
+      const hard = await admin.from('places').delete().eq('id', p28!.id).select('id')
+      record('28: the purge past its window keeps the place history points at and takes the empty one; a direct hard delete is refused and it stays in the trash',
+        !purged.error && !!stillThere?.deleted_at && emptyGone && (hard.data ?? []).length === 0 && !!((await admin.from('places').select('deleted_at').eq('id', p28!.id).maybeSingle()).data as { deleted_at: string | null } | null)?.deleted_at,
+        `purge ${purged.error ? purged.error.message : JSON.stringify(purged.data)} · kept ${!!stillThere} · empty gone ${emptyGone} · hard delete removed ${(hard.data ?? []).length}`)
+
+      // Restore brings both back.
+      const restored = await page.request.post('/api/trash', { data: { table: 'places', id: p28!.id } })
+      const afterRestore = await placeOf()
+      await page.goto(`/ranch/activity/${mv28}`, { waitUntil: 'domcontentloaded' })
+      const whatBack = (await page.locator('[data-audit="event-what"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      record('28: restore from the trash brings the place back with its history — the bunch is there again and the move reads its name plain',
+        restored.status() === 200 && afterRestore === p28!.id && whatBack.includes(`${PREFIX} 28 pasture`) && !/in trash/.test(whatBack),
+        `restore ${restored.status()} · bunch → ${afterRestore === p28!.id ? 'at it' : afterRestore ?? 'no place'} · "${whatBack.slice(0, 90)}"`)
+    })
+
+    // ── Block 20 — Record goes map-first ──────────────────────────────────────
+    // PK's falsifier: location and network off, open Record, feed a bunch at a
+    // place. It saves to the outbox with the place you picked. Then, with a
+    // fix: an action tapped first takes the place under the fix.
+    await section('Block 20 — Record goes map-first', async () => {
+      const ring20 = [[-110.06, 46.93], [-110.04, 46.93], [-110.04, 46.92], [-110.06, 46.92], [-110.06, 46.93]]
+      const { data: p20 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 20 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ring20] }, acres: 380 }).select('id').single()
+      // Online once first, so the phone has seen the ranch (the map is kept on the phone for when there is no signal).
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      // The phone keeps the ranch once it has seen it: wait for that copy to be written before the signal goes.
+      // The copy must be the one that names THIS pasture — an older copy from an earlier section's visit is not it.
+      const cached = await page.waitForFunction((pid: string) => { try { return (localStorage.getItem('dryline_ranch_map_v1') ?? '').includes(pid) } catch { return false } }, p20!.id as string, { timeout: 15_000 }).then(() => true).catch(() => false)
+      await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button
+      // Location AND network off.
+      await page.context().setGeolocation(null).catch(() => {})
+      await page.context().setOffline(true)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' }).catch(() => {})
+      await recordControl(page).click()
+      const picker = page.locator('[data-audit="record-picker"]')
+      await picker.waitFor({ timeout: 15_000 }).catch(() => {})
+      const mapState = await picker.getAttribute('data-map').catch(() => null)
+      const polygonsOff = await page.locator('[data-audit="record-picker"] .leaflet-overlay-pane canvas').count()
+      await page.locator(`[data-audit="record-place-chip"][data-place="${p20!.id}"]`).click({ timeout: 20_000 })
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      // The select shows the place once its options are there: wait for the value, do not sample the first paint.
+      const selectShows = async (id: string) => page.waitForFunction((want: string) => (document.querySelector('form [data-audit="place-select"]') as HTMLSelectElement | null)?.value === want, id, { timeout: 10_000 }).then(() => true).catch(() => false)
+      const whereOff = (await selectShows(p20!.id)) ? p20!.id : await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
+      await page.getByLabel('Hay fed').fill('4')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click()
+      const off20 = await watchStates(page, 'Sent', 4_000, 'Fed 4 bales')
+      const queued20 = (await outbox(page)).find(i => (i.body as { bales?: number }).bales === 4 && (i.body as { place_id?: string }).place_id === p20!.id)
+      record('20: location and network off — Record opens on the map from the phone\'s copy, a place then Feed prefills it, and the feeding saves to the outbox with that place',
+        cached && mapState === 'drawn' && polygonsOff >= 1 && whereOff === p20!.id && off20[0] === 'Saved' && !off20.includes('Sent') && !!queued20,
+        `cached ${cached} · map ${mapState} · polygons ${polygonsOff} · where "${whereOff.slice(0, 40)}" · [${off20.join(' → ')}] · queued with the place ${!!queued20}${rawSeen()}`)
+      await page.context().setOffline(false)
+      await watchStates(page, 'Sent', 45_000, 'Fed 4 bales')
+
+      // With a fix inside the pasture: Feed tapped first takes the place under the fix.
+      await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await page.context().setGeolocation({ latitude: 46.925, longitude: -110.05, accuracy: 5 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="record-picker"][data-fix="yes"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const under = await page.locator('[data-audit="record-picker"]').getAttribute('data-under-fix').catch(() => '')
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      const chosen = (await selectShows(p20!.id)) ? p20!.id : await page.locator('form [data-audit="place-select"]').first().inputValue().catch(() => '')
+      record('20: with a fix inside a pasture, an action tapped first takes the place under the fix', under === p20!.id && chosen === p20!.id, `under fix ${under === p20!.id ? 'the pasture' : under || 'none'} · form place ${chosen === p20!.id ? 'the pasture' : chosen || 'none'}`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.context().setGeolocation(null).catch(() => {})
+    })
+
+    // ── Block 31 — a new rancher can create their ranch ───────────────────────
+    // PK's falsifier: sign up a brand-new account. You see only the setup screen.
+    // Name the ranch, pick a county, and you land on Today with an empty ranch
+    // you own. Try again with the same account: refused. Its own browser
+    // context: a different person.
+    await section('Block 31 — a new rancher can create their ranch', async () => {
+      const EMAIL_C = 'smoke-daily-loop-new@dryline.farm'
+      const { data: cu } = await admin.auth.admin.createUser({ email: EMAIL_C, email_confirm: true, user_metadata: { smoke: true } })
+      const ctxC = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      try {
+        const pc = await signIn(ctxC, EMAIL_C)
+        const landed = async () => { await pc.waitForTimeout(1500); return pc.url().replace(BASE, '').split('?')[0] }
+        // Ranch screens all send a ranchless person to the one setup screen.
+        const seen: string[] = []
+        for (const path of ['/today', '/ranch/activity', '/account', '/ranch/cattle']) { await pc.goto(path, { waitUntil: 'domcontentloaded' }); seen.push(await landed()) }
+        const h1 = ((await pc.locator('main h1').first().innerText().catch(() => '')) ?? '').trim()
+        const controls = await pc.locator('[data-audit="setup-form"] button:not([data-audit="setup-county-option"]), [data-audit="setup-form"] input').count()
+        record('31: signed in with no ranch, every ranch screen is the one setup screen — "Name your ranch", the county, one button, nothing else',
+          seen.every(p => p === '/setup') && h1 === 'Name your ranch' && controls === 3, `${seen.join(' ')} · h1 "${h1}" · controls ${controls}`)
+        await pc.locator('[data-audit="setup-name"]').fill(`${PREFIX} New ranch`)
+        await pc.locator('[data-audit="setup-county-search"]').fill('Fergus')
+        await pc.locator('[data-audit="setup-county-option"][data-fips="30027"]').click({ timeout: 10_000 }).catch(() => {})
+        await pc.locator('[data-audit="setup-save"]').click()
+        await pc.waitForURL(u => u.pathname === '/today', { timeout: 30_000 }).catch(() => {})
+        const err = ((await pc.locator('[data-audit="setup-error"]').innerText().catch(() => '')) ?? '').trim()
+        const { data: cm } = await admin.from('ranch_members').select('ranch_id, role').eq('user_id', cu!.user!.id)
+        const { data: cr } = cm?.[0] ? await admin.from('ranches').select('name, home_county_fips').eq('id', cm[0].ranch_id).maybeSingle() : { data: null }
+        await pc.locator('header [data-audit="account-button"]').waitFor({ timeout: 20_000 }).catch(() => {})
+        const headerText = ((await pc.locator('main').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+        record('31: name it, pick a county, and you land on Today with an empty ranch you own — county set on the ranch',
+          pc.url().replace(BASE, '').startsWith('/today') && (cm ?? []).length === 1 && cm![0].role === 'owner' && (cr as { name?: string; home_county_fips?: string } | null)?.name === `${PREFIX} New ranch` && (cr as { home_county_fips?: string } | null)?.home_county_fips === '30027' && headerText.includes(`${PREFIX} New ranch`),
+          `${pc.url().replace(BASE, '')} · ${err ? `error "${err}"` : ''} memberships ${(cm ?? []).length} · role ${cm?.[0]?.role} · ranch "${(cr as { name?: string } | null)?.name}" county ${(cr as { home_county_fips?: string } | null)?.home_county_fips}`)
+        // Again with the same account: the screen is gone (Today), and the door refuses.
+        await pc.goto('/setup', { waitUntil: 'domcontentloaded' })
+        const backTo = await landed()
+        const twice = await pc.request.post('/api/setup', { data: { name: 'Second', county_fips: null } })
+        const twiceJson = (await twice.json().catch(() => ({}))) as { code?: string }
+        const { count: still } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', cu!.user!.id)
+        record('31: try it again with the same account — /setup goes to Today, and the door refuses; still one ranch', backTo === '/today' && twice.status() === 409 && twiceJson.code === 'already_on_a_ranch' && still === 1, `/setup → ${backTo} · again ${twice.status()} ${twiceJson.code ?? ''} · memberships ${still}`)
+      } finally {
+        await ctxC.close().catch(() => {})
+      }
+    })
+
+    // ── Block 23 — the hold menu, the Undo nobody may cover, and the receipt ──
+    // PK's falsifier: do a split at 390 and at 320. The receipt is one readable
+    // line, Undo is tappable without scrolling or dismissing anything, and the
+    // pill is nowhere near it.
+    await section('Block 23 — the hold menu, the Undo nobody may cover, and the receipt', async () => {
+      const lot23 = randomUUID(), LOT23 = `${PREFIX} 23 receipt bunch`
+      const { error: e23 } = await admin.from('herd_lots').insert({ id: lot23, ranch_id: ranchId, class: 'cows', name: LOT23, head_count: 220, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (e23) skip('23: hold menu and receipt checks', `fixture: ${e23.message.slice(0, 80)}`)
+      else {
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot23, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+        const prior = page.viewportSize()
+
+        // Ruling 1 — Open is off the bunch's hold menu, and the rest is still there.
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row23 = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+        await row23.waitFor({ timeout: 20_000 }).catch(() => {})
+        const heldOpen = await hold(page, row23)
+        const opens = await page.locator('[data-audit="row-action-open"]').count()
+        const fixes = await page.locator('[data-audit="row-action-fix"]').count()
+        const splits = await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).count()
+        record('23 (ruling 1): a bunch\'s hold menu offers nothing that does nothing — Open is gone, Fix and Split remain',
+          heldOpen && opens === 0 && fixes === 1 && splits === 1, `Open ${opens} · Fix ${fixes} · Split ${splits}`)
+
+        // Ruling 2 — an Undo owns the bottom of the screen: delete a bunch and
+        // check that nothing floating is drawn over the Undo button.
+        await page.keyboard.press('Escape').catch(() => {})
+        await page.locator('[data-audit="row-actions-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        const del23 = randomUUID(), DEL23 = `${PREFIX} 23 delete me`
+        await admin.from('herd_lots').insert({ id: del23, ranch_id: ranchId, class: 'cows', name: DEL23, head_count: 4, avg_weight: null, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        await page.reload({ waitUntil: 'domcontentloaded' })
+        const delRow = page.locator(`[data-audit="lot-row"]#lot-${del23}`)
+        await delRow.waitFor({ timeout: 20_000 }).catch(() => {})
+        await hold(page, delRow)
+        await page.locator('[data-audit="row-action-delete"]').click().catch(() => {})
+        await page.locator('[data-audit="undo-button"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        const covered = await page.evaluate(() => {
+          const btn = document.querySelector('[data-audit="undo-button"]')
+          if (!btn) return { found: false, coveredBy: 'no undo button at all', pill: 0 }
+          const r = btn.getBoundingClientRect()
+          // What does the browser say is on top at the middle of the Undo?
+          const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+          const inside = !!at && btn.contains(at)
+          const owner = at?.closest('[data-audit]')?.getAttribute('data-audit') ?? at?.tagName ?? 'nothing'
+          return { found: true, coveredBy: inside ? '' : owner, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+        })
+        // The receipt yields by going INVISIBLE, never by unmounting: it starts a
+        // clock when it mounts and calls anything synced before that history, so
+        // tearing it down for an Undo's ten seconds silently ate the receipt for
+        // anything that landed in them.
+        const yielded = await page.evaluate(() => {
+          const strip = document.querySelector('[data-audit="global-save-status"]')
+          return { mounted: !!strip, yielded: strip?.getAttribute('data-yielded') === 'true', box: strip ? strip.getBoundingClientRect().height : 0 }
+        })
+        record('23 (ruling 2): nothing is drawn over an Undo — the record pill yields, the receipt hides without being torn down, and the Undo answers its own taps',
+          covered.found && covered.coveredBy === '' && covered.pill === 0 && yielded.mounted && yielded.yielded,
+          `undo present ${covered.found} · the tap would hit ${covered.coveredBy || 'the Undo button'} · pills on screen ${covered.pill} · receipt still mounted ${yielded.mounted}, yielded ${yielded.yielded}`)
+        await page.locator('[data-audit="undo-button"]').click().catch(() => {})
+        await page.waitForTimeout(1_500)
+        await admin.from('herd_lots').delete().eq('id', del23)
+
+        // Rulings 3 and 4 — split the bunch and read the receipt, at both widths.
+        if (!(await probe071(page, ranchId, userId))) skip('23 (rulings 3 + 4): the receipt after a split is one readable line with Undo, at 390 and at 320', 'migration 071 not run on this database')
+        else {
+          const seen: string[] = []
+          let ok = true
+          for (const width of [390, 320]) {
+            await page.setViewportSize({ width, height: 844 })
+            await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+            const r = page.locator(`[data-audit="lot-row"]#lot-${lot23}`)
+            await r.waitFor({ timeout: 20_000 }).catch(() => {})
+            await hold(page, r)
+            await page.locator('[data-audit="row-action-extra"]', { hasText: 'Split' }).first().click().catch(() => {})
+            await page.locator('[data-audit="split-lot-choice"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+            await page.getByLabel('How many leave').fill('22')
+            await page.locator('[data-audit="split-name"]').fill(`${PREFIX} 23 off ${width}`)
+            await page.getByRole('button', { name: 'Record the split', exact: true }).click().catch(() => {})
+            await watchStates(page, 'Sent', 45_000, `23 off ${width}`)
+            await page.locator('[data-audit="save-receipt"][data-compact="true"]').waitFor({ timeout: 20_000 }).catch(() => {})
+            const shape = await page.evaluate(() => {
+              const box = document.querySelector('[data-audit="save-receipt"][data-compact="true"]')
+              const balance = box?.querySelector('[data-audit="receipt-balance"]') as HTMLElement | null
+              const undo = document.querySelector('[data-audit="take-back"], [data-audit="undo-this"]') as HTMLElement | null
+              if (!box || !balance) return { line: '', px: 0, extras: -1, undoReachable: false, undoInView: false, pill: 1 }
+              const cs = getComputedStyle(balance)
+              const extras = box.querySelectorAll('[data-audit="receipt-label"], [data-audit="receipt-detail"], [data-audit="receipt-open-entry"]').length
+              let undoReachable = false, undoInView = false
+              if (undo) {
+                const u = undo.getBoundingClientRect()
+                undoInView = u.top >= 0 && u.bottom <= window.innerHeight && u.width > 0
+                const at = document.elementFromPoint(u.left + u.width / 2, u.top + u.height / 2)
+                undoReachable = !!at && undo.contains(at)
+              }
+              return { line: (balance.textContent ?? '').trim(), px: parseFloat(cs.fontSize), extras, undoReachable, undoInView, pill: document.querySelectorAll('[data-audit="record-fab"]').length }
+            })
+            seen.push(`${width}px: "${shape.line}" ${shape.px}px · extras ${shape.extras} · undo reachable ${shape.undoReachable}/in view ${shape.undoInView}`)
+            if (!/^220 → 198, 22 to /.test(shape.line) || shape.px < 20 || shape.extras !== 0 || !shape.undoReachable || !shape.undoInView) ok = false
+            const { data: made } = await admin.from('herd_lots').select('id').eq('ranch_id', ranchId).like('name', `${PREFIX} 23 off ${width}%`)
+            for (const m of (made ?? []) as { id: string }[]) await admin.from('herd_lots').delete().eq('id', m.id)
+            await admin.from('herd_lots').update({ head_count: 220 }).eq('id', lot23)
+          }
+          record('23 (rulings 3 + 4): the receipt after a split is ONE readable line with a reachable Undo, at 390 and at 320',
+            ok, seen.join(' | '))
+          // EVERY painted save word, wherever it is shown, read off the painted
+          // page — so a transform counts as changing it, which is what "SENT"
+          // did, hiding a landed split behind a stuck-looking strip for three
+          // runs. `data-save-word` marks each place one is drawn.
+          const words = await page.locator('[data-save-word]').evaluateAll(els =>
+            els.map(e => ({ text: (e as HTMLElement).innerText.trim(), transform: getComputedStyle(e).textTransform })))
+          const FOUR = ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"]
+          const wrong = words.filter(w => !FOUR.includes(w.text) || w.transform !== 'none')
+          record('23: every painted save word is one of the four, exactly as written — no shouting, no transform',
+            words.length > 0 && wrong.length === 0,
+            `${words.length} painted · ${wrong.length === 0 ? 'all four, untransformed' : wrong.map(w => `"${w.text}" (${w.transform})`).join(', ')}`)
+        }
+        if (prior) await page.setViewportSize(prior)
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot23)
+        await admin.from('herd_lots').delete().eq('id', lot23)
+      }
+    })
 
     // ── Block 22 — the tally at a gate ──────────────────────────────────────
     // PK's falsifier: start a count from the 220 and tap PAST it. The screen
@@ -2847,7 +3893,7 @@ async function main() {
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything
     // attached survives and still names the deleted thing.
-    {
+    await section('Block 13 — one gesture, everywhere: fix or delete anything', async () => {
       // Fixtures: a place with a feeding at it and a device on it, a session, a
       // county on the watchlist, an open invitation. B is already a member.
       const { data: p13 } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 13 corral`, kind: 'yard' }).select('id').single()
@@ -2913,7 +3959,7 @@ async function main() {
       const undone2 = await pressUndo(page)
       const { data: back2 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
       record('13 (place): hold → Delete with an entry and a device attached — no confirm, both survive and still name it, the entry shows it as deleted; Undo puts it back',
-        s2b && noConfirm && entryKept && deviceKept && /\(deleted\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
+        s2b && noConfirm && entryKept && deviceKept && /\(in trash\)/.test(namesGone) && undone2 && (back2 as { deleted_at?: string | null } | null)?.deleted_at === null,
         `sheet ${s2b} · no confirm ${noConfirm} · entry kept ${entryKept} · device kept ${deviceKept} · row "${namesGone.slice(0, 60)}" · undo ${undone2}`)
 
       // 3 · Device: Fix edits name and where it sits, and says what the device sets itself; Delete → Undo.
@@ -3082,10 +4128,10 @@ async function main() {
       await admin.from('devices').delete().eq('id', device13)
       await admin.from('events').delete().eq('id', entry13)
       await admin.from('places').delete().eq('id', place13)
-    }
+    })
 
     // ── Block 14 — Count cattle: tap the bunch, the number, save ──────────────
-    {
+    await section('Block 14 — Count cattle: tap the bunch, the number, save', async () => {
       const text = async (sel: string) => (await page.locator(sel).first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       const headOf = async (id: string) => ((await admin.from('herd_lots').select('head_count').eq('id', id).maybeSingle()).data as { head_count?: number } | null)?.head_count ?? null
       const lot14 = randomUUID(), LOT14 = `${PREFIX} 14 count bunch`
@@ -3093,13 +4139,33 @@ async function main() {
       if (l14) skip('14: count checks', `fixture: ${l14.message.slice(0, 80)}`)
       else if (!(await probe069(ranchId, userId))) { skip('14: count and new-bunch checks', 'migration 069 not applied on this database'); await admin.from('herd_lots').delete().eq('id', lot14) }
       else {
+        const navs14: string[] = [], errs14: string[] = []
+        const onNav = (f: { url: () => string; parentFrame: () => unknown }) => { if (!f.parentFrame()) navs14.push(f.url().replace(BASE, '').slice(0, 60)) }
+        const onErr = (m: { type: () => string; text: () => string }) => { if (m.type() === 'error') errs14.push(m.text().slice(0, 100)) }
+        page.on('framenavigated', onNav); page.on('console', onErr); page.on('pageerror', e => errs14.push(`pageerror ${e.message.slice(0, 100)}`))
         await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
         const countOnce = async (n: number) => {
           await recordControl(page).click()
           await page.locator('[data-audit="tile-cattle_counted"]').waitFor({ timeout: 15_000 })
           await page.locator('[data-audit="tile-cattle_counted"]').click()
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).waitFor({ timeout: 15_000 })
-          await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`).click()
+          const opt = page.locator(`[data-audit="count-bunch-option"][data-lot="${lot14}"]`)
+          await opt.waitFor({ state: 'attached', timeout: 15_000 })
+          try { await opt.click({ timeout: 15_000 }) } catch (e) {
+            // What was it, when it could not be tapped? Said in the death, not guessed at afterwards.
+            // A string, not a function: tsx rewrites inner functions with a helper the page does not have.
+            const st = await page.evaluate(`(async () => {
+              const el = document.querySelector('[data-audit="count-bunch-option"][data-lot="${lot14}"]');
+              if (!el) return 'option not in the document';
+              const frame = () => new Promise(r => requestAnimationFrame(() => r()));
+              const boxes = [];
+              for (let i = 0; i < 4; i++) { const b = el.getBoundingClientRect(); boxes.push([b.left, b.top, b.width, b.height].map(Math.round).join(',')); await frame(); await frame(); }
+              const cs = getComputedStyle(el); const sheet = el.closest('[data-audit="record-sheet"]');
+              const anims = document.getAnimations().map(a => (a.animationName || a.transitionProperty || a.constructor.name) + '@' + ((a.effect && a.effect.target && (a.effect.target.getAttribute('data-audit') || a.effect.target.tagName)) || '?') + ':' + a.playState);
+              return { disabled: el.disabled, boxes, vis: cs.visibility, op: cs.opacity, options: document.querySelectorAll('[data-audit="count-bunch-option"]').length, sheets: document.querySelectorAll('[data-audit="record-sheet"]').length, sheetTransform: sheet ? getComputedStyle(sheet).transform : 'no sheet', sheetScroll: sheet ? sheet.scrollTop + '/' + sheet.scrollHeight + '/' + sheet.clientHeight : '', busy: !!(document.querySelector('[data-audit="record-save"]') || {}).disabled, anims: anims.slice(0, 8) };
+            })()`).catch(err => `evaluate failed: ${String(err).slice(0, 160)}`)
+            const why = (e instanceof Error ? e.message : String(e)).split('\n').map(l => l.trim()).filter(l => /intercepts|receives|retrying|from <|subtree|scrolling|stable/.test(l)).slice(0, 6).join(' · ')
+            throw new Error(`${e instanceof Error ? e.message.split('\n')[0] : String(e)} · ${why} · option ${JSON.stringify(st)} · url ${page.url().replace(BASE, '')} · navigations during 14: ${navs14.join(' → ') || 'none'} · console errors: ${errs14.slice(0, 3).join(' | ') || 'none'}`)
+          }
           await page.getByLabel('Counted', { exact: true }).fill(String(n))
           const preview = await text('[data-audit="count-preview"]')
           await page.locator('[data-audit="record-save"]').first().click()
@@ -3180,13 +4246,13 @@ async function main() {
         if (nr) await admin.from('herd_lots').delete().eq('id', nr.id)
         await admin.from('herd_lots').delete().eq('id', lot14)
       }
-    }
+    })
 
     // ── Block 5D, gate 6: sign out with a receipt open; sign in as another person ──
     // Private content disappears at once — the page, the storage, the receipt —
     // and nothing of the first person survives into the second's session, with
     // or without a clean sign-out in between.
-    {
+    await section('Block 5D, gate 6: sign out with a receipt open; sign in as another person', async () => {
       const PRIVATE_KEYS = ['dryline_outbox_v1', 'manual_log_draft_v1', 'manual_log_last_lot', 'manual_log_last_place', 'dryline_hay_draft_v1', 'farmer_type', 'dryline_session_uid']
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[role="status"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
@@ -3251,7 +4317,7 @@ async function main() {
       const bText = (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const bState = await page.evaluate(([outboxKey, ownerKey]: string[]) => ({ outbox: localStorage.getItem(outboxKey), owner: localStorage.getItem(ownerKey) }), ['dryline_outbox_v1', 'dryline_session_uid'])
       record('5D: signed in as another person without a sign-out — the first person\'s receipt and outbox are gone, the phone is theirs now', !/Fed 99 bales/.test(bText) && !/99 bales recorded/.test(bText) && (bState.outbox === null || bState.outbox === '[]') && bState.owner !== userId && !!bState.owner, `owner ${bState.owner === userId ? 'STILL A' : 'B'} · outbox ${bState.outbox ?? 'none'} · receipt shown: ${/Fed 99 bales/.test(bText)}`)
-    }
+    })
 
     // ── no page errors / 5xx during the run is not tracked here; the invariant smoke covers it ──
   } finally {
@@ -3261,7 +4327,9 @@ async function main() {
   }
   const fails = results.filter(r => !r.pass).length
   const skips = results.filter(r => r.skip).length
-  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}\n`)
+  // The commit rides WITH the counts (PK 2026-09-18): a number without the
+  // code it came from is a partial, not a result.
+  console.log(`\n${results.length - fails - skips} PASS · ${fails} FAIL${skips ? ` · ${skips} SKIP` : ''}${fails ? '  — BLOCKED' : ''}${process.env.ONLY ? `  — PARTIAL (ONLY=${process.env.ONLY})` : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 

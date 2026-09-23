@@ -1,3 +1,4 @@
+import { moveLine, isPlacement, removedName, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './supabase'
@@ -31,7 +32,8 @@ export interface ActivityRow {
   id: string
   type: string
   ts: string             // when it happened on the ranch (work time)
-  ingested_at: string    // when the ranch's record received it (recording time)
+  ingested_at: string    // when the ranch's record received it (arrival)
+  created_at: string     // Block 27: when it was MADE on the phone — orders the ledger and "since you checked"
   user_id: string
   device_id: string | null
   payload: Record<string, unknown>
@@ -43,11 +45,13 @@ export interface ActivityRow {
   voided_at?: string | null
   correction_reason?: string | null
 }
-export const ACTIVITY_COLS = 'id, type, ts, ingested_at, user_id, device_id, payload, supersedes_event_id, superseded_by, voided_at, correction_reason'
+export const ACTIVITY_COLS = 'id, type, ts, created_at, ingested_at, user_id, device_id, payload, supersedes_event_id, superseded_by, voided_at, correction_reason'
 export interface Names {
   place: (id: unknown) => string | null
   lot: (id: unknown) => string | null
   person: (userId: string) => string
+  /** Block 25: the bunch itself, for a line that reads name · class · head. */
+  bunch: (id: unknown) => MovedBunch | null
 }
 export interface ActivityFilters { actor?: string | null; place?: string | null; lot?: string | null; from?: string | null; to?: string | null; since?: string | null }   // since = recorded (ingested_at) after this instant — Today's "View all N updates"
 export interface ActivityPage { rows: ActivityRow[]; names: Names; nextCursor: string | null; ranchId: string; filters: ActivityFilters }
@@ -126,7 +130,8 @@ function describeBody(r: ActivityRow, names: Names): string {
     case 'rain': { const inches = num(p.inches); return inches == null ? `Rain${suffix}` : `${inches.toFixed(2)}" of rain${suffix}` }
     case 'hay_fed': { const bales = num(p.bales); const to = names.lot(p.herd_lot_id); const who = to ? ` to ${to}` : ''; return bales == null ? `Hay fed${who}${suffix}` : `Fed ${plural(bales, 'bale')}${who}${suffix}` }
     case 'bales_stacked': { const count = num(p.count); return count == null ? `Bales stacked${suffix}` : `Stacked ${plural(count, 'bale')}${suffix}` }
-    case 'cattle_moved': { const head = num(p.head); const from = names.place(p.from_place_id); const to = names.place(p.to_place_id); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'Cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); const route = from && to ? ` ${from} → ${to}` : to ? ` to ${to}` : from ? ` from ${from}` : ''; return `Moved ${who}${route}` }
+    case 'bunch_seen': { const lot = names.lot(p.herd_lot_id); return `Seen ${lot ?? 'cattle'}${suffix}` }   // Block 30
+    case 'cattle_moved': return moveLine(num(p.head), names.bunch(p.herd_lot_id), names.place(p.from_place_id), names.place(p.to_place_id), isPlacement(p))   // Block 25: the one move wording
     case 'cattle_worked': { const head = num(p.head); const what = str(p.what); const lot = names.lot(p.herd_lot_id); const who = (head == null ? 'cattle' : `${head.toLocaleString()} head`) + (lot ? ` of ${lot}` : ''); return `${what ? what[0].toUpperCase() + what.slice(1) : 'Worked'} ${who}${suffix}` }
     case 'cattle_counted': { const c = num(p.counted); const e = num(p.expected); const lot = names.lot(p.herd_lot_id); return `Counted ${c == null ? 'cattle' : `${c.toLocaleString()} head`}${lot ? ` of ${lot}` : ''}${e != null && c != null ? ` · ${e.toLocaleString()} expected · ${c - e === 0 ? 'same' : c - e > 0 ? `+${c - e}` : `−${e - c}`}` : ''}${suffix}` }
     case 'hay_inventory': { const bales = num(p.bales); const asOf = str(p.as_of); const when = asOf ? ` as of ${fmtDay(`${asOf}T12:00:00-06:00`)}` : ''; return bales == null ? `Bales on hand counted${when}` : `${plural(bales, 'bale')} on hand${when}${suffix}` }
@@ -181,13 +186,16 @@ async function namesFor(supabase: SupabaseClient, userId: string, rows: Activity
     getRanchLotsIncludingRetired(supabase, userId),
     lotIds.size ? supabase.from('herd_lots').select('id, name, class, deleted_at').in('id', [...lotIds]).not('deleted_at', 'is', null) : Promise.resolve({ data: [] as { id: string; name: string | null; class: string; deleted_at: string }[] }),
   ])
-  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, (p as { deleted_at?: string | null }).deleted_at ? `${p.name as string} (deleted)` : p.name as string]))
+  const placeNames = new Map((places.data ?? []).map(p => [p.id as string, removedName(p.name as string, !!(p as { deleted_at?: string | null }).deleted_at)]))
   const people = new Map((profiles.data ?? []).map(p => [p.id as string, ((p.display_name as string | null)?.trim() || (p.email as string | null) || 'Someone on the ranch')]))
   const lotNames = new Map((lots as Lot[]).map(l => [l.id, lotLabel(l)]))
-  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, `${l.name?.trim() || l.class} (deleted)`)
+  const bunches = new Map<string, MovedBunch>((lots as Lot[]).map(l => [l.id, { name: l.name, class: l.class }]))
+  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!lotNames.has(l.id)) lotNames.set(l.id, removedName(l.name?.trim() || l.class, true))
+  for (const l of (trashedLots.data ?? []) as { id: string; name: string | null; class: string }[]) if (!bunches.has(l.id)) bunches.set(l.id, { name: l.name, class: l.class as Lot['class'], deleted: true })
   return {
     place: id => { const s = str(id); return s ? placeNames.get(s) ?? null : null },
     lot: id => { const s = str(id); return s ? lotNames.get(s) ?? null : null },
+    bunch: id => { const s = str(id); return s ? bunches.get(s) ?? null : null },
     person: uid => people.get(uid) ?? 'Someone on the ranch',
   }
 }
@@ -221,7 +229,7 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
   if (filters.lot) q = q.eq('payload->>herd_lot_id', filters.lot)
   if (filters.from && DAY.test(filters.from)) q = q.gte('ts', ranchDayStartIso(filters.from))
   if (filters.to && DAY.test(filters.to)) q = q.lt('ts', ranchDayEndIso(filters.to))
-  if (filters.since && !Number.isNaN(Date.parse(filters.since))) q = q.gt('ingested_at', new Date(filters.since).toISOString())
+  if (filters.since && !Number.isNaN(Date.parse(filters.since))) q = q.gt('created_at', new Date(filters.since).toISOString())   // Block 27: made since, not arrived since
   if (cursor) {
     const [cts, cid] = cursor.split('|')
     if (cts && cid) q = q.or(`ts.lt.${cts},and(ts.eq.${cts},id.lt.${cid})`)

@@ -1,3 +1,4 @@
+import { REMOVED } from '@/lib/move-line'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
@@ -61,7 +62,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         <p className="mb-3 font-dm-sans text-[16px]">
           <Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
-        <p className={EYEBROW}>{kindLabel(place.kind)}{place.retired_at ? ' · retired' : ''}</p>
+        <p className={EYEBROW}>{kindLabel(place.kind)}{place.deleted_at ? ` · ${REMOVED}` : place.retired_at ? ' · retired' : ''}</p>
         <h1 className="mt-1 type-page-heading text-ink">{place.name}</h1>
         {/* Block 7A: where it sits, and what sits in it. The parent is a link
             only when it is live; a parent that is retired or in the trash is

@@ -1,3 +1,4 @@
+import { moveLine, isPlacement, type MovedBunch } from '@/lib/move-line'
 import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from '@/lib/supabase'
@@ -76,7 +77,7 @@ export async function planDelete(supabase: SupabaseClient, userId: string, id: s
   if (row.deleted_at) return { ok: false, status: 409, error: 'That entry was already deleted' }
 
   const reason = await hardBlocker(supabase, row, userId, ranchId)
-  return { ok: true, plan: { mode: reason ? 'record' : 'hard', reason, label: labelOf(row), ts: row.ts } }
+  return { ok: true, plan: { mode: reason ? 'record' : 'hard', reason, label: await labelOf(supabase, row), ts: row.ts } }
 }
 
 /**
@@ -127,7 +128,7 @@ async function seenByAnother(ranchId: string, userId: string, since: string): Pr
 }
 
 /** "Fed 4 bales" — what the confirm sheet names. Short, and never a bare id. */
-function labelOf(row: EventRow): string {
+async function labelOf(supabase: SupabaseClient, row: EventRow): Promise<string> {
   const p = row.payload ?? {}
   const n = (k: string) => (typeof p[k] === 'number' ? (p[k] as number) : null)
   switch (row.type) {
@@ -135,7 +136,13 @@ function labelOf(row: EventRow): string {
     case 'hay_inventory': { const b = n('bales'); return b != null ? `Counted ${b} ${b === 1 ? 'bale' : 'bales'}` : 'A hay count' }
     case 'rain': { const i = n('inches'); return i != null ? `${i.toFixed(2)}" of rain` : 'A rain reading' }
     case 'bales_stacked': { const b = n('bales'); return b != null ? `Stacked ${b} ${b === 1 ? 'bale' : 'bales'}` : 'A stacking entry' }
-    case 'cattle_moved': return 'A cattle move'
+    case 'cattle_moved': {
+      // Block 25: the sheet names WHICH move — the bunch, read even from the trash.
+      const lotId = typeof p.herd_lot_id === 'string' ? p.herd_lot_id : null
+      const { data } = lotId ? await supabase.from('herd_lots').select('name, class, deleted_at').eq('id', lotId).maybeSingle() : { data: null }
+      const l = data as { name: string | null; class: MovedBunch['class']; deleted_at: string | null } | null
+      return moveLine(n('head'), l ? { name: l.name, class: l.class, deleted: !!l.deleted_at } : null, null, null, isPlacement(p))
+    }
     case 'cattle_worked': return 'Cattle work'
     case 'cattle_counted': { const c = n('counted'); return c != null ? `Counted ${c} head` : 'A cattle count' }
     default: return 'This entry'

@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
 import { Suspense } from 'react'
 import { createServiceClient } from '@/lib/supabase'
 import SiteHeader from '@/app/components/SiteHeader'
@@ -46,6 +48,7 @@ import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
 import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
+import RanchMapCard, { RanchMapHold } from './components/RanchMapCard'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
@@ -269,6 +272,8 @@ export async function DashboardShell({
 
   const nationalMap = nationalMapRow as OfficialMapRecord | null
   const user = session.user
+  // Block 32: what THIS render read, taken before any ledger card below starts its own read.
+  const through = priv && route === 'today' && user ? await ledgerThrough(supabase) : null
   // The operation's name leads the page when the signed-in person's ranch has
   // one; a blank name is no name (the county stays the subject, exactly as for
   // a signed-out visitor). Never a placeholder.
@@ -445,6 +450,7 @@ export async function DashboardShell({
           page is wider; an element that needs more width is the wrong element. */}
       <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
+        {priv && route === 'today' && user && <LedgerStamp through={through} />}
         {/* Block 6B — one short first-visit banner on the public county page; the county data stays first. */}
         {!priv && !user && selectedCounty && <CountyBanner />}
 
@@ -463,6 +469,8 @@ export async function DashboardShell({
             self-gating, RLS-scoped components as the county view's Today. */}
         {priv && route === 'today' && !selectedCounty && (
           <div className="mb-8 space-y-4">
+            {/* Block 26: the ranch, first. Its own Suspense — nothing below waits for it. */}
+            <Suspense fallback={<RanchMapHold />}><RanchMapCard /></Suspense>
             {/* Block 5E order: live job · since you last checked · quick record · hay on hand (the ledger strip opens on Hay). */}
             <Suspense fallback={null}>
               <LiveJobCard />
@@ -617,6 +625,8 @@ export async function DashboardShell({
                         Same self-gating components; every card that has nothing to say renders nothing. */}
                     {priv && route === 'today' && (
                       <>
+                        {/* Block 26: the ranch, first. Its own Suspense — nothing below waits for it. */}
+                        <Suspense fallback={<RanchMapHold />}><RanchMapCard /></Suspense>
                         {/* 2. Live job — conditional behaviour untouched; it renders
                             nothing unless a machine is working. Nothing is reserved for
                             it, because reserving space for a card that is usually absent

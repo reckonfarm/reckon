@@ -10,7 +10,10 @@ import { useRouter } from 'next/navigation'
 // stay findable in the record, and the quiet state links to them. Offered only
 // where EVERY entry since the last review is on the page — never where a
 // "View all" or an older page could hide one.
-export default function ReviewedButton({ count }: { count: number }) {
+// Block 29: `through` is the newest made-at this surface showed. The cursor is
+// stamped no earlier than that, so a phone ahead of the server cannot keep its
+// own last records "new" after a review.
+export default function ReviewedButton({ count, through = null }: { count: number; through?: string | null }) {
   const router = useRouter()
   const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle')
   return (
@@ -21,7 +24,7 @@ export default function ReviewedButton({ count }: { count: number }) {
         onClick={async () => {
           setState('busy')
           try {
-            const r = await fetch('/api/seen', { method: 'POST' })
+            const r = await fetch('/api/seen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ through }) })
             if (!r.ok) throw new Error(String(r.status))
             router.refresh()
           } catch { setState('failed') }

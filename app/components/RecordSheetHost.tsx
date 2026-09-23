@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 import { usePathname, useRouter } from 'next/navigation'
+import { useUndoOwnsTheSlot } from '@/lib/undo'
 import LogIt, { useLauncherMounted } from '@/app/dashboard/components/LogIt'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOutbox } from '@/lib/outbox'
@@ -28,16 +29,80 @@ import { warning } from '@/lib/brand-colors'
 // own — a closed sheet never leaves anyone wondering whether it saved.
 // Pending local work stays visible in the strip's own words (Saved on this
 // phone · Waiting to sync), apart from the confirmed shared totals behind it.
+//
+// Block 32 — the page PROVES it caught up. A refresh is a hope: it can be
+// discarded by a navigation, land on another page, or take long enough that
+// the number is read before it arrives — on the audit, 41 feedings in, the
+// receipt said 3,075 and Today's tile said 3,123, exactly the last two. Every
+// ledger page now stamps what its render read (lib/ledger-through.ts), the
+// outbox keeps each synced record's ingested_at, and this compares the two:
+// while the painted stamp is older than the newest record this phone knows
+// landed, it refreshes again, on a backoff, and it re-checks on every page
+// and each time the phone wakes (a pickup nap ends on Today, and Today
+// catches up with no tap — what another hand recorded too). A page with no
+// stamp paints no ledger number and has nothing to catch up on.
+const RECHECK_MS = 1_500
+const RETRY_MS = [1_000, 2_000, 4_000, 8_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000]   // ~90 s, then the next wake or sync starts again
+function readStamp(): string | null | undefined {
+  const el = typeof document === 'undefined' ? null : document.querySelector('[data-audit="ledger-through"]')
+  if (!el) return undefined                      // not a ledger page
+  return el.getAttribute('data-through') || null // '' = a ranch with no records yet
+}
 function SyncRefresh() {
   const router = useRouter()
+  const pathname = usePathname()
   const items = useOutbox()
   const seen = useRef<Set<string> | null>(null)
+  const target = useRef<string | null>(null)     // newest ingested_at this phone knows landed
+  const tries = useRef(0)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [, startTransition] = useTransition()
   if (seen.current === null) seen.current = new Set(items.filter(i => i.state === 'synced').map(i => i.id))
+
+  // Never while offline: a refresh with no signal fails its fetch and the
+  // router falls back to a full navigation — the page reloads and the receipt
+  // on it is gone. With one bar in a corral that would happen on every retry.
+  // The page catches up when the signal returns (the 'online' listener below).
+  const canRefresh = () => typeof navigator === 'undefined' || navigator.onLine !== false
+  const refresh = () => { if (canRefresh()) startTransition(() => router.refresh()) }
+  const arm = (ms: number) => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(recheck, ms) }
+  // Is the painted stamp at or past what this phone knows landed? If not, refresh again.
+  const recheck = () => {
+    timer.current = null
+    const stamp = readStamp()
+    if (stamp === undefined || !target.current) return
+    if (stamp && Date.parse(stamp) >= Date.parse(target.current)) { tries.current = 0; return }
+    if (!canRefresh()) return
+    const wait = RETRY_MS[tries.current]
+    if (wait == null) return
+    tries.current += 1
+    refresh(); arm(wait + RECHECK_MS)
+  }
+
   useEffect(() => {
     let fresh = false
-    for (const i of items) if (i.state === 'synced' && !seen.current!.has(i.id)) { seen.current!.add(i.id); fresh = true }
-    if (fresh) router.refresh()
-  }, [items, router])
+    for (const i of items) if (i.state === 'synced' && !seen.current!.has(i.id)) {
+      seen.current!.add(i.id); fresh = true
+      if (i.ingestedAt && (!target.current || Date.parse(i.ingestedAt) > Date.parse(target.current))) target.current = i.ingestedAt
+    }
+    if (fresh) { tries.current = 0; refresh(); arm(RECHECK_MS) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items])
+  // A new page: check it against what is known, without a refresh first.
+  useEffect(() => {
+    tries.current = 0; arm(RECHECK_MS)
+    return () => { if (timer.current) clearTimeout(timer.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+  // Waking, or the signal coming back: refresh once, then prove it.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === 'visible') { tries.current = 0; refresh(); arm(RECHECK_MS) } }
+    const onSignal = () => { tries.current = 0; refresh(); arm(RECHECK_MS) }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onSignal)
+    return () => { document.removeEventListener('visibilitychange', onWake); window.removeEventListener('online', onSignal) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return null
 }
 
@@ -67,6 +132,14 @@ function DiscardedOnSwitch() {
 function GlobalSaveStatus() {
   const launcher = useLauncherMounted()
   const pathname = usePathname()
+  // Block 23 (ruling 2): the receipt shares this slot with the Undo strip. A
+  // receipt is news; an Undo is a ten-second chance to take something back.
+  // The news waits — but it is HIDDEN, never unmounted. SaveStatus starts a
+  // clock when it mounts and treats anything synced before that as history, so
+  // unmounting it for the ten seconds of an Undo threw away the receipt for
+  // every record that landed during those ten seconds. The record synced; the
+  // person simply never saw it say so.
+  const undoShowing = useUndoOwnsTheSlot()
   if (launcher) return null
   // Block 11 (P0): keyed by pathname, so leaving a page ends its receipt. The
   // strip is fixed above the bottom nav, and on the audit it landed ON TOP of
@@ -80,8 +153,8 @@ function GlobalSaveStatus() {
   // states that are NOT this one (the strip renders those inline on Today,
   // where it is in the flow and cannot cover anything).
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-30 px-4" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status">
-      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} /></div>
+    <div className={`pointer-events-none fixed inset-x-0 z-30 px-4${undoShowing ? ' invisible' : ''}`} style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)' }} data-audit="global-save-status" data-yielded={undoShowing ? 'true' : undefined}>
+      <div className="mx-auto max-w-2xl"><SaveStatus key={pathname} fadeAfterMs={90_000} compact /></div>
     </div>
   )
 }

@@ -15,6 +15,8 @@ export const MANUAL_EVENT_TYPES = [
   'cattle_worked',
   'hay_inventory',
   'cattle_counted',
+  // Block 30: a sighting — the bunch was SEEN at a place, by whom, when. Never a move.
+  'bunch_seen',
 ] as const
 export type ManualEventType = (typeof MANUAL_EVENT_TYPES)[number]
 
@@ -30,6 +32,7 @@ export const MANUAL_EVENT_LABELS: Record<ManualEventType, string> = {
   cattle_worked: 'Cattle worked',
   hay_inventory: 'Bales on hand',
   cattle_counted: 'Cattle counted',
+  bunch_seen: 'Seen',
 }
 
 export const MANUAL_SCHEMA_VERSION = 1
@@ -63,6 +66,8 @@ export type ManualPayload = {
   // A count NEVER changes the bunch's head count — nothing reads this type
   // for that; "Change bunch to N?" is a separate head_count_set.
   | { counted: number; expected: number | null; herd_lot_id: string }
+  // Block 30: a sighting — which bunch was SEEN at place_id. Never a move.
+  | { herd_lot_id: string }
 )
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -126,14 +131,23 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
     }
     case 'bales_stacked':
       return { ...base, count: boundedNumber(body.count, 'count', LIMITS.count.min, LIMITS.count.max, true) }
-    case 'cattle_moved':
+    case 'cattle_moved': {
+      const to = optionalUuid(body.to_place_id, 'to_place_id')
       return {
         ...base,
+        // Block 25: a move's place IS its destination. Derived here, so a
+        // correction that changes To can never leave the old place behind.
+        place_id: to,
         head: boundedNumber(body.head, 'head', LIMITS.head.min, LIMITS.head.max, true),
         from_place_id: optionalUuid(body.from_place_id, 'from_place_id'),
-        to_place_id: optionalUuid(body.to_place_id, 'to_place_id'),
-        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch moved — optional, never changes a head count
+        to_place_id: to,
+        // Which bunch moved. A NEW move must name one (the record route says
+        // so); a move from before Block 25 may not, and stays correctable.
+        herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),
+        // Block 25b: placed, not moved — kept through a correction, never invented by one.
+        ...(body.placement === true ? { placement: true, ...(typeof body.placement_reason === 'string' ? { placement_reason: body.placement_reason.slice(0, 40) } : {}) } : {}),
       }
+    }
     case 'cattle_worked': {
       const what = typeof body.what === 'string' ? body.what.trim().slice(0, LIMITS.what.maxLen) : ''
       if (!what) throw new ValidationError('what is required (e.g. "pregged", "vaccinated")')
@@ -143,6 +157,13 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
         what,
         herd_lot_id: optionalUuid(body.herd_lot_id, 'herd_lot_id'),   // 6G: which bunch was worked — optional
       }
+    }
+    case 'bunch_seen': {
+      // Block 30: which bunch, and where. Both, or it says nothing.
+      const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')
+      if (!lot) throw new ValidationError('Pick the bunch you saw.')
+      if (!base.place_id) throw new ValidationError('Say where you saw them.')
+      return { ...base, herd_lot_id: lot }
     }
     case 'cattle_counted': {
       const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')
@@ -175,8 +196,22 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
 
 // Request ts → ISO string. Missing means now. Rejects unparseable, more than
 // a day in the future, or older than the year 2000 (a wrong-century phone).
-export function parseEventTs(v: unknown): string {
-  if (v == null || v === '') return new Date().toISOString()
+/**
+ * Block 27: when the record was MADE on the phone. Same bounds as a work
+ * time; absent (an old phone, a script) = now, which is arrival.
+ */
+export function parseCreatedAt(v: unknown): string {
+  try { return parseEventTs(v) } catch (e) {
+    if (e instanceof ValidationError) throw new ValidationError(e.message.replace(/^ts /, 'created_at '))
+    throw e
+  }
+}
+
+export function parseEventTs(v: unknown, fallback?: string): string {
+  // Block 27: a record with no work time chosen happened when it was MADE —
+  // the phone's moment, never the server's. Before this a feeding made at a
+  // gate at 10:00 and sent at 16:00 said it happened at 16:00.
+  if (v == null || v === '') return fallback ?? new Date().toISOString()
   if (typeof v !== 'string') throw new ValidationError('ts must be an ISO timestamp')
   const d = new Date(v)
   if (Number.isNaN(d.getTime())) throw new ValidationError('ts must be an ISO timestamp')

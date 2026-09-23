@@ -238,3 +238,13 @@ export function storableAcres(acres: number): number | null {
   if (!Number.isFinite(acres) || acres <= 0) return null
   return Math.round(acres * 100) / 100
 }
+
+/** The bounding-box centre of a set of points — where a place is, for framing and for a line's end. */
+export function centreOf(points: LatLng[]): LatLng | null {
+  if (points.length === 0) return null
+  const lats = points.map(p => p.lat), lngs = points.map(p => p.lng)
+  return {
+    lat: (Math.min(...lats) + Math.max(...lats)) / 2,
+    lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+  }
+}

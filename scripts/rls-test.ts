@@ -19,7 +19,7 @@
 // Writes only RLS-TEST-* rows under the two synthetic accounts (the smoke
 // scratch-account rule: nothing here touches a real ranch's ledger).
 
-import { guardWorktree } from './lib/suite-guard'
+import { guardWorktree, suiteIdentity } from './lib/suite-guard'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -28,7 +28,10 @@ import { validateRing, polygonAreaAcres, storableAcres } from '../lib/places/geo
 import { buildProgramAlerts } from '../lib/program-alerts'
 
 function loadEnv() {
-  for (const f of ['.env', '.env.local']) {
+  // e2e/.env.e2e too, like every other suite: VERCEL_BYPASS lives only there,
+  // and without it every API call here stops at Vercel's protection page and
+  // reads as sixty isolation failures that never reached the app.
+  for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
     const path = resolve(process.cwd(), f)
     if (!existsSync(path)) continue
     for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -97,13 +100,15 @@ async function teardown(label: string) {
   if (ids.length) {
     n += (await admin.from('events').delete().in('user_id', ids).select('id')).data?.length ?? 0
     n += (await admin.from('devices').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0
+    // Block 28 (074): bunches before places, and places in passes (a parent is refused while a child lives).
+    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
+    for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().in('user_id', ids).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
     n += (await admin.from('ranch_members').delete().in('user_id', ids).select('user_id')).data?.length ?? 0
     n += (await admin.from('operation_profiles').delete().in('user_id', ids).select('id')).data?.length ?? 0
-    n += (await admin.from('herd_lots').delete().in('created_by', ids).select('id')).data?.length ?? 0
   }
   n += (await admin.from('devices').delete().like('hardware_id', `${PREFIX}%`).select('id')).data?.length ?? 0
-  n += (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
+  n += (await admin.from('herd_lots').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
+  for (let pass = 0; pass < 4; pass++) { const gone = (await admin.from('places').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0; n += gone; if (!gone) break }
   n += (await admin.from('ranches').delete().like('name', `${PREFIX}%`).select('id')).data?.length ?? 0
   for (const id of ids) { await admin.auth.admin.deleteUser(id); n++ }
   console.log(`teardown (${label}): removed ${n} row(s)/user(s)`)
@@ -575,6 +580,48 @@ async function removedMemberChecks() {
   }
 }
 
+// ── Block 31 (075): create_ranch is the one door into a ranch ─────────────────
+// A new user F (E stays ranchless for 7E) makes a ranch and owns it; a second
+// call is refused; an existing owner is refused and their ranch is untouched;
+// anon cannot call it; and F's first record then lands on F's own ranch.
+async function setupChecks() {
+  const a = fx.A!
+  const A = await userClient('A')
+  const probe = await admin.rpc('create_ranch', { p_name: 'probe', p_county_fips: null })
+  if (probe.error?.code === '42883') { record('(gap)', '31: create_ranch — CAPABILITY GAP: migration 075 is not applied on this database', false, 'six setup checks cannot be read until 075 is run'); return }
+  const fEmail = `rls-test-f@dryline.farm`, fPass = `${PREFIX}pass-F-${Date.now()}`
+  const { data: fu } = await admin.auth.admin.createUser({ email: fEmail, password: fPass, email_confirm: true, user_metadata: { rls_test: true, name: `${PREFIX}F` } })
+  const F = createClient(URL_!, ANON!, { auth: { autoRefreshToken: false, persistSession: false } })
+  const { error: fErr } = await F.auth.signInWithPassword({ email: fEmail, password: fPass })
+  if (fErr || !fu?.user) { record('user F (new)', '31: user F could not sign in', false, fErr?.message ?? 'no user'); return }
+  const fId = fu.user.id
+  const before = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', fId)
+  const made = await F.rpc('create_ranch', { p_name: `${PREFIX} F ranch`, p_county_fips: '30027' })
+  const r1 = made.data as { ok?: boolean; ranch_id?: string; reason?: string } | null
+  const { data: fm } = await admin.from('ranch_members').select('ranch_id, role').eq('user_id', fId)
+  const { data: fr } = r1?.ranch_id ? await admin.from('ranches').select('name, home_county_fips').eq('id', r1.ranch_id).maybeSingle() : { data: null }
+  record('user F (new)', '31: a brand-new account makes a ranch through create_ranch and owns it, county set', (before.count ?? 0) === 0 && !made.error && r1?.ok === true && (fm ?? []).length === 1 && fm![0].role === 'owner' && fm![0].ranch_id === r1.ranch_id && (fr as { home_county_fips?: string } | null)?.home_county_fips === '30027',
+    `${made.error?.message ?? (r1?.ok ? 'ok' : r1?.reason)} · memberships ${(fm ?? []).length} · role ${fm?.[0]?.role} · county ${(fr as { home_county_fips?: string } | null)?.home_county_fips}`)
+  const again = await F.rpc('create_ranch', { p_name: 'Another', p_county_fips: null })
+  const r2 = again.data as { ok?: boolean; reason?: string } | null
+  const { count: fRanches } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', fId)
+  record('user F (new)', '31: the same account again is refused, and still owns exactly one ranch', r2?.ok === false && r2?.reason === 'already_on_a_ranch' && fRanches === 1, `${r2?.reason ?? again.error?.message} · memberships ${fRanches}`)
+  const aBefore = await admin.from('ranch_members').select('user_id, role').eq('ranch_id', a.ranchId)
+  const asOwner = await A.rpc('create_ranch', { p_name: 'A second ranch', p_county_fips: null })
+  const r3 = asOwner.data as { ok?: boolean; reason?: string } | null
+  const aAfter = await admin.from('ranch_members').select('user_id, role').eq('ranch_id', a.ranchId)
+  const { count: aOwns } = await admin.from('ranch_members').select('ranch_id', { count: 'exact', head: true }).eq('user_id', a.userId)
+  record('user A (owner)', '31: a member of an existing ranch is refused, and nothing changes on that ranch', r3?.ok === false && r3?.reason === 'already_on_a_ranch' && JSON.stringify(aBefore.data) === JSON.stringify(aAfter.data) && aOwns === 1, `${r3?.reason ?? asOwner.error?.message} · A's ranch members ${aBefore.data?.length} → ${aAfter.data?.length} · A on ${aOwns} ranch(es)`)
+  const anon = await anonClient().rpc('create_ranch', { p_name: 'Anon ranch', p_county_fips: null })
+  record('anonymous (no JWT)', '31: anon cannot call create_ranch', !!anon.error || (anon.data as { ok?: boolean } | null)?.ok === false, anon.error ? `${anon.error.code ?? ''} ${anon.error.message.slice(0, 60)}` : JSON.stringify(anon.data).slice(0, 80))
+  const wrote = await api(F, '/api/log', { type: 'rain', inches: 0.2 })
+  const ev = (wrote.json.event ?? {}) as { ranch_id?: string }
+  record('user F (new)', '31: F\'s first record lands, on F\'s own ranch', wrote.status === 201 && ev.ranch_id === r1?.ranch_id, `${wrote.status} · ranch ${ev.ranch_id === r1?.ranch_id ? 'F\'s' : ev.ranch_id ?? 'none'}`)
+  // Tidy: F's ranch (cascades the membership), F's rows, F.
+  if (r1?.ranch_id) { await admin.from('events').delete().eq('user_id', fId); await admin.from('ranches').delete().eq('id', r1.ranch_id) }
+  await admin.auth.admin.deleteUser(fId)
+}
+
 async function anonymousChecks() {
   const c = anonClient()
   for (const table of ['events', 'places', 'devices', 'ranch_members', 'ranches'] as const) {
@@ -1033,6 +1080,55 @@ async function projectionChecks() {
   if (ga.data) await admin.from('events').delete().eq('id', ga.data.id)
   // And A's own count must still be what it was after those deletes fire the trigger.
   record('user A (owner)', '12.6/067: after B\'s rows are gone, A\'s count still stands where A left it', (await headOf(a.lotId)) === aBefore, `A ${await headOf(a.lotId)} (was ${aBefore})`)
+}
+
+// ── Block 25b (072): where a bunch is cannot be steered across ranches ────────
+// The place projection is SECURITY DEFINER, like the head count's, so it gets
+// 067's proof: a move B writes on B's ranch naming A's bunch — or naming A's
+// place for B's own bunch — puts nothing anywhere on A, and B's bunch nowhere
+// on A's ground.
+async function placeProjectionChecks() {
+  const a = fx.A!, b = fx.B!
+  const B = await userClient('B')
+  // Capability, not existence: 42883 = the function is not there (072 unrun).
+  const probe = await admin.rpc('rebuild_lot_place', { p_lot: '00000000-0000-0000-0000-000000000000' })
+  // A capability gap, named and RED — never a skip to reach green.
+  if (probe.error?.code === '42883') { record('(gap)', '25b: place projection checks — CAPABILITY GAP: migration 072 is not applied on this database', false, 'five cross-ranch place checks cannot be read until 072 is run'); return }
+
+  const placeOf = async (id: string) => ((await admin.from('herd_lots').select('place_id').eq('id', id).maybeSingle()).data as { place_id?: string | null } | null)?.place_id ?? null
+  const aBefore = await placeOf(a.lotId), bBefore = await placeOf(b.lotId)
+  const move = (lot: string, to: string) => B.from('events').insert({ user_id: b.userId, ranch_id: b.ranchId, device_id: null, type: 'cattle_moved', ts: new Date().toISOString(), schema_version: 1,
+    payload: { source: 'manual', schema_version: 1, head: 5, herd_lot_id: lot, from_place_id: null, to_place_id: to, place_id: to } }).select('id').single()
+
+  const m1 = await move(a.lotId, b.placeId)
+  record('user B (other ranch)', '25b/072: a move B writes on B\'s ranch naming A\'s bunch puts A\'s bunch nowhere — the projection believes only the bunch\'s own ranch',
+    (await placeOf(a.lotId)) === aBefore, `B\'s row ${m1.error ? `refused (${m1.error.code})` : 'landed on B'} · A\'s bunch ${aBefore ?? 'no place'} → ${(await placeOf(a.lotId)) ?? 'no place'}`)
+
+  const m2 = await move(b.lotId, a.placeId)
+  const bAfter = await placeOf(b.lotId)
+  record('user B (other ranch)', '25b/072: B\'s own bunch cannot be put on A\'s place — a place on another ranch is no place',
+    bAfter !== a.placeId, `B\'s row ${m2.error ? `refused (${m2.error.code})` : 'landed on B'} · B\'s bunch → ${bAfter === a.placeId ? 'A\'S PLACE' : bAfter ?? 'no place'}`)
+
+  const viaRoute = await api(B, '/api/log', { id: randomUUID(), type: 'cattle_moved', head: 5, herd_lot_id: a.lotId, to_place_id: b.placeId, place_id: b.placeId })
+  // Block 30: a sighting the same — B cannot say A's bunch was seen anywhere.
+  const seenId = randomUUID()
+  const viaSeen = await api(B, '/api/log', { id: seenId, type: 'bunch_seen', herd_lot_id: a.lotId, place_id: b.placeId })
+  const { count: seenLanded } = await admin.from('events').select('id', { count: 'exact', head: true }).eq('id', seenId)
+  record('user B (other ranch)', '30: the record route refuses a sighting naming another ranch\'s bunch, and nothing lands', viaSeen.status === 400 && /not on your ranch/i.test(String(viaSeen.json.error ?? '')) && (seenLanded ?? 0) === 0, `${viaSeen.status} "${String(viaSeen.json.error ?? '').slice(0, 50)}" · rows ${seenLanded ?? 0}`)
+  record('user B (other ranch)', '25: the record route refuses a move naming another ranch\'s bunch, and A\'s bunch is unmoved',
+    viaRoute.status === 400 && (await placeOf(a.lotId)) === aBefore, `${viaRoute.status} "${String(viaRoute.json.error ?? '').slice(0, 50)}"`)
+
+  for (const fn of ['rebuild_lot_place', 'lot_place_from_moves'] as const) {
+    const direct = await B.rpc(fn, { p_lot: a.lotId })
+    record('user B (other ranch)', `25b: B cannot call ${fn} on A\'s bunch — refused`, !!direct.error && (await placeOf(a.lotId)) === aBefore, `${direct.error?.code ?? 'ALLOWED'}`)
+  }
+  const trig = await B.rpc('events_project_bunch_place')
+  record('user B (other ranch)', '25b: the place trigger function cannot be called directly by a client', !!trig.error, `${trig.error?.code ?? 'ALLOWED'}`)
+
+  // Tidy B's probe rows; both bunches must read as they did before any of this.
+  for (const m of [m1, m2]) if (m.data) await admin.from('events').delete().eq('id', m.data.id)
+  record('user A (owner)', '25b/072: after B\'s rows are gone, both bunches are where they were', (await placeOf(a.lotId)) === aBefore && (await placeOf(b.lotId)) === bBefore,
+    `A ${(await placeOf(a.lotId)) ?? 'no place'} (was ${aBefore ?? 'no place'}) · B ${(await placeOf(b.lotId)) ?? 'no place'} (was ${bBefore ?? 'no place'})`)
 }
 
 async function turnoutChecks() {
@@ -1616,6 +1712,17 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, async () => { 
 
 async function main() {
   console.log(`\nDryline — two-ranch isolation test  (db ${URL_}, ingest ${BASE})\n`)
+  // IDENTITY FIRST. Every route check below is meaningless if BASE is answering
+  // with Vercel's protection page instead of the app: that reads as dozens of
+  // 401 "isolation failures" that never reached a route. Say it once, and stop.
+  {
+    const res = await fetch(`${BASE}/signin`, { headers: process.env.VERCEL_BYPASS ? { 'x-vercel-protection-bypass': process.env.VERCEL_BYPASS } : {} }).catch(() => null)
+    const body = res ? await res.text().catch(() => '') : ''
+    if (!res || res.status !== 200 || !/Dryline/i.test(body)) {
+      console.error(`rls-test: ${BASE} is not serving the app (${res ? `HTTP ${res.status}` : 'no answer'})${BASE.includes('vercel.app') && !process.env.VERCEL_BYPASS ? ' — VERCEL_BYPASS is missing from e2e/.env.e2e' : ''}. Nothing was checked — this is NOT a pass.  —  ${suiteIdentity()}`)
+      process.exit(2)
+    }
+  }
   await teardown('pre-run residue')
   try {
     fx.A = await seed('A')
@@ -1628,6 +1735,7 @@ async function main() {
     await logRouteChecks()      // Block 7E — /api/log; BEFORE invitations, while C is still ranchless
     await ingestChecks()
     await invitationChecks()    // Phase A2 — needs migration 049 and the routes on BASE
+    await setupChecks()         // Block 31 — create_ranch, the one door; needs 075 (named RED without it)
     await lotsChecks()          // Block 4A — needs migration 050
     await activityChecks()      // Block 5A — the record's routes, ranch-scoped in the route
     await correctionChecks()    // Block 5B — needs migration 054 (skips without it)
@@ -1636,6 +1744,7 @@ async function main() {
     await groupActionChecks()   // Block 10 — the group action; needs 063 (skips without it)
     await countChecks()          // Block 14 — counts and bunches; needs 069 (skips without it)
     await trashChecks()         // Block 12 — the trash; needs 065 (skips without it)
+    await placeProjectionChecks()   // Block 25b — a bunch's place cannot be steered across ranches; needs 072 (skips, named, without it)
     await projectionChecks()    // Block 12 — the head-count projection cannot be steered across ranches; needs 066 (skips without it); RED until 067
     await removedMemberChecks() // last — it removes A's membership
   } finally {
@@ -1649,7 +1758,7 @@ async function main() {
     console.log(`${r.pass ? 'PASS' : 'FAIL'}    ${r.who.padEnd(w)}  ${r.check.padEnd(cw)}  ${r.detail}`)
   }
   const fails = results.filter(r => !r.pass).length
-  console.log(`\n${results.length - fails} PASS · ${fails} FAIL${fails ? '  — BLOCKED' : ''}\n`)
+  console.log(`\n${results.length - fails} PASS · ${fails} FAIL${fails ? '  — BLOCKED' : ''}  —  ${suiteIdentity()}\n`)
   process.exit(fails ? 1 : 0)
 }
 

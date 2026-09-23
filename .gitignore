@@ -63,3 +63,6 @@ __pycache__/
 
 # smoke session cookies minted by scripts/smoke-signin.ts — never commit
 *cookie*.txt
+
+# scratch files, never committed
+.scratch/
