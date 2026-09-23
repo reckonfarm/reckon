@@ -2434,6 +2434,9 @@ async function main() {
             // control first, then ask what is on top of it. The body reserve
             // is what lets the last control on a page come clear, and the
             // structural check below holds that separately.
+            // Inside a closed <details> the content keeps a laid-out box but no one can reach it
+            // until the summary opens it — the summary is the control there, not what it hides.
+            if (c.tagName !== 'SUMMARY' && [...c.parentElement ? [c] : []].length && c.closest('details:not([open])')) continue
             c.scrollIntoView({ block: 'center', inline: 'nearest' })
             const r = c.getBoundingClientRect()
             if (r.width === 0 || r.height === 0) continue
@@ -3579,7 +3582,8 @@ async function main() {
       await recordControl(page).click()
       await page.locator('[data-audit="record-picker"][data-map="drawn"]').waitFor({ timeout: 20_000 }).catch(() => {})
       // The phone keeps the ranch once it has seen it: wait for that copy to be written before the signal goes.
-      const cached = await page.waitForFunction(() => { try { return !!localStorage.getItem('dryline_ranch_map_v1') } catch { return false } }, undefined, { timeout: 15_000 }).then(() => true).catch(() => false)
+      // The copy must be the one that names THIS pasture — an older copy from an earlier section's visit is not it.
+      const cached = await page.waitForFunction((pid: string) => { try { return (localStorage.getItem('dryline_ranch_map_v1') ?? '').includes(pid) } catch { return false } }, p20!.id as string, { timeout: 15_000 }).then(() => true).catch(() => false)
       await page.keyboard.press('Escape').catch(() => {})   // Block 26c: no Close button
       // Location AND network off.
       await page.context().setGeolocation(null).catch(() => {})

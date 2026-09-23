@@ -99,6 +99,7 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
           shapes={shapes}
           initialCenter={fix?.p ?? map!.centre}
           height="42vh"
+          zoomControl={false}   // 12.2/20: no text on the map — pinch and double-tap zoom it, as on Today
           onPlaceTap={id => setPicked(p => (p === id ? null : id))}
           {...(fix ? { pin: { fix: fix.p, accuracyM: fix.accuracyM, position: fix.p } } : {})}
         />
