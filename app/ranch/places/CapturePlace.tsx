@@ -402,22 +402,14 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
       )}
       <Card className="mt-4 p-4 sm:p-5" data-audit="capture-choose">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">Add a place</p>
-        {/* Block 12 (12.12): what this makes, and what happens next, before the
-            two ways of making it. */}
-        <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">A named spot on your map. Pick how to mark it; you name it on the next screen.</p>
         <div className="mt-3 flex flex-col gap-2">
           <button type="button" onClick={() => void beginDrop()} className="min-h-[52px] rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream" data-audit="capture-drop-open">
             Drop a place here
-            <span className="block text-[14px] font-normal opacity-90">Marks the spot you are standing on</span>
           </button>
           <button type="button" onClick={() => void beginRide()} className="min-h-[52px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="capture-ride-open">
             Ride the perimeter
-            <span className="block text-[14px] font-normal text-secondary-ink">{draft ? 'Starts over — the ride above is thrown away' : 'Draws the shape from your track as you go round'}</span>
           </button>
         </div>
-        <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
-          A stack, a gate or a tank is a point. A field, a pasture or a corral is a ride. You can also draw one by tapping corners on the map.
-        </p>
       </Card>
       </>
     )

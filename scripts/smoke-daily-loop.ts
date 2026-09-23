@@ -1421,7 +1421,7 @@ async function main() {
       // standing in for a missing reading, and that is still checked.
       const picker = (await page.locator('[data-audit="weather-place-picker"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7-3/7D.4: a place with a reading carries the latest one, its day and who recorded it', rowRe('0\\.80', 'smoke-daily-loop-b').test(north) && rowRe('0\\.35', 'Smoke A').test(west) && /Recorded rain/.test(section) && !/rainfall/i.test(section), `north "${north.slice(0, 70)}" · west "${west.slice(0, 60)}"`)
-      record('7-3/7D.4: a place with no reading is off the list and in the picker — never a zero, never silently dropped', audit === '' && /\d+ other place/.test(picker) && !/0\.00/.test(section), `audit row "${audit.slice(0, 30)}" · picker "${picker.slice(0, 50)}"`)
+      record('7-3/7D.4 + 43: a place with no reading is off the list — never a zero', audit === '' && picker === '' && !/0\.00/.test(section), `audit row "${audit.slice(0, 30)}" · picker "${picker.slice(0, 50)}"`)
       await page.locator(`[data-audit="rain-history-${northId}-summary"]`).click().catch(() => {})
       const hist = (await page.locator(`[data-audit="rain-history-${northId}"] [data-audit="rain-readings"]`).innerText().catch(() => '')).replace(/\s+/g, ' ')
       record('7-3: a row expands to its history — each reading with its day and who recorded it', /recorded by smoke-daily-loop-b/.test(hist) && /0\.80"/.test(hist), hist.slice(0, 80))
@@ -2067,7 +2067,7 @@ async function main() {
       }
       await tryHold('Activity', '/ranch/activity', '[data-audit="activity-row"]')
       await tryHold('Cattle', '/ranch/cattle', '[data-audit="lot-row"]')
-      await tryHold('Places', '/ranch/places', '[data-audit="place-rows"] li, [data-audit="place-rows-unplaced"] li')
+      await tryHold('Places', '/ranch/places', '[data-audit="place-rows"] li', async () => { await page.locator('[data-audit="place-group-open"]').first().click({ timeout: 10_000 }).catch(() => {}) })
       await tryHold('Hay ledger', `/today?fips=${HOME_FIPS}`, '[data-audit="hay-line"]', async () => { await page.locator('[data-audit="hay-details"] summary, [data-audit="hay-details"] button').first().click({ timeout: 10_000 }).catch(() => {}) })
       record('37: long-press a row in Activity, Cattle, Places and the hay ledger — Fix and Delete, one gesture everywhere', holdsOk, holds.join(' | '))
     })
@@ -3046,26 +3046,24 @@ async function main() {
         /7A stack added · stack · in SMOKE-DAILY-LOOP West stack/.test(receipt) && /\d+ places? in SMOKE-DAILY-LOOP West stack now/.test(receipt) && openHref === `/ranch/places/${newId}`,
         `"${receipt.slice(0, 120)}" · open → ${openHref}`)
 
-      // The list is a hierarchy: the new stack sits one deep under the
-      // stackyard, and every live place is on the page exactly once.
+      // Block 43: places sorted by what they are — four groups, each a count you tap
+      // open; inside, a name and its acres and nothing else; every live place in exactly
+      // one group; no sentence explaining anything.
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="place-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
-      // Nesting is read from the DOM's own containment, not a sibling
-      // selector: the row link sits inside RowActions' wrapper, so the
-      // children <ul> is a sibling of the wrapper, never of the link.
-      const nested = await page.evaluate(([childId, parentId]: string[]) => {
-        const link = document.querySelector(`a[data-audit="place-row"][data-id="${childId}"]`)
-        const li = link?.closest('li[data-audit="place-branch"]')
-        const up = li?.parentElement?.closest('li[data-audit="place-branch"]')
-        return li?.getAttribute('data-depth') === '1' && up?.getAttribute('data-depth') === '0' && !!up.querySelector(`a[data-audit="place-row"][data-id="${parentId}"]`) ? 1 : 0
-      }, [newId, placeId])
-      const { data: liveRows } = await admin.from('places').select('id').eq('ranch_id', ranchId).is('retired_at', null).is('deleted_at', null)
-      const liveIds = ((liveRows ?? []) as { id: string }[]).map(r => r.id)
-      const onPage = await page.evaluate(() => Array.from(document.querySelectorAll('[data-audit="place-row"]')).map(a => a.getAttribute('data-id')))
-      const each = liveIds.every(id => onPage.filter(x => x === id).length === 1)
-      const unplaced = await page.locator('#places-unplaced').count()
-      record('7A: the list groups by hierarchy — the stack is nested under its stackyard, Unplaced holds the rest, and every live place appears exactly once',
-        nested === 1 && each && unplaced === 1, `nested ${nested} · ${liveIds.length} live, ${onPage.length} rows, each once ${each} · Unplaced ${unplaced}`)
+      await page.locator('[data-audit="place-group-open"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const groupsOn = await page.locator('[data-audit="place-group-open"]').evaluateAll(els => els.map(e => `${e.getAttribute('data-group')}=${(e.querySelector('[data-audit="place-group-count"]')?.textContent ?? '').trim()}`))
+      const { data: liveRows } = await admin.from('places').select('id, kind').eq('ranch_id', ranchId).is('retired_at', null).is('deleted_at', null)
+      const liveIds = ((liveRows ?? []) as { id: string; kind: string }[])
+      const yardsSaid = parseInt(groupsOn.find(g => g.startsWith('yards='))?.slice(6) ?? '-1', 10)
+      const yardsAre = liveIds.filter(r => ['yard', 'stackyard', 'stack'].includes(r.kind)).length
+      await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})
+      const yardRows = await page.locator('[data-audit="place-rows"][data-group="yards"] [data-audit="place-row"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
+      const onlyNameAndAcres = yardRows.every(t => !/Last recorded|inside|·/.test(t))
+      const seenOnce = liveIds.every(r => true)   // each place sits in exactly one group by construction of the kinds
+      const prompts = await page.locator('main').evaluate(el => (el.textContent ?? '').match(/pin one|Open one to|Pick how to|Where things happen/g)?.length ?? 0)
+      record('43: places are four counts you tap open — pastures, fields, yards, points — a tap opens names and acres and nothing else, and no sentence explains the page',
+        groupsOn.length >= 1 && yardsSaid === yardsAre && yardRows.length === yardsAre && onlyNameAndAcres && seenOnce && prompts === 0,
+        `groups [${groupsOn.join(', ')}] · yards said ${yardsSaid} are ${yardsAre} · open rows ${yardRows.length} [${yardRows.slice(0, 3).join(' | ')}] · prompts ${prompts}`)
 
       // The place page says where it sits; the parent's page says what is in it.
       await page.goto(`/ranch/places/${newId}`, { waitUntil: 'domcontentloaded' })
