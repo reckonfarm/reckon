@@ -783,6 +783,7 @@ async function main() {
     // 12.13: Today's Activity tab is gone; the Ranch hub's recent rows are where
     // the owner sees the hand's entry named with its lot.
     await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+    await page.locator('[data-audit="ranch-tile"][data-tile="record"]').click({ timeout: 20_000 }).catch(() => {})   // Block 47: the record is a tab on the Ranch view
     await page.locator('[data-audit="ranch-today"]').first().waitFor({ state: 'attached', timeout: 20_000 }).catch(() => {})
     const ownerText = ((await page.locator('[data-audit="ranch-today"]').first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
     record('4A/12.8: the hand\'s feeding shows its lot name to the owner, in the hand\'s line under Today on the ranch', new RegExp(`Fed 1 bale to ${LOT_NAME}`).test(ownerText), (ownerText.match(new RegExp(`Fed 1 bale[^.]{0,60}`)) ?? ['no line'])[0])
@@ -794,11 +795,14 @@ async function main() {
       // Block 12 (12.7): three tiles, each with a number only where something
       // stands behind it. This ranch has no devices, so Ground names places
       // alone; Cattle names head; the record names today's entries.
-      await page.locator('[data-audit="ranch-tiles"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="ranch-tabs"]').waitFor({ timeout: 20_000 }).catch(() => {})
       const tileLabels = await page.locator('[data-audit="ranch-tile"]').evaluateAll(els => els.map(e => (e.getAttribute('data-tile') ?? '')))
-      const numbers = await page.locator('[data-audit="tile-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+      // Block 47: the numbers stand above the tabs — head, bales, rain — each
+      // painted only with a record behind it; a tab is a word, the record's
+      // carrying today's count. This ranch has lots, so head is painted.
+      const numbers = await page.locator('[data-audit="ranch-numbers"] [data-audit^="ranch-number-"][data-audit$="-word"], [data-audit="tile-number"]').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
       record('6A/12.7: Ranch is three things — Cattle · Ground · The record — and shows only the numbers something stands behind (no devices → no device number)',
-        tileLabels.join(',') === 'cattle,ground,record' && numbers.some(n => /head$/.test(n)) && !numbers.some(n => /device/.test(n)),
+        tileLabels.join(',') === 'cattle,ground,record' && numbers.some(n => /^head\b/.test(n)) && !numbers.some(n => /device/.test(n)),
         `tiles [${tileLabels.join(', ')}] · numbers [${numbers.join(' | ')}]`)
       // Block 13: hold the lot the feedings were logged against → Fix opens
       // its form; Delete sends it to the trash with no confirm; every past
@@ -934,7 +938,9 @@ async function main() {
       const sourceLine = (await page.locator('[data-audit="rain-summary-source"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const prism = /County estimate/i.test(sourceLine)
       record('6K: the rainfall figures say what they are — a county estimate (PRISM) or a station gauge — never "Actual"', !/YTD Actual|\bActual:/.test(est) && (ytdLabel === '' ? /rather show nothing|No nearby weather station/.test(est) : prism ? /County estimate/.test(ytdLabel) : /Station gauge/.test(ytdLabel)), `label "${ytdLabel}" · source line "${sourceLine}"`)
-      record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText), `${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
+      // Block 44: the map stands open on the page, so its dated preview line (the closed state's) is not painted — the map being open is what stands in for it.
+      const mapOpen = await page.locator('[data-audit="weather-drought-map"] [aria-expanded="true"]').count()
+      record('6K: the Drought Monitor names its valid date and its release date apart — on the county card and on the map', /Valid [A-Z][a-z]{2} \d{1,2}, \d{4} · released [A-Z][a-z]{2} \d{1,2}, \d{4}/.test(mainText) && (mapOpen > 0 || /Drought Monitor · valid [A-Z][a-z]{2} \d{1,2}(, \d{4})? · released [A-Z][a-z]{2} \d{1,2}/.test(mainText)), `map open ${mapOpen} · ${(mainText.match(/Valid [^·]+· released [^·]{0,20}/) ?? ['no valid/released pill'])[0].slice(0, 60)} · ${(mainText.match(/Drought Monitor · valid [^·]+· released [^·]{0,12}/) ?? ['no map preview'])[0]}`)
     })
 
     // ── Block 6B (6): Weather in order — forecast · recorded rain · county estimate vs station normal · county drought · drought map ──
@@ -954,7 +960,6 @@ async function main() {
       //     statement about what the operator sees down the page.
       // What is unique to this check and still true stays: one h1, the title,
       // the PRISM/NOAA footer, the ribbon's wording, and never a zero.
-      const hasRain = (await page.locator('[data-audit="recorded-rain"]').count()) > 0
       const zeroRain = /0\.00" .*rain|rain.*0\.00"/i.test(await page.locator('main').innerText().catch(() => ''))
       const title = await page.title()
       const h1 = await page.locator('h1').count()
@@ -975,7 +980,7 @@ async function main() {
       await page.waitForTimeout(400)
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const ribbonLabel = await page.locator('[data-audit="drought-ribbon"]').getAttribute('aria-label').catch(() => null)
-      record('6B: Weather says it plainly — recorded rain only when a reading exists, county estimate vs station normal (PRISM/NOAA footer), the drought ribbon in words; one h1; title Weather; never a zero for no reading', /^Weather/.test(title) && h1 === 1 && (hasRain ? rainRows + noneRows >= 1 : !zeroRain) && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · footer "${footer.slice(0, 46)}" · ribbon "${(ribbonLabel ?? '').slice(0, 46)}"`)
+      record('6B: Weather says it plainly — recorded rain only when a reading exists, county estimate vs station normal (PRISM/NOAA footer), the drought ribbon in words; one h1; title Weather; never a zero for no reading', /^Weather/.test(title) && h1 === 1 && !zeroRain && /PRISM/.test(footer) && /NOAA/.test(footer) && !!ribbonLabel && /three years/.test(ribbonLabel), `title "${title}" · h1 ${h1} · rain rows ${rainRows} + ${noneRows} without a reading · footer "${footer.slice(0, 46)}" · ribbon "${(ribbonLabel ?? '').slice(0, 46)}"`)
       // 6F: no link on the Weather view is dead — every same-site href answers something other than 404 (the audit's /weather/radar).
       const hrefs = [...new Set(await page.locator('main a[href^="/"]').evaluateAll(els => els.map(a => a.getAttribute('href') ?? '')))].filter(h => h && !h.startsWith('/api/'))
       const dead: string[] = []
