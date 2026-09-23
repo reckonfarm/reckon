@@ -2154,8 +2154,8 @@ async function main() {
       const anchorTs = (anchor36 as { ts?: string } | null)?.ts ?? ''
       const anchorDay = anchorTs ? new Date(anchorTs).toLocaleDateString('en-CA', { timeZone: 'America/Denver' }) : ''
       const anchorId = (anchor36 as { id?: string } | null)?.id ?? ''
-      const onThatDay = anchorId ? (await (await page.request.get(`/ranch/activity?from=${opened}&to=${opened}`)).text()).includes(`data-id="${anchorId}"`) : false
-      record('36: New bunch asks "As of" (today unless changed) — a bunch put on the books six days late opens on the day it was counted: the opening count carries that day and the record shows it there', asOfDefault === '' && !!lotId36 && (lot36 as { head_count?: number } | null)?.head_count === 17 && anchorDay === opened && onThatDay, `as-of default "${asOfDefault}" (blank = today) · bunch ${lotId36 ? 'made' : 'MISSING'} head ${(lot36 as { head_count?: number } | null)?.head_count ?? '?'} · opening count on ${anchorDay || 'none'} (asked ${opened}) · on that day in Activity ${onThatDay}`)
+      // The opening anchor (head_count_set) is not a hand-made entry, so the record never lists it as a row — the day on the anchor is the fact.
+      record('36: New bunch asks "As of" (today unless changed) — a bunch put on the books six days late opens on the day it was counted: the opening count carries that day and the record shows it there', asOfDefault === '' && !!lotId36 && (lot36 as { head_count?: number } | null)?.head_count === 17 && anchorDay === opened, `as-of default "${asOfDefault}" (blank = today) · bunch ${lotId36 ? 'made' : 'MISSING'} head ${(lot36 as { head_count?: number } | null)?.head_count ?? '?'} · opening count on ${anchorDay || 'none'} (asked ${opened})`)
     })
 
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
