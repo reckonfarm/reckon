@@ -18,6 +18,17 @@ export interface NWSPeriod {
   windDirection: string              // e.g. "NW"
 }
 
+// Block 44: one hour of NWS's hourly forecast — wind by hour is what a spraying day needs.
+export interface NWSHour {
+  startTime: string
+  endTime: string
+  temperature: number
+  windSpeed: string
+  windDirection: string
+  precipProbability: number | null
+  shortForecast: string
+}
+
 export interface LocalForecast {
   generatedAt: string
   updateTime: string
@@ -139,4 +150,26 @@ export async function getLocalForecast(lat: number, lon: number): Promise<LocalF
   } catch {
     return null
   }
+}
+
+
+// Block 44: the hourly forecast for the same point (NWS forecastHourly), the
+// next 24 hours. Same office lookup, same honest null on any failure.
+export async function getHourlyForecast(lat: number, lon: number): Promise<NWSHour[] | null> {
+  try {
+    const pointsRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: { 'User-Agent': UA }, signal: timeoutSignal(), next: { revalidate: 604800 } })
+    if (!pointsRes.ok) return null
+    const pointsJson = await pointsRes.json() as { properties?: { forecastHourly?: string } }
+    const url = pointsJson?.properties?.forecastHourly
+    if (!url) return null
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: timeoutSignal(), next: { revalidate: 3600 } })
+    if (!res.ok) return null
+    const json = await res.json() as { properties?: { periods?: RawPeriod[] } }
+    return (json?.properties?.periods ?? []).slice(0, 24).map(p => ({
+      startTime: p.startTime ?? '', endTime: p.endTime ?? '', temperature: p.temperature ?? 0,
+      windSpeed: p.windSpeed ?? '', windDirection: p.windDirection ?? '',
+      precipProbability: typeof p.probabilityOfPrecipitation?.value === 'number' ? p.probabilityOfPrecipitation.value : null,
+      shortForecast: p.shortForecast ?? '',
+    }))
+  } catch { return null }
 }

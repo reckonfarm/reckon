@@ -62,7 +62,7 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
       </div>
       <Card shadow="none" className="px-5 py-2">
         <ul className="divide-y divide-forest-green/10" data-audit="recorded-rain">
-          {rows.map(r => {
+          {rows.filter(r => r.rain?.latest).map(r => {
             const latest = r.rain?.latest ?? null
             return (
               <li key={r.id ?? 'none'} data-audit="rain-place-row" data-place={r.id ?? 'none'} data-state={latest ? 'read' : 'none'}>
@@ -82,10 +82,8 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
                 {latest && r.rain && (
                   <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">
                     Recorded rain this year: <span className="tabular-nums">{inches(r.rain.ytd.inches)}</span> · {r.rain.ytd.entries} {r.rain.ytd.entries === 1 ? 'reading' : 'readings'}
-                    {stale(latest) ? <> · <span data-audit="rain-since">nothing recorded since {fmtDay(latest.ts)}</span></> : null}
                   </p>
                 )}
-                {!latest && <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">No reading here yet — that is a missing reading, not zero rain.</p>}
                 <div className="mt-1 flex flex-wrap items-center gap-x-4">
                   {r.rain && (
                     <Disclosure title="History" audit={`rain-history-${r.id ?? 'none'}`} className="mt-1 w-full" summary={`${r.rain.total.entries} ${r.rain.total.entries === 1 ? 'reading' : 'readings'} since ${fmtDay(r.rain.first)} · ${inches(r.rain.total.inches)} recorded in all`}>

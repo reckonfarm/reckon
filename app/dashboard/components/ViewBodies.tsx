@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from 'react'
+import WeatherReads from './WeatherReads'
 import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabase'
 import { createClient } from '@/lib/supabase-server'
@@ -436,7 +437,6 @@ export async function WeatherViewBody({
           Where this county stands, and what closes when. FSA makes the final determination on every
           one of these.
         </p>
-        {programs}
         <section aria-labelledby="programs-lrp-h" className="space-y-2">
           <h2 id="programs-lrp-h" className={`${EYEBROW} !text-ink`}>Price protection</h2>
           <Link href="/markets" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="programs-lrp-link">
@@ -469,6 +469,8 @@ export async function WeatherViewBody({
           </div>
         </div>
       )}
+      {/* Block 44: programs first — what the county's status means, what it may qualify for, FSA decides. */}
+        <div data-audit="weather-programs">{programs}</div>
       {/* 1. The forecast, first (Block 6B). Today keeps a two-line preview only. */}
       {/* Block 7 (Part 2): the order — active warning (when present) → seven-day forecast → rain on my
           places (signed in) → county rainfall summary → drought status. Everything else expands. */}
@@ -485,6 +487,11 @@ export async function WeatherViewBody({
           </Suspense>
         </section>
       )}
+      {forecastPromise && (
+        <Suspense fallback={null}>
+          <WeatherReads lat={selectedCounty.lat ?? 0} lon={selectedCounty.lon ?? 0} forecastPromise={forecastPromise} precipPromise={precipPromise} />
+        </Suspense>
+      )}
       {/* 2. Recorded rain at my places — gauge readings only, source named. */}
       {/* Block 7 (Part 3): rain on my places — the latest reading per place, who recorded it, missing never zero. */}
       <Suspense fallback={null}>
@@ -494,9 +501,7 @@ export async function WeatherViewBody({
       <section aria-labelledby="wx-normal-h" data-audit="weather-estimate">
         <h2 id="wx-normal-h" className={`${EYEBROW} mb-3 !text-ink`}>County rainfall · {selectedCounty.name}</h2>
         <Suspense fallback={<RainfallPanelSkeleton />}>
-          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} sources={<p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">
-          The estimate is a PRISM modeled grid for the county, or the nearest NOAA COOP station when one qualifies; the normal is that station&rsquo;s 30-year normal. A modeled estimate and a station record are two different instruments — neither is a gauge on your place.
-        </p>} />
+          <RainfallPanelAsync dataPromise={precipPromise} countyName={selectedCounty.name} sources={<p className="font-dm-sans text-[14px] text-secondary-ink" data-audit="estimate-footer">NOAA COOP station or PRISM estimate · normal: 30-year</p>} />
         </Suspense>
       </section>
       {/* 4. County drought — the renamed card, with its timeline period labeled. */}
@@ -528,6 +533,7 @@ export async function WeatherViewBody({
           <Link href="/weather/locations" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">My Counties →</Link>
         </p>
       <DashboardAccordion
+        defaultOpen
         title="Drought map"
         preview={latest ? `U.S. Drought Monitor · valid ${formatDate(latest.week_date)} · released ${formatDate(usdmReleaseDate(latest.week_date))}` : 'U.S. Drought Monitor'}
       >

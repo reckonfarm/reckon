@@ -3065,6 +3065,23 @@ async function main() {
         groupsOn.length >= 1 && yardsSaid === yardsAre && yardRows.length === yardsAre && onlyNameAndAcres && seenOnce && prompts === 0,
         `groups [${groupsOn.join(', ')}] · yards said ${yardsSaid} are ${yardsAre} · open rows ${yardRows.length} [${yardRows.slice(0, 3).join(' | ')}] · prompts ${prompts}`)
 
+      // Block 44: the weather tab is worth opening — programs first, the drought map
+      // open on the page, one line naming the source, no prompt to log rain, and four
+      // reads only we can make: rain on my ground vs normal, haying, frost · snow, spraying.
+      await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="weather-reads"]').waitFor({ timeout: 30_000 }).catch(() => {})
+      const order44 = await page.evaluate(() => {
+        const at = (sel: string) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1 }
+        return { programs: at('[data-audit="weather-programs"]'), forecast: at('[data-audit="weather-forecast"]'), reads: at('[data-audit="weather-reads"]') }
+      })
+      const mapOpen = await page.locator('[data-audit="weather-drought-map"] .leaflet-container, [data-audit="weather-drought-map"] img').count()
+      const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      const prompts44 = await page.locator('[data-audit="rain-none"], [data-audit="rain-since"], [data-audit="weather-place-picker"]').count()
+      const lines44 = await page.locator('[data-audit^="read-"][data-audit$="-line"]').evaluateAll(els => els.map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
+      record('44: the weather tab — programs above the forecast, the drought map open on the page, the source in one line, nothing nagging about rain, and four reads of my own ground with their arithmetic a tap away',
+        order44.programs >= 0 && order44.forecast > order44.programs && order44.reads > order44.forecast && mapOpen >= 1 && footer.length > 0 && footer.length < 90 && prompts44 === 0 && lines44.length === 4 && lines44.every(l => l.length > 0),
+        `programs y=${order44.programs} · forecast y=${order44.forecast} · reads y=${order44.reads} · map open ${mapOpen} · footer "${footer}" · prompts ${prompts44} · reads [${lines44.join(' | ')}]`)
+
       // The place page says where it sits; the parent's page says what is in it.
       await page.goto(`/ranch/places/${newId}`, { waitUntil: 'domcontentloaded' })
       const parentLink = await page.locator(`[data-audit="place-parent"] a[href="/ranch/places/${placeId}"]`).count()
