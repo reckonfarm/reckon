@@ -38,7 +38,6 @@ export async function getHerdAnchor(input: {
   const { lots, homeFips, supabase, ranchId = null } = input
 
   const resolved = input.resolved ?? await resolveBarns(homeFips)
-  const estimate = estimateHerd({ lots }, resolved)
 
   // Trend reads (additive — degrade honestly; never block the estimate above). Herd history
   // via the user-scoped SSR client so the owner-SELECT RLS scopes to the caller; price
@@ -68,6 +67,8 @@ export async function getHerdAnchor(input: {
     } catch { priceHistory = null }
   }
 
+  // Block 40b: the estimate reads the price history too — a class missing from the fresh report prices off the last report that had it.
+  const estimate = estimateHerd({ lots }, resolved, priceHistory)
   const trend = buildTrend({ resolved, estimate, lots, herdHistory, priceHistory })
 
   // Outlook (additive — degrade honestly; never block estimate/trend). Feeder LRP coverage

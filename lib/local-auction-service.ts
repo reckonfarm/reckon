@@ -68,6 +68,8 @@ export interface LocalAuctionRead {
   receiptsCommodity: string | null   // 6I: the report the receipts figure comes from (one commodity's receipts, not the sale's)
   receiptsWeekAgo: number | null
   receiptsYearAgo: number | null
+  /** Block 40b: the fresh report had no feeder-steer rows — this read is the LAST report that did; `emptyReport` is the date of the one read first. */
+  emptyReport?: string | null
 }
 
 export type LocalAuctionResult =
@@ -193,8 +195,10 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
       return { status: 'no_coverage' }
     }
 
-    // Week-over-week: the same barn's PRIOR sale from mars_price_history.
-    let priorBands: ReturnType<typeof bandAverages> | null = null
+    // The same barn's PRIOR sales from mars_price_history: the one before for
+    // week-over-week, and (Block 40b) the last one that HAD feeder rows when the
+    // fresh report has none — a bred-stock special is not an empty market.
+    let priors: { report_date: string; rows: MarsPriceRow[] }[] = []
     try {
       const db = createServiceClient()
       const { data } = await db
@@ -203,14 +207,20 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
         .eq('slug_id', barn.slug_id)
         .lt('report_date', barn.report_date)
         .order('report_date', { ascending: false })
-        .limit(1)
-      const prior = (data ?? [])[0] as { report_date: string; rows: MarsPriceRow[] } | undefined
-      if (prior?.rows) priorBands = bandAverages(prior.rows)
+        .limit(8)
+      priors = (data ?? []) as { report_date: string; rows: MarsPriceRow[] }[]
     } catch {
-      priorBands = null // deltas degrade to null; current prices still render
+      priors = [] // deltas degrade to null; current prices still render
     }
+    // Block 40b: read the fresh report; if it has no feeder rows, read the last one that did and say so.
+    let rows = barn.rows, saleDate = barn.report_date, emptyReport: string | null = null
+    if (bandAverages(rows).size === 0) {
+      const i = priors.findIndex(p => p.rows && bandAverages(p.rows).size > 0)
+      if (i >= 0) { rows = priors[i].rows; saleDate = priors[i].report_date; emptyReport = barn.report_date; priors = priors.slice(i + 1) }
+    }
+    const priorBands: ReturnType<typeof bandAverages> | null = priors[0]?.rows ? bandAverages(priors[0].rows) : null
 
-    const current = bandAverages(barn.rows)
+    const current = bandAverages(rows)
     const bands: BandRead[] = []
     for (const band of BANDS) {
       const c = current.get(band)
@@ -232,8 +242,8 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
     }
 
     // Receipts come row-level on the snapshot (same value across rows) — first hit wins.
-    const withReceipts = barn.rows.find(r => r.receipts != null)
-    const classes = [classBands(barn.rows, 'Heifers', 'Heifers'), classBands(barn.rows, 'Bulls', 'Feeder bulls')]
+    const withReceipts = rows.find(r => r.receipts != null)
+    const classes = [classBands(rows, 'Heifers', 'Heifers'), classBands(rows, 'Bulls', 'Feeder bulls')]
       .filter((c): c is ClassBands => c !== null)
     return {
       status: 'ok',
@@ -243,11 +253,12 @@ export async function getLocalAuctionRead(countyFips: string, preResolved?: Reso
       miles: barn.miles,
       beyondHaul: resolved.local.length === 0,
       pinned: !!resolved.pinned && resolved.pinned === barn.slug_id,
-      saleDate: barn.report_date,
+      saleDate,
+      emptyReport,
       bands,
       classes,
-      cullCows: cullReads(barn.rows, 'Cows'),
-      slaughterBulls: cullReads(barn.rows, 'Bulls'),
+      cullCows: cullReads(rows, 'Cows'),
+      slaughterBulls: cullReads(rows, 'Bulls'),
       receipts: withReceipts?.receipts ?? null,
       receiptsCommodity: withReceipts?.commodity ?? null,
       receiptsWeekAgo: withReceipts?.receipts_week_ago ?? null,

@@ -72,6 +72,13 @@ export default function ReportedSale({ result, volume = null }: { result: LocalA
         <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="reported-sale-barn">
           {result.barnName} · {fmtDate(result.saleDate)}
         </p>
+        {/* Block 40b: an empty report is not an empty market — say which report
+            was read, that it had no feeder sale, and that this is the last one that did. */}
+        {result.emptyReport && (
+          <p className="mt-0.5 font-dm-sans text-[16px] font-semibold text-amber-900" data-audit="reported-sale-empty">
+            No feeder cattle sold at {result.barnName} {fmtDate(result.emptyReport)} — last sale {fmtDate(result.saleDate)}
+          </p>
+        )}
 
         <p className="mt-0.5 font-dm-sans text-[16px] text-secondary-ink" data-audit="reported-sale-facts">
           {result.receipts != null ? `${fmtInt(result.receipts)} head · ` : ''}~{result.miles} mi · {scope}
