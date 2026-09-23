@@ -3303,6 +3303,12 @@ async function main() {
       const main = page
       const ctx27 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       page = await signIn(ctx27)
+      // What the page did while the check watched: navigations, loads, errors — so a vanished receipt names its cause.
+      const t27 = Date.now(); const nav27: string[] = []
+      page.on('framenavigated', f => { if (f === page.mainFrame()) nav27.push(`nav ${f.url().replace(BASE, '').slice(0, 40)} @${Date.now() - t27}`) })
+      page.on('load', () => nav27.push(`load @${Date.now() - t27}`))
+      page.on('console', m => { if (m.type() === 'error') nav27.push(`console: ${m.text().slice(0, 90)}`) })
+      page.on('pageerror', e => nav27.push(`pageerror: ${e.message.slice(0, 90)}`))
       try {
       const today = ranchDay()
       const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
@@ -3321,7 +3327,7 @@ async function main() {
       const minutesOff = (a: string | Date | null | undefined, b: Date) => a ? Math.abs(new Date(a).getTime() - b.getTime()) / 60_000 : Infinity
       record('27: made offline at 10:00, sent at 16:00 — the record says made 10:00 and happened 10:00; arrival is 16:00\'s business, kept apart',
         off27[0] === 'Saved' && !off27.includes('Sent') && on27.includes('Sent') && !!r27 && minutesOff(madeOnPhone, tenAM) < 1 && minutesOff(r27.created_at, tenAM) < 1 && minutesOff(r27.ts, tenAM) < 1 && minutesOff(r27.ingested_at, new Date()) < 10,
-        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()}`)
+        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()} · page: [${nav27.join(' | ').slice(0, 500)}]`)
 
       // It ORDERS as 10:00: newer than a 09:00 record another hand made and sent at once, older than a 12:00 one.
       const mk = async (hour: number) => { const id = randomUUID(); const t = new Date(`${today}T${String(hour).padStart(2, '0')}:00:00-06:00`).toISOString(); await admin.from('events').insert({ id, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: t, created_at: t, schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: hour, herd_lot_id: null, place_id: placeId } }); return id }
