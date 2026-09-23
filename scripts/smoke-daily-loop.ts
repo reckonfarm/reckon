@@ -4226,6 +4226,7 @@ async function main() {
       // 2 · Place: Fix opens the form; Delete with things attached — the entry
       // and the device survive and still name it; Undo puts it back.
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})   // Block 43: the corral is under Yards
       const placeRow = page.locator(`a[data-audit="place-row"][data-id="${place13}"]`).first()
       await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s2 = await hold(page, placeRow)
