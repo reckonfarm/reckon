@@ -169,11 +169,17 @@ export function buildManualPayload(type: ManualEventType, body: Record<string, u
       const lot = optionalUuid(body.herd_lot_id, 'herd_lot_id')
       if (!lot) throw new ValidationError('Pick the bunch you counted.')
       const expected = body.expected == null ? null : boundedNumber(body.expected, 'expected', 0, LIMITS.head.max, true)
+      // Block 22 (ruling 6): a count taken at a gate can SAY what it means.
+      // "set_head" is the person's decision that the gate beats the record,
+      // made on the tally screen and carried here through the outbox so it
+      // survives having no signal. Absent, the count changes nothing and the
+      // answer offers "Change bunch to N?" as it always has.
       return {
         ...base,
         counted: boundedNumber(body.counted, 'counted', LIMITS.counted.min, LIMITS.counted.max, true),
         expected,
         herd_lot_id: lot,
+        ...(body.set_head === true ? { set_head: true } : {}),
       }
     }
     // A counted baseline: "N bales on hand as of D". The hay ledger

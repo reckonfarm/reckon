@@ -18,11 +18,27 @@
 
 /** The ride draft's key. Declared here because this is what may be sacrificed. */
 export const RIDE_DRAFT_KEY = 'dryline_ride_v1'
+/** The live gate tally's key (Block 22). */
+export const TALLY_KEY = 'dryline_tally_v1'
 
-/** In the order they are given up. Only drafts ever belong in this list. */
-const SACRIFICIAL_KEYS = [RIDE_DRAFT_KEY]
+/**
+ * IN THE ORDER THEY ARE GIVEN UP — and the order is the whole ruling.
+ *
+ * A ride draft is a copy of work still in progress: losing it costs the
+ * crash-protection on a ride the operator is still holding in the app.
+ * A LIVE TALLY is different. It is a number a man is building at a gate with
+ * cattle going past, and losing it costs him the gather — he re-pens and
+ * re-counts and the hour is gone. So the ride draft goes first, and the tally
+ * is given up only if that was not enough and a record still cannot be
+ * written (Block 22, ruling 3: above the ride draft, below a pending record).
+ *
+ * Only work-in-progress ever belongs in this list. A record someone has
+ * already made is never in it.
+ */
+const SACRIFICIAL_KEYS = [RIDE_DRAFT_KEY, TALLY_KEY]
 
 let droppedForRecord = false
+let tallyDropped = false
 
 /**
  * A quota refusal, under the several names browsers give it. Anything else —
@@ -49,6 +65,11 @@ export function makeRoomForRecords(): boolean {
       if (localStorage.getItem(key) == null) continue
       localStorage.removeItem(key)
       freed = true
+      if (key === TALLY_KEY) tallyDropped = true
+      // ONE AT A TIME, cheapest first. If letting the ride draft go is enough
+      // for the record to be written, the tally is never touched — which is
+      // the difference between a lost crash-copy and a lost gather.
+      break
     } catch {
       // Nothing further this module can do; the caller reports the failure.
     }
@@ -56,6 +77,10 @@ export function makeRoomForRecords(): boolean {
   if (freed) droppedForRecord = true
   return freed
 }
+
+/** True once a LIVE TALLY has been given up so a record could be written. */
+export function tallyDroppedForRecord(): boolean { return tallyDropped }
+export function forgetTallyDropped(): void { tallyDropped = false }
 
 /**
  * The room a record must always find. Ruling 4 says to RESERVE the outbox's

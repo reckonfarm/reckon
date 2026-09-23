@@ -124,6 +124,35 @@ function openingDay(raw: unknown): { ok: true; ts: string } | { ok: false; error
   return { ok: true, ts: d.toISOString() }
 }
 
+/**
+ * Block 22 (ruling 6): SET A BUNCH'S COUNT FROM A COUNT, with no signal.
+ *
+ * A gate has no bars. Counting at one and then being told to find a hilltop
+ * before the number can mean anything is the whole problem — so the tally's
+ * "set this bunch to N" travels through the outbox like every other record and
+ * lands here, rather than through the online-only PATCH the follow-up button
+ * uses.
+ *
+ * The rule is 12.6's and is not copied: the ledger row is what counts, and the
+ * column is written to the same value for a database without 066. An unchanged
+ * count writes nothing at all — recording that a bunch is still what it already
+ * was is not a change, and the ledger should not say it was.
+ */
+export async function setLotHeadFromCount(supabase: SupabaseClient, lotId: string, head: number): Promise<{ ok: true; before: number | null; changed: boolean } | { ok: false; error: string }> {
+  const who = await ranchOf(supabase)
+  if (!who) return { ok: false, error: 'You are not on a ranch yet.' }
+  const { data: now } = await supabase.from('herd_lots').select('head_count, retired_at, deleted_at').eq('id', lotId).eq('ranch_id', who.ranchId).maybeSingle()
+  const row = now as { head_count?: number; retired_at?: string | null; deleted_at?: string | null } | null
+  if (!row || row.retired_at || row.deleted_at) return { ok: false, error: 'That bunch is not on your ranch.' }
+  const before = row.head_count ?? null
+  if (before === head) return { ok: true, before, changed: false }
+  const ledgerErr = await recordHeadCountSet(supabase, who.uid, who.ranchId, lotId, before, head, 'edit')
+  if (ledgerErr) return { ok: false, error: 'The count could not be written to the record.' }
+  const { error } = await supabase.from('herd_lots').update({ head_count: head, updated_by: who.uid }).eq('id', lotId).eq('ranch_id', who.ranchId).is('retired_at', null)
+  if (error) return { ok: false, error: error.message ?? 'Could not set the bunch.' }
+  return { ok: true, before, changed: true }
+}
+
 export type LotWrite =
   | { ok: true; lot: Lot }
   | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; changed_by?: string | null; changed_at?: string | null }

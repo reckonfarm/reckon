@@ -486,8 +486,11 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
         // a preg check the bunch may never have come through.
         // Block 33 (ruling 2): a feeding starts from the bunch — hold the row, Feed,
         // the number, Record. The sheet takes this bunch and its recorded place.
+        // Block 22: counting at a gate is a thing you do TO a bunch, so it is
+        // on the same gesture as Split rather than buried under Record.
         extra: [
           { label: 'Feed', onSelect: () => openLogIt({ type: 'hay_fed', lot: lot.id }) },
+          { label: 'Count at a gate', href: `/ranch/tally?lot=${lot.id}` },
           { label: 'Split', onSelect: () => openLogIt({ type: 'split', lot: lot.id }) },
         ],
         del: { onSelect: () => removeLot(lot) },

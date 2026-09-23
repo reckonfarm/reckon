@@ -3997,6 +3997,107 @@ async function main() {
       }
     })
 
+    // ── Block 22 — the tally at a gate ──────────────────────────────────────
+    // PK's falsifier: start a count from the 220 and tap PAST it. The screen
+    // keeps counting and shows the overage; it does not refuse, cap or warn.
+    // Durability and the sacrifice order are proved exactly in
+    // scripts/tally-harness.ts; this is the screen and the endings.
+    {
+      const lot22 = randomUUID(), LOT22 = `${PREFIX} 22 gate bunch`
+      const { error: e22 } = await admin.from('herd_lots').insert({ id: lot22, ranch_id: ranchId, class: 'heifers', name: LOT22, head_count: 220, avg_weight: 700, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      if (e22) skip('22: tally checks', `fixture: ${e22.message.slice(0, 80)}`)
+      else {
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot22, reason: 'created', source: 'manual', head_after: 220, head_before: null, schema_version: 1 } })
+        const prior = page.viewportSize()
+        await page.setViewportSize({ width: 390, height: 844 })
+
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row22 = page.locator(`[data-audit="lot-row"]#lot-${lot22}`)
+        await row22.waitFor({ timeout: 20_000 }).catch(() => {})
+        await hold(page, row22)
+        const countBtn = page.locator('[data-audit="row-action-extra"]', { hasText: 'Count at a gate' })
+        const hasCount = await countBtn.count()
+        await countBtn.first().click().catch(() => {})
+        await page.locator('[data-audit="tally-begin"]').waitFor({ timeout: 20_000 }).catch(() => {})
+        const haptics = (await page.locator('[data-audit="tally-haptics"]').innerText().catch(() => '')).trim()
+        const subject = (await page.locator('[data-audit="tally-subject"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        await page.locator('[data-audit="tally-begin"]').click().catch(() => {})
+        await page.locator('[data-audit="tally-plus-1"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        record('22: counting is on the bunch\'s own hold gesture, and the phone says what a tap will feel like before the gate, not during it',
+          hasCount === 1 && /^Buzz: /.test(haptics) && subject.includes('22 gate bunch'),
+          `Count on the row ${hasCount} · "${haptics}" · "${subject.slice(0, 60)}"`)
+
+        const tap = async (n: number, times: number) => { for (let i = 0; i < times; i++) { await page.locator(`[data-audit="tally-plus-${n}"]`).click(); await page.waitForTimeout(35) } }
+        await tap(4, 11); await tap(3, 1)                       // 47
+        const at47 = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
+        const against47 = (await page.locator('[data-audit="tally-against"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        const onScreen = await page.evaluate(() => {
+          const box = document.querySelector('[data-audit="tally-counting"]')
+          if (!box) return { words: '', extras: -1 }
+          const allowed = new Set(['tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
+          const extras = Array.from(box.querySelectorAll('p, button, span')).filter(e => {
+            const r = e.getBoundingClientRect()
+            if (r.height === 0 || !(e.textContent ?? '').trim()) return false
+            if (e.closest('[data-audit="tally-leave-guard"]')) return false
+            const a = e.closest('[data-audit]')?.getAttribute('data-audit') ?? ''
+            return !allowed.has(a)
+          })
+          return { words: extras.map(e => (e.textContent ?? '').trim().slice(0, 40)).join(' | '), extras: extras.length }
+        })
+        // A wake note is allowed above, and checked here instead: it may only
+        // ever appear when a lock that WAS held has been taken back. A headless
+        // browser never grants one, so the count screen must be silent about it.
+        const wakeOnCount = await page.locator('[data-audit="tally-wake"]').count()
+        record('22 (ruling 7 + doctrine): at 47 the screen shows the total, what is left of the 220, the four and Undo — and nothing else',
+          at47 === '47' && against47 === '47 through · 173 left of 220' && onScreen.extras === 0 && wakeOnCount === 0,
+          `total "${at47}" · "${against47}" · anything else on screen: ${onScreen.extras === 0 ? 'nothing' : onScreen.words}${wakeOnCount ? ` · a wake note on a lock that was never held` : ''}`)
+
+        await tap(4, 44)                                        // 47 + 176 = 223
+        const past = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
+        const overLine = (await page.locator('[data-audit="tally-against"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        const stillTappable = await page.locator('[data-audit="tally-plus-4"]').isEnabled().catch(() => false)
+        const body22 = (await page.locator('[data-audit="tally-counting"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+        record('22 THE FALSIFIER: a count started from the 220 taps past it — it keeps counting, shows the overage, and does not refuse, cap or warn',
+          past === '223' && overLine === '223 through · 3 more than the 220 on the record' && stillTappable && !/too many|cannot|error|warning/i.test(body22),
+          `total "${past}" · "${overLine}" · buttons still live ${stillTappable}`)
+
+        await page.locator('[data-audit="tally-undo"]').click().catch(() => {})
+        const removed = (await page.locator('[data-audit="tally-removed"]').innerText().catch(() => '')).trim()
+        const afterUndo = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
+        record('22 (ruling 4): Undo removes the last tap, not the last head, and says which',
+          removed === 'Removed +4' && afterUndo === '219', `"${removed}" · total now ${afterUndo}`)
+
+        await page.locator('[data-audit="tally-finish-open"]').click().catch(() => {})
+        await page.locator('[data-audit="tally-ending-set_head"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        await page.locator('[data-audit="tally-ending-set_head"]').click().catch(() => {})
+        const ctx22 = page.context()
+        await ctx22.setOffline(true)
+        await page.locator('[data-audit="tally-save"]').click().catch(() => {})
+        const offSeq = await watchStates(page, 'Sent', 6_000, '219 head')
+        await ctx22.setOffline(false)
+        const onSeq = await watchStates(page, 'Sent', 45_000, '219 head')
+        const { data: after22 } = await admin.from('herd_lots').select('head_count').eq('id', lot22).maybeSingle()
+        const head22 = (after22 as { head_count?: number } | null)?.head_count
+        const { data: ev22 } = await admin.from('events').select('type, payload').eq('ranch_id', ranchId).in('type', ['cattle_counted', 'head_count_set']).order('ts', { ascending: false }).limit(3)
+        const kinds = ((ev22 ?? []) as { type: string; payload: Record<string, unknown> }[])
+        const counted = kinds.find(k => k.type === 'cattle_counted')
+        const setRow = kinds.find(k => k.type === 'head_count_set' && k.payload.head_after === 219)
+        record('22 (ruling 6): a count taken with no signal still sets the bunch — it waits in the outbox and lands as a count AND a head-count row, with no second tap',
+          offSeq[0] === 'Saved' && !offSeq.includes('Sent') && onSeq.includes('Sent') && head22 === 219
+          && counted?.payload.set_head === true && counted?.payload.counted === 219 && setRow?.payload.head_before === 220,
+          `offline ${offSeq.join(' → ')} · online ${onSeq.join(' → ')} · bunch ${head22} · count row ${counted ? 'yes' : 'no'} · head row ${setRow ? `${setRow.payload.head_before}→${setRow.payload.head_after}` : 'no'}`)
+
+        const line22 = (await page.locator('[data-audit="receipt-balance"]').first().innerText().catch(() => '')).trim()
+        record('22 + 23: the receipt for a count that set the bunch is one line in the same shape a split uses',
+          line22 === '220 → 219', `"${line22}"`)
+
+        if (prior) await page.setViewportSize(prior)
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>lot_id', lot22)
+        await admin.from('events').delete().eq('ranch_id', ranchId).eq('payload->>herd_lot_id', lot22)
+        await admin.from('herd_lots').delete().eq('id', lot22)
+      }
+    }
+
     // ── Block 13 — one gesture, everywhere: fix or delete anything ──────────
     // Every row type: hold → the sheet; Fix does something or says why not;
     // Delete goes to the trash with no confirm; Undo puts it back; anything
