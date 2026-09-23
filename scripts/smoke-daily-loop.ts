@@ -3384,6 +3384,8 @@ async function main() {
         // By now the card holds more than its five, so Reviewed lives on the last page of View all (6H) — the path a person takes.
         if (!(await pb.locator('[data-audit="mark-reviewed"]').count())) {
           await pb.locator('[data-audit="since-view-all"]').click({ timeout: 10_000 }).catch(() => {})
+          // The tap resolves before the navigation does, and Today has rows of its own — wait for View all itself.
+          await pb.waitForURL(/\/ranch\/activity\?since=/, { timeout: 15_000 }).catch(() => {})
           for (let pg = 0; pg < 6; pg++) {
             await pb.locator('li[data-id], [data-audit="mark-reviewed"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
             const next = pb.locator('a[href*="cursor="]').first()
