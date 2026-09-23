@@ -460,7 +460,7 @@ async function main() {
     await section('Block 11 (11.12): the receipt leads with the balance', async () => {
       // Document order (Block 6A: on desktop the strips sit in a right column, so y is not the order; the DOM is).
       const pos = async (sel: string) => await page.locator(sel).first().evaluate(el => { let n = 0; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT); while (w.nextNode()) { n++; if (w.currentNode === el) return n } return -1 }).catch(() => NaN)
-      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=Repeat last feeding'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
+      const ySince = await pos('text=Recorded since you checked'), yRepeat = await pos('text=/Repeat (last|a) feeding/'), yTabs = await pos('[role="tablist"][aria-label="Ledgers"]')
       const activeTab = (await page.locator('[role="tablist"][aria-label="Ledgers"] [role="tab"][aria-selected="true"]').innerText().catch(() => '')).trim()
       // Block 16 (ruling 1): headlines are BACK on Today — and the order 7.7
       // protects is unchanged, because they sit below everything: the ranch's
@@ -623,7 +623,7 @@ async function main() {
     await page.waitForURL(/\/(today|dashboard)/, { timeout: 30_000 })
     const same = page.getByRole('button', { name: /^Record \d+ bales? now$/ })
     await same.waitFor({ timeout: 20_000 }).catch(() => {})
-    const cardText = (await page.getByText('Repeat last feeding').locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    const cardText = (await page.getByText(/^Repeat (last|a) feeding$/).locator('xpath=ancestor::div[1]').innerText().catch(() => '')).replace(/\s+/g, ' ')
     record('2B: Repeat last feeding card shows the last feeding', await same.count() > 0 && /2 bales/.test(cardText) && cardText.includes(placeName), cardText.slice(0, 100))
     await same.click()                                                   // tap 2
     const undo = page.getByRole('button', { name: /^Undo/ })
@@ -1864,6 +1864,110 @@ async function main() {
       const woke = await stampReaches(page, sleptAt, 30_000)
       const afterWake = await tile(), routeWake = await route()
       record('32: a phone that wakes on Today catches up on what another hand fed while it slept, without a tap', sleptAt != null && woke.ok && afterWake === routeWake && beforeWake != null && afterWake === beforeWake - 3, `before ${beforeWake} · while hidden ${stillAsleep} · after waking ${afterWake} (route ${routeWake}) · stamp caught up ${woke.ok} in ${woke.ms} ms`)
+    })
+
+    // ── Block 33: feeding in three taps ─────────────────────────────────────
+    // GPT's audit kept SIM-Corrals as Where for the cows after a bull move — it
+    // would have recorded cow feedings in the wrong place. Now the bunch decides
+    // Where, a feeding starts from the bunch (hold the row → Feed → number →
+    // Record: three taps plus the number), and Today's repeat card offers every
+    // regularly fed bunch. The falsifier: three bunches at three places, fed in
+    // a row; each one's Where is where that bunch is.
+    await section('Block 33: feeding in three taps', async () => {
+      const base = { lng: -108.43, lat: 47.12 }
+      const square = (i: number) => { const x = base.lng + i * 0.006, y = base.lat; return [[x, y], [x + 0.003, y], [x + 0.003, y + 0.003], [x, y + 0.003], [x, y]] }
+      const trio: { name: string; lotId: string; placeId: string; placeName: string }[] = []
+      for (let i = 0; i < 3; i++) {
+        const placeName = `${PREFIX} 33 pasture ${i + 1}`
+        const { data: pl, error: pErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: placeName, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [square(i)] }, acres: 120 }).select('id').single()
+        if (pErr) throw new Error(`33 place: ${pErr.message}`)
+        const lotId = randomUUID(); const name = `${PREFIX} 33 bunch ${i + 1}`
+        const { error: lErr } = await admin.from('herd_lots').insert({ id: lotId, ranch_id: ranchId, class: 'cows', name, head_count: 30 + i, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+        if (lErr) throw new Error(`33 lot: ${lErr.message}`)
+        await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date(Date.now() - 4 * 86_400_000).toISOString(), schema_version: 1, payload: { lot_id: lotId, reason: 'created', source: 'manual', head_count: 30 + i } })
+        // The move goes through the route so the ranch's own rule (072) places the bunch.
+        const mv = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 30 + i, herd_lot_id: lotId, to_place_id: pl.id, place_id: pl.id, ts: new Date(Date.now() - (3 - i) * 86_400_000).toISOString() } })
+        if (!mv.ok()) throw new Error(`33 move: ${mv.status()} ${(await mv.text()).slice(0, 80)}`)
+        trio.push({ name, lotId, placeId: pl.id as string, placeName })
+      }
+      // Make the last-used place a wrong answer on purpose: the West stack.
+      await logFeed(page, 1, { place: `${PREFIX} West stack` })
+      await watchStates(page, 'Sent', 45_000, 'Fed 1 bale')
+      const whereOf = async () => page.getByLabel('Where').inputValue().catch(() => '')
+      const fedToOf = async () => page.locator('[data-audit="fed-to"]').inputValue().catch(() => '')
+      const rowPlace = async (bales: number) => { const { data } = await admin.from('events').select('payload').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', String(bales)).order('ingested_at', { ascending: false }).limit(1).maybeSingle(); return ((data as { payload?: { place_id?: string | null; herd_lot_id?: string | null } } | null)?.payload) ?? null }
+
+      // From Cattle: hold the bunch → Feed → number → Record. Three taps, and Where is where THAT bunch is.
+      const cattle: string[] = []
+      let cattleOk = true
+      for (let i = 0; i < 3; i++) {
+        const t = trio[i], bales = 2 + i
+        await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+        const row = page.locator('[data-audit="lot-row"]', { hasText: t.name }).first()
+        await row.waitFor({ timeout: 20_000 }).catch(() => {})
+        const held = await hold(page, row)                                                                   // tap 1
+        await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-extra"]', { hasText: 'Feed' }).first().click({ timeout: 10_000 }).catch(() => {})   // tap 2
+        await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        await page.waitForFunction((pid: string) => (document.querySelector('[data-audit="fed-to"]') as HTMLSelectElement | null)?.value === pid || false, t.lotId, { timeout: 10_000 }).catch(() => {})
+        await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), t.placeId, { timeout: 10_000 }).catch(() => {})
+        const fedTo = await fedToOf(), where = await whereOf()
+        await page.getByLabel('Hay fed').fill(String(bales))
+        await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})   // tap 3
+        const states = await watchStates(page, 'Sent', 45_000, `Fed ${bales} bales`)
+        const p = await rowPlace(bales)
+        const ok = held && fedTo === t.lotId && where === t.placeId && states.includes('Sent') && p?.place_id === t.placeId && p?.herd_lot_id === t.lotId
+        if (!ok) cattleOk = false
+        cattle.push(`${t.name.replace(PREFIX + ' ', '')}: held ${held} · fed-to ${fedTo === t.lotId ? 'the bunch' : fedTo || 'none'} · Where ${where === t.placeId ? 'its place' : where || 'blank'} · [${states.join(' → ')}] · row at ${p?.place_id === t.placeId ? 'its place' : p?.place_id ?? 'no place'}`)
+      }
+      record('33: from Cattle — hold the bunch, Feed, the number, Record: three taps, and each of three bunches in a row is fed where THAT bunch is, not where the last feeding was', cattleOk, cattle.join(' | '))
+
+      // From Today: the place's sheet → the bunch's Feed → number → Record. Same three taps.
+      const t2 = trio[1]
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${t2.placeId}"]`).waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator(`[data-audit="ranch-map-place-button"][data-place="${t2.placeId}"]`).evaluate(el => (el as HTMLButtonElement).click()).catch(() => {})   // tap 1
+      const feedBtn = page.locator(`[data-audit="ranch-map-sheet"] [data-audit="sheet-feed"][data-lot="${t2.lotId}"]`)
+      const sawFeed = await feedBtn.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      await feedBtn.click({ timeout: 5_000 }).catch(() => {})                                                                   // tap 2
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), t2.placeId, { timeout: 10_000 }).catch(() => {})
+      const fedTo2 = await fedToOf(), where2 = await whereOf()
+      await page.getByLabel('Hay fed').fill('5')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})       // tap 3
+      const states2 = await watchStates(page, 'Sent', 45_000, 'Fed 5 bales')
+      const p2 = await rowPlace(5)
+      record('33: from Today — the place\'s sheet, the bunch\'s Feed, the number, Record: three taps, fed where the bunch is', sawFeed && fedTo2 === t2.lotId && where2 === t2.placeId && states2.includes('Sent') && p2?.place_id === t2.placeId, `Feed on the sheet ${sawFeed} · fed-to ${fedTo2 === t2.lotId ? 'the bunch' : fedTo2 || 'none'} · Where ${where2 === t2.placeId ? 'its place' : where2 || 'blank'} · [${states2.join(' → ')}] · row at ${p2?.place_id === t2.placeId ? 'its place' : p2?.place_id ?? 'no place'}`)
+
+      // The person's own choice of Where is kept: pick another place after the bunch, and the record carries it.
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const row3 = page.locator('[data-audit="lot-row"]', { hasText: trio[2].name }).first()
+      await row3.waitFor({ timeout: 20_000 }).catch(() => {})
+      await hold(page, row3)
+      await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-extra"]', { hasText: 'Feed' }).first().click({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="fed-to"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      await page.waitForFunction((pid: string) => Array.from(document.querySelectorAll('select')).some(s => (s as HTMLSelectElement).value === pid), trio[2].placeId, { timeout: 10_000 }).catch(() => {})
+      await page.getByLabel('Where').selectOption({ label: trio[0].placeName })
+      await page.getByLabel('Hay fed').fill('6')
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).click({ timeout: 10_000 }).catch(() => {})
+      const states3 = await watchStates(page, 'Sent', 45_000, 'Fed 6 bales')
+      const p3 = await rowPlace(6)
+      record('33: Where is overridable — a place picked by hand after the bunch is the place the record carries', states3.includes('Sent') && p3?.place_id === trio[0].placeId && p3?.herd_lot_id === trio[2].lotId, `[${states3.join(' → ')}] · row at ${p3?.place_id === trio[0].placeId ? 'the picked place' : p3?.place_id ?? 'no place'}`)
+
+      // Today's repeat card covers every regularly fed bunch: bunches 1 and 2 have two feedings each now
+      // (bunch 2: Cattle + Today; bunch 1: Cattle + one more here), bunch 3 has two as well (Cattle + the override).
+      await logFeed(page, 7, { lot: trio[0].name })
+      await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="repeat-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowsOn = await page.locator('[data-audit="repeat-row"]').evaluateAll(els => els.map(e => e.getAttribute('data-lot') ?? ''))
+      const covers = trio.every(t => rowsOn.includes(t.lotId))
+      // Tap bunch 1's row: the feeding it records is bunch 1's, at bunch 1's place.
+      const row1 = page.locator(`[data-audit="repeat-row"][data-lot="${trio[0].lotId}"]`)
+      const before1 = await page.locator(`[data-audit="repeat-row"][data-lot="${trio[0].lotId}"] [data-audit="repeat-preview"]`).innerText().catch(() => '')
+      await row1.getByRole('button', { name: /^Record \d+ bales? now$/ }).click({ timeout: 10_000 }).catch(() => {})
+      const states4 = await watchStates(page, 'Sent', 45_000, 'Fed 7 bales')
+      const p4 = await rowPlace(7)
+      record('33: Today\'s repeat card offers every regularly fed bunch, and a row records ITS bunch at ITS place', covers && rowsOn.length <= 4 && states4.includes('Sent') && p4?.herd_lot_id === trio[0].lotId && p4?.place_id === trio[0].placeId, `rows for ${rowsOn.length} feeding(s) · all three bunches on the card ${covers} · preview "${before1.slice(0, 60)}" · [${states4.join(' → ')}] · row bunch ${p4?.herd_lot_id === trio[0].lotId ? 'bunch 1' : 'other'} at ${p4?.place_id === trio[0].placeId ? 'its place' : p4?.place_id ?? 'no place'}`)
     })
 
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
