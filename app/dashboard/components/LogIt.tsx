@@ -770,7 +770,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     {/* Which bunch (Block 6A): the field's space is reserved while lots load, Save waits
         for them, a failed load is said out loud, and "no lot" reads as what it is. A lot
         is never created from here. */}
-    <Field label="Fed to" hint={lots && lots.length === 0 && !lotsError ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : undefined} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
+    <Field label="Fed to" hint={undefined} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
@@ -798,8 +798,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   </>)
   // 6G: which bunch — optional, with "Unassigned" plain. What a move DOES is said
   // on the field: it records the move; it never changes a lot's head count.
-  const lotField = (label: string, hint: string, audit: string, required = false) => (<>
-    <Field label={label} hint={lotsError ? undefined : lots && lots.length === 0 ? 'No bunches on the ranch yet — make one here, or under Ranch → Cattle.' : hint} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
+  const lotField = (label: string, hint: string | undefined, audit: string, required = false) => (<>
+    <Field label={label} hint={lotsError ? undefined : hint} error={lotsError ? 'Couldn’t load your bunches — record without one, or try again below.' : undefined}>
       {lots === null ? (
         <Select value="" disabled aria-busy="true" data-audit="lots-loading"><option value="">Loading bunches…</option></Select>
       ) : (
@@ -817,7 +817,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const movedLot = lots?.find(l => l.id === lot) ?? null
   const movedTo = toPlace.newName !== null ? toPlace.newName.trim() : (places.find(p => p.id === toPlace.id)?.name ?? '')
   if (type === 'cattle_moved') fields = (<>
-    {lotField('Bunch', 'A move never changes a bunch’s head count — fix the bunch under Ranch → Cattle for that.', 'lot-for-move', true)}
+    {lotField('Bunch', undefined, 'lot-for-move', true)}
     <NumberField label="Moved" unit="head" value={n1} onChange={setN1} max={20000} placeholder={movedLot ? String(movedLot.head_count) : '—'} />
     <PlaceSelect label="From" slot={fromPlace} places={places} onChange={setFromPlace} disabled={busy} />
     <PlaceSelect label="To" slot={toPlace} places={places} onChange={setToPlace} disabled={busy} />
@@ -875,7 +875,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         <p className="font-dm-sans text-[17px] text-ink" data-audit="count-preview">
           {n != null && Number.isFinite(n)
             ? <><span className="font-semibold">{n.toLocaleString()} counted</span> · {chosen.head_count.toLocaleString()} expected · <span className="font-semibold">{n - chosen.head_count === 0 ? 'same' : n - chosen.head_count > 0 ? `+${(n - chosen.head_count).toLocaleString()}` : `−${(chosen.head_count - n).toLocaleString()}`}</span></>
-            : <>{lotLabel(chosen)} says <span className="font-semibold">{chosen.head_count.toLocaleString()} head</span>. Counting never changes that number by itself.</>}
+            : <>{lotLabel(chosen)} says <span className="font-semibold">{chosen.head_count.toLocaleString()} head</span>.</>}
         </p>
       )}
     </>)
@@ -999,7 +999,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     <Field label="What">
       <Input value={what} onChange={e => setWhat(e.target.value)} maxLength={80} placeholder="pregged, vaccinated, weaned…" />
     </Field>
-    {lotField('Bunch', 'Records the work against this bunch — it shows as the bunch’s last recorded work.', 'lot-for-work')}
+    {lotField('Bunch', undefined, 'lot-for-work')}
     {placeField()}
   </>)
 
@@ -1031,7 +1031,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       )}
 
       {sheet && open && (
-        <BottomSheet open onClose={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }} label="Record work" z={60} panelAudit="record-sheet" panelRef={dialogRef}>
+        <BottomSheet open onClose={() => close()} label="Record work" z={60} panelAudit="record-sheet" panelRef={dialogRef}>
             <div className="flex items-center justify-between">
               <Heading level={3} visual={5}>{type ? TILE_VERB[type] : 'Record work'}</Heading>
               {/* Block 26c: no Close — the pull-down and the dim are the close. Back stays: it is a different act. */}
@@ -1109,15 +1109,15 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                     never one tap on the strip beside a real count. */}
                 {fixingId && (
                   <div className="rounded-lg bg-forest-green/[0.06] px-4 py-3" data-audit="fixing-record">
-                    <p className="font-dm-sans text-[16px] text-ink">Fixing a record that couldn’t send. Save to send it again.</p>
-                    <button type="button" onClick={() => { if (window.confirm('Throw this record away? It is not on the ranch.')) { discard(fixingId); close() } }} className="mt-2 min-h-[44px] font-dm-sans text-[15px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="fixing-discard">
+                    <p className="font-dm-sans text-[16px] text-ink">Fixing a record that couldn’t send.</p>
+                    <button type="button" onClick={() => { discard(fixingId); close() }} className="mt-2 min-h-[44px] font-dm-sans text-[15px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="fixing-discard">
                       Throw this record away
                     </button>
                   </div>
                 )}
                 <button
                   type="button"
-                  onClick={() => { if (!dirty || window.confirm('Discard what you typed?')) close() }}
+                  onClick={() => close()}
                   disabled={busy}
                   className="self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
                 >

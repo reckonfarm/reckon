@@ -427,15 +427,13 @@ export async function WeatherViewBody({
       <>
         <h1 className="type-page-heading text-ink" data-audit="programs-title">Programs · {selectedCounty.name}, {selectedCounty.state}</h1>
         <p className="font-dm-sans text-[16px] text-secondary-ink" data-audit="programs-intro">
-          Where this county stands, and what closes when. FSA makes the final determination on every
-          one of these.
+          FSA makes the final determination on every one of these.
         </p>
         <section aria-labelledby="programs-lrp-h" className="space-y-2">
           <h2 id="programs-lrp-h" className={`${EYEBROW} !text-ink`}>Price protection</h2>
           <Link href="/markets" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="programs-lrp-link">
             <span className="min-w-0">
               <span className="block font-dm-sans text-[17px] font-semibold text-ink">LRP is on Markets</span>
-              <span className="block font-dm-sans text-[15px] text-secondary-ink">The coverage floor sits with the prices it is measured against.</span>
             </span>
             <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
           </Link>
@@ -635,7 +633,6 @@ export async function WeatherViewBody({
         <Link href="/weather/programs" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="programs-link">
           <span className="min-w-0">
             <span className="block font-dm-sans text-[17px] font-semibold text-ink">Drought, LFP and PRF</span>
-            <span className="block font-dm-sans text-[15px] text-secondary-ink">Where your county stands, and what closes when.</span>
           </span>
           <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
         </Link>

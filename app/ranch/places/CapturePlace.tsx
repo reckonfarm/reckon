@@ -528,7 +528,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink" data-audit="capture-pin-note">
             {pinMoved > 0.5
               ? <>Pin moved {pinMoved < 10 ? pinMoved.toFixed(1) : Math.round(pinMoved)} m from the fix. Both are kept with the place.</>
-              : <>The blue dot is where the phone put you. Drag the pin if the place is somewhere else.</>}
+              : null}
           </p>
         </>
       )}

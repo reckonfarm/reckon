@@ -29,7 +29,7 @@ export default async function TrashPage() {
         <p className={EYEBROW}>Account</p>
         <h1 className="mt-1 type-page-heading text-ink">Trash</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-          Deleted things wait here {TRASH_DAYS} days, then they are gone for good. Hold a row and tap Put it back, and it goes back exactly where it was. A person you removed is not here — Undo within ten seconds, or send them a new invitation.
+          Deleted things wait here {TRASH_DAYS} days.
         </p>
 
         <Card className="mt-4 p-0">

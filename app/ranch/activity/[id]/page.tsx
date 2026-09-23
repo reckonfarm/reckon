@@ -124,8 +124,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         {backdated && (
           <p className="mt-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="event-backdated">
             {isCorrection || isVoid
-              ? 'This correction was recorded on a later day than the work it describes. It is news from the day it was recorded, and it belongs to the work day in the record and in every balance.'
-              : 'This entry was recorded on a later day than the work it describes. Both dates are shown above; the balance uses the work time.'}
+              ? 'Recorded on a later day than the work it describes — counted on the work day.'
+              : 'Recorded on a later day than the work it describes — counted on the work day.'}
           </p>
         )}
 

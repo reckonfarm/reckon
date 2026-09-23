@@ -30,7 +30,7 @@ export default function RanchView({ view, todayCount, cattle, ground, record }: 
         <ul className="divide-y divide-forest-green/10" data-audit="head-by-class">
           {view.head.byClass.map(c => <li key={c.label} className="flex justify-between py-1.5 font-dm-sans text-[16px] text-ink"><span>{c.label} · {c.bunches} {c.bunches === 1 ? 'bunch' : 'bunches'}</span><span className="tabular-nums">{n(c.head)}</span></li>)}
         </ul>
-        <p className="mt-2 font-dm-sans text-[15px] text-ink">{view.head.bunches} {view.head.bunches === 1 ? 'bunch' : 'bunches'}, each what its last count and workings say. <button type="button" onClick={() => setTab('cattle')} className="font-semibold text-brand underline underline-offset-2">Cattle</button></p>
+        <p className="mt-2 font-dm-sans text-[15px] text-ink">{view.head.bunches} {view.head.bunches === 1 ? 'bunch' : 'bunches'} · <button type="button" onClick={() => setTab('cattle')} className="font-semibold text-brand underline underline-offset-2">Cattle</button></p>
       </>
     ),
   })

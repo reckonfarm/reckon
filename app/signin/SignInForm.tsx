@@ -321,11 +321,6 @@ export default function SignInForm({
       <p className="font-fraunces text-2xl font-semibold text-forest-green">
         {isSignup ? 'Create your account' : 'Sign in to Dryline'}
       </p>
-      <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-        {isSignup
-          ? 'Use your email and a password.'
-          : 'Welcome back. Enter your email and password.'}
-      </p>
 
       {GOOGLE_ENABLED && (
         <>

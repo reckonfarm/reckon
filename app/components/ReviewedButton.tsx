@@ -32,7 +32,7 @@ export default function ReviewedButton({ count, through = null }: { count: numbe
         className="inline-flex min-h-[48px] items-center rounded-lg border border-forest-green/25 bg-surface px-4 font-dm-sans text-[16px] font-semibold text-forest-green hover:bg-forest-green/5 disabled:opacity-60"
         data-audit="mark-reviewed"
       >
-        {state === 'busy' ? 'Marking…' : `Reviewed — I've seen ${count === 1 ? 'this entry' : `these ${count} entries`}`}
+        {state === 'busy' ? 'Marking…' : `Reviewed · ${count}`}
       </button>
       {state === 'failed' && <p className="mt-1 font-dm-sans text-[15px] text-rust" role="alert">Couldn’t mark it — try again when you have signal.</p>}
     </div>

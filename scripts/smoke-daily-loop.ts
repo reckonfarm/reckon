@@ -886,8 +886,8 @@ async function main() {
       const countyDrought = await page.getByRole('heading', { name: 'County drought' }).count()
       const latestReading = await page.getByText('Latest Reading', { exact: true }).count()
       await page.goto('/account', { waitUntil: 'domcontentloaded' })
-      await page.getByText('Name shown on your work entries').waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
-      const nameHint = await page.getByText('Name shown on your work entries').count()
+      await page.getByText('Display name', { exact: true }).waitFor({ timeout: 20_000 }).catch(() => {})   // the profile form paints after its fetch
+      const nameHint = await page.getByText('Display name', { exact: true }).count()   // Block 46: the field's label alone; its hint sentence is gone
       const buyers = await page.getByText(/How buyers see you|Tell buyers/).count()
       record('6A/12.13: copy queue rendered — Jobs this season · Hay tabs (the Activity tab went in 12.13); Record N bales now / Adjust first; County drought; the display-name hint; no buyer copy', tabs.join(' | ') === 'Jobs this season | Hay' && repeatButtons.length === 2 && countyDrought === 1 && latestReading === 0 && nameHint === 1 && buyers === 0, `tabs [${tabs.join(' | ')}] · repeat [${repeatButtons.join(' | ')}] · County drought ${countyDrought} · Latest Reading ${latestReading} · hint ${nameHint} · buyer copy ${buyers}`)
     })

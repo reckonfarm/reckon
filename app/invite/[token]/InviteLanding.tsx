@@ -40,9 +40,6 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
   }
 
   const ranch = view.ranch_name ?? 'a ranch'
-  const can = view.role === 'owner'
-    ? "You'll be able to see and log feed, hay counts, rain, and ranch work, and add or remove people."
-    : "You'll be able to see and log feed, hay counts, rain, and ranch work."
 
   if (view.state !== 'open') {
     const why = view.state === 'expired' ? 'This invitation has expired.' : view.state === 'revoked' ? 'This invitation was deleted.' : view.state === 'accepted' ? 'This invitation has already been used.' : 'This invitation link is not valid.'
@@ -60,7 +57,6 @@ export default function InviteLanding({ token, view, signedInEmail }: { token: s
   return (
     <Card shadow="soft" className="p-6" data-audit="invite-open">
       <h1 className="font-fraunces text-2xl font-semibold text-forest-green sm:text-3xl">{view.inviter ?? 'Someone'} invited you to {ranch}.</h1>
-      <p className="mt-3 font-dm-sans text-[17px] leading-relaxed text-forest-green">{can}</p>
 
       {!signedInEmail && (
         <div className="mt-6 space-y-3" data-audit="invite-ctas">

@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
@@ -35,8 +34,8 @@ const LABELS: Record<LedgerTab, string> = {
 
 // Plain-spoken, and each says what would fill it.
 const EMPTY: Record<LedgerTab, ReactNode> = {
-  season: <>No jobs recorded this season. Your manual entries are in <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</>,
-  hay: 'No hay logged this season yet. Log a count of the stack, bales stacked, or hay fed.',
+  season: 'No jobs this season.',
+  hay: 'No hay this season.',
 }
 
 interface LedgerCtx { report: (tab: LedgerTab, empty: boolean) => void }

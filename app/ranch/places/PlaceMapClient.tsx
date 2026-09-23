@@ -660,7 +660,7 @@ export default function PlaceMapClient({
             {note ? (
               <span style={{ color: warning }} className="font-semibold">{note}</span>
             ) : corners.length === 0 ? (
-              'Tap each corner of the ground. Drag to move the map — only a tap drops a corner.'
+              null
             ) : corners.length < 3 ? (
               `${corners.length} corner${corners.length === 1 ? '' : 's'} — a shape needs at least three.`
             ) : (

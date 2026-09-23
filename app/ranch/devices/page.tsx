@@ -75,7 +75,7 @@ export default async function DevicesPage() {
 
         {!error && devices.length === 0 && (
           <Card className="mt-4 p-5" data-audit="devices-empty">
-            <p className="font-dm-sans text-[17px] leading-relaxed text-ink">No devices connected. You can record work now. Connected devices will appear here with their latest observations and check-in status.</p>
+            <p className="font-dm-sans text-[17px] leading-relaxed text-ink">No devices.</p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <RecordHere />
               <Link href="/ranch/devices/setup" className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink" data-audit="setup-device">Set up a device</Link>

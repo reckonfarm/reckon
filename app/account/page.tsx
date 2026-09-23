@@ -67,7 +67,7 @@ export default async function AccountPage() {
           <h2 id="acct-prefs" className={`${EYEBROW} !text-ink`}>Preferences</h2>
           <Card className="px-5 py-4">
             <ul className="divide-y divide-rule">
-              <li><Link href="/weather/locations" className={link} data-audit="pref-counties">My Counties →</Link><p className="font-dm-sans text-[15px] text-secondary-ink">Home county, watched counties, and alert preferences.</p></li>
+              <li><Link href="/weather/locations" className={link} data-audit="pref-counties">My Counties →</Link></li>
             </ul>
           </Card>
         </section>
@@ -75,7 +75,7 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-help">
           <h2 id="acct-help" className={`${EYEBROW} !text-ink`}>Help</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Questions or something wrong? Write to <a href={`mailto:${CONTACT_EMAIL}`} className={link}>{CONTACT_EMAIL}</a>.</p>
+            <p className="font-dm-sans text-[16px] text-ink"><a href={`mailto:${CONTACT_EMAIL}`} className={link}>{CONTACT_EMAIL}</a></p>
             <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{OPERATOR_NAME}. <Link href="/terms" className="underline underline-offset-2">Terms</Link> · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link></p>
             <p className="mt-2"><Link href="/ranch/devices/setup" className={link}>Setting up a device →</Link></p>
             {/* Block 7.7 — the Feedback button left Today, where it floated over the
@@ -94,7 +94,6 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-share">
           <h2 id="acct-share" className={`${EYEBROW} !text-ink`}>Share Dryline</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Send a neighbour the county view — drought, the FSA estimate, and what the barns are paying.</p>
             <div className="mt-3"><ShareButton surface="dashboard" /></div>
           </Card>
         </section>
@@ -102,7 +101,6 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-feedback">
           <h2 id="acct-feedback" className={`${EYEBROW} !text-ink`}>Feedback</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Tell me what is wrong with this thing, or what is missing. It comes straight to me.</p>
             <div className="mt-3"><FeedbackWidget /></div>
           </Card>
         </section>
@@ -112,7 +110,7 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-trash">
           <h2 id="acct-trash" className={`${EYEBROW} !text-ink`}>Trash</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Deleted entries, places, bunches and devices wait seven days before they are gone for good.</p>
+            <p className="font-dm-sans text-[16px] text-ink">Deleted things wait seven days.</p>
             <Link href="/account/trash" className="mt-2 inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="account-trash">Open the trash →</Link>
           </Card>
         </section>
@@ -120,7 +118,7 @@ export default async function AccountPage() {
         <section className="mt-6" aria-labelledby="acct-signout">
           <h2 id="acct-signout" className={`${EYEBROW} !text-ink`}>Sign out</h2>
           <Card className="px-5 py-4">
-            <p className="font-dm-sans text-[16px] text-ink">Signing out clears everything private from this phone — the outbox, drafts, and receipts — before the next person picks it up. Anything still waiting to sync is sent first; if any of it will not go, you are told how many and asked before it is discarded.</p>
+            
             <SignOutButton />
           </Card>
         </section>

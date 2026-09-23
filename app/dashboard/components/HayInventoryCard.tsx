@@ -74,7 +74,7 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
     const b = onHand.baseline
     const age = daysBetween(b.asOf, todayKey())
     const x = explainOnHand(onHand)
-    const stale = age > STALE_BASELINE_DAYS ? `That count is ${age} days old · a fresh count would help.` : null
+    const stale = age > STALE_BASELINE_DAYS ? `counted ${age} days ago` : null
     equation = { line: `${x.equation}, ${x.scope}.`, note: x.shortfall ? `${x.shortfall[0].toUpperCase()}${x.shortfall.slice(1)}.` : stale }
     stats.push({
       value: onHand.bales.toLocaleString(),
@@ -139,7 +139,7 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           title="Details"
           audit="hay-details"
           className="mt-3"
-          summary={equation ? 'How the number was reached, and the burn rate behind the runway' : 'The burn rate behind the runway'}
+          summary={undefined}
         >
           {equation && (
             <p className="font-dm-sans text-[16px] text-ink" data-audit="hay-equation">{equation.line}{equation.note ? ` ${equation.note}` : ''}</p>
@@ -164,8 +164,8 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
                   says which window every figure above was added up over. Without
                   a count there is no anchor and the first line read is the start. */}
               {onHand
-                ? `Every line since your ${ranchDay(onHand.baseline.asOf)} count · from what you logged.`
-                : `Since ${fmtDay(range.from)} · from what you logged.`}
+                ? `Since your ${ranchDay(onHand.baseline.asOf)} count`
+                : `Since ${fmtDay(range.from)}`}
             </p>
           )}
         </Disclosure>
