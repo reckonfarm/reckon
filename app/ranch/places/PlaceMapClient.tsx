@@ -290,6 +290,7 @@ export default function PlaceMapClient({
   markers = [],
   onPlaceTap,
   overview = false,
+  zoomControl,
   focus = null,
   line = null,
 }: PlaceMapProps) {
@@ -416,7 +417,7 @@ export default function PlaceMapClient({
           : { center: [initialCenter.lat, initialCenter.lng] as LL, zoom: 14 })}
         preferCanvas
         attributionControl={false}
-        zoomControl={!overview}   // Block 26c: nothing floats on the overview but the pill — pinch and double-tap zoom it
+        zoomControl={zoomControl ?? !overview}   // Block 26c: nothing floats on the overview but the pill — pinch and double-tap zoom it
         style={{ height: '100%', width: '100%', background: PLAIN_GROUND }}
         scrollWheelZoom={false}
       >

@@ -145,7 +145,11 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
                   </p>
                 )}
                 {!b.since && b.seen && <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-seen">seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</p>}
-                <SeenHere lotId={b.id} label={b.label} placeId={open.id} placeName={open.name} />
+                <div className="flex flex-wrap items-end gap-2">
+                  {/* Block 33 (ruling 2): tap the bunch, tap Feed, the number, Record — the sheet takes this bunch and its place. */}
+                  <button type="button" onClick={e => { e.stopPropagation(); setOpenId(null); openLogIt({ type: 'hay_fed', lot: b.id }) }} className="mt-2 inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-white hover:bg-forest-green/90" data-audit="sheet-feed" data-lot={b.id}>Feed</button>
+                  <SeenHere lotId={b.id} label={b.label} placeId={open.id} placeName={open.name} />
+                </div>
               </div>
             ))}
             {open.latest && (

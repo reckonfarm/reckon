@@ -391,6 +391,11 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [onHandNow, setOnHandNow] = useState<number | null>(null)
   const [what, setWhat] = useState('')
   const [place, setPlace] = useState<PlaceSlot>(EMPTY_SLOT)
+  // Block 33 (ruling 1): Where follows the BUNCH — its recorded place, not the
+  // last place this phone used (the audit kept SIM-Corrals for the cows after a
+  // bull move). A place the person picked, or a draft that names one, is kept;
+  // a bunch with no recorded place leaves the last-used default in place.
+  const placeChosen = useRef(false)
   const [fromPlace, setFromPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [toPlace, setToPlace] = useState<PlaceSlot>(EMPTY_SLOT)
   const [when, setWhen] = useState('')      // '' = now
@@ -412,6 +417,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
     setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT)
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
+    placeChosen.current = false
     writeDraft(null)
   }, [])
 
@@ -421,6 +427,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setType(d.type)
     setN1(d.n1 ?? ''); setWhat(d.what ?? '')
     setPlace(d.place ? { id: d.place, newName: null } : EMPTY_SLOT)
+    placeChosen.current = !!d.place   // a draft that names a place (Record here, Adjust first) chose it
     setFromPlace(d.fromPlace ? { id: d.fromPlace, newName: null } : EMPTY_SLOT)
     setToPlace(d.toPlace ? { id: d.toPlace, newName: null } : EMPTY_SLOT)
     setLot(d.lot ?? ''); setWhen(d.when ?? ''); setEditWhen(!!d.when); setAsOf(d.asOf ?? '')
@@ -513,6 +520,19 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       })
     return () => { cancelled = true }
   }, [open, type, lots])
+
+  // Block 33 (ruling 1): the bunch decides Where. Whenever the chosen bunch has
+  // a recorded place the ranch knows, Where is that place — until the person
+  // picks one themselves. Runs after the lots and the places have loaded, and
+  // again when the bunch changes; a bunch without a place changes nothing.
+  useEffect(() => {
+    if (!open || !type || !['hay_fed', 'cattle_worked', 'cattle_counted'].includes(type) || placeChosen.current) return
+    const pid = lot ? lots?.find(l => l.id === lot)?.place_id : null
+    if (!pid || !places.some(p => p.id === pid)) return
+    // On a task, not in the effect body (the cascading-render rule).
+    const t = setTimeout(() => { if (!placeChosen.current) setPlace(prev => prev.id === pid ? prev : { id: pid, newName: null }) }, 0)
+    return () => clearTimeout(t)
+  }, [open, type, lot, lots, places])
 
   // Load places on open; the last-used place only applies if it still exists.
   useEffect(() => {
@@ -737,7 +757,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   }
 
   const placeField = (label = 'Where') => (
-    <PlaceSelect label={label} slot={place} places={places} onChange={setPlace} disabled={busy} />
+    <PlaceSelect label={label} slot={place} places={places} onChange={s => { placeChosen.current = true; setPlace(s) }} disabled={busy} />
   )
 
   let fields: ReactNode = null
