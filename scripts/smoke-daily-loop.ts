@@ -216,6 +216,21 @@ async function signIn(ctx: BrowserContext, email = EMAIL): Promise<Page> {
 // labels it shows, until `until` appears or the time runs out.
 const STATES = ['Saved', 'Waiting for signal', 'Sent', "Couldn't send"]
 let lastWatch: string[] = []   // raw strip texts seen by the last watch, for FAIL details
+// Block 32: a ledger page stamps what its render read (data-audit="ledger-through").
+// Wait until the painted stamp is at or past a row's ingested_at — the page's own
+// proof that it caught up — and say how long that took. A page without the stamp
+// is not a ledger page and can never catch up.
+async function stampReaches(page: Page, ingestedAt: string | null, timeoutMs: number): Promise<{ ok: boolean; stamp: string | null; ms: number }> {
+  const t0 = Date.now()
+  let stamp: string | null = null
+  while (Date.now() - t0 < timeoutMs) {
+    stamp = await page.locator('[data-audit="ledger-through"]').first().getAttribute('data-through').catch(() => null)
+    if (ingestedAt && stamp && Date.parse(stamp) >= Date.parse(ingestedAt)) return { ok: true, stamp, ms: Date.now() - t0 }
+    await page.waitForTimeout(250)
+  }
+  return { ok: false, stamp, ms: Date.now() - t0 }
+}
+
 async function watchStates(page: Page, until: string, timeoutMs: number, label?: string): Promise<string[]> {
   const seen: string[] = []
   const raw: string[] = []
@@ -1775,10 +1790,80 @@ async function main() {
       // for that rather than for words the ruling took off the screen.
       const stripNames = ((await page.locator('[data-audit="global-save-status"] [data-audit="save-strip"]').getAttribute('data-label').catch(() => '')) ?? '')
       record('6D: recorded from the Ranch hub, the receipt strip stands on that page and reaches Sent', /Sent/.test(stripText) && /Fed 2 bales/.test(stripNames) && /on hand/.test(stripText), stripText.slice(0, 140) || 'no strip')
-      let afterHay = NaN, firstAfter = ''
-      for (let i = 0; i < 60 && afterHay !== beforeHay + 1; i++) { afterHay = await entriesToday(); firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' '); if (afterHay !== beforeHay + 1) await page.waitForTimeout(250) }
-      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore, `entries today ${beforeHay} → ${afterHay} · "${firstAfter.slice(0, 70)}"`)
+      // Block 32: the page proves it caught up — its ledger stamp must reach the
+      // feeding's ingested_at (the 6D/12.8 tile stayed at 28 for 15 s once on
+      // production). The stamp is waited on, then the tile is read ONCE.
+      const { data: fed2Row } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '2').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const fed2At = (fed2Row as { ingested_at?: string } | null)?.ingested_at ?? null
+      const caught6d = await stampReaches(page, fed2At, 60_000)
+      const afterHay = await entriesToday()
+      const firstAfter = ((await page.locator('[data-audit="ranch-today"]').textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      record('6D/12.8: without navigating, the record tile and Today on the ranch follow the sync — the page\'s stamp reaches the feeding, then the tile reads it', Number.isFinite(beforeHay) && afterHay === beforeHay + 1 && /Fed 2 bales/.test(firstAfter) && firstAfter !== firstBefore && caught6d.ok, `entries today ${beforeHay} → ${afterHay} · stamp ${caught6d.stamp ?? 'none'} vs row ${fed2At ?? 'none'} caught up ${caught6d.ok} in ${caught6d.ms} ms · "${firstAfter.slice(0, 70)}"`)
       if (prior6d) await page.setViewportSize(prior6d)
+    })
+
+    // ── Block 32: one hay number ────────────────────────────────────────────
+    // GPT's audit: after 41 feedings the receipt and Activity said 3,075 and
+    // Today's tile said 3,123 — exactly the last two feedings. The stored total
+    // was right; the tile was a render that predated them. Now every ledger
+    // page stamps what it read and the phone refreshes until the stamp reaches
+    // what it knows landed. The falsifier: ten feedings back to back, and after
+    // each one the receipt, the tile, the route and Activity agree — with no
+    // navigation and no pull. Then a phone that wakes on Today catches up on
+    // what another hand recorded while it slept, without a tap.
+    await section('Block 32: one hay number', async () => {
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('#ledger-hay').waitFor({ timeout: 20_000 }).catch(() => {})
+      // Sign-aware: a negative on hand paints with a minus (either glyph) and must read as one.
+      const onHandOf = (s: string) => { const m = s.match(/(-|−)?(\d[\d,]*) bales? on hand/); return m ? (m[1] ? -1 : 1) * parseInt(m[2].replace(/,/g, ''), 10) : null }
+      const tile = async () => onHandOf((await page.locator('#ledger-hay').innerText().catch(() => '')).replace(/\s+/g, ' '))
+      const route = async () => { const r = await page.request.get('/api/ranch/hay-on-hand'); return ((await r.json().catch(() => ({}))) as { bales?: number | null }).bales ?? null }
+      const day = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' })
+      // Activity is read over the wire (a fresh render), never by navigating the page under test.
+      const inActivity = async (id: string) => (await (await page.request.get(`/ranch/activity?from=${day}&to=${day}`)).text()).includes(`data-id="${id}"`)
+      const lines: string[] = []
+      let allAgree = true, slowest = 0
+      // Small feedings: the fixture's stack must stay positive for every section after this one.
+      const feedings: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      const fedLabel = (n: number) => `Fed ${n} bale${n === 1 ? '' : 's'}`
+      for (const bales of feedings) {
+        const t0 = Date.now()
+        await logFeed(page, bales)
+        const states = await watchStates(page, 'Sent', 45_000, fedLabel(bales))
+        const strip = page.locator('[role="status"]').first()
+        const receipt = onHandOf((await strip.innerText().catch(() => '')).replace(/\s+/g, ' '))
+        const { data: row } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', String(bales)).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+        const r = row as { id: string; ingested_at: string } | null
+        const caught = await stampReaches(page, r?.ingested_at ?? null, 30_000)
+        const painted = await tile(), served = await route(), listed = r ? await inActivity(r.id) : false
+        const agree = states.includes('Sent') && receipt != null && painted === receipt && served === receipt && listed && caught.ok
+        slowest = Math.max(slowest, Date.now() - t0)
+        if (!agree) { allAgree = false; lines.push(`fed ${bales}: [${states.join(' → ')}] receipt ${receipt} · tile ${painted} · route ${served} · in Activity ${listed} · stamp ${caught.stamp ?? 'none'} vs ${r?.ingested_at ?? 'no row'} caught up ${caught.ok} in ${caught.ms} ms`) }
+      }
+      record('32: ten feedings back to back — after each one the receipt, the Today tile, the on-hand route and Activity agree, with no navigation and no pull', allAgree, lines.length ? lines.slice(0, 3).join(' | ') : `all ten agreed · slowest feeding-to-agreement ${slowest} ms`)
+
+      // Two saved before the first has sent: the page must catch up to the LAST one.
+      await logFeed(page, 11); await logFeed(page, 12)
+      const states32 = await watchStates(page, 'Sent', 45_000, 'Fed 12 bales')
+      const receipt32 = onHandOf((await page.locator('[role="status"]').first().innerText().catch(() => '')).replace(/\s+/g, ' '))
+      const { data: row32 } = await admin.from('events').select('id, ingested_at').eq('user_id', userId).eq('type', 'hay_fed').eq('payload->>bales', '12').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const caught32 = await stampReaches(page, (row32 as { ingested_at?: string } | null)?.ingested_at ?? null, 30_000)
+      const tile32 = await tile(), route32 = await route()
+      record('32: two feedings saved back to back — the tile reaches the second one\'s number, the one the receipt shows', states32.includes('Sent') && receipt32 != null && tile32 === receipt32 && route32 === receipt32 && caught32.ok, `[${states32.join(' → ')}] receipt ${receipt32} · tile ${tile32} · route ${route32} · caught up ${caught32.ok} in ${caught32.ms} ms`)
+
+      // A phone asleep in a pickup: another hand feeds while this page is hidden; on waking it catches up with no tap.
+      const setVisibility = (state: 'hidden' | 'visible') => page.evaluate(`(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => '${state}' }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => ${state === 'hidden'} }); document.dispatchEvent(new Event('visibilitychange')) })()`)
+      await setVisibility('hidden')
+      const sleptId = randomUUID()
+      const { data: sleptRow } = await admin.from('events').insert({ id: sleptId, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, place_id: null, bales: 3, herd_lot_id: null } }).select('ingested_at').single()
+      const sleptAt = (sleptRow as { ingested_at?: string } | null)?.ingested_at ?? null
+      const beforeWake = await tile()
+      await page.waitForTimeout(2_500)
+      const stillAsleep = await tile()
+      await setVisibility('visible')
+      const woke = await stampReaches(page, sleptAt, 30_000)
+      const afterWake = await tile(), routeWake = await route()
+      record('32: a phone that wakes on Today catches up on what another hand fed while it slept, without a tap', sleptAt != null && woke.ok && afterWake === routeWake && beforeWake != null && afterWake === beforeWake - 3, `before ${beforeWake} · while hidden ${stillAsleep} · after waking ${afterWake} (route ${routeWake}) · stamp caught up ${woke.ok} in ${woke.ms} ms`)
     })
 
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
@@ -3218,11 +3303,21 @@ async function main() {
       const main = page
       const ctx27 = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
       page = await signIn(ctx27)
+      // What the page did while the check watched: navigations, loads, errors — so a vanished receipt names its cause.
+      const t27 = Date.now(); const nav27: string[] = []
+      page.on('framenavigated', f => { if (f === page.mainFrame()) nav27.push(`nav ${f.url().replace(BASE, '').slice(0, 40)} @${Date.now() - t27}`) })
+      page.on('load', () => nav27.push(`load @${Date.now() - t27}`))
+      page.on('console', m => { if (m.type() === 'error') nav27.push(`console: ${m.text().slice(0, 90)}`) })
+      page.on('pageerror', e => nav27.push(`pageerror: ${e.message.slice(0, 90)}`))
       try {
       const today = ranchDay()
       const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      // The clock is fixed BEFORE the page opens: a receipt strip remembers when its view
+      // opened and calls anything synced before that history, so a view opened at real
+      // time and a sync stamped at a frozen 4 PM would never meet (32's third loop).
       await page.clock.setFixedTime(tenAM)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('#ledger-hay').waitFor({ timeout: 20_000 }).catch(() => {})
       await ctx27.setOffline(true)
       await logFeed(page, 7)
       const off27 = await watchStates(page, 'Sent', 4_000, 'Fed 7 bales')
@@ -3236,7 +3331,7 @@ async function main() {
       const minutesOff = (a: string | Date | null | undefined, b: Date) => a ? Math.abs(new Date(a).getTime() - b.getTime()) / 60_000 : Infinity
       record('27: made offline at 10:00, sent at 16:00 — the record says made 10:00 and happened 10:00; arrival is 16:00\'s business, kept apart',
         off27[0] === 'Saved' && !off27.includes('Sent') && on27.includes('Sent') && !!r27 && minutesOff(madeOnPhone, tenAM) < 1 && minutesOff(r27.created_at, tenAM) < 1 && minutesOff(r27.ts, tenAM) < 1 && minutesOff(r27.ingested_at, new Date()) < 10,
-        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()}`)
+        `queued made ${madeOnPhone?.toISOString() ?? 'none'} · row made ${r27?.created_at ?? '?'} · happened ${r27?.ts ?? '?'} · arrived ${r27?.ingested_at ?? '?'}${rawSeen()} · page: [${nav27.join(' | ').slice(0, 500)}]`)
 
       // It ORDERS as 10:00: newer than a 09:00 record another hand made and sent at once, older than a 12:00 one.
       const mk = async (hour: number) => { const id = randomUUID(); const t = new Date(`${today}T${String(hour).padStart(2, '0')}:00:00-06:00`).toISOString(); await admin.from('events').insert({ id, user_id: userIdB, ranch_id: ranchId, type: 'hay_fed', ts: t, created_at: t, schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: hour, herd_lot_id: null, place_id: placeId } }); return id }
@@ -3289,16 +3384,22 @@ async function main() {
         // By now the card holds more than its five, so Reviewed lives on the last page of View all (6H) — the path a person takes.
         if (!(await pb.locator('[data-audit="mark-reviewed"]').count())) {
           await pb.locator('[data-audit="since-view-all"]').click({ timeout: 10_000 }).catch(() => {})
+          // The tap resolves before the navigation does, and Today has rows of its own — wait for View all itself.
+          await pb.waitForURL(/\/ranch\/activity\?since=/, { timeout: 15_000 }).catch(() => {})
           for (let pg = 0; pg < 6; pg++) {
             await pb.locator('li[data-id], [data-audit="mark-reviewed"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
             const next = pb.locator('a[href*="cursor="]').first()
             if (!(await next.count())) break
-            const was = await pb.locator('li[data-id]').first().getAttribute('data-id').catch(() => null)
-            await next.click()
-            await pb.waitForFunction((w: string | null) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== w, was, { timeout: 10_000 }).catch(() => {})
+            // The pager's own href, opened directly: what matters here is Reviewed on the last
+            // page, and a tap on a link at the foot of a 50-row page turned nothing in four loops.
+            const href = await next.getAttribute('href')
+            if (!href) break
+            await pb.goto(href, { waitUntil: 'domcontentloaded' })
           }
         }
-        await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(() => {})
+        let why29 = ''
+        await pb.locator('[data-audit="mark-reviewed"]').first().click({ timeout: 10_000 }).catch(e => { why29 = (e instanceof Error ? e.message : String(e)).split('\n').filter(l => /Timeout|intercept|waiting for|not visible|detached/.test(l)).slice(0, 2).join(' · ').slice(0, 220) })
+        const where29 = `${pb.url().replace(BASE, '')} · Reviewed buttons ${await pb.locator('[data-audit="mark-reviewed"]').count()} · rows ${await pb.locator('li[data-id]').count()} · next links ${await pb.locator('a[href*="cursor="]').count()} · last-page note ${await pb.locator('[data-audit="review-on-last-page"]').count()}${why29 ? ` · click: ${why29}` : ''}`
         await pb.waitForTimeout(1500)
         await pb.unroute('**/api/seen')
         await pb.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
@@ -3309,7 +3410,7 @@ async function main() {
         const seenAt = (seenRow as { last_seen_at?: string } | null)?.last_seen_at ?? ''
         record('29: seen is exact — a record made on a phone 40 minutes ahead is new until Reviewed, and Reviewed sends the newest made-at it showed and clears it',
           sawIt && !!sent && Date.parse(sent) > Date.now() + 30 * 60_000 && Date.parse(seenAt) >= Date.parse(sent) && rowsAfter === 0 && quiet === 1,
-          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet}${rawSeen()}`)
+          `A's record [${states11.join(' → ')}] landed ${r11 ? `made ${r11.created_at}` : 'NO'} · saw it ${sawIt} · sent ${sent ?? 'nothing'} · stored ${seenAt} · rows after ${rowsAfter} · quiet ${quiet} · [${where29}]${rawSeen()}`)
       } finally { await ctxB29.close().catch(() => {}) }
       } finally { await ctx27.close().catch(() => {}); page = main }
     })

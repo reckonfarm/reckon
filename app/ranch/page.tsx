@@ -8,6 +8,8 @@ import { privateTitle } from '@/lib/private-title'
 import { ranchNumbers } from '@/lib/ranch-summary'
 import { listActivity, describeEvent, standingRows } from '@/lib/activity'
 import ReviewedButton from '@/app/components/ReviewedButton'
+import LedgerStamp from '@/app/components/LedgerStamp'
+import { ledgerThrough } from '@/lib/ledger-through'
 import { dayKey, fmtTime, plural, todayKey } from '@/lib/jobs/format'
 
 // ─── /ranch — the ranch hub, reinvented (Block 12, 12.7 / 12.8) ───────────────
@@ -40,6 +42,8 @@ export default async function RanchPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch')
 
+  // Block 32: what this render read — taken before the reads below start.
+  const through = await ledgerThrough(supabase)
   const [numbers, recent, member] = await Promise.all([
     ranchNumbers(supabase, user.id),
     listActivity(supabase, user.id, {}, null).catch(() => null),
@@ -84,6 +88,7 @@ export default async function RanchPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <LedgerStamp through={through} />
         <h1 className="type-page-heading text-ink">Ranch</h1>
 
         {/* 12.8 — Today on the ranch */}

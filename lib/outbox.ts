@@ -54,6 +54,7 @@ export interface OutboxItem {
   syncedAt?: number
   consequence?: Consequence         // what the server said it meant (2C)
   serverId?: string
+  ingestedAt?: string               // Block 32: when the ranch took it — what a page's ledger stamp must reach
   owner?: string                    // the signed-in user id this entry was saved under (Block 5D)
   // Block 7A: a place captured in the field goes through this same outbox.
   // `endpoint` is where the body is POSTed (default /api/log — every entry
@@ -348,11 +349,12 @@ async function uploadOne(item: OutboxItem): Promise<void> {
       const consequence = json && typeof json === 'object' && Array.isArray((json as { consequence?: { lines?: unknown } }).consequence?.lines)
         ? { lines: ((json as { consequence: { lines: unknown[] } }).consequence.lines).filter((l): l is string => typeof l === 'string') }
         : undefined
-      const j = json as { event?: { id?: string }; place?: { id?: string }; follow_up?: FollowUp }
+      const j = json as { event?: { id?: string; ingested_at?: string }; place?: { id?: string }; follow_up?: FollowUp }
       const serverId = j.event?.id ?? j.place?.id
+      const ingestedAt = typeof j.event?.ingested_at === 'string' ? j.event.ingested_at : undefined
       const followUp = j.follow_up && j.follow_up.kind === 'set_head' && typeof j.follow_up.lot_id === 'string' && typeof j.follow_up.head === 'number' ? j.follow_up : undefined
       await sleep(Math.max(0, MIN_DWELL_MS - (Date.now() - queuedAt)))   // 'queued' is seen before 'synced'
-      safeUpdate(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId, ...(followUp ? { followUp } : {}) })
+      safeUpdate(item.id, { state: 'synced', syncedAt: Date.now(), lastError: undefined, consequence, serverId, ...(ingestedAt ? { ingestedAt } : {}), ...(followUp ? { followUp } : {}) })
       return
     }
     const message = typeof (json as { error?: unknown }).error === 'string' ? (json as { error: string }).error : `Server said ${res.status}`
