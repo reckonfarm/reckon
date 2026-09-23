@@ -3770,6 +3770,8 @@ async function main() {
       const maps = await page.locator('[data-audit="record-picker"] .leaflet-container, [data-audit="record-place-chips"]').count()
       // One screen, no scrolling: the sheet's panel holds everything without a scrollbar, and the row sits inside the viewport.
       const fits = await page.locator('[data-audit="record-sheet"]').first().evaluate(el => { const panel = el.querySelector('[data-audit="bottom-sheet"]') ?? el; return { scroll: panel.scrollHeight, client: panel.clientHeight } }).catch(() => ({ scroll: -1, client: -1 }))
+      // The sheet slides in; measure once it has settled, not mid-slide.
+      await page.waitForTimeout(700)
       const rowBox = await page.locator('[data-audit="record-actions"]').boundingBox().catch(() => null)
       const vh = page.viewportSize()?.height ?? 0
       const oneScreen = fits.scroll > 0 && fits.scroll <= fits.client + 1 && !!rowBox && rowBox.y >= 0 && rowBox.y + rowBox.height <= vh
