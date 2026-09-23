@@ -36,10 +36,8 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
   return (
     <div className="rounded-lg border border-forest-green/10 bg-white px-4 py-3" data-audit="sell-pin">
       <label className="block font-dm-sans text-[16px] font-semibold text-forest-green" htmlFor="sell-barn">Preferred sale barn</label>
-      <p className="mt-0.5 font-dm-sans text-[14px] text-secondary-ink" id="sell-barn-help">Shown first; prices come from that barn&rsquo;s reports.</p>
       <Select
         id="sell-barn"
-        aria-describedby="sell-barn-help"
         value={current ?? ''}
         disabled={busy}
         onChange={e => void save(e.target.value)}
@@ -48,9 +46,6 @@ export default function SellBarnPicker({ options, current }: { options: BarnOpti
         <option value="">Nearest reporting barn</option>
         {options.map(o => <option key={o.slug} value={o.slug}>{o.name} · {o.town}</option>)}
       </Select>
-      <p className="mt-1.5 font-dm-sans text-[16px] text-ink">
-        Pins the barn you haul to. Prices are still that barn&apos;s report — the pin only picks which report you see first.
-      </p>
       {error && <p role="alert" className="mt-1 font-dm-sans text-[16px] font-medium text-warning">{error}</p>}
     </div>
   )

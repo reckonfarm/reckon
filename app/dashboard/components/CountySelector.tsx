@@ -170,10 +170,6 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
           </button>
         )}
       </div>
-      {selectedCounty && (
-        <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">Cancel keeps {countyLabel(selectedCounty.name)}.</p>
-      )}
-
       {/* Results */}
       {showResults && (
         <ul className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-control-border bg-surface shadow-overlay divide-y divide-rule" aria-label="Matching counties">

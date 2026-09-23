@@ -473,7 +473,6 @@ export default function PrecipForecastSection({
       <div className="p-4 sm:p-6" key={active}>
         {active === 'Local Discussion' && (
           <>
-            <p className="mb-3 text-[14px] text-secondary-ink font-dm-sans">Official forecast discussion from your local National Weather Service office.</p>
             <LocalDiscussionPanel discussion={nwsDiscussion} />
           </>
         )}

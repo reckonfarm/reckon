@@ -243,7 +243,7 @@ export function PriceProtectionPanel({ outlook }: { outlook: OutlookData | null 
         <p className="font-dm-sans text-[14px] text-secondary-ink">Forward floors as of {fmtShort(outlook.as_of)}</p>
       )}
       {outlook.lots.map(l => <OutlookCard key={l.lotId} l={l} />)}
-      <p className="px-1 pt-1 font-dm-sans text-[15px] text-ink" data-audit="lrp-products-line">LRP feeder products exist for feeder classes; eligibility is RMA&rsquo;s determination.</p>
+      
       <p className="px-1 pt-2 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">
         Reference floor from USDA&nbsp;LRP (CME national index) — not a quote, not your local cash; basis varies.
         LRP is insurance bought through an RMA agent in set windows at daily-changing premiums; your agent&nbsp;/&nbsp;RMA sets the actual price.

@@ -32,7 +32,7 @@ export default async function HayPage() {
         <div className="mt-4">
           <Suspense fallback={<LedgerLoading />}><HayInventoryCard /></Suspense>
         </div>
-        <p className="mt-4 font-dm-sans text-[16px] text-secondary-ink">Every hay line is in <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>
+        <p className="mt-4"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Every hay line</Link></p>
       </main>
     </>
   )

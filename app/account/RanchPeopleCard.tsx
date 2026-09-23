@@ -115,7 +115,6 @@ export default function RanchPeopleCard() {
           )
         })}
       </ul>
-      {isOwner && <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">Hold a person to change their role or remove them. Removing someone takes their view of the ranch away at once; their entries stay in the record. Undo for ten seconds, or send a new invitation.</p>}
 
       {people.invites.length > 0 && (
         <>
@@ -173,7 +172,7 @@ export default function RanchPeopleCard() {
             {sent.emailed ? `Invitation emailed to ${sent.email}.` : `Invitation ready for ${sent.email}.`}
           </p>
           <p className="mt-1 font-dm-sans text-[16px] text-ink">
-            {sent.emailed ? 'If it does not arrive, text them this link — it works for their address only, for 7 days.' : 'Text them this link — it works for their address only, for 7 days.'}
+            {`For ${sent.email} only · 7 days`}
           </p>
           <p className="mt-1 break-all font-dm-sans text-[16px] text-forest-green" data-audit="invite-link">{sent.acceptUrl}</p>
           <div className="mt-2 flex flex-wrap gap-2">

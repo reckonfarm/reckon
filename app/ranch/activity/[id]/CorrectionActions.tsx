@@ -249,11 +249,6 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   return (
     <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode as 'correct' | 'void') }} data-audit={`${mode}-form`}>
       <p className="font-dm-sans text-[17px] font-semibold text-ink">{mode === 'correct' ? 'What was it really?' : 'Void this entry?'}</p>
-      <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">
-        {mode === 'correct'
-          ? 'The original stays on the record, crossed out. Your correction stands in its place and every balance follows it. What you leave alone stays exactly as recorded.'
-          : 'The entry stays on the record, marked void, and stops counting. Nothing is deleted.'}
-      </p>
       {mode === 'correct' && (
         <p className={hintCls} role="status" data-audit="correction-options" data-state={options.state}>
           {options.state === 'loading' ? 'Loading bunch and place names…' : options.state === 'failed' ? 'Bunch and place names couldn’t load — those stay as recorded. You can still correct the other values.' : ''}

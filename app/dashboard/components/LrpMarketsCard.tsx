@@ -54,7 +54,7 @@ function TermPicker({ ladder, sel, onSel }: { ladder: LrpLadderRung[]; sel: numb
   return (
     <div className="mt-4 border-t border-forest-green/10 pt-3">
       <label htmlFor="lrp-term" className="block font-dm-sans text-[16px] font-medium text-ink">
-        Endorsement — pick the one that ends nearest your sale date; the floor, premium, and end date above follow it.
+        Endorsement
       </label>
       <Select
         id="lrp-term"

@@ -106,7 +106,6 @@ export default async function RainOnMyPlaces({ user }: { user: { id: string } | 
           })}
         </ul>
       </Card>
-      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink">Recorded rain is what someone on the ranch read off a gauge and logged. A place with no reading has no reading — that is not zero rain.</p>
     </section>
   )
 }

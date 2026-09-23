@@ -112,13 +112,13 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
             market = c === 0
               ? <span>No change since {fmtShort(delta.sinceDate)}</span>
               : <span><span aria-hidden>{c > 0 ? '▲' : '▼'}</span> {c > 0 ? 'Up' : 'Down'} ${Math.abs(c).toFixed(2)}/cwt{at} since {fmtShort(delta.sinceDate)}</span>
-          } else if (trend?.historyFrom) market = <span>History begins {fmtShort(trend.historyFrom)}. New points appear when the reference changes.</span>
-          else market = <span>One report so far. New points appear when the reference changes.</span>
+          } else if (trend?.historyFrom) market = <span>History begins {fmtShort(trend.historyFrom)}.</span>
+          else market = <span>One report so far.</span>
           return (
             <li key={v.lotId} className="py-2 font-dm-sans text-[16px] text-ink" data-audit="changed-row">
               <span className="font-semibold">{lot ? lotLabel(lot) : v.label}</span>
               <span className="block" data-audit="changed-market"><span className="font-medium text-secondary-ink">Market reference: </span>{market}</span>
-              {edited && <span className="block text-secondary-ink" data-audit="changed-edit"><span className="font-medium">Your lot changed: </span>head or weight edited {edited} — this comparison reflects the edit.</span>}
+              {edited && <span className="block text-secondary-ink" data-audit="changed-edit"><span className="font-medium">Edited </span>{edited}</span>}
             </li>
           )
         })}

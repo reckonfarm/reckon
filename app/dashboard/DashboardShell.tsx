@@ -837,11 +837,6 @@ function EmptyState({ signedIn }: { signedIn: boolean }) {
       <Heading level={3}>
         {signedIn ? 'Pick a county for the county tools' : 'Select a county to begin'}
       </Heading>
-      <p className="mt-2 max-w-xs text-[16px] text-ink font-dm-sans">
-        {signedIn
-          ? 'Drought, program, weather, and market tools are by county. Your ledger above is here either way.'
-          : 'Search above to view drought conditions and weekly history for any US county.'}
-      </p>
     </div>
   )
 }

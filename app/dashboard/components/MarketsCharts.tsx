@@ -522,13 +522,9 @@ export default function MarketsCharts(p: MarketsChartsProps) {
                     would draw a price nobody reported. There is no longer a state in
                     which this copy is anything but the plain truth. */}
                 <span className="block font-dm-sans text-[16px] text-ink" data-audit="step-copy">
-                  Points are reported sales. Nothing is drawn between them — no price between sales was reported.
+                  Points are reported sales. Nothing is drawn between them.
                 </span>
                 {showEvents && view !== 'cycle' && <EventList events={p.events} picked={picked} onPick={setPicked} period={period} />}
-                <details className="w-full" data-audit="chart-details">
-                  <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2">Chart details</summary>
-                  <p className="mt-1 font-dm-sans text-[16px] text-ink">Point size is head count: open points are under {THIN_HEAD_THRESHOLD} head, small solid points 20–99, large solid points 100 or more. Dates are on each sale; three or four are labeled on the axis. Ranges stay ranges — nothing is averaged, smoothed, or drawn between sales.</p>
-                </details>
               </div>
             )}
           </>
@@ -566,8 +562,8 @@ export default function MarketsCharts(p: MarketsChartsProps) {
               <DotLegend />
               <Note>
                 {priorYears.length === 0
-                  ? <>History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'} — no prior year to compare yet, and no five-year band. The band appears as years accrue and will say how many it holds.</>
-                  : <>Prior year in gray. Band from {priorYears.length} prior {priorYears.length === 1 ? 'year' : 'years'} — not five until five exist.</>}
+                  ? <>History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'} — no prior year to compare yet.</>
+                  : <>Prior year in gray · band from {priorYears.length} prior {priorYears.length === 1 ? 'year' : 'years'}.</>}
               </Note>
             </>
           ) : <Note>No {cls.toLowerCase()} {bandLabel(bandSel)} observations at this barn yet.</Note>}
@@ -578,7 +574,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
         <div className="mt-4">
           <p className="font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="chart-title">Seasonality · {cls} {bandLabel(bandSel)} · {unit}</p>
           {priorYears.length === 0 ? (
-            <Note>Seasonality needs more than one year of sales. History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'}; this year&apos;s points are on the &ldquo;This year&rdquo; chart. Under three years it will show as a thin reference, not a rule.</Note>
+            <Note>Seasonality needs more than one year of sales. History begins {p.spineStart ? fmtDayYear(p.spineStart) : 'this year'}.</Note>
           ) : (
             <Note>Averaged over {priorYears.length} prior {priorYears.length === 1 ? 'year' : 'years'}{priorYears.length < 3 ? ' — a thin reference, not a rule' : ''}.</Note>
           )}
@@ -593,10 +589,7 @@ export default function MarketsCharts(p: MarketsChartsProps) {
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-dm-sans text-[16px]" data-audit="legend">
             {compareList.map(s => <li key={s.name} className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</li>)}
           </ul>
-          <Note>
-            Sources are never averaged together. Regional here means the other Montana barns we carry — not a Northern Plains composite, which we do not have.
-            {!natMetric && ' The national feeder summary reports 500–599 and 700–799 lb steers; no national line for this band.'}
-          </Note>
+          {!natMetric && <Note>The national feeder summary reports 500–599 and 700–799 lb steers; no national line for this band.</Note>}
         </div>
       )}
 

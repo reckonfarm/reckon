@@ -102,11 +102,6 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
                   place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }}
                   initialCenter={centre}
                 />
-                {!ring && (
-                  <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink">
-                    This place has a name but no shape yet. Draw it once and it stays drawn.
-                  </p>
-                )}
               </>
             )}
           </div>
@@ -137,7 +132,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           <h2 id="place-recent" className={`${EYEBROW} !text-ink`}>Recorded here</h2>
           <Card className="mt-2 p-4 sm:p-5">
             {memory.length === 0 ? (
-              <p className="font-dm-sans text-[17px] text-ink">Nothing recorded here yet. The first entry starts its memory.</p>
+              <p className="font-dm-sans text-[17px] text-ink">Nothing recorded here yet.</p>
             ) : (
               <ul className="space-y-2">
                 {memory.map(m => (

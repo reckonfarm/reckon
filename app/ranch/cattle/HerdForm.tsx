@@ -399,7 +399,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
             onClick={() => setShowDetail(s => !s)}
             className="font-dm-sans text-[16px] font-medium text-brand hover:text-accent"
           >
-            {showDetail ? 'Hide details' : 'Sharpen details (optional)'}
+            {showDetail ? 'Hide details' : 'Details'}
           </button>
 
           {showDetail && (
@@ -424,9 +424,6 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
 
               <div>
                 <p className="mb-1.5 font-dm-sans text-[16px] font-medium text-ink">Sale windows</p>
-                <p className="mb-2 font-dm-sans text-[14px] text-secondary-ink">
-                  When you expect to sell. Leave empty if you&rsquo;re not sure yet.
-                </p>
                 {dWindows.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-2">
                     {dWindows.map(m => (
@@ -578,10 +575,6 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
       {lots.length === 0 && editing !== 'new' && (
         <Card shadow="soft" className="px-6 py-10 text-center">
           <p className="font-fraunces text-xl font-semibold text-ink">Add your first bunch</p>
-          <p className="mx-auto mt-2 max-w-sm font-dm-sans text-[16px] text-secondary-ink">
-            Tell us what you&rsquo;re running — a class, a head count, an average weight. A few
-            seconds a lot, and you can sharpen the details later.
-          </p>
           <div className="mt-5">
             <Button variant="primary" onClick={openAdd} className="w-full min-h-[56px]" data-audit="new-bunch-button">New bunch</Button>
           </div>

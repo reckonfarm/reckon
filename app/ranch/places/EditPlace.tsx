@@ -137,9 +137,6 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
     return (
       <Card className="mt-4 border-forest-green/25 p-4 sm:p-5" data-audit="place-retired">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">This place is off the list.</p>
-        <p className="mt-1 font-dm-sans text-[16px] leading-snug text-secondary-ink">
-          Nothing new can be recorded here until it is back. It still names the entries that already happened here, and it always will.
-        </p>
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
         <button
           type="button"
@@ -203,7 +200,7 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
             on the place's own form, not a link on the Weather row. */}
         <label className="mt-4 flex min-h-[48px] items-center gap-3 font-dm-sans text-[16px] text-ink" data-audit="place-edit-pinned">
           <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="h-6 w-6 accent-forest-green" />
-          <span>Show on Weather <span className="text-secondary-ink">· even before any rain is recorded here</span></span>
+          <span>Show on Weather</span>
         </label>
 
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold leading-snug" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}

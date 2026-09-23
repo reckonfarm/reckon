@@ -105,7 +105,6 @@ export default function EditDevice({ device }: { device: { id: string; name: str
         <dt>Battery</dt><dd className="text-ink">{device.batteryPct != null ? `${device.batteryPct}%` : 'Not reported'}</dd>
         <dt>Firmware</dt><dd className="text-ink">{device.fwVersion ?? 'Not reported'}</dd>
       </dl>
-      <p className="mt-1 font-dm-sans text-[14px] text-secondary-ink">The device sets these on every report. They cannot be changed here.</p>
 
       {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="device-fix-error">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">

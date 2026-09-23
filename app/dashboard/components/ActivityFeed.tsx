@@ -180,7 +180,7 @@ export default async function ActivityFeed() {
     return (
       <Card shadow="none" className="px-5 py-8 text-center">
         <p className="font-dm-sans text-[16px] text-secondary-ink">
-          Nothing in the ledger yet. Decisions and device readings land here.
+          Nothing recorded yet.
         </p>
       </Card>
     )

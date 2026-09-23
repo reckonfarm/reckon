@@ -107,7 +107,7 @@ export default async function JobsView({ user }: { user: { id: string } | null }
         <p className="font-dm-sans text-[16px] text-secondary-ink">
           {jobs.length === 0
             ? 'No jobs recorded this season. Your manual entries are in Activity.'
-            : 'Nothing recent to show — the full list lives under All sessions.'}
+            : 'Nothing recent.'}
         </p>
         <Link href={jobs.length === 0 ? '/ranch/activity' : '/ranch/activity?source=machine'} className="mt-2 inline-block font-dm-sans text-[16px] font-semibold text-secondary-ink hover:text-forest-green">
           {jobs.length === 0 ? 'Activity →' : 'All sessions →'}

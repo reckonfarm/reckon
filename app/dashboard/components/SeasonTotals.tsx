@@ -126,7 +126,7 @@ export default async function SeasonTotals({ heading = true }: { heading?: boole
         ))}
       </div>
       <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">
-        Since {fmtDay(included[0].started_at)} · read straight off the machine.
+        Since {fmtDay(included[0].started_at)}
       </p>
     </Card>
     </LedgerPanel>

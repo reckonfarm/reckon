@@ -88,9 +88,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             person would look, and a person looking for what the baler did looks
             here. The 12.7 check found this link missing on the first run. */}
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-          <Link href="/ranch/activity?source=machine" className="font-semibold text-brand underline underline-offset-2" data-audit="activity-machines-link">Machine sessions</Link> — cutting and baling as the connected machines recorded them.
+          <Link href="/ranch/activity?source=machine" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="activity-machines-link">Machine sessions</Link>
         </p>
-        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Everything recorded on the ranch, newest first, by the day the work happened. Tap a line for the exact entry.</p>
 
         {failed ? (
           <Card className="mt-4 p-5" data-audit="activity-failed"><p className="font-dm-sans text-[17px] text-ink">The record couldn&rsquo;t be read just now. Nothing is lost; try again in a moment.</p></Card>
@@ -133,13 +132,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 made-at can sit on page 1 while Reviewed is on the last — send the newest
                 made-at of everything since you checked, the one read the card and the map share. */}
             {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={(await getChangesSince(supabase, user.id))?.newest ?? page.rows.map(r => r.created_at).sort().pop() ?? null} />}
-            {filters.since && page.nextCursor && <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="review-on-last-page">Reviewed is offered on the last page, once every entry is in front of you.</p>}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">
                 More days →
               </Link>
             )}
-            <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">{DAYS_PER_PAGE} days at a time · newest first by work time.</p>
           </>
         )}
       </main>
@@ -156,7 +153,7 @@ function MachineActivity({ user }: { user: { id: string } }) {
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className={EYEBROW}>The record · machines</p>
         <h1 className="mt-1 type-page-heading text-ink">Jobs recorded by connected machines</h1>
-        <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Sessions a Scout observed, newest first. Work recorded by hand is under <Link href="/ranch/activity" className="font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>
+        <p className="mt-1"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Activity</Link></p>
         <div className="mt-4" data-audit="machine-activity"><JobsView user={user} /></div>
       </main>
     </>

@@ -156,7 +156,6 @@ export default function ProfileForm() {
 
         <Field label="Display name">
           <div>
-          <p className="mb-1 font-dm-sans text-[14px] text-secondary-ink">Name shown on your work entries</p>
           <input
             type="text"
             value={displayName}
