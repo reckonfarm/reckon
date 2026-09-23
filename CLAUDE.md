@@ -65,7 +65,9 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
   bigger, ship the first slice, say what's left.
 - **Default is merge on green** (`merge --no-ff`, push main). **These stop for PK:** migrations changing how a
   record is written, refused or reconciled; changes or backfills to existing production rows; anything touching the
-  outbox, sync, RLS or ranch isolation; deleting or retiring at scale. Say so at the top of the report, and wait.
+  outbox, sync, RLS or ranch isolation; deleting or retiring at scale. Say so at the top of the report, and wait — and
+  a branch that went green and stopped stays on every report's open list until it merges or PK kills it. Nothing
+  green sits silently.
 - **Decide what you can decide; state the decision.** Save real questions for anything that changes what a record
   means. **Reports are short:** what changed, the counts with their commit, the tip, what to check on production.
 - **Adding a doctrine means merging or removing one. This file does not grow.** Read in full every session, so
