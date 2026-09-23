@@ -1,24 +1,22 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import PlaceMapLoader from '@/app/ranch/places/PlaceMapLoader'
 import { pointInPolygon, projectXY, type LatLng } from '@/lib/places/geo'
 import { CAPTURE_EVENT } from '@/lib/places/capture-event'
-import { brand } from '@/lib/brand-colors'
 import type { RanchMap } from '@/lib/ranch-map'
 
-// ─── Block 20: Record goes map-first ─────────────────────────────────────────
-// The sheet opens on the ranch: framed on you when the phone has a fix, the
-// whole ranch when it does not. One row of icon-plus-word buttons across the
-// bottom. Tap a place then an action and that place is prefilled; tap an
-// action first and it takes the place under your fix, or the form asks.
+// ─── Block 38: Record loses the map (reverses Block 20, ruling 1) ────────────
+// Two maps is one too many, and the map was in the way of the screen opened
+// fifty times a day. Record opens straight to the actions: one row of
+// icon-plus-word buttons, the three rarer workings as words under it, the
+// ways to mark ground behind Place. Nothing above them, nothing to scroll.
 //
-// THE MAP NEVER GATES A RECORD. No fix, no tiles, no signal — every button
-// still opens its form and the form still saves. The map is read from
-// /api/ranch/map and the last good answer is kept on the phone, so with no
-// signal the polygons still draw from the last time there was one; with no
-// answer at all the row of buttons is the whole picker. Nothing on the map
-// says what a button says.
+// Place is picked inside the action that needs it — the form's Where,
+// defaulting from the bunch (Block 33) or, with a fix, from the ground you
+// stand on. Block 20's ruling 3 stands exactly: no fix, no tiles, no signal —
+// every button still opens its form and the form still saves. The ranch is
+// still read from /api/ranch/map and the last good answer kept on the phone:
+// that copy is what names the places when there is no signal.
 
 export type PickAction = 'hay_fed' | 'cattle_moved' | 'cattle_counted' | 'rain' | 'cattle_worked' | 'place'
 
@@ -42,7 +40,6 @@ export type RareAction = 'preg_check' | 'hay_inventory' | 'bales_stacked'
 export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (action: Exclude<PickAction, 'place'>, placeId: string | null) => void; onRare: (action: RareAction, placeId: string | null) => void; onClose: () => void }) {
   const [map, setMap] = useState<RanchMap | null>(() => (typeof window === 'undefined' ? null : readCached()))
   const [fix, setFix] = useState<{ p: LatLng; accuracyM: number } | null>(null)
-  const [picked, setPicked] = useState<string | null>(null)
   const [placeMenu, setPlaceMenu] = useState(false)
 
   // The ranch, fresh when there is signal; the last good answer otherwise.
@@ -61,17 +58,11 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
     let alive = true
     navigator.geolocation.getCurrentPosition(
       pos => { if (alive) setFix({ p: { lat: pos.coords.latitude, lng: pos.coords.longitude }, accuracyM: pos.coords.accuracy }) },
-      () => { /* no fix: the whole ranch */ },
+      () => { /* no fix: the form asks, or the bunch answers */ },
       { enableHighAccuracy: true, timeout: 6_000, maximumAge: 60_000 },
     )
     return () => { alive = false }
   }, [])
-
-  const shapes = useMemo(() => (map?.places ?? []).filter(p => p.ring).map(p => ({
-    id: p.id, ring: p.ring!,
-    // Picked reads in brand green over everything; otherwise the bunch's colour, as on Today.
-    ...(picked === p.id ? { fill: brand } : p.bunches[0] ? { fill: p.bunches[0].color } : {}),
-  })), [map, picked])
 
   // The place under the fix: the first drawn place whose ring holds it.
   const underFix = useMemo(() => {
@@ -86,44 +77,13 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
 
   const act = useCallback((a: PickAction) => {
     if (a === 'place') { setPlaceMenu(m => !m); return }
-    onPick(a, picked ?? underFix)
-  }, [onPick, picked, underFix])
-
-  const undrawn = (map?.places ?? []).filter(p => !p.ring)
-  const pickedName = picked ? map?.places.find(p => p.id === picked)?.name ?? null : null
+    onPick(a, underFix)
+  }, [onPick, underFix])
 
   return (
-    <div className="mt-4" data-audit="record-picker" data-map={map ? (shapes.length ? 'drawn' : 'no-shapes') : 'none'} data-fix={fix ? 'yes' : 'no'} data-under-fix={underFix ?? ''}>
-      {shapes.length > 0 && (
-        <PlaceMapLoader
-          shapes={shapes}
-          initialCenter={fix?.p ?? map!.centre}
-          height="42vh"
-          zoomControl={false}   // 12.2/20: no text on the map — pinch and double-tap zoom it, as on Today
-          onPlaceTap={id => setPicked(p => (p === id ? null : id))}
-          {...(fix ? { pin: { fix: fix.p, accuracyM: fix.accuracyM, position: fix.p } } : {})}
-        />
-      )}
-      {/* The key: every place, drawn or not, as a chip — a name is a tap too. */}
-      {(map?.places.length ?? 0) > 0 && (
-        <ul className="mt-2 flex gap-2 overflow-x-auto pb-1" data-audit="record-place-chips">
-          {[...(map?.places ?? [])].sort((a, b) => (a.ring ? 0 : 1) - (b.ring ? 0 : 1)).map(p => (
-            <li key={p.id} className="shrink-0">
-              <button type="button" role="radio" aria-checked={picked === p.id} onClick={() => setPicked(x => (x === p.id ? null : p.id))}
-                className={`inline-flex min-h-[48px] items-center gap-2 rounded-lg border px-3 font-dm-sans text-[16px] font-semibold ${picked === p.id ? 'border-brand bg-brand text-cream' : p.ring ? 'border-rule bg-surface text-ink' : 'border-dashed border-control-border bg-surface text-ink'}`}
-                data-audit="record-place-chip" data-place={p.id}>
-                {p.bunches[0] && <span aria-hidden className="h-3.5 w-3.5 shrink-0 rounded-sm" style={{ background: p.bunches[0].color }} />}{p.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {undrawn.length === 0 && shapes.length === 0 && map === null && (
-        <p className="sr-only" data-audit="record-map-absent">No map on this phone yet</p>
-      )}
-
-      {/* The row. Icon plus a short word, never the icon alone. */}
-      <div className="mt-3 grid grid-cols-6 gap-1" role="group" aria-label={pickedName ? `Record at ${pickedName}` : 'Record'} data-audit="record-actions">
+    <div className="mt-4" data-audit="record-picker" data-map={map ? 'kept' : 'none'} data-fix={fix ? 'yes' : 'no'} data-under-fix={underFix ?? ''}>
+      {/* The row, first and with nothing above it. Icon plus a short word, never the icon alone. */}
+      <div className="grid grid-cols-6 gap-1" role="group" aria-label="Record" data-audit="record-actions">
         {ACTIONS.map(a => (
           <button key={a.key} type="button" onClick={() => act(a.key)} aria-label={a.name} aria-pressed={a.key === 'place' ? placeMenu : undefined}
             className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-lg border px-1 font-dm-sans text-[14px] font-semibold ${a.key === 'place' && placeMenu ? 'border-brand bg-brand text-cream' : 'border-forest-green/15 bg-white text-forest-green'}`}
@@ -134,10 +94,10 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
         ))}
       </div>
 
-      {/* The three the row does not carry, one tap each, as words — never on the map. */}
+      {/* The three the row does not carry, one tap each, as words. */}
       <div className="mt-2 flex flex-wrap gap-x-4" data-audit="record-rare">
         {([['preg_check', 'Preg check'], ['hay_inventory', 'Count hay'], ['bales_stacked', 'Add bales to a stack']] as const).map(([k, w]) => (
-          <button key={k} type="button" onClick={() => onRare(k, picked ?? underFix)} className="min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit={k === 'preg_check' ? 'tile-preg-check' : `tile-${k}`}>{w}</button>
+          <button key={k} type="button" onClick={() => onRare(k, underFix)} className="min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit={k === 'preg_check' ? 'tile-preg-check' : `tile-${k}`}>{w}</button>
         ))}
       </div>
 

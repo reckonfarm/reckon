@@ -27,6 +27,8 @@ import type { LastWork, BunchWhere } from '@/lib/ranch-summary'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { moveLine, NO_PLACE_RECORDED } from '@/lib/move-line'
 import RowActions from '@/app/components/RowActions'
+import TapValue from '@/app/components/TapValue'
+import { UNDO_HOLD_MS } from '@/app/dashboard/components/RepeatLastCard'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
@@ -483,7 +485,8 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-dm-sans text-[17px] font-semibold text-ink">
-              <span className="tabular-nums" data-audit="lot-head">{lot.head_count.toLocaleString('en-US')}</span> head · {lotLabel(lot)}
+              {/* Block 37: the head count IS the control — tap it, type, Done; a head_count_set anchor through the outbox with its Undo. */}
+              <TapValue value={lot.head_count} label={`Bunch size, ${lotLabel(lot)}`} audit="lot-head" min={1} max={20_000} className="tabular-nums font-dm-sans text-[17px] font-semibold text-ink" onSave={n => { const id = newEventId(); try { enqueue({ id, head_count: n }, `${n} head · ${lotLabel(lot)}`, UNDO_HOLD_MS, { endpoint: `/api/herd/lots/${lot.id}/head` }); return id } catch { return null } }} /> head · {lotLabel(lot)}
             </p>
             <p className="mt-0.5 font-dm-sans text-[16px] text-ink">
               {lot.name?.trim() ? `${LOT_CLASS_LABELS[lot.class]} · ` : ''}

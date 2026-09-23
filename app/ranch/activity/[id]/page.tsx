@@ -1,4 +1,5 @@
 import { movedWho } from '@/lib/move-line'
+import QuantityTap from './QuantityTap'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
@@ -59,7 +60,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const rows: [string, React.ReactNode][] = [
     ['Who', <>{names.person(row.user_id)} <span className="text-secondary-ink">· {actorRole}</span></>],
     ['What', line],
-    ...(quantity ? [['Quantity', quantity] as [string, React.ReactNode]] : []),
+    // Block 37: a feeding's quantity IS the control — tap it, type, Done (a correction through the outbox).
+    ...(quantity ? [['Quantity', row.type === 'hay_fed' && canCorrect && typeof row.payload.bales === 'number' ? <QuantityTap key="q" eventId={row.id} bales={row.payload.bales} /> : quantity] as [string, React.ReactNode]] : []),
     // Block 25: a move's bunch reads name · class, and a move with none says so.
     ...(row.type === 'cattle_moved'
       ? [['Bunch', <span key="b">{names.bunch(lotId) ? movedWho(null, names.bunch(lotId)) : 'No bunch named'}</span>] as [string, React.ReactNode]]

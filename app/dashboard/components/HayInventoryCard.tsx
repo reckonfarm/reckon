@@ -9,6 +9,9 @@ import { explainOnHand } from '@/lib/hay/explain'
 import { fmtDay, plural, todayKey, ranchYearStart } from '@/lib/jobs/format'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { LedgerPanel } from './LedgerTabs'
+import HayOnHandTap from './HayOnHandTap'
+import ActivityRowItem from '@/app/components/ActivityRowItem'
+import { fmtTime } from '@/lib/jobs/format'
 
 // ─── Hay — what you stacked, what you fed, what's left if you counted ─────────
 // Same shape as SeasonTotals: a self-contained server component on the
@@ -109,7 +112,10 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
         <div className={`${heading ? 'mt-3 ' : ''}grid gap-4 ${stats.length === 3 ? 'grid-cols-3' : stats.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {stats.map(s => (
             <div key={s.label}>
-              <p className="type-main-number text-ink">{s.value}</p>
+              {/* Block 37: on hand IS the control — tap the number, type the count, Done. */}
+              {onHand && s.label.endsWith('on hand')
+                ? <p className="type-main-number text-ink"><HayOnHandTap bales={onHand.bales} className="type-main-number text-ink" /></p>
+                : <p className="type-main-number text-ink">{s.value}</p>}
               <p className="mt-1.5 font-dm-sans text-[16px] text-ink">{s.label}</p>
               {s.sub && <p className="font-dm-sans text-[14px] text-ink">{s.sub}</p>}
             </div>
@@ -143,6 +149,14 @@ export default async function HayInventoryCard({ heading = true }: { heading?: b
           )}
           {rateLine && (
             <p className="mt-3 font-dm-sans text-[16px] text-ink">{rateLine}</p>
+          )}
+          {/* Block 37: the lines behind the number, held like any row (Fix · Delete). Records deeper. */}
+          {entries.length > 0 && (
+            <ul className="mt-3 divide-y divide-forest-green/10" data-audit="hay-lines">
+              {[...entries].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 5).map(e => (
+                <ActivityRowItem key={e.id} id={e.id} line={e.type === 'hay_fed' ? `Fed ${plural(e.bales, 'bale')}` : e.type === 'bales_stacked' ? `Stacked ${plural(e.bales, 'bale')}` : `Counted ${e.bales.toLocaleString()} bales on hand`} when={`${fmtDay(e.ts)} ${fmtTime(e.ts)}`} marker={null} chain={[]} audit="hay-line" rowClass="py-2" />
+              ))}
+            </ul>
           )}
           {range && (
             <p className="mt-3 font-dm-sans text-[14px] text-ink">
