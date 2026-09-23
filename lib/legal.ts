@@ -12,8 +12,8 @@ export const OPERATOR =
 /** Short legal name for the footer line. */
 export const OPERATOR_NAME = 'Dryline Technologies LLC'
 
-/** Business contact address. Interim Gmail until a dryline.farm mailbox exists — one-constant swap. */
-export const CONTACT_EMAIL = 'reckon.farm@gmail.com'
+/** Business contact address. */
+export const CONTACT_EMAIL = 'pk@dryline.farm'
 
 export const MAILING_ADDRESS = '588 Kiehl Ranch Road, Winnett, Montana 59087'
 
