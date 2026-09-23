@@ -4235,6 +4235,7 @@ async function main() {
       const pinSwitch = await page.locator('[data-audit="place-edit-pinned"] input').count()
       record('13 (place): hold → Fix opens the place form with name, kind, where it sits, and Show on Weather', s2 && fixOpen2 && pinSwitch === 1, `sheet ${s2} · form ${fixOpen2} · Weather switch ${pinSwitch}`)
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})   // Block 43: the group closes again on a fresh load
       await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s2b = await hold(page, placeRow)
       await sheet(page).del.click().catch(() => {})
