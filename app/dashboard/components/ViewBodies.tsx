@@ -847,9 +847,10 @@ export async function HayViewBody({
 }
 
 export async function MarketsViewBody({
-  selectedCounty, lots: allLots, followed, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
+  selectedCounty, lots: allLots, followed, signedIn, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
 }: {
   followed: string[]   // Block 40 — the ids Markets prices; already read against the live lots
+  signedIn: boolean    // Block 40 — a visitor with no account reads the county's barn, not a list of bunches
   ranchId?: string | null   // Block 4A — the ranch whose herd value history the anchor reads
   selectedLotId?: string | null   // Block 6B — ?lot= from Ranch → Cattle; the comparison and the chart follow it
   titled?: boolean                // Block 6B — the private /markets route owns the page's h1 ("Markets · {area}")
@@ -929,11 +930,24 @@ export async function MarketsViewBody({
         : <p className="type-page-heading text-ink" data-audit="markets-title">Markets</p>}
 
       {/* Block 40: nothing followed → the list of bunches is the page, the barn
-          setting under it; nothing is priced that nobody said they would sell. */}
-      {lots.length === 0 && (
+          setting under it; nothing is priced that nobody said they would sell.
+          A visitor with no account has no bunches to follow: the county's
+          reported sale and its history are the public read, as the front door
+          promises. */}
+      {lots.length === 0 && signedIn && (
         <>
           {chooser}
           {homeFips && barnOptions.length > 0 && <SellBarnPicker options={barnOptions} current={sellBarn} />}
+        </>
+      )}
+      {lots.length === 0 && !signedIn && (
+        <>
+          <ReportedSale result={localAuction} volume={null} />
+          <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
+            <Suspense fallback={null}>
+              <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={null} />
+            </Suspense>
+          </section>
         </>
       )}
       {lots.length > 0 && <>
@@ -1069,7 +1083,7 @@ export async function renderDeferredView(key: DeferredViewKey, params: ViewParam
       }
       return (
         <Suspense fallback={<JobsViewSkeleton />}>
-          <MarketsViewBody selectedCounty={county} lots={lots} followed={followed} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} ranchId={ranchId} />
+          <MarketsViewBody selectedCounty={county} lots={lots} followed={followed} signedIn={!!user} homeFips={homeFips} supabase={supabase} sellBarn={sellBarn} ranchId={ranchId} />
         </Suspense>
       )
     }

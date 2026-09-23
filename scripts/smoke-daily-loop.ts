@@ -3166,10 +3166,8 @@ async function main() {
       // reads only we can make: rain on my ground vs normal, haying, frost · snow, spraying.
       await page.goto(`/weather?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await page.locator('[data-audit="weather-reads"]').waitFor({ timeout: 30_000 }).catch(() => {})
-      const order44 = await page.evaluate(() => {
-        const at = (sel: string) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1 }
-        return { programs: at('[data-audit="weather-programs"]'), forecast: at('[data-audit="weather-forecast"]'), reads: at('[data-audit="weather-reads"]') }
-      })
+      // A string, not a function: tsx wraps a named inner arrow in __name, which the page does not have.
+      const order44 = await page.evaluate(`(function(){ var at = function(sel){ var el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1 }; return { programs: at('[data-audit="weather-programs"]'), forecast: at('[data-audit="weather-forecast"]'), reads: at('[data-audit="weather-reads"]') } })()`) as { programs: number; forecast: number; reads: number }
       const mapOpen = await page.locator('[data-audit="weather-drought-map"] .leaflet-container, [data-audit="weather-drought-map"] img').count()
       const footer = (await page.locator('[data-audit="estimate-footer"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
       const prompts44 = await page.locator('[data-audit="rain-none"], [data-audit="rain-since"], [data-audit="weather-place-picker"]').count()

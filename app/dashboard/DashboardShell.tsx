@@ -792,7 +792,7 @@ export async function DashboardShell({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} followed={followed} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} followed={followed} signedIn={!!user} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
                       </Suspense>
                     ) }
                   : {}),
