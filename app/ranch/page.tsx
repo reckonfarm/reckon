@@ -6,6 +6,7 @@ import { ledgerThrough } from '@/lib/ledger-through'
 import { privateTitle } from '@/lib/private-title'
 import { ranchView } from '@/lib/ranch-view'
 import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
+import { readFollowed } from '@/lib/herd-follow'
 import { lastWorkByLot, whereByLot } from '@/lib/ranch-summary'
 import { listActivity, entriesToday } from '@/lib/activity'
 import { listWork } from '@/lib/jobs/work'
@@ -42,10 +43,11 @@ export default async function RanchPage() {
     listWork(supabase, { limit: 60 }).catch(() => []),
     placeRows(supabase).catch(() => ({ live: [], retired: [] })),
   ])
-  const [lastWork, where, purposeSupported] = await Promise.all([
+  const [lastWork, where, purposeSupported, followed] = await Promise.all([
     lastWorkByLot(supabase, lots.map(l => l.id)).catch(() => ({})),
     whereByLot(supabase, lots).catch(() => ({})),
     lotPurposeSupported(supabase).catch(() => false),
+    readFollowed(supabase, user.id).catch(() => [] as string[]),
   ])
   const oldestTs = recordPage?.rows[recordPage.rows.length - 1]?.ts ?? null
   const workRows = work.filter(w => !recordPage?.nextCursor || (oldestTs != null && w.startedAt >= oldestTs))
@@ -75,7 +77,7 @@ export default async function RanchPage() {
                   <span>Preg check</span>
                 </Link>
               )}
-              <HerdForm initialLots={lots} lastWork={lastWork} where={where} purposeSupported={purposeSupported} />
+              <HerdForm initialLots={lots} lastWork={lastWork} where={where} purposeSupported={purposeSupported} followed={followed} />
             </div>
           )}
           ground={(

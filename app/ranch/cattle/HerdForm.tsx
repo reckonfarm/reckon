@@ -31,6 +31,7 @@ import RowActions from '@/app/components/RowActions'
 import TapValue from '@/app/components/TapValue'
 import { UNDO_HOLD_MS } from '@/app/dashboard/components/RepeatLastCard'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
+import { navigateTo } from '@/lib/standalone-nav'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
 
 // Capture-first herd entry. The fast path is class → head → weight (+ lb/cwt); those four
@@ -79,9 +80,22 @@ function agoLabel(iso: string): string {
   return m === 1 ? 'a month ago' : `${m} months ago`
 }
 
-export default function HerdForm({ initialLots, lastWork = {}, where = {}, purposeSupported = false }: { initialLots?: Lot[]; lastWork?: Record<string, LastWork>; where?: Record<string, BunchWhere>; purposeSupported?: boolean } = {}) {
+export default function HerdForm({ initialLots, lastWork = {}, where = {}, purposeSupported = false, followed = [] }: { followed?: string[]; initialLots?: Lot[]; lastWork?: Record<string, LastWork>; where?: Record<string, BunchWhere>; purposeSupported?: boolean } = {}) {
   const router = useRouter()
   const [lots, setLots] = useState<Lot[]>(initialLots ?? [])
+  // Block 40: the bunches Markets prices. Following one from its row is a
+  // single tap that then lands on Markets; a failed send stays here and says so.
+  const [followedIds, setFollowedIds] = useState<Set<string>>(() => new Set(followed))
+  const followThenGo = async (id: string) => {
+    try {
+      const r = await fetch('/api/herd/follow', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lot_id: id, followed: true }) })
+      if (!r.ok) throw new Error(String(r.status))
+      setFollowedIds(s => new Set([...s, id]))
+      navigateTo(router, `/markets?lot=${id}`)
+    } catch {
+      showNotice("Couldn't send")
+    }
+  }
   // Block 13: the server's list is the truth after a refresh — an Undo puts a
   // bunch back, router.refresh() re-renders the page with it, and this form
   // must show it. Adjusting state from a changed prop DURING render is the
@@ -537,7 +551,12 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
               </p>
             )}
             <p className="mt-1">
-              <Link href={`/markets?lot=${lot.id}`} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link">View market comparison →</Link>
+              {/* Block 40: Markets prices followed bunches only. A bunch not yet
+                  followed is followed by this tap, then shown — one tap, no
+                  detour through a list. */}
+              {followedIds.has(lot.id)
+                ? <Link href={`/markets?lot=${lot.id}`} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link" data-followed="true">Markets →</Link>
+                : <button type="button" onClick={() => void followThenGo(lot.id)} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link" data-followed="false">Follow on Markets →</button>}
             </p>
           </div>
           <div className="relative flex shrink-0 items-center gap-2">

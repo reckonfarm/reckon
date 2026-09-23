@@ -327,10 +327,12 @@ export async function DashboardShell({
   // anchor (views2, commit 2: the anchor chain itself left this head; nothing
   // on Today reads it any more).
   let lots: Lot[] = []
+  let followed: string[] = []   // Block 40 — the bunches Markets prices
   if (selectedCounty) {
     const crops = profileResult.status === 'ok' ? cropsToStringArray(profileResult.profile.crops) : null
-    const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[] } | null) : null
+    const herd = profileResult.status === 'ok' ? (profileResult.profile.herd as { lots?: Lot[]; followed?: string[] } | null) : null
     lots = Array.isArray(herd?.lots) ? herd!.lots : []
+    followed = Array.isArray(herd?.followed) ? herd!.followed : []
 
     // Second parallel stage — the three reads that need the county but not each
     // other: the cheap latest reading (drives the shared Share label + heading and
@@ -790,7 +792,7 @@ export async function DashboardShell({
                 ...(view === 'markets'
                   ? { markets: (
                       <Suspense fallback={<JobsViewSkeleton />}>
-                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
+                        <MarketsViewBody selectedCounty={selectedCounty} lots={lots} followed={followed} homeFips={homeCounty?.fips ?? null} supabase={supabase} sellBarn={profileResult.status === 'ok' ? profileResult.profile.sell_barn_slug ?? null : null}  ranchId={profileResult.status === 'ok' ? profileResult.profile.ranch_id ?? null : null} selectedLotId={sp.lot ?? null} titled={route === 'markets'} />
                       </Suspense>
                     ) }
                   : {}),
