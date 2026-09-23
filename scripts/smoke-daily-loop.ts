@@ -1774,6 +1774,8 @@ async function main() {
       const prior6d = page.viewportSize()
       await page.setViewportSize({ width: 390, height: 844 })   // the FAB is the phone's entry point (md:hidden)
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      // Block 47: the record is a tab on the Ranch view — open it; the count stays on the tab's label.
+      await page.locator('[data-audit="ranch-tile"][data-tile="record"]').click({ timeout: 15_000 }).catch(() => {})
       // Block 12 (12.7/12.8): hay left the hub; the record tile counts today's
       // entries and the person line says what was done. Both must follow a save
       // made from this page, without navigating.
@@ -2164,17 +2166,30 @@ async function main() {
     // checks, which measured a surface PK ruled out of existence.
     await section('Block 12 (12.8): Today on the ranch — what a glance at Ranch is for', async () => {
       const text = async (sel: string) => ((await page.locator(sel).first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim()
+      // Block 47: the Ranch view — three numbers read at a glance, each a tap that opens
+      // what is beneath it and closes on a second tap; Cattle, Ground and the record as
+      // tabs on the same page. A number without a record behind it is not painted.
       await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
-      await page.locator('[data-audit="ranch-today"]').waitFor({ timeout: 20_000 }).catch(() => {})
-      const persons = await page.locator('[data-audit="ranch-person"]').evaluateAll(els => els.map(e => ({ user: e.getAttribute('data-user') ?? '', text: (e.textContent ?? '').replace(/\s+/g, ' ').trim() })))
-      const handLine = persons.find(p => p.user === userIdB)
-      record('12.8: one line per person who recorded today — the hand\'s names what they did and when they last did it',
-        persons.length >= 1 && !!handLine && /Fed 1 bale/.test(handLine.text) && /last at \d/.test(handLine.text),
-        `${persons.length} person line(s) · hand: "${(handLine?.text ?? 'MISSING').slice(0, 80)}"`)
-      const since = await text('[data-audit="ranch-since"]')
-      const reviewed = await page.locator('[data-audit="ranch-since"] button').count()
-      record('12.8: the count since you last checked is on the hub with Reviewed beside it',
-        /\d+ entr(y|ies) since you last checked/.test(since) && reviewed === 1, `"${since.slice(0, 60)}" · Reviewed ${reviewed}`)
+      await page.locator('[data-audit="ranch-numbers"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      const painted = await page.locator('[data-audit^="ranch-number-"][data-open]').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('ranch-number-', '')}: ${(e.querySelector('[data-audit$="-value"]')?.textContent ?? '').trim()} ${(e.querySelector('[data-audit$="-word"]')?.textContent ?? '').trim()}`))
+      const url47 = page.url()
+      await page.locator('[data-audit="ranch-number-hay-open"]').click({ timeout: 10_000 }).catch(() => {})
+      const under = (await page.locator('[data-audit="ranch-number-hay-under"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      await page.locator('[data-audit="ranch-number-hay-open"]').click({ timeout: 10_000 }).catch(() => {})
+      const closed = (await page.locator('[data-audit="ranch-number-hay-under"]').count()) === 0
+      const rateHonest = /bales\/day = \d+ days · the rate is \d+ bales over the last \d+ days \(fed on \d+ of them\)/.test(under) || /Not enough feeding recorded/.test(under)
+      record('47: the Ranch view — head, bales on hand with days left, rain vs normal, each painted only from records; a tap on hay opens the arithmetic and names the burn rate and its window (or says not enough feeding recorded), and a second tap closes it',
+        painted.length >= 2 && painted.some(p => p.startsWith('head:')) && painted.some(p => p.startsWith('hay:')) && /counted .* \+ \d+ added − \d+ fed = \d+ on hand/.test(under) && rateHonest && closed,
+        `numbers [${painted.join(' | ')}] · under hay "${under.slice(0, 160)}" · closes ${closed}`)
+      for (const t of ['cattle', 'ground', 'record'] as const) await page.locator(`[data-audit="ranch-tile"][data-tile="${t}"]`).click({ timeout: 10_000 }).catch(() => {})
+      const tabsThere = await page.evaluate(() => ({ url: location.href, cattle: !!document.querySelector('[data-audit="ranch-tab-record"]'), rows: document.querySelectorAll('[data-audit="ranch-record-list"] li').length }))
+      await page.locator('[data-audit="ranch-tile"][data-tile="ground"]').click({ timeout: 10_000 }).catch(() => {})
+      const ground = await page.evaluate(() => ({ groups: document.querySelectorAll('[data-audit="place-group-open"]').length, acres: !!document.querySelector('[data-audit="acres-by-kind"]') }))
+      await page.locator('[data-audit="ranch-tile"][data-tile="cattle"]').click({ timeout: 10_000 }).catch(() => {})
+      const cattleRows = await page.locator('[data-audit="ranch-tab-cattle"] [data-audit="lot-row"]').count()
+      record('47: Cattle, Ground and the record are tabs on the same page — each renders in place and the address never changes; acres by kind sit under Ground',
+        tabsThere.url === url47 && tabsThere.rows >= 1 && ground.groups >= 1 && ground.acres && cattleRows >= 1,
+        `url unchanged ${tabsThere.url === url47} · record rows ${tabsThere.rows} · ground groups ${ground.groups} acres ${ground.acres} · cattle rows ${cattleRows}`)
       // The 6J reachability rule: everything that left the hub is still one tap
       // from where a person would look for it.
       const routes: string[] = []
