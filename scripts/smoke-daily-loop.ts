@@ -1995,11 +1995,15 @@ async function main() {
       await tapAndType('hay-on-hand', '333')
       const stillHere = await sameScreen(url37)
       const states37a = await watchStates(page, 'Sent', 45_000, 'Counted 333 bales')
-      const painted37a = (await page.locator('[data-audit="hay-on-hand"]').first().innerText().catch(() => '')).replace(/,/g, '')
-      const { data: cnt } = await admin.from('events').select('id, payload').eq('user_id', userId).eq('type', 'hay_inventory').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
+      const paintedAtOnce = (await page.locator('[data-audit="hay-on-hand"]').first().innerText().catch(() => '')).replace(/,/g, '')
+      const { data: cnt } = await admin.from('events').select('id, ingested_at, payload').eq('user_id', userId).eq('type', 'hay_inventory').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       const cntBales = ((cnt as { payload?: { bales?: number } } | null)?.payload?.bales) ?? null
+      // The ranch reads the count minus what was fed since that count's day (Block 3), so once the page has
+      // caught up (Block 32's stamp) the tile must paint what the ranch reads — not the raw count.
+      const caught37 = await stampReaches(page, (cnt as { ingested_at?: string } | null)?.ingested_at ?? null, 30_000)
       const routeAfter = ((await (await page.request.get('/api/ranch/hay-on-hand')).json().catch(() => ({}))) as { bales?: number | null }).bales ?? null
-      record('37: hay on hand — tap the number, type, Done: one tap plus the number, no screen change; the count lands and the ranch reads it', stillHere && states37a[0] === 'Saved' && states37a.includes('Sent') && painted37a === '333' && cntBales === 333 && routeAfter === 333, `was ${wasOnHand} · same screen ${stillHere} · [${states37a.join(' → ')}] · painted ${painted37a} · count row ${cntBales} · route ${routeAfter}`)
+      const painted37a = (await page.locator('[data-audit="hay-on-hand"]').first().innerText().catch(() => '')).replace(/,/g, '')
+      record('37: hay on hand — tap the number, type, Done: one tap plus the number, no screen change; the count lands and the tile reads what the ranch reads', stillHere && states37a[0] === 'Saved' && states37a.includes('Sent') && paintedAtOnce === '333' && cntBales === 333 && caught37.ok && routeAfter != null && painted37a === String(routeAfter), `was ${wasOnHand} · same screen ${stillHere} · [${states37a.join(' → ')}] · painted at once ${paintedAtOnce} · count row ${cntBales} · caught up ${caught37.ok} · ranch reads ${routeAfter} · painted then ${painted37a}`)
 
       // A head count, on Cattle.
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
@@ -2014,7 +2018,7 @@ async function main() {
       const states37b = await watchStates(page, 'Sent', 45_000, `61 head`)
       const { data: lotRow } = await admin.from('herd_lots').select('head_count').eq('id', lotId).maybeSingle()
       const { data: anchorRow } = await admin.from('events').select('payload').eq('ranch_id', ranchId).eq('type', 'head_count_set').eq('payload->>lot_id', lotId).order('ingested_at', { ascending: false }).limit(1).maybeSingle()
-      const anchorHead = ((anchorRow as { payload?: { head_count?: number } } | null)?.payload?.head_count) ?? null
+      const anchorHead = ((anchorRow as { payload?: { head_after?: number } } | null)?.payload?.head_after) ?? null
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const paintedHead = (await page.locator('[data-audit="lot-row"]', { hasText: LOT_NAME }).first().locator('[data-audit="lot-head"]').innerText().catch(() => '')).replace(/,/g, '')
       record('37: a head count — tap the number, type, Done: no screen change; the bunch reads it and the record carries the anchor', stillC && states37b[0] === 'Saved' && states37b.includes('Sent') && (lotRow as { head_count?: number } | null)?.head_count === 61 && anchorHead === 61 && paintedHead === '61', `was ${wasHead} · same screen ${stillC} · [${states37b.join(' → ')}] · bunch ${(lotRow as { head_count?: number } | null)?.head_count ?? '?'} · anchor ${anchorHead} · painted after ${paintedHead}`)
@@ -3793,6 +3797,8 @@ async function main() {
       const maps = await page.locator('[data-audit="record-picker"] .leaflet-container, [data-audit="record-place-chips"]').count()
       // One screen, no scrolling: the sheet's panel holds everything without a scrollbar, and the row sits inside the viewport.
       const fits = await page.locator('[data-audit="record-sheet"]').first().evaluate(el => { const panel = el.querySelector('[data-audit="bottom-sheet"]') ?? el; return { scroll: panel.scrollHeight, client: panel.clientHeight } }).catch(() => ({ scroll: -1, client: -1 }))
+      // The sheet slides in; measure once it has settled, not mid-slide.
+      await page.waitForTimeout(700)
       const rowBox = await page.locator('[data-audit="record-actions"]').boundingBox().catch(() => null)
       const vh = page.viewportSize()?.height ?? 0
       const oneScreen = fits.scroll > 0 && fits.scroll <= fits.client + 1 && !!rowBox && rowBox.y >= 0 && rowBox.y + rowBox.height <= vh
@@ -4016,11 +4022,12 @@ async function main() {
       // 1 · Activity entry: Fix opens the correction form; Delete → trash → Undo.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       const entryRow = page.locator(`li[data-id="${entry13}"] [data-audit="row-actions"]`).first()
-      await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowThere13 = await entryRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const where13 = `${page.url().replace(BASE, '')} · row ${rowThere13} · rows ${await page.locator('li[data-id]').count()}`
       const s1 = await hold(page, entryRow)
       await sheet(page).fix.click().catch(() => {})
       const fixOpen1 = await page.locator('[data-audit="correction-reason"], [data-audit="correct-form"]').first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
-      record('13 (entry): hold → Fix lands in the correction form', s1 && fixOpen1 && /#correct$/.test(page.url()), `sheet ${s1} · form ${fixOpen1} · ${page.url().replace(BASE, '')}`)
+      record('13 (entry): hold → Fix lands in the correction form', s1 && fixOpen1 && /#correct$/.test(page.url()), `sheet ${s1} · form ${fixOpen1} · ${page.url().replace(BASE, '')} · [after goto: ${where13}]`)
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s1b = await hold(page, entryRow)
