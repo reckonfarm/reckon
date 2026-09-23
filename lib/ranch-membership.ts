@@ -10,18 +10,42 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // because the ranch lookup came back empty — the ledger row matters more
 // than its scope stamp (the same stance ingest takes with an unstamped
 // device at app/api/ingest/route.ts).
+// ONE lookup per request, not one per read. Twenty-one files call this, and a
+// page calls several of them: measured 2026-09-24 on PK's own ranch, the Ranch
+// page asked ranch_members this same question SIX times in one render — six of
+// its twenty-five round-trips — and Cattle and Markets three each.
+//
+// The memo hangs off the client rather than a request store, because the client
+// IS the request: `createClient()` builds one per request from that request's
+// cookies, so a new request arrives with a new client and a cold memo, with no
+// plumbing to thread and nothing to reset. A long-lived client — a script, a
+// cron — keeps its answer for its life, which is what you want: membership does
+// not change under a running job. The PROMISE is stored, not the value, so two
+// reads that start together share one query instead of racing; a rejected
+// lookup is dropped, so a failure is never cached.
+const ranchIdMemo = new WeakMap<SupabaseClient, Map<string, Promise<string | null>>>()
+
 export async function resolveRanchId(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<string | null> {
-  const { data } = await supabase
-    .from('ranch_members')
-    .select('ranch_id')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  return data?.ranch_id ?? null
+  let byUser = ranchIdMemo.get(supabase)
+  if (!byUser) { byUser = new Map(); ranchIdMemo.set(supabase, byUser) }
+  const seen = byUser.get(userId)
+  if (seen) return seen
+  const pending = (async () => {
+    const { data } = await supabase
+      .from('ranch_members')
+      .select('ranch_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    return (data?.ranch_id as string | undefined) ?? null
+  })()
+  byUser.set(userId, pending)
+  pending.catch(() => byUser!.delete(userId))
+  return pending
 }
 
 export interface Ranch {

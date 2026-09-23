@@ -63,20 +63,30 @@ globalThis.fetch = (async (input: Parameters<typeof realFetch>[0], init?: Parame
 
 const admin = createClient(URL_, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } })
 
-async function ownerSession(): Promise<{ client: SupabaseClient; userId: string; accessToken: string }> {
+// A fresh client per page, as a request gets: `createClient()` builds one from
+// the request's cookies, so anything memoised on the client (resolveRanchId) is
+// cold at the start of every page. One client for the whole probe would hand
+// page two a warm memo and undercount its round-trips.
+async function pageClient(session: { access_token: string; refresh_token: string }): Promise<SupabaseClient> {
+  const c = createClient(URL_, ANON, { auth: { autoRefreshToken: false, persistSession: false } })
+  await c.auth.setSession(session)
+  return c
+}
+
+async function ownerSession(): Promise<{ client: SupabaseClient; userId: string; accessToken: string; session: { access_token: string; refresh_token: string } }> {
   const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: OWNER })
   const hash = link.data?.properties?.hashed_token
   if (!hash) throw new Error(`generateLink: ${link.error?.message ?? 'no token'}`)
   const client = createClient(URL_, ANON, { auth: { autoRefreshToken: false, persistSession: false } })
   const { data, error } = await client.auth.verifyOtp({ token_hash: hash, type: 'magiclink' })
   if (error || !data.session) throw new Error(`verifyOtp: ${error?.message ?? 'no session'}`)
-  return { client, userId: data.session.user.id, accessToken: data.session.access_token }
+  return { client, userId: data.session.user.id, accessToken: data.session.access_token, session: { access_token: data.session.access_token, refresh_token: data.session.refresh_token } }
 }
 
 const ms = (n: number) => `${n.toFixed(0)} ms`
 
 // ── Half one: what the server asks for, per page ────────────────────────────
-async function reads(s: SupabaseClient, userId: string) {
+async function reads(s: SupabaseClient, userId: string, session: { access_token: string; refresh_token: string }) {
   const { ranchView } = await import('../lib/ranch-view')
   const { getRanchLots, lotPurposeSupported } = await import('../lib/herd-lots')
   const { lastWorkByLot, whereByLot } = await import('../lib/ranch-summary')
@@ -92,42 +102,46 @@ async function reads(s: SupabaseClient, userId: string) {
   const lotIds = lots.map(l => l.id)
 
   // Each entry is one read the page awaits, named as the page names it.
+  // Each read takes the CURRENT client (rebound per page below), not the one
+  // that was in scope when this table was written.
+  const c = () => s
   const page: Record<string, [string, () => Promise<unknown>][]> = {
     Ranch: [
-      ['ledgerThrough', () => ledgerThrough(s)],
-      ['ranchView', () => ranchView(s, userId)],
-      ['getRanchLots', () => getRanchLots(s, userId)],
-      ['entriesToday', () => entriesToday(s)],
-      ['listActivity(page 1)', () => listActivity(s, userId, {}, null)],
-      ['listWork(60)', () => listWork(s, { limit: 60 })],
-      ['lastWorkByLot', () => lastWorkByLot(s, lotIds)],
-      ['whereByLot', () => whereByLot(s, lots)],
-      ['lotPurposeSupported', () => lotPurposeSupported(s)],
-      ['readFollowed', () => readFollowed(s, userId)],
+      ['ledgerThrough', () => ledgerThrough(c())],
+      ['ranchView', () => ranchView(c(), userId)],
+      ['getRanchLots', () => getRanchLots(c(), userId)],
+      ['entriesToday', () => entriesToday(c())],
+      ['listActivity(page 1)', () => listActivity(c(), userId, {}, null)],
+      ['listWork(60)', () => listWork(c(), { limit: 60 })],
+      ['lastWorkByLot', () => lastWorkByLot(c(), lotIds)],
+      ['whereByLot', () => whereByLot(c(), lots)],
+      ['lotPurposeSupported', () => lotPurposeSupported(c())],
+      ['readFollowed', () => readFollowed(c(), userId)],
     ],
     Cattle: [
-      ['getRanchLots', () => getRanchLots(s, userId)],
-      ['lastWorkByLot', () => lastWorkByLot(s, lotIds)],
-      ['whereByLot', () => whereByLot(s, lots)],
-      ['lotPurposeSupported', () => lotPurposeSupported(s)],
-      ['readFollowed', () => readFollowed(s, userId)],
+      ['getRanchLots', () => getRanchLots(c(), userId)],
+      ['lastWorkByLot', () => lastWorkByLot(c(), lotIds)],
+      ['whereByLot', () => whereByLot(c(), lots)],
+      ['lotPurposeSupported', () => lotPurposeSupported(c())],
+      ['readFollowed', () => readFollowed(c(), userId)],
     ],
     Today: [
-      ['ledgerThrough', () => ledgerThrough(s)],
-      ['getRanchMap', () => getRanchMap(s, userId)],
-      ['getHayLedger', () => getHayLedger(s, {})],
-      ['entriesToday', () => entriesToday(s)],
-      ['listWork(20)', () => listWork(s, { limit: 20 })],
+      ['ledgerThrough', () => ledgerThrough(c())],
+      ['getRanchMap', () => getRanchMap(c(), userId)],
+      ['getHayLedger', () => getHayLedger(c(), {})],
+      ['entriesToday', () => entriesToday(c())],
+      ['listWork(20)', () => listWork(c(), { limit: 20 })],
     ],
     Markets: [
-      ['getRanchLots', () => getRanchLots(s, userId)],
-      ['readFollowed', () => readFollowed(s, userId)],
-      ['getRainLedger', () => getRainLedger(s)],
+      ['getRanchLots', () => getRanchLots(c(), userId)],
+      ['readFollowed', () => readFollowed(c(), userId)],
+      ['getRainLedger', () => getRainLedger(c())],
     ],
   }
 
   for (const [name, list] of Object.entries(page)) {
     console.log(`\n── ${name} ─────────────────────────────────────────────`)
+    s = await pageClient(session)   // a cold client, as the request gets
     const before = calls.length
     const t0 = performance.now()
     for (const [label, run] of list) {
@@ -218,8 +232,8 @@ async function browser(accessToken: string) {
 
 async function main() {
   console.log(`\nDryline — what the pages cost  (${BASE}, signed in as ${OWNER})`)
-  const { client, userId, accessToken } = await ownerSession()
-  if (ONLY !== 'browser') await reads(client, userId)
+  const { client, userId, accessToken, session } = await ownerSession()
+  if (ONLY !== 'browser') await reads(client, userId, session)
   if (ONLY !== 'reads') await browser(accessToken)
   console.log('')
 }
