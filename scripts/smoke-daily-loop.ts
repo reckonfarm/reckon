@@ -3995,11 +3995,12 @@ async function main() {
       // 1 · Activity entry: Fix opens the correction form; Delete → trash → Undo.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       const entryRow = page.locator(`li[data-id="${entry13}"] [data-audit="row-actions"]`).first()
-      await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
+      const rowThere13 = await entryRow.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const where13 = `${page.url().replace(BASE, '')} · row ${rowThere13} · rows ${await page.locator('li[data-id]').count()}`
       const s1 = await hold(page, entryRow)
       await sheet(page).fix.click().catch(() => {})
       const fixOpen1 = await page.locator('[data-audit="correction-reason"], [data-audit="correct-form"]').first().waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
-      record('13 (entry): hold → Fix lands in the correction form', s1 && fixOpen1 && /#correct$/.test(page.url()), `sheet ${s1} · form ${fixOpen1} · ${page.url().replace(BASE, '')}`)
+      record('13 (entry): hold → Fix lands in the correction form', s1 && fixOpen1 && /#correct$/.test(page.url()), `sheet ${s1} · form ${fixOpen1} · ${page.url().replace(BASE, '')} · [after goto: ${where13}]`)
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       await entryRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s1b = await hold(page, entryRow)
