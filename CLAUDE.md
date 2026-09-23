@@ -50,9 +50,9 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 - **A check reads what is actually there — the right page, commit and deploy, and the text as PAINTED.** Identity
   first, then content; one that cannot confirm its subject reports that, never a pass. A transform that shouts a
   word makes it a different word to a person and to a check, so painted strings are pinned to their originals.
-  Every suite prints its commit and BASE beside its counts (`suiteIdentity()`); counts without their commit are a
-  partial, not a result. **A check that can't pass is a capability gap:** name it every run, never a silent skip.
-  Standing gap: the hay marketplace is off in production (`/api/hay` 404s). Only PK's two flakes skip (`flaky()`).
+  Every suite prints its commit and BASE beside its counts (`suiteIdentity()`); counts without it are a partial.
+  **A check that can't pass is a capability gap:** named every run, never a silent skip — standing gap, the hay
+  marketplace is off in production (`/api/hay` 404s). Only PK's two flakes skip (`flaky()`).
 - **Suite tiers:** UI → fast tier only. Records or sync → that block's own sections (`ONLY=`) plus `rls-test`; RLS
   or scoping → those, always. The full loop runs ONCE before a migration and ONCE at the end of a working day,
   never as the gate on an ordinary block. From a worktree (`scripts/suite-worktree.sh <sha>`, `BASE=` the deploy,
@@ -60,8 +60,7 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 - **Never poll a run.** One at a time: start it, wait, report once — the summary line and the reds, never a log
   body. Fix a check twice, then stop running the loop to find out; `ONLY=` that section. Three reruns on one block
   is a report, not a fourth.
-- **One build loop, two or three rulings.** One commit and one push, never push-wait-fix-push; split anything
-  bigger, ship the first slice, say what's left.
+- **One build loop, two or three rulings.** One commit, one push, never push-wait-fix-push; split anything bigger.
 - **Default is merge on green** (`merge --no-ff`, push main). **These stop for PK:** migrations changing how a
   record is written, refused or reconciled; changes or backfills to production rows; anything touching the outbox,
   sync, RLS or ranch isolation; deleting at scale. Say so at the top of the report and wait — and a branch that went
