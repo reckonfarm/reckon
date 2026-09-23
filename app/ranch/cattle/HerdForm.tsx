@@ -1,5 +1,6 @@
 'use client'
 
+import { todayKey } from '@/lib/jobs/format'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -58,6 +59,7 @@ interface LotPayload {
   sale_windows: { month: string }[]
   purpose?: LotPurpose
   created_at?: string
+  as_of?: string      // Block 36: the day the opening count was true (a new bunch only)
 }
 
 function formatMonth(ym: string): string {
@@ -102,6 +104,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
   // Block 14: where a NEW bunch is. Block 25b: and where an existing one is — picking
   // a different place on an edit records a MOVE there, through the outbox.
   const [dPlace, setDPlace] = useState<string>('')
+  const [dAsOf, setDAsOf] = useState<string>('')   // Block 36: '' = today
   const [placeOptions, setPlaceOptions] = useState<{ id: string; name: string }[] | null>(null)
   useEffect(() => {
     if (editing === null || placeOptions !== null) return
@@ -154,7 +157,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false); setDPurpose(''); setDPlace('')
   }
 
-  function openAdd() { resetDraft(); setErrorMsg(''); setEditing('new') }
+  function openAdd() { resetDraft(); setDAsOf(''); setErrorMsg(''); setEditing('new') }
 
   function openEdit(lot: Lot) {
     setDName(lot.name ?? '')
@@ -186,6 +189,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
       head_count: headNum,
       avg_weight: dWeight.trim() === '' ? null : weightNum,
       ...(editing === 'new' && dPlace ? { place_id: dPlace } : {}),
+      ...(editing === 'new' && dAsOf ? { as_of: dAsOf } : {}),
       weight_unit: dUnit,
       frame: dFrame,
       weaned: dWeaned,
@@ -339,6 +343,13 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
         <div className="mt-6">
           <Counter label="Head count" value={dHead} onChange={setDHead} audit="lot-head-count" min={0} max={20000} />
         </div>
+        {/* Block 36: a bunch can carry an opening date — the day that count was true,
+            so a bunch put on the books late opens on the right day. Today unless changed. */}
+        {editing === 'new' && (
+          <label className="mt-6 block font-dm-sans text-[16px] font-semibold text-ink">As of
+            <input type="date" value={dAsOf} max={todayKey()} onChange={e => setDAsOf(e.target.value)} placeholder={todayKey()} className="mt-1 block min-h-[48px] w-full rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink" data-audit="lot-as-of" />
+          </label>
+        )}
 
         <div className={`mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 ${editing === 'new' ? 'hidden' : ''}`}>
           {purposeSupported && editing !== 'new' && (
