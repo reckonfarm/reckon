@@ -51,16 +51,18 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 - **Probes are read-only; never run a migration.** Write it, validate it with `npx tsx scripts/migrate-local.ts
   supabase/migrations/NNN_name.sql`, and hand PK `cat supabase/migrations/NNN_name.sql | pbcopy`.
 - **A check reads what is actually there — the right page, commit and deploy, and the text as PAINTED.** Identity
-  first, then content; a check that cannot confirm its subject reports that, never a pass. Rendering changes what
-  every reader receives, checks included: a transform that shouts a word makes it a different word to a person and
-  to a check, so painted strings are pinned to their originals wherever they are shown.
-  Every suite and harness prints its commit and BASE beside its counts on the summary line (`suiteIdentity()`), and
-  counts without their commit are a partial, not a result — in the run's output and in the report to PK.
-- **A check that can't pass is a capability gap:** name it every run, never a silent skip. Standing gap: the hay
-  marketplace is off in production (`/api/hay` 404s). Only PK's two watched flakes may skip (`flaky()`).
-- **Suite tiers:** UI-only → daily loop once on the preview. Records or sync → all three. RLS or scoping → all
-  three, always. Run from a worktree (`scripts/suite-worktree.sh <sha>`, `BASE=` the preview, `VERCEL_BYPASS` from
-  `e2e/.env.e2e`) — one worktree per run, never two daily loops at once, and local runs prove nothing.
+  first, then content; one that cannot confirm its subject reports that, never a pass. A transform that shouts a
+  word makes it a different word to a person and to a check, so painted strings are pinned to their originals.
+  Every suite prints its commit and BASE beside its counts (`suiteIdentity()`); counts without their commit are a
+  partial, not a result. **A check that can't pass is a capability gap:** name it every run, never a silent skip.
+  Standing gap: the hay marketplace is off in production (`/api/hay` 404s). Only PK's two flakes skip (`flaky()`).
+- **Suite tiers:** UI → fast tier only. Records or sync → that block's own sections (`ONLY=`) plus `rls-test`; RLS
+  or scoping → those, always. The full loop runs ONCE before a migration and ONCE at the end of a working day,
+  never as the gate on an ordinary block. From a worktree (`scripts/suite-worktree.sh <sha>`, `BASE=` the deploy,
+  `VERCEL_BYPASS` from `e2e/.env.e2e`); local runs prove nothing.
+- **Never poll a run.** One at a time: start it, wait, report once — the summary line and the reds, never a log
+  body. Fix a check twice, then stop running the loop to find out; `ONLY=` that section. Three reruns on one block
+  is a report, not a fourth.
 - **One build loop, two or three rulings.** One commit and one push, never push-wait-fix-push; split anything
   bigger, ship the first slice, say what's left.
 - **Default is merge on green** (`merge --no-ff`, push main). **These stop for PK:** migrations changing how a
@@ -69,7 +71,10 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
   a branch that went green and stopped stays on every report's open list until it merges or PK kills it. Nothing
   green sits silently.
 - **Decide what you can decide; state the decision.** Save real questions for anything that changes what a record
-  means. **Reports are short:** what changed, the counts with their commit, the tip, what to check on production.
+  means. **Reports are short:** what changed, the counts with their commit, what is live, what needs PK — the live
+  lines batched two or three merges at a time, never his own order restated back to him.
+- **A block ends in two lines for the next session:** what is on main, what is on a branch, what waits on PK. PK
+  starts a fresh session per block — this file is the state, the conversation is not.
 - **Adding a doctrine means merging or removing one. This file does not grow.** Read in full every session, so
   everything in it must still govern; how a rule was learned belongs in the commit that fixed it.
 
