@@ -1,5 +1,6 @@
 'use client'
 
+import { PLACE_KINDS, DEFAULT_KIND, MAX_NAME } from '@/lib/places/kinds'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, AttributionControl, Tooltip, Circle, CircleMarker, Marker, Polygon, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
@@ -145,14 +146,19 @@ function CornerPlacer({ active, onCorner }: { active: boolean; onCorner: (p: Lat
   useEffect(() => {
     if (!active) return
     const el = map.getContainer()
+    // Block 34 (ruling 1): a tap on a control — Leaflet's zoom, the pill, any
+    // button or link — is that control's, never a corner on the ground beneath.
+    // The audit's two zoom taps placed two corners under the + and −.
+    const onControl = (e: PointerEvent) => !!(e.target as Element | null)?.closest?.('.leaflet-control-container, .leaflet-control, button, a, input, select, [data-audit="map-pill"]')
     const onDown = (e: PointerEvent) => {
+      if (onControl(e)) { down.current = null; return }
       down.current = { x: e.clientX, y: e.clientY }
       moved.current = false
     }
     const onUp = (e: PointerEvent) => {
       const d = down.current
       down.current = null
-      if (!d || moved.current) return
+      if (!d || moved.current || onControl(e)) return
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > TAP_SLOP_PX) return
       const rect = el.getBoundingClientRect()
       const pt = map.containerPointToLatLng([e.clientX - rect.left, e.clientY - rect.top])
@@ -286,7 +292,10 @@ export default function PlaceMapClient({
   track,
   onShape,
   onCancel,
-  useLabel = 'Use this shape',
+  useLabel = 'Save the place',
+  nameDefault = '',
+  kindDefault = DEFAULT_KIND,
+  saveError = null,
   markers = [],
   onPlaceTap,
   overview = false,
@@ -297,6 +306,9 @@ export default function PlaceMapClient({
   const [basemap, setBasemap] = useState<Basemap>('satellite')
   const [followUser, setFollowUser] = useState(true)
   const [corners, setCorners] = useState<LatLng[]>([])
+  // Block 34 (ruling 2): the two facts a place needs, asked on the shape itself.
+  const [drawName, setDrawName] = useState(nameDefault)
+  const [drawKind, setDrawKind] = useState(kindDefault)
   const [note, setNote] = useState<string | null>(null)
   const [here, setHere] = useState<LatLng | null>(null)
   const [flyTo, setFlyTo] = useState<{ p: LatLng; n: number } | null>(null)
@@ -387,10 +399,12 @@ export default function PlaceMapClient({
     )
   }
 
-  const useShape = () => {
+  const finishShape = () => {
     const v = validateRing([...corners, corners[0]])
     if (!v.ok) { setNote(v.error); return }
-    onShape?.(v.ring, v.acres)
+    const trimmed = drawName.trim()
+    if (!trimmed) { setNote('A place needs a name.'); return }
+    onShape?.(v.ring, v.acres, trimmed, drawKind)
   }
 
   return (
@@ -655,15 +669,38 @@ export default function PlaceMapClient({
               </>
             )}
           </p>
-          <button
-            type="button"
-            onClick={useShape}
-            disabled={corners.length < 3}
-            className="mt-2 min-h-[52px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-40"
-            data-audit="draw-use"
-          >
-            {useLabel}
-          </button>
+          {/* Block 34 (ruling 2): from three corners on, the shape is finished enough to
+              name and save right here — no separate "Use this shape" step, no second
+              screen. The kind is preselected from where you entered; one tap changes it. */}
+          {corners.length >= 3 && (
+            <div className="mt-2" data-audit="draw-finish">
+              <div className="flex gap-2">
+                <input
+                  value={drawName}
+                  onChange={e => { setNote(null); setDrawName(e.target.value) }}
+                  maxLength={MAX_NAME}
+                  placeholder="Name this place"
+                  aria-label="Name"
+                  enterKeyHint="done"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); finishShape() } }}
+                  className="min-h-[48px] min-w-0 flex-1 rounded-lg border border-forest-green/25 px-3 font-dm-sans text-[17px] text-ink"
+                  data-audit="draw-name"
+                />
+                <select value={drawKind} onChange={e => setDrawKind(e.target.value)} aria-label="What kind of place" className="min-h-[48px] shrink-0 rounded-lg border border-forest-green/25 bg-white px-2 font-dm-sans text-[16px] text-ink" data-audit="draw-kind">
+                  {PLACE_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                </select>
+              </div>
+              {saveError && <p role="alert" className="mt-2 font-dm-sans text-[15px] font-semibold" style={{ color: warning }} data-audit="draw-save-error">{saveError}</p>}
+              <button
+                type="button"
+                onClick={finishShape}
+                className="mt-2 min-h-[52px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream"
+                data-audit="draw-save"
+              >
+                {useLabel}
+              </button>
+            </div>
+          )}
           <div className="mt-2 flex gap-2">
             <button
               type="button"

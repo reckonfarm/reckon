@@ -7,7 +7,7 @@ import { getRanchLotsIncludingRetired } from './herd-lots'
 import { lotLabel, type Lot } from './herd'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './manual-log'
 import { GROUP_ACTION_LABELS, GROUP_ACTION_TYPE, isGroupAction } from './cattle/kinds'
-import { fmtDay, fmtTime, plural, RANCH_TZ } from './jobs/format'
+import { fmtDay, fmtTime, plural, dayKey, RANCH_TZ } from './jobs/format'
 import { live } from './ledger-effective'
 import { liveOnly } from './trash'
 import { droughtAlertLine } from './drought-words'
@@ -215,6 +215,11 @@ export async function placeEntryCounts(supabase: SupabaseClient, placeId: string
 }
 
 // ── The list: keyset pagination on (ts desc, id desc); filters; the ranch's rows only ──
+// A few days at a time (Block 37, ruling 3). FETCH_ROWS bounds one read; a day
+// with more rows than that is still one page, ended by the cap.
+export const DAYS_PER_PAGE = 3
+const FETCH_ROWS = 400
+
 export async function listActivity(supabase: SupabaseClient, userId: string, filters: ActivityFilters, cursor?: string | null): Promise<ActivityPage | null> {
   const ranchId = await resolveRanchId(supabase, userId)
   if (!ranchId) return null
@@ -223,7 +228,7 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
   // the record applies; superseded and voided rows still belong here.
   let q = live(supabase.from('events').select(ACTIVITY_COLS))
     .eq('ranch_id', ranchId).in('type', [...ACTIVITY_TYPES])
-    .order('ts', { ascending: false }).order('id', { ascending: false }).limit(PAGE_SIZE + 1)
+    .order('ts', { ascending: false }).order('id', { ascending: false }).limit(FETCH_ROWS + 1)
   if (filters.actor) q = q.eq('user_id', filters.actor)
   if (filters.place) q = q.or(placePredicate(filters.place))
   if (filters.lot) q = q.eq('payload->>herd_lot_id', filters.lot)
@@ -237,9 +242,19 @@ export async function listActivity(supabase: SupabaseClient, userId: string, fil
   const { data } = await q
   // 12.9: an alert that cannot say what it is does not show — see alertLine.
   const all = ((data ?? []) as ActivityRow[]).filter(r => r.type !== 'alert' || alertLine(r.payload) !== null)
-  const rows = all.slice(0, PAGE_SIZE)
+  // Block 37 (ruling 3): the page is a few DAYS, not fifty rows — a list longer
+  // than a screen is a failure to group, and a busy day never splits across
+  // pages. The first DAYS_PER_PAGE ranch days present are shown whole; the
+  // cursor (ts|id) stays what it was, so more days are one tap away.
+  let cut = all.length
+  const days = new Set<string>()
+  for (let i = 0; i < all.length; i++) {
+    const d = dayKey(all[i].ts)
+    if (!days.has(d)) { if (days.size === DAYS_PER_PAGE) { cut = i; break }; days.add(d) }
+  }
+  const rows = all.slice(0, Math.min(cut, FETCH_ROWS))
   const last = rows[rows.length - 1]
-  const nextCursor = all.length > PAGE_SIZE && last ? `${last.ts}|${last.id}` : null
+  const nextCursor = all.length > rows.length && last ? `${last.ts}|${last.id}` : null
   return { rows, names: await namesFor(supabase, userId, rows), nextCursor, ranchId, filters }
 }
 
