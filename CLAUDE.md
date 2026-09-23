@@ -20,11 +20,9 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 ## How records behave
 
 - **A guard may refuse to interpret, grade or conclude. It may never discard what a person did.** Save the raw
-  thing, downgrade the claim, say what is missing. Recording stops when the operator stops it, never on a failed
-  guard.
+  thing, downgrade the claim, say what is missing. Recording stops when the operator stops it, never on a guard.
 - **A record someone made outranks work still being made.** Out of room, the order is pending record → live tally →
-  ride draft, given up one at a time, cheapest first. `lib/local-space.ts` owns it and is the only thing that gives
-  anything up; nothing else is ever sacrificed.
+  ride draft, one at a time, cheapest first. `lib/local-space.ts` owns it and is the only thing that gives any up.
 - **Never a retry button.** Records retry themselves on every wake, forever, and nothing ages out.
 - **Hold 400 ms → Fix / Delete,** no confirmation dialogs. Delete goes to the trash with a ten-second Undo, and
   nothing may ever cover an Undo — every floating element yields to it. Removing a person is the one permanent
@@ -38,8 +36,7 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
   numbers, names and outcomes. An icon may have a short word beside it; a number may never become an icon.
 - **Delete any text that restates its control, explains an obvious field, or says what someone just did in more
   than one line.** Two exceptions: a refusal, and a number stating its scope, units and age when those change its
-  meaning ("recorded 6 days ago", never a paragraph of caveats) — so every current condition carries a visible
-  as-of, and a summary is never more confident than its detail.
+  meaning ("recorded 6 days ago") — every condition carries a visible as-of, no summary outruns its detail.
 - **Every UI work order answers:** what typing disappeared · what is visible immediately · what is on tap · what
   got deleted. Hiding something behind an icon is not simplification if the job got harder.
 - 48 px targets, 17 px body, one column, existing tokens only. Save is full width at the bottom and says what it
@@ -48,8 +45,8 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 
 ## Standing rules for the AI
 
-- **Probes are read-only; never run a migration.** Write it, validate it with `npx tsx scripts/migrate-local.ts
-  supabase/migrations/NNN_name.sql`, and hand PK `cat supabase/migrations/NNN_name.sql | pbcopy`.
+- **Probes are read-only; never run a migration.** Write it, validate with `npx tsx scripts/migrate-local.ts
+  supabase/migrations/NNN_name.sql`, hand PK `cat supabase/migrations/NNN_name.sql | pbcopy`.
 - **A check reads what is actually there — the right page, commit and deploy, and the text as PAINTED.** Identity
   first, then content; one that cannot confirm its subject reports that, never a pass. A transform that shouts a
   word makes it a different word to a person and to a check, so painted strings are pinned to their originals.
@@ -66,10 +63,9 @@ opened from a phone's home screen in a corral with one bar. Recon → report →
 - **One build loop, two or three rulings.** One commit and one push, never push-wait-fix-push; split anything
   bigger, ship the first slice, say what's left.
 - **Default is merge on green** (`merge --no-ff`, push main). **These stop for PK:** migrations changing how a
-  record is written, refused or reconciled; changes or backfills to existing production rows; anything touching the
-  outbox, sync, RLS or ranch isolation; deleting or retiring at scale. Say so at the top of the report, and wait — and
-  a branch that went green and stopped stays on every report's open list until it merges or PK kills it. Nothing
-  green sits silently.
+  record is written, refused or reconciled; changes or backfills to production rows; anything touching the outbox,
+  sync, RLS or ranch isolation; deleting at scale. Say so at the top of the report and wait — and a branch that went
+  green and stopped stays on every report's open list until it merges or PK kills it. Nothing green sits silently.
 - **Decide what you can decide; state the decision.** Save real questions for anything that changes what a record
   means. **Reports are short:** what changed, the counts with their commit, what is live, what needs PK — the live
   lines batched two or three merges at a time, never his own order restated back to him.
