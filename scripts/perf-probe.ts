@@ -155,12 +155,14 @@ async function reads(s: SupabaseClient, userId: string) {
 async function browser(accessToken: string) {
   const { chromium } = await import('@playwright/test')
   const BYPASS = process.env.VERCEL_BYPASS ?? ''
-  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: OWNER })
-  const hash = link.data?.properties?.hashed_token
-  if (!hash) throw new Error('generateLink (browser): no token')
   void accessToken
 
   for (const slow of process.env.THROTTLE === '0' ? [false] : [false, true]) {
+    // A magic link is single-use: each pass mints its own, or the second pass
+    // measures the sign-in page and calls every control missing.
+    const link = await admin.auth.admin.generateLink({ type: 'magiclink', email: OWNER })
+    const hash = link.data?.properties?.hashed_token
+    if (!hash) throw new Error('generateLink (browser): no token')
     const b = await chromium.launch()
     const ctx = await b.newContext({
       baseURL: BASE,
@@ -177,6 +179,8 @@ async function browser(accessToken: string) {
     // Sign in through the app's own callback, exactly as a person does.
     await page.goto(`/auth/callback?token_hash=${hash}&type=magiclink&next=/today`, { waitUntil: 'domcontentloaded' })
     await page.waitForURL(u => !u.pathname.startsWith('/auth'), { timeout: 30_000 }).catch(() => {})
+    // Identity before content: a pass that is not signed in measures /signin.
+    if (/\/signin/.test(page.url())) { console.log(`   NOT SIGNED IN (${page.url().replace(BASE, '')}) — this pass measures nothing`); await b.close(); continue }
 
     console.log(`\n── browser ${slow ? '· slow phone (4× CPU, 1.6 Mbps, 150 ms)' : '· as fast as this machine goes'} ──`)
     console.log(`   page            TTFB      FCP      LCP   blocked   usable   JS`)
