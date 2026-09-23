@@ -1,5 +1,6 @@
 import { lotToMarsKey, LOT_CLASS_LABELS, lotLabel as lotName, type Lot, type LotClass } from './herd'
 import type { ResolveResult, RankedBarn, MarsPriceRow, ResolveTier } from './barn-resolver'
+import type { PriceHistoryRow } from './trend'
 import { isThin } from './market-scope'
 import { DISCOVERY_RADIUS_MI, DISTANCE_BASIS } from './barn-geo'
 
@@ -124,6 +125,8 @@ function lotLabel(lot: Lot): string {
   return `${lotName(lot)} · ${lot.head_count} head · ${lot.avg_weight == null ? 'no weight set' : `${lot.avg_weight} ${lot.weight_unit}`}`
 }
 
+const fmtShortDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
 interface Match { value: number; source: ValuationSource; exact: boolean }
 
 // Best match for a lot across the pricing barns: exact (frame contains + weight bracket) first,
@@ -204,7 +207,7 @@ function matchLot(lot: Lot, barns: RankedBarn[]): Match | null {
   return null
 }
 
-export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): HerdEstimate {
+export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult, history: PriceHistoryRow[] | null = null): HerdEstimate {
   const lots = herd.lots ?? []
   const pricingBarns = resolved.local // LOCAL barns only (honest basis)
   const perLot: LotValuation[] = []
@@ -225,7 +228,20 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
       perLot.push({ lotId: lot.id, label, value: null, reason, source: null, head_count: lot.head_count, avg_weight_lb: wLb, thin: false, value_low: null, value_high: null })
       continue
     }
-    const m = matchLot(lot, pricingBarns)
+    let m = matchLot(lot, pricingBarns)
+    let fromPrior: string | null = null
+    if (!m && history?.length) {
+      // Block 40b: no row for this class on the fresh report — the last report
+      // at the same barn that had one prices the lot, labeled with its date.
+      for (const barn of pricingBarns) {
+        const priors = history.filter(h => h.slug_id === barn.slug_id && h.report_date < barn.report_date).sort((a, b) => b.report_date.localeCompare(a.report_date)).slice(0, 8)
+        for (const p of priors) {
+          const pm = matchLot(lot, [{ ...barn, rows: p.rows, report_date: p.report_date }])
+          if (pm) { m = pm; fromPrior = `no ${LOT_CLASS_LABELS[lot.class].toLowerCase()} sold at ${barn.town} ${fmtShortDay(barn.report_date)} — priced off the ${fmtShortDay(p.report_date)} report`; break }
+        }
+        if (m) break
+      }
+    }
     if (!m) {
       perLot.push({
         lotId: lot.id, label, value: null,
@@ -240,7 +256,7 @@ export function estimateHerd(herd: { lots: Lot[] }, resolved: ResolveResult): He
     const hi = m.source.avg_price_max ?? m.source.avg_price
     perLot.push({
       lotId: lot.id, label, value: m.value,
-      reason: m.exact ? null : 'class average — no exact frame/weight bracket this week',
+      reason: fromPrior ?? (m.exact ? null : 'class average — no exact frame/weight bracket this week'),
       source: m.source, head_count: lot.head_count, avg_weight_lb: wLb, thin,
       value_low: thin ? valueOf(m.source.price_basis, lo, wLb, lot.head_count) : null,
       value_high: thin ? valueOf(m.source.price_basis, hi, wLb, lot.head_count) : null,
