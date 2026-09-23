@@ -3388,9 +3388,11 @@ async function main() {
             await pb.locator('li[data-id], [data-audit="mark-reviewed"]').first().waitFor({ timeout: 15_000 }).catch(() => {})
             const next = pb.locator('a[href*="cursor="]').first()
             if (!(await next.count())) break
-            const was = await pb.locator('li[data-id]').first().getAttribute('data-id').catch(() => null)
-            await next.click()
-            await pb.waitForFunction((w: string | null) => document.querySelector('li[data-id]')?.getAttribute('data-id') !== w, was, { timeout: 10_000 }).catch(() => {})
+            // The pager's own href, opened directly: what matters here is Reviewed on the last
+            // page, and a tap on a link at the foot of a 50-row page turned nothing in four loops.
+            const href = await next.getAttribute('href')
+            if (!href) break
+            await pb.goto(href, { waitUntil: 'domcontentloaded' })
           }
         }
         let why29 = ''
