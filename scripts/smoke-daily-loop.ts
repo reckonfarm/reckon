@@ -2090,6 +2090,43 @@ async function main() {
       record('37: Activity shows three days at a time — a busy day never splits, and More days is one tap away to the next three', page1Days.length === 3 && rows1 > 0 && hasMore && /More days/.test(moreText) && page2Days.length >= 1 && page2Days.length <= 3 && disjoint, `page 1 days [${page1Days.join(', ')}] · ${rows1} rows · "${moreText}" · page 2 days [${page2Days.join(', ')}] · disjoint ${disjoint}`)
     })
 
+    // ── Block 34: drawing a place ───────────────────────────────────────────
+    // PK's falsifier: draw a four-corner pasture, tapping zoom twice along the
+    // way. Four corners, not six, and it saves from the shape itself — the name
+    // and Save on the finished shape, no "Use this shape", no second screen.
+    // Five taps: four corners and Save.
+    await section('Block 34: drawing a place', async () => {
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-draw-open"]').first().click({ timeout: 20_000 })
+      const mapEl = page.locator('[data-audit="place-draw"] .leaflet-container').first()
+      await mapEl.waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(1_500)   // tiles and the fit settle; a corner placed mid-fit would move
+      const box = (await mapEl.boundingBox())!
+      const corner = async (fx: number, fy: number) => { await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy); await page.waitForTimeout(250) }
+      const zoomIn = page.locator('[data-audit="place-draw"] .leaflet-control-zoom-in').first()
+      const zoomThere = (await zoomIn.count()) === 1
+      await corner(0.3, 0.3)
+      await corner(0.7, 0.3)
+      if (zoomThere) { await zoomIn.click(); await page.waitForTimeout(600) }   // zoom tap 1 — zooms, places nothing
+      await corner(0.7, 0.7)
+      if (zoomThere) { await zoomIn.click(); await page.waitForTimeout(600) }   // zoom tap 2
+      await corner(0.3, 0.7)
+      const status = (await page.locator('[data-audit="draw-status"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const cornersSaid = parseInt(status.match(/(\d+) corners?/)?.[1] ?? '0', 10)
+      const finishOnShape = await page.locator('[data-audit="place-draw"] [data-audit="draw-finish"]').count()
+      const useThisShape = await page.getByRole('button', { name: 'Use this shape' }).count()
+      const kindPreselected = await page.locator('[data-audit="draw-kind"]').inputValue().catch(() => '')
+      const name34 = `${PREFIX} 34 drawn pasture`
+      await page.locator('[data-audit="draw-name"]').fill(name34)
+      await page.locator('[data-audit="draw-save"]').click({ timeout: 10_000 })   // tap 5
+      await page.waitForFunction((n: string) => document.body.innerText.includes(n), name34, { timeout: 20_000 }).catch(() => {})
+      const confirmSteps = await page.locator('[data-audit="place-confirm"]').count()
+      const { data: drawn } = await admin.from('places').select('id, kind, geometry').eq('ranch_id', ranchId).eq('name', name34).maybeSingle()
+      const ring = ((drawn as { geometry?: { coordinates?: number[][][] } } | null)?.geometry?.coordinates?.[0]) ?? []
+      const savedCorners = ring.length ? ring.length - 1 : 0   // GeoJSON closes the ring
+      record('34: a four-corner pasture with two zoom taps along the way — four corners, not six; the name and Save are on the shape; five taps and it is saved', zoomThere && cornersSaid === 4 && finishOnShape === 1 && useThisShape === 0 && confirmSteps === 0 && savedCorners === 4 && kindPreselected !== '', `zoom control ${zoomThere} · status "${status.slice(0, 60)}" · corners said ${cornersSaid} · finish on the shape ${finishOnShape} · "Use this shape" ${useThisShape} · confirm screens ${confirmSteps} · saved ring corners ${savedCorners} · kind preselected "${kindPreselected}" → saved "${(drawn as { kind?: string } | null)?.kind ?? 'none'}"`)
+    })
+
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
     // Did the hand do what I asked today; is there anything I have not looked
     // at; can I get to everything that left the hub. Replaces the 7B.2 expander

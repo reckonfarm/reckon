@@ -86,10 +86,15 @@ export interface PlaceMapProps {
   pin?: MapPin
   /** Draw mode: corner placement on, follow off, toolbar visible. */
   drawing?: boolean
-  /** A validated, closed ring the operator accepted. The map never writes. */
-  onShape?: (ring: LatLng[], acres: number) => void
+  /** Block 34: a validated, closed ring with the name and kind given on the shape. The map never writes. */
+  onShape?: (ring: LatLng[], acres: number, name: string, kind: string) => void
   onCancel?: () => void
+  /** The Save button's word: "Save the place" (new) or "Save the boundary" (a place's own page). */
   useLabel?: string
+  nameDefault?: string
+  kindDefault?: string
+  /** A failed save, said under the name so the shape is never lost. */
+  saveError?: string | null
 }
 
 export default function PlaceMapLoader(props: PlaceMapProps) {
