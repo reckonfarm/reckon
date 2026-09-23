@@ -3312,8 +3312,12 @@ async function main() {
       try {
       const today = ranchDay()
       const tenAM = new Date(`${today}T10:00:00-06:00`), fourPM = new Date(`${today}T16:00:00-06:00`)
-      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      // The clock is fixed BEFORE the page opens: a receipt strip remembers when its view
+      // opened and calls anything synced before that history, so a view opened at real
+      // time and a sync stamped at a frozen 4 PM would never meet (32's third loop).
       await page.clock.setFixedTime(tenAM)
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('#ledger-hay').waitFor({ timeout: 20_000 }).catch(() => {})
       await ctx27.setOffline(true)
       await logFeed(page, 7)
       const off27 = await watchStates(page, 'Sent', 4_000, 'Fed 7 bales')
