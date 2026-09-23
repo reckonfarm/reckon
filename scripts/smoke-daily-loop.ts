@@ -599,8 +599,10 @@ async function main() {
     await logFeed(page, 2, { place: placeName })
     await watchStates(page, 'Sent', 20_000, 'Fed 2 bales')
     await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+    // Block 43: places sit behind their kind's count — a stackyard is under Yards; open it first.
+    await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})
     const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
-    record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
+    record('2F: /places lists the place (under Yards, one tap open)', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
