@@ -323,7 +323,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => setConfirmCancel(false)} className="min-h-[48px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="capture-keep-going">
-          Keep recording
+          Keep going
         </button>
         <button type="button" onClick={discard} className="min-h-[48px] rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="capture-discard-confirm">
           Throw it away
@@ -389,7 +389,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => void beginRide(draft.fixes, draft.startedAt)} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream" data-audit="capture-draft-resume">
-              Keep riding
+              Keep going
             </button>
             <button type="button" onClick={finishDraftHere} className="min-h-[52px] rounded-lg border px-4 font-dm-sans text-[17px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="capture-draft-finish">
               Finish here
@@ -608,7 +608,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
         <button type="button" disabled={!name.trim()} onClick={save} className="min-h-[52px] flex-1 rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-cream disabled:opacity-50" data-audit="capture-save">
           Save
         </button>
-        <button type="button" onClick={() => { setPending(null); setPinAt(null); setMode('choose') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-discard">Discard</button>
+        <button type="button" onClick={() => { setPending(null); setPinAt(null); setMode('choose') }} className="min-h-[52px] rounded-lg px-4 font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="capture-discard">Cancel</button>
       </div>
     </Card>
   )

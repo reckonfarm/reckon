@@ -31,7 +31,6 @@ const first = (p: Person) => (p.name?.trim() || p.email || 'they').split(/[\s@]/
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 const daysLeft = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000))
 const ROW = 'flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2'
-const LINK_BTN = 'min-h-[48px] px-2 font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2'
 
 export default function RanchPeopleCard() {
   const [people, setPeople] = useState<People | null | undefined>(undefined)
@@ -177,7 +176,6 @@ export default function RanchPeopleCard() {
           <p className="mt-1 break-all font-dm-sans text-[16px] text-forest-green" data-audit="invite-link">{sent.acceptUrl}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => copy(sent.acceptUrl)}>{copied ? 'Copied' : 'Copy link'}</Button>
-            <button type="button" className={LINK_BTN} onClick={() => setSent(null)}>Done</button>
           </div>
         </div>
       )}

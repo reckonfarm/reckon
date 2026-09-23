@@ -61,8 +61,8 @@ export default function LfpCard({
             aria-controls="lfp-detail"
             className="mt-4 flex min-h-[52px] w-full items-center justify-between border-t border-rule px-1 font-dm-sans text-[17px] font-semibold text-ink transition-colors hover:bg-forest-green/5"
           >
-            <span>{open ? 'Hide payment estimate and steps' : 'Payment estimate and steps'}</span>
-            <span className="ml-3 inline-flex shrink-0 items-center gap-1 font-dm-sans text-[16px] font-medium text-secondary-ink">{open ? 'Hide' : 'Show'}
+            <span>Payment estimate and steps</span>
+            <span className="ml-3 inline-flex shrink-0 items-center gap-1 font-dm-sans text-[16px] font-medium text-secondary-ink">
             <svg
               className={`h-5 w-5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden

@@ -698,7 +698,7 @@ async function main() {
         record('A4: three radii on the Today page — 8 px, 12 px, pill', radiiKeys.every(k => k === '8px' || k === '12px' || k === 'pill'), JSON.stringify(a4.radii))
         record('A4: no shadow on ordinary surfaces in main', a4.shadows.length === 0, a4.shadows.join(' | '))
         record('A4: every link and button on Today is at least 48 px tall', a4.smallCount === 0, a4.small.join(' | '))
-        record('A4: the LFP disclosure is a 52 px full row that says what it opens, with Show/Hide', !!a4.lfp && a4.lfp.h >= 52 && a4.lfp.w >= 300 && /Payment estimate and steps/.test(a4.lfp.text) && /Show|Hide/.test(a4.lfp.text) && a4.lfp.expanded != null, a4.lfp ? `${a4.lfp.h}×${a4.lfp.w} "${a4.lfp.text}" aria-expanded=${a4.lfp.expanded}` : 'no disclosure')
+        record('A4: the LFP disclosure is a 52 px full row that says what it opens, with a chevron (Block 46: no Show/Hide words)', !!a4.lfp && a4.lfp.h >= 52 && a4.lfp.w >= 300 && /Payment estimate and steps/.test(a4.lfp.text) && !/Show|Hide/.test(a4.lfp.text) && a4.lfp.expanded != null, a4.lfp ? `${a4.lfp.h}×${a4.lfp.w} "${a4.lfp.text}" aria-expanded=${a4.lfp.expanded}` : 'no disclosure')
         const signin = await sp.locator('header a[href="/signin"]').first().boundingBox().catch(() => null)
         record('A4: the header Sign in is a 48 px target', !!signin && signin.height >= 48, `${signin?.height ?? 0}px`)
         await sc.close()
