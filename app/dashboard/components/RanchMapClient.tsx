@@ -28,7 +28,7 @@ const ago = (iso: string) => { const d = days(iso); return d === 0 ? 'today' : d
 // went. It lives in the card's own DOM, never over the map. Reviewed clears
 // "new"; a bunch with no recorded place is not a change — it is a problem
 // that stays, in the colour reserved for one, until a move resolves it.
-export default function RanchMapClient({ map, changes = [], total = 0, newest = null }: { map: RanchMap; changes?: Change[]; total?: number; newest?: string | null }) {
+export default function RanchMapClient({ map, changes = [], total = 0, newest = null, todayCount = 0 }: { map: RanchMap; changes?: Change[]; total?: number; newest?: string | null; todayCount?: number }) {
   const [openId, setOpenId] = useState<string | null>(null)
   // Picked from the key (or the list below), the map frames that place: a name
   // cannot point at ground the way a finger on the shape already has.
@@ -45,6 +45,7 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
   // a move landed there in the last few minutes, one settle of its outline.
   // "Moments ago" is judged once, when the map lands, so the settle plays once.
   const [landedAt] = useState(() => Date.now())
+  const placedCount = map.places.reduce((n, p) => n + p.bunches.length, 0)
   const shapes = useMemo(() => map.places.filter(p => p.ring).map(p => {
     const b = p.bunches[0]
     const fresh = !!b?.since?.ts && landedAt - new Date(b.since.ts).getTime() < 3 * 60_000
@@ -57,6 +58,8 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
       {shapes.length > 0 && (
         <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} line={lineFor(current)} />
       )}
+      {/* Block 39: what is live now, in one line — never a list. */}
+      <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-line">{placedCount} {placedCount === 1 ? 'bunch' : 'bunches'} placed · {todayCount} {todayCount === 1 ? 'entry' : 'entries'} today</p>
       {/* Block 29: the changes, stepped. Under the map, in words. */}
       {total > 0 && (
         <div className="mt-2 rounded-xl border border-rule bg-surface px-4 py-3" data-audit="changes-stepper" data-total={total} data-step={step == null ? '' : step + 1}>

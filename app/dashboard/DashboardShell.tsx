@@ -703,20 +703,7 @@ export async function DashboardShell({
                           <RepeatLastFeeding />
                         </Suspense>
                         <LogIt sheet={false} />
-                        {/* 8B.1 — Add a place, on Today. Recording a place is
-                            something you do standing in a field with the phone
-                            already in your hand, not something you navigate
-                            three screens to find. It sits with Record work
-                            because they are the same moment. */}
-                        <Link href="/ranch/places#capture" className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="today-add-place">
-                          <span className="min-w-0">
-                            <span className="block font-dm-sans text-[17px] font-semibold text-ink">Add a place</span>
-                            {/* Block 12 (12.12): say what it makes and what happens after —
-                                a named spot on the map you can record work against. */}
-                            <span className="block font-dm-sans text-[15px] text-secondary-ink">Name a spot on your map — stand in it, ride around it, or draw it. Then feedings, rain and cattle can be recorded there.</span>
-                          </span>
-                          <span aria-hidden className="shrink-0 font-dm-sans text-[17px] text-secondary-ink">→</span>
-                        </Link>
+                        {/* Block 39: no Add a place card — Record is the only way in. */}
                         {/* 5. Hay on hand and runway — the ledger strip opens on Hay; This season and
                             Recently logged stay one tap away (views2, commit 4). */}
                         <div id="ledgers" />

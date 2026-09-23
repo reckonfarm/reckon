@@ -2911,12 +2911,20 @@ async function main() {
       record('12.11: every select on Activity, Preg check and Markets draws its own chevron — none is bare platform text',
         total > 0 && bare === 0, `${total} select(s) · ${bare} bare`)
 
-      // 12.12 — Add a place says what it makes and what happens next.
+      // Block 39 — Today earns every line: no Add a place card (Record is the only way
+      // in), no sentence explaining a control; a weather strip under the map with six
+      // numbers, sunrise and sunset computed from the ranch's coordinates; one line
+      // under the map saying what is live now.
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(1_000)
-      const addCopy = (await page.locator('a[href="/ranch/places#capture"]').first().textContent().catch(() => '') ?? '').replace(/\s+/g, ' ')
-      record('12.12: "Add a place" says what it makes and what follows — a named spot, then work can be recorded there',
-        /Name a spot on your map/.test(addCopy) && /can be recorded there/.test(addCopy), `"${addCopy.slice(0, 120)}"`)
+      await page.locator('[data-audit="weather-strip"]').waitFor({ timeout: 25_000 }).catch(() => {})
+      const addPlace = await page.getByRole('link', { name: /Add a place/ }).count()
+      const explains = await page.locator('[data-audit="since-note"], [data-audit="repeat-preview"]').count()
+      const strip = await page.locator('[data-audit="weather-strip"]').count()
+      const cells = await page.locator('[data-audit^="weather-"][data-audit!="weather-strip"]').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('weather-', '')}=${(e.textContent ?? '').trim()}`))
+      const sunrise = cells.find(c => c.startsWith('sunrise='))?.slice(8) ?? '', sunset = cells.find(c => c.startsWith('sunset='))?.slice(7) ?? ''
+      const clock = /^\d{1,2}:\d{2} ?[AP]M$/
+      const mapLine = (await page.locator('[data-audit="ranch-map-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      record('39: Today earns every line — no Add a place card, no sentence explaining a control, a six-number weather strip with a computed sunrise and sunset, and one line under the map saying what is live', addPlace === 0 && explains === 0 && strip === 1 && cells.length === 6 && clock.test(sunrise) && clock.test(sunset) && /^\d+ bunch(es)? placed · \d+ (entry|entries) today$/.test(mapLine), `Add a place ${addPlace} · explaining sentences ${explains} · strip ${strip} [${cells.join(' ')}] · map line "${mapLine}"`)
 
       // 12.3 — hold a row: Open · Edit · Delete, and Edit lands IN the form.
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })

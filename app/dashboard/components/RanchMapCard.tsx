@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase-server'
 import { getRanchMap } from '@/lib/ranch-map'
 import { getChangesSince } from '@/lib/since'
 import RanchMapClient from './RanchMapClient'
+import WeatherStrip from './WeatherStrip'
+import { entriesToday } from '@/lib/activity'
 
 // ─── Block 26: the ranch map at the top of Today ─────────────────────────────
 // A server component inside its own Suspense: Today never waits for it. A
@@ -11,9 +13,15 @@ export default async function RanchMapCard() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const [map, since] = await Promise.all([getRanchMap(supabase, user.id).catch(() => null), getChangesSince(supabase, user.id).catch(() => null)])
+  const [map, since, todayCount] = await Promise.all([getRanchMap(supabase, user.id).catch(() => null), getChangesSince(supabase, user.id).catch(() => null), entriesToday(supabase).catch(() => 0)])
   if (!map) return null
-  return <RanchMapClient map={map} changes={since?.changes ?? []} total={since?.total ?? 0} newest={since?.newest ?? null} />
+  // Block 39: the map, one line under it, and the weather strip — nothing else between the map and the record.
+  return (
+    <>
+      <RanchMapClient map={map} changes={since?.changes ?? []} total={since?.total ?? 0} newest={since?.newest ?? null} todayCount={todayCount} />
+      <WeatherStrip lat={map.centre.lat} lng={map.centre.lng} />
+    </>
+  )
 }
 
 /** The space the map will take, held while it loads, so Today does not jump when it arrives. */
