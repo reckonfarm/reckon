@@ -16,7 +16,7 @@ export default function EmDesignationNote() {
         href="https://www.farmers.gov/service-center-locator"
         target="_blank"
         rel="noopener noreferrer"
-        className="font-semibold text-forest-green underline underline-offset-2"
+        className="inline-flex min-h-[48px] items-center font-semibold text-forest-green underline underline-offset-2"
       >
         county FSA office
       </a>.

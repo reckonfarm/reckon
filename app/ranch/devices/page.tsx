@@ -104,7 +104,7 @@ export default async function DevicesPage() {
                       {d.battery_pct != null && (<><dt className="text-secondary-ink">Battery</dt><dd className="text-ink tabular-nums">{d.battery_pct}%</dd></>)}
                     </dl>
                     <details className="mt-3">
-                      <summary className="inline-flex min-h-[44px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Details</summary>
+                      <summary className="inline-flex min-h-[48px] cursor-pointer items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Details</summary>
                       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-dm-sans text-[15px] text-secondary-ink">
                         <dt>Hardware ID</dt><dd className="text-ink">{d.hardware_id}</dd>
                         <dt>Firmware</dt><dd className="text-ink">{d.fw_version ?? 'Not reported'}</dd>

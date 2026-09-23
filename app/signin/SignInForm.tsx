@@ -381,9 +381,9 @@ export default function SignInForm({
       {isSignup && (
         <p className="mt-3 font-dm-sans text-[14px] leading-relaxed text-secondary-ink">
           By creating an account you agree to our{' '}
-          <Link href="/terms" className="underline hover:text-forest-green">Terms</Link>
+          <Link href="/terms" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Terms</Link>
           {' '}and{' '}
-          <Link href="/privacy" className="underline hover:text-forest-green">Privacy Policy</Link>.
+          <Link href="/privacy" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Privacy Policy</Link>.
         </p>
       )}
 

@@ -63,7 +63,7 @@ type Draft = Record<RefKey | NumKey | 'what' | 'as_of' | 'date' | 'time' | 'reas
 const inputCls = 'mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink disabled:opacity-70'
 const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
 const hintCls = 'mt-1 font-dm-sans text-[14px] text-secondary-ink'
-const clearCls = 'mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[14px] font-semibold text-ink'
+const clearCls = 'mt-1 inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[14px] font-semibold text-ink'
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '')

@@ -55,7 +55,7 @@ function LocalDiscussionPanel({ discussion }: { discussion: NwsDiscussion | null
     return (
       <p className="text-[16px] text-secondary-ink font-dm-sans">
         Local forecast discussion temporarily unavailable. Visit{' '}
-        <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" className="underline">
+        <a href="https://www.weather.gov" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center underline">
           weather.gov
         </a>{' '}
         for your local forecast.
@@ -432,7 +432,7 @@ function CpcMapPanel({
       <p className="text-[14px] text-secondary-ink font-dm-sans">
         {label}
         {lastModified ? ` · Updated ${lastModified}` : ''}{' '}·{' '}
-        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[48px] items-center underline">
           Source: {sourceName}
         </a>
       </p>

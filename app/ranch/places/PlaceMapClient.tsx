@@ -645,7 +645,7 @@ export default function PlaceMapClient({
             <button
               type="button"
               onClick={locate}
-              className="min-h-[44px] w-full px-3 pb-1 text-right font-dm-sans text-[15px] font-semibold text-forest-green"
+              className="min-h-[48px] w-full px-3 pb-1 text-right font-dm-sans text-[15px] font-semibold text-forest-green"
               data-audit="draw-locate"
             >
               Find me

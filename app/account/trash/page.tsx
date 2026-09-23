@@ -42,7 +42,7 @@ export default async function TrashPage() {
 
         <p className="mt-4 font-dm-sans text-[16px] text-secondary-ink">
           A working you put back puts its head counts back too, once that part is built — until then, check the bunch after putting one back.{' '}
-          <Link href="/account" className="font-semibold text-brand underline underline-offset-2">Back to Account</Link>
+          <Link href="/account" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Back to Account</Link>
         </p>
       </main>
     </>

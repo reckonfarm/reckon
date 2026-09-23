@@ -35,7 +35,7 @@ export default async function CattlePage() {
         <p className={EYEBROW}>Ranch · Cattle</p>
         <h1 className="mt-1 type-page-heading text-ink">Cattle</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">
-          What you&rsquo;re running, by lot. Values and comparisons are on <Link href="/markets" className="font-semibold text-brand underline underline-offset-2">Markets</Link>.
+          What you&rsquo;re running, by lot. Values and comparisons are on <Link href="/markets" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Markets</Link>.
         </p>
         {/* Block 10: the working is reachable from where a person would look
             for it — under Cattle, not as a seventh row on the hub for

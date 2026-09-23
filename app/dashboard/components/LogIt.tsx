@@ -783,7 +783,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     </Field>
     {newBunch && <NewBunchInline onMade={bunchMade} onCancel={() => setNewBunch(false)} />}
     {lotsError && (
-      <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="-mt-2 self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="lots-retry">Try loading bunches again</button>
+      <button type="button" onClick={() => { setLots(null); setLotsError(false) }} className="-mt-2 self-start min-h-[48px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="lots-retry">Try loading bunches again</button>
     )}
     {placeField()}
     {n1.trim() !== '' && Number.isFinite(Number(n1)) && (
@@ -1110,7 +1110,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 {fixingId && (
                   <div className="rounded-lg bg-forest-green/[0.06] px-4 py-3" data-audit="fixing-record">
                     <p className="font-dm-sans text-[16px] text-ink">Fixing a record that couldn’t send.</p>
-                    <button type="button" onClick={() => { discard(fixingId); close() }} className="mt-2 min-h-[44px] font-dm-sans text-[15px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="fixing-discard">
+                    <button type="button" onClick={() => { discard(fixingId); close() }} className="mt-2 min-h-[48px] font-dm-sans text-[15px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="fixing-discard">
                       Throw this record away
                     </button>
                   </div>
@@ -1119,7 +1119,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                   type="button"
                   onClick={() => close()}
                   disabled={busy}
-                  className="self-start min-h-[44px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
+                  className="self-start min-h-[48px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
                 >
                   Cancel
                 </button>

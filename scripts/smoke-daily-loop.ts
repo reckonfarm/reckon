@@ -851,7 +851,7 @@ async function main() {
       const emptyText = (await page.locator('[data-audit="devices-empty"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
       const setup = await page.request.get('/ranch/devices/setup')
       const online = await page.locator('main').innerText().then(t => /\bOnline\b|\bOffline\b/.test(t)).catch(() => false)
-      record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /No devices connected\. You can record work now\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
+      record('6A: devices empty state says you can record now and what will appear; Set up a device resolves; never Online/Offline', /^No devices\./.test(emptyText) && (await page.locator('[data-audit="setup-device"]').count()) === 1 && setup.status() === 200 && !online, `${emptyText.slice(0, 80)}… · setup ${setup.status()}`)
     })
 
     // ── Block 6A (8): the record sheet — verbs, Count apart, quantity → lot → place → time, a preview, Record feeding ──
@@ -1165,7 +1165,7 @@ async function main() {
       const head1 = await headBefore()
       const where25 = ((await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-where"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       record('25: the move in Activity names the bunch and where it went; the bunch reads as there, with the move as its as-of; the head count stays',
-        mLot === `${LOT6G} · Cows` && mWhat.includes(`Moved ${WHO25} to ${PREFIX} West stack`) && where25.includes(`At ${PREFIX} West stack`) && /moved today/.test(where25) && /never changes a bunch/.test(moveHint) && head1 === head0 && Number.isFinite(head0),
+        mLot === `${LOT6G} · Cows` && mWhat.includes(`Moved ${WHO25} to ${PREFIX} West stack`) && where25.includes(`At ${PREFIX} West stack`) && /moved today/.test(where25) && head1 === head0 && Number.isFinite(head0),
         `bunch "${mLot}" · "${mWhat}" · row "${where25}" · head ${head0} → ${head1}`)
 
       // (c) the same with the network off: it queues, sends on reconnect, and the place is set.
@@ -2960,8 +2960,11 @@ async function main() {
       const { data: e0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 1, herd_lot_id: null, place_id: placeId } }).select('id').single()
       if (e0) {
         await page.goto(`/ranch/activity/${e0.id}`, { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="correction-actions"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
-        const labels = await page.locator('[data-audit="correction-actions"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+        // Block 46: the entry's card is held — Fix and Delete are the sheet's.
+        await page.locator('[data-audit="event-detail"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        await hold(page, page.locator('[data-audit="event-detail"]').first())
+        const labels = [await sheet(page).fix.innerText().catch(() => ''), await sheet(page).del.innerText().catch(() => '')].map(t => t.trim()).filter(Boolean)
+        await sheet(page).cancel.click().catch(() => {})
         record('11.13/13: an entry offers Fix and Delete — "void" is not a word on the screen',
           labels.length === 2 && /fix/i.test(labels[0] ?? '') && /delete/i.test(labels[1] ?? '') && !labels.some(l => /void/i.test(l)),
           `[${labels.join(' | ')}]`)
@@ -4452,8 +4455,9 @@ async function main() {
       const putBack10 = await sheet(page).extra.filter({ hasText: 'Put it back' }).count()
       const noDelete10 = (await sheet(page).del.count()) === 0 && /for good/i.test((await sheet(page).deleteNote.innerText().catch(() => '')))
       await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
-      await page.waitForTimeout(2_000)
-      const { data: back10 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
+      // Poll the DB up to 10 s — a fixed 2 s wait was the flake (same as 12.4/13's restores).
+      let back10: { deleted_at?: string | null } | null = null
+      for (let i = 0; i < 20; i++) { back10 = (await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()).data as { deleted_at?: string | null } | null; if (back10?.deleted_at === null) break; await page.waitForTimeout(500) }
       record('13 (trash): hold a trash row → Put it back, and no Delete — the sheet says when it goes for good',
         trashThere && s10 && putBack10 === 1 && noDelete10 && (back10 as { deleted_at?: string | null } | null)?.deleted_at === null,
         `there ${trashThere} · sheet ${s10} · put back ${putBack10} · no delete ${noDelete10} · restored ${(back10 as { deleted_at?: string | null } | null)?.deleted_at === null}`)

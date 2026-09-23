@@ -86,7 +86,7 @@ export default function ActivityRowItem({ id, who, line, when, marker, chain, as
       {aside}
       {(marker === 'corrected' || marker === 'voided') && chain && (
         <details className={`pb-3 ${rowClass.includes('px-4') ? 'px-4' : ''}`} data-audit="row-chain">
-          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">{marker === 'voided' ? 'What it removed' : 'What it replaced'}</summary>
+          <summary className="inline-flex min-h-[48px] cursor-pointer list-none items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2">{marker === 'voided' ? 'What it removed' : 'What it replaced'}</summary>
           {chain.length === 0 ? (
             <p className="font-dm-sans text-[15px] text-secondary-ink">The entry it replaced is older than this list — open the entry for the whole chain.</p>
           ) : (

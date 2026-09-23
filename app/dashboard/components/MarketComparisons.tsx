@@ -177,7 +177,7 @@ export default function MarketComparisons({ estimate, lots, trend, selectedLotId
             {noGross && <p className="mt-1.5 font-dm-sans text-[15px] text-secondary-ink" data-audit="no-gross">{noGross}</p>}
 
             <details className="mt-3 font-dm-sans text-[16px] text-secondary-ink" data-audit="lot-calculation">
-              <summary className="inline-flex min-h-[44px] cursor-pointer items-center underline underline-offset-2">How this is figured</summary>
+              <summary className="inline-flex min-h-[48px] cursor-pointer items-center underline underline-offset-2">How this is figured</summary>
               <div className="mt-1 space-y-2">
                 {/* Ruling 1: the class price lives here now — the reference the
                     lot math starts from, stated as such, no longer a headline

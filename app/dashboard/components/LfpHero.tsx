@@ -307,7 +307,7 @@ export default function LfpHero({ eligibility, countyName }: LfpHeroProps) {
               href={FSA_OFFICE_LOCATOR}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-semibold text-amber-900 underline hover:text-amber-700"
+              className="inline-flex min-h-[48px] items-center font-semibold text-amber-900 underline hover:text-amber-700"
             >
               check with your county FSA office
             </a>.

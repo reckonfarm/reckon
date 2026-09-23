@@ -236,7 +236,7 @@ export default function ProfileForm() {
           <button
             onClick={save}
             disabled={saving}
-            className="rounded-lg bg-forest-green px-5 py-2 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
+            className="inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-5 font-dm-sans text-[16px] font-medium text-cream hover:bg-forest-green/90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving…' : 'Save profile'}
           </button>

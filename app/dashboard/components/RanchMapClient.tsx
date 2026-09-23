@@ -76,8 +76,8 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
           <div className="flex items-center justify-between gap-3">
             <p className="font-dm-sans text-[17px] font-semibold text-ink" data-audit="changes-summary">{total} {total === 1 ? 'change' : 'changes'}{step != null ? ` · ${step + 1} of ${changes.length}` : ''}</p>
             <div className="flex gap-2">
-              {step != null && step > 0 && <button type="button" onClick={() => goTo(step - 1)} className="min-h-[44px] rounded-lg border border-control-border px-3 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="changes-prev">Previous</button>}
-              {(step == null || step < changes.length - 1) && <button type="button" onClick={() => goTo(step == null ? 0 : step + 1)} className="min-h-[44px] rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="changes-next">{step == null ? 'Show me' : 'Next'}</button>}
+              {step != null && step > 0 && <button type="button" onClick={() => goTo(step - 1)} className="min-h-[48px] rounded-lg border border-control-border px-3 font-dm-sans text-[16px] font-semibold text-forest-green" data-audit="changes-prev">Previous</button>}
+              {(step == null || step < changes.length - 1) && <button type="button" onClick={() => goTo(step == null ? 0 : step + 1)} className="min-h-[48px] rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-cream" data-audit="changes-next">{step == null ? 'Show me' : 'Next'}</button>}
             </div>
           </div>
           {current && (
@@ -86,12 +86,12 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
               <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink" data-audit="changes-made">
                 made {fmtDay(current.madeAt)} {fmtTime(current.madeAt)}
                 {!current.placeId || !map.places.some(p => p.id === current.placeId && p.ring) ? <span data-audit="changes-no-ground"> · no ground to show</span> : null}
-                {' · '}<Link href={`/ranch/activity/${current.id}`} className="underline underline-offset-2">open</Link>
+                {' · '}<Link href={`/ranch/activity/${current.id}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">open</Link>
               </p>
             </div>
           )}
           {step != null && step === changes.length - 1 && total <= changes.length && <div className="mt-1"><ReviewedButton count={total} through={newest} /></div>}
-          {total > changes.length && <Link href="/ranch/activity" className="mt-1 inline-flex min-h-[44px] items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2" data-audit="changes-view-all">View all {total} →</Link>}
+          {total > changes.length && <Link href="/ranch/activity" className="mt-1 inline-flex min-h-[48px] items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2" data-audit="changes-view-all">View all {total} →</Link>}
         </div>
       )}
 
@@ -138,7 +138,7 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
       {open && (
         <BottomSheet open onClose={() => setOpenId(null)} label={open.name} audit="ranch-map-sheet">
             <p className="font-fraunces text-[22px] font-semibold leading-tight text-ink">
-              <Link href={`/ranch/places/${open.id}`} className="underline-offset-2 hover:underline" data-audit="sheet-place">{open.name}</Link>
+              <Link href={`/ranch/places/${open.id}`} className="inline-flex min-h-[48px] items-center underline-offset-2 hover:underline" data-audit="sheet-place">{open.name}</Link>
               {here?.placeId === open.id && <span className="ml-2 font-dm-sans text-[16px] font-normal text-forest-green" data-audit="sheet-here">you&rsquo;re here</span>}
               {fmtAcres(open.acres) && <span className="ml-2 font-dm-sans text-[16px] font-normal text-secondary-ink" data-audit="sheet-acres">{fmtAcres(open.acres)}</span>}
             </p>
@@ -155,12 +155,12 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
                     here since — a feeding never counts, and seeing never moves. */}
                 {b.since && (
                   <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-days">
-                    <Link href={`/ranch/activity/${b.since.eventId}`} className="underline underline-offset-2" data-audit="sheet-move"><span className="font-semibold">Moved in {fmtDay(b.since.ts)}</span></Link>
+                    <Link href={`/ranch/activity/${b.since.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2" data-audit="sheet-move"><span className="font-semibold">Moved in {fmtDay(b.since.ts)}</span></Link>
                     <span className="text-secondary-ink"> · {days(b.since.ts) === 0 ? 'today' : `${days(b.since.ts)} ${days(b.since.ts) === 1 ? 'day' : 'days'} here`}</span>
-                    {b.seen && <span data-audit="sheet-seen"> · seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</span>}
+                    {b.seen && <span data-audit="sheet-seen"> · seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</span>}
                   </p>
                 )}
-                {!b.since && b.seen && <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-seen">seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</p>}
+                {!b.since && b.seen && <p className="mt-0.5 font-dm-sans text-[16px] text-ink" data-audit="sheet-seen">seen <Link href={`/ranch/activity/${b.seen.eventId}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{ago(b.seen.ts)}</Link> by {b.seen.by}</p>}
                 <div className="flex flex-wrap items-end gap-2">
                   {/* Block 33 (ruling 2): tap the bunch, tap Feed, the number, Record — the sheet takes this bunch and its place. */}
                   <button type="button" onClick={e => { e.stopPropagation(); setOpenId(null); openLogIt({ type: 'hay_fed', lot: b.id }) }} className="mt-2 inline-flex min-h-[48px] items-center rounded-lg bg-forest-green px-4 font-dm-sans text-[16px] font-semibold text-white hover:bg-forest-green/90" data-audit="sheet-feed" data-lot={b.id}>Feed</button>
@@ -170,7 +170,7 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
             ))}
             {open.latest && (
               <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="sheet-latest">
-                {open.latest.id ? <Link href={`/ranch/activity/${open.latest.id}`} className="underline underline-offset-2">{open.latest.line}</Link> : open.latest.line}
+                {open.latest.id ? <Link href={`/ranch/activity/${open.latest.id}`} className="inline-flex min-h-[48px] items-center underline underline-offset-2">{open.latest.line}</Link> : open.latest.line}
                 <span className="text-secondary-ink"> · {ago(open.latest.ts)}</span>
               </p>
             )}

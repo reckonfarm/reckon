@@ -224,7 +224,7 @@ function MessagesInner() {
           <div className="mt-6 rounded-xl border-2 border-dashed border-forest-green/20 bg-white px-6 py-12 text-center">
             <p className="font-dm-sans text-[16px] text-secondary-ink">
               No conversations yet. Open a listing on the{' '}
-              <Link href="/hay" className="underline hover:text-forest-green">Hay Network</Link> and tap &ldquo;Message&rdquo; to start one.
+              <Link href="/hay" className="inline-flex min-h-[48px] items-center underline hover:text-forest-green">Hay Network</Link> and tap &ldquo;Message&rdquo; to start one.
             </p>
           </div>
         ) : (
@@ -266,7 +266,7 @@ function MessagesInner() {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="font-fraunces text-lg font-semibold text-forest-green">{meta.counterparty_name ?? 'Dryline member'}</h1>
-            <Link href={`/hay/${meta.listing_id}`} className="font-dm-sans text-[14px] text-secondary-ink underline hover:text-forest-green">
+            <Link href={`/hay/${meta.listing_id}`} className="inline-flex min-h-[48px] items-center font-dm-sans text-[14px] text-secondary-ink underline hover:text-forest-green">
               {meta.listing_hay_type ?? 'Hay'}{meta.listing_county ? ` · ${meta.listing_county}` : ''}
             </Link>
           </div>
@@ -283,7 +283,7 @@ function MessagesInner() {
       {isClosed && (
         <div className="mb-3 rounded-xl border border-forest-green/15 bg-forest-green/5 px-4 py-3">
           <p className="font-dm-sans text-[16px] font-medium text-forest-green">Deal closed.</p>
-          <Link href={`/hay/${meta?.listing_id}`} className="mt-1 inline-block font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
+          <Link href={`/hay/${meta?.listing_id}`} className="inline-flex min-h-[48px] items-center mt-1 font-dm-sans text-[16px] text-forest-green underline hover:text-secondary-ink">
             Leave a review →
           </Link>
         </div>

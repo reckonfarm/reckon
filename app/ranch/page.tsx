@@ -88,13 +88,13 @@ export default async function RanchPage() {
                 </ul>
               )}
               <PlacesByKind groups={groups} />
-              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-places-link">Places →</Link> · <Link href="/ranch/devices" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
+              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/places" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-places-link">Places →</Link> · <Link href="/ranch/devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
             </div>
           )}
           record={(
             <div data-audit="ranch-today">
               {recordPage && recordPage.rows.length > 0 ? <ActivityGroups page={recordPage} workRows={workRows} audit="ranch-record-list" /> : <p className="font-dm-sans text-[17px] text-ink" data-audit="ranch-quiet">Nothing recorded yet.</p>}
-              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/activity" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-activity-link">The whole record →</Link></p>
+              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-activity-link">The whole record →</Link></p>
             </div>
           )}
         />
