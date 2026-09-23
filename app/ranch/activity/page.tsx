@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { listActivity, filterOptions, describeEvent, PAGE_SIZE, type ActivityFilters } from '@/lib/activity'
+import { listActivity, filterOptions, describeEvent, DAYS_PER_PAGE, type ActivityFilters } from '@/lib/activity'
 import { fmtDay, fmtTime, dayKey, fmtDuration, RANCH_TZ } from '@/lib/jobs/format'
 import { listWork, describeWork } from '@/lib/jobs/work'
 import JobsView from '@/app/dashboard/components/JobsView'
@@ -167,10 +167,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             {filters.since && page.nextCursor && <p className="mt-3 font-dm-sans text-[15px] text-secondary-ink" data-audit="review-on-last-page">Reviewed is offered on the last page, once every entry is in front of you.</p>}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">
-                Older entries →
+                More days →
               </Link>
             )}
-            <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">{PAGE_SIZE} per page · newest first by work time.</p>
+            <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">{DAYS_PER_PAGE} days at a time · newest first by work time.</p>
           </>
         )}
       </main>

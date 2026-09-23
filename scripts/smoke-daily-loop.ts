@@ -2055,7 +2055,7 @@ async function main() {
         const there = await row.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
         const opened = there && await hold(page, row)
         const fix = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]').count()
-        const del = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete-warning"]').count()
+        const del = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-delete"]').count()
         await page.keyboard.press('Escape').catch(() => {})
         const ok = opened && fix === 1 && del === 1
         if (!ok) holdsOk = false
@@ -2066,6 +2066,28 @@ async function main() {
       await tryHold('Places', '/ranch/places', '[data-audit="place-rows"] li, [data-audit="place-rows-unplaced"] li')
       await tryHold('Hay ledger', `/today?fips=${HOME_FIPS}`, '[data-audit="hay-line"]', async () => { await page.locator('[data-audit="hay-details"] summary, [data-audit="hay-details"] button').first().click({ timeout: 10_000 }).catch(() => {}) })
       record('37: long-press a row in Activity, Cattle, Places and the hay ledger — Fix and Delete, one gesture everywhere', holdsOk, holds.join(' | '))
+    })
+
+    // ── Block 37 (ruling 3): no long lists — Activity is a few days at a time ──
+    // The page unit is three ranch days, not fifty rows; a busy day never splits
+    // across pages, and More days is one tap away.
+    await section('Block 37: Activity groups by day, a few days at a time', async () => {
+      // Six quiet days behind today, one line each, so the record spans more than one page of days.
+      for (let k = 1; k <= 6; k++) await admin.from('events').insert({ id: randomUUID(), user_id: userIdB, ranch_id: ranchId, type: 'rain', ts: new Date(Date.now() - k * 86_400_000).toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, place_id: null, inches: 0.1 * k } })
+      await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="activity-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const daysOn = async () => new Set(await page.locator('[data-audit="activity-row"]').evaluateAll(els => els.map(e => e.closest('section')?.getAttribute('aria-label') ?? ''))).size
+      const dayLabels = async () => page.locator('section[aria-label]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') ?? '').filter(l => /\d{4}|Today|Yesterday/i.test(l)))
+      const page1Days = await dayLabels()
+      const rows1 = await page.locator('[data-audit="activity-row"]').count()
+      const more = page.locator('a[href*="cursor="]').first()
+      const hasMore = (await more.count()) === 1
+      const moreText = (await more.innerText().catch(() => '')).trim()
+      const href = hasMore ? await more.getAttribute('href') : null
+      let page2Days: string[] = []
+      if (href) { await page.goto(href, { waitUntil: 'domcontentloaded' }); await page.locator('[data-audit="activity-row"]').first().waitFor({ timeout: 20_000 }).catch(() => {}); page2Days = await dayLabels() }
+      const disjoint = page2Days.length > 0 && !page2Days.some(d => page1Days.includes(d))
+      record('37: Activity shows three days at a time — a busy day never splits, and More days is one tap away to the next three', page1Days.length === 3 && rows1 > 0 && hasMore && /More days/.test(moreText) && page2Days.length >= 1 && page2Days.length <= 3 && disjoint, `page 1 days [${page1Days.join(', ')}] · ${rows1} rows · "${moreText}" · page 2 days [${page2Days.join(', ')}] · disjoint ${disjoint}`)
     })
 
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
