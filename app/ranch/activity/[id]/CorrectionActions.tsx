@@ -9,6 +9,8 @@ import { warning } from '@/lib/brand-colors'
 import { forgetSynced } from '@/lib/outbox'
 import { deleteWithUndo, callDelete, restoreFromTrash } from '@/lib/undo'
 import { Select } from '@/app/components/ui/Field'
+import RowActions from '@/app/components/RowActions'
+import type { ReactNode } from 'react'
 
 // ─── Correct this entry · Void this entry (Block 5B, rebuilt Block 6 · 6A) ────
 // From an event that currently stands. A correction is a crossed-out number on
@@ -85,7 +87,7 @@ function fromOriginal(event: Editable): Draft {
   }
 }
 
-export default function CorrectionActions({ event }: { event: Editable }) {
+export default function CorrectionActions({ event, children }: { event: Editable; children?: ReactNode }) {
   const router = useRouter()
   const [mode, setMode] = useState<'idle' | 'correct' | 'void' | 'delete'>('idle')
   // 7D: what deleting THIS entry would do, asked before the sheet can say it.
@@ -217,28 +219,20 @@ export default function CorrectionActions({ event }: { event: Editable }) {
     )
   }
 
+  // Block 46: one gesture everywhere — the entry's card is held for Fix and
+  // Delete, like every row on every list. No buttons under it.
   if (mode === 'idle') {
     return (
-      /* Block 11 (11.13): TWO ACTIONS, NOT THREE. 7D's own ruling was that
-         "void" does not survive as a user-facing word, and Delete has since
-         taken over the job it was doing — its record path keeps the entry in
-         the ledger with a note of who removed it and when, which is what a
-         person meant by voiding. Three buttons made a rancher choose between
-         two words for the same intention.
-         The MECHANISM stays: 054 voids already on the ledger still render as
-         "Voided:" on every timeline and still count for nothing, and the route
-         still answers. Only the word is gone from the screen. */
-      <div className="mt-5 flex flex-wrap gap-3" data-audit="correction-actions">
-        <button type="button" onClick={() => setMode('correct')} className="inline-flex min-h-[48px] items-center rounded-lg bg-brand px-4 font-dm-sans text-[16px] font-semibold text-on-brand" data-audit="correct-entry">Fix this entry</button>
-        <button type="button" onClick={() => setMode('delete')} className="inline-flex min-h-[48px] items-center rounded-lg border px-4 font-dm-sans text-[16px] font-semibold" style={{ color: warning, borderColor: warning }} data-audit="delete-entry">{busy ? 'Deleting…' : 'Delete this entry'}</button>
-      </div>
+      <RowActions links={{ label: event.line ?? 'This entry', fix: { onSelect: () => setMode('correct') }, del: { onSelect: () => setMode('delete') } }}>
+        {children}
+      </RowActions>
     )
   }
 
   // Block 13: while the delete runs there is nothing to confirm and nothing to
   // show — the strip says "Deleted · Undo" the moment it lands.
   if (mode === 'delete') {
-    return error ? <p role="alert" className="mt-5 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="delete-error">{error}</p> : null
+    return <>{children}{error ? <p role="alert" className="mt-5 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="delete-error">{error}</p> : null}</>
   }
 
   const holding = mode === 'correct' && options.state === 'loading'
@@ -247,6 +241,8 @@ export default function CorrectionActions({ event }: { event: Editable }) {
   )
 
   return (
+    <>
+    {children}
     <form className="mt-5 rounded-xl border border-rule bg-surface p-4" onSubmit={e => { e.preventDefault(); void submit(mode as 'correct' | 'void') }} data-audit={`${mode}-form`}>
       <p className="font-dm-sans text-[17px] font-semibold text-ink">{mode === 'correct' ? 'What was it really?' : 'Void this entry?'}</p>
       {mode === 'correct' && (
@@ -280,5 +276,6 @@ export default function CorrectionActions({ event }: { event: Editable }) {
         <button type="button" disabled={busy} onClick={() => { setMode('idle'); setError(null); setDraft(fromOriginal(event)) }} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">Cancel</button>
       </div>
     </form>
+    </>
   )
 }

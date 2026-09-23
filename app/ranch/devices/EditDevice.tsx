@@ -64,18 +64,7 @@ export default function EditDevice({ device }: { device: { id: string; name: str
     router.refresh()
   }
 
-  if (!open) {
-    return (
-      <div className="mt-3 flex flex-wrap items-center gap-4">
-        <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="device-fix-open">
-          Fix name or where it sits
-        </button>
-        <button type="button" disabled={busy} onClick={() => void remove()} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: warning }} data-audit="device-delete">
-          {busy ? 'Deleting…' : 'Delete this device'}
-        </button>
-      </div>
-    )
-  }
+  if (!open) return null   // Block 46: the card is held — Fix and Delete live on the hold sheet
 
   const chip = (on: boolean) => `min-h-[48px] rounded-full px-4 font-dm-sans text-[16px] font-semibold ${on ? 'bg-forest-green text-white' : 'border border-forest-green/25 text-forest-green'}`
   return (

@@ -63,6 +63,10 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
         <p className="mb-3 font-dm-sans text-[16px]">
           <Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
+        {/* Correcting what a place IS (057): name, kind, retire. A retired place
+            shows only the way back — the route refuses every other edit on one,
+            so offering more would be a button that can only fail. */}
+        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at, parentId: parent?.id ?? null, parentName: parent?.name ?? null, pinned: !!place.pinned_at }}>
         <p className={EYEBROW}>{kindLabel(place.kind)}{place.deleted_at ? ` · ${REMOVED}` : place.retired_at ? ' · retired' : ''}</p>
         {/* Block 37: the name IS the control — tap it, type, Done. A place in the trash keeps its name as it is. */}
         <h1 className="mt-1 type-page-heading text-ink">{place.retired_at ? place.name : <PlaceNameTap placeId={place.id} name={place.name} className="type-page-heading text-ink" />}</h1>
@@ -82,10 +86,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
           </p>
         )}
 
-        {/* Correcting what a place IS (057): name, kind, retire. A retired place
-            shows only the way back — the route refuses every other edit on one,
-            so offering more would be a button that can only fail. */}
-        <EditPlace place={{ id: place.id, name: place.name, kind: place.kind, updatedAt: place.updated_at, retiredAt: place.retired_at, parentId: parent?.id ?? null, parentName: parent?.name ?? null, pinned: !!place.pinned_at }} />
+        </EditPlace>
 
         {!place.retired_at && <div className="mt-4"><RecordHere placeId={place.id} placeName={place.name} /></div>}
 
