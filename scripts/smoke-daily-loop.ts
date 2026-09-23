@@ -2955,8 +2955,11 @@ async function main() {
       const { data: e0 } = await admin.from('events').insert({ user_id: userId, ranch_id: ranchId, device_id: null, type: 'hay_fed', ts: new Date().toISOString(), schema_version: 1, payload: { source: 'manual', schema_version: 1, bales: 1, herd_lot_id: null, place_id: placeId } }).select('id').single()
       if (e0) {
         await page.goto(`/ranch/activity/${e0.id}`, { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="correction-actions"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
-        const labels = await page.locator('[data-audit="correction-actions"] button').evaluateAll(els => els.map(e => (e.textContent ?? '').trim()))
+        // Block 46: the entry's card is held — Fix and Delete are the sheet's.
+        await page.locator('[data-audit="event-detail"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        await hold(page, page.locator('[data-audit="event-detail"]').first())
+        const labels = [await sheet(page).fix.innerText().catch(() => ''), await sheet(page).del.innerText().catch(() => '')].map(t => t.trim()).filter(Boolean)
+        await sheet(page).cancel.click().catch(() => {})
         record('11.13/13: an entry offers Fix and Delete — "void" is not a word on the screen',
           labels.length === 2 && /fix/i.test(labels[0] ?? '') && /delete/i.test(labels[1] ?? '') && !labels.some(l => /void/i.test(l)),
           `[${labels.join(' | ')}]`)
