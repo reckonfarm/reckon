@@ -1,87 +1,62 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeader'
-import { Card } from '@/app/components/ui/Card'
-import { EYEBROW } from '@/app/components/ui/Eyebrow'
-import { privateTitle } from '@/lib/private-title'
-import { ranchNumbers } from '@/lib/ranch-summary'
-import { listActivity, describeEvent, standingRows } from '@/lib/activity'
-import ReviewedButton from '@/app/components/ReviewedButton'
 import LedgerStamp from '@/app/components/LedgerStamp'
 import { ledgerThrough } from '@/lib/ledger-through'
-import { dayKey, fmtTime, plural, todayKey } from '@/lib/jobs/format'
+import { privateTitle } from '@/lib/private-title'
+import { ranchView } from '@/lib/ranch-view'
+import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
+import { lastWorkByLot, whereByLot } from '@/lib/ranch-summary'
+import { listActivity, entriesToday } from '@/lib/activity'
+import { listWork } from '@/lib/jobs/work'
+import { placeRows } from '@/lib/places/rows'
+import { fmtAcres } from '@/lib/places/geo'
+import { kindLabel } from '@/lib/places/kinds'
+import RanchView from './RanchView'
+import HerdForm from './cattle/HerdForm'
+import PlacesByKind from './places/PlacesByKind'
+import ActivityGroups from './activity/ActivityGroups'
+import Link from 'next/link'
 
-// ─── /ranch — the ranch hub, reinvented (Block 12, 12.7 / 12.8) ───────────────
-//
-// PK's ruling on 12.7: three things, not six. CATTLE (the herd), GROUND (where
-// things are — places, and the devices that sit on them), THE RECORD (what
-// happened — Activity, with machine work as the filter it already has). Hay
-// leaves this list because Today's Hay tab is the surface; Work folds into the
-// record; Devices fold under Ground. The routes all still answer.
-//
-// The usage evidence behind that was named thin — no per-page telemetry, 13
-// manual entries on 4 days in six weeks — so this is a design call with a
-// December revisit against Vercel's /ranch/* page views written into it.
-//
-// PK's ruling on 12.8: recent activity was two rows of a mixed list and "Show
-// 26 more". What a person glancing at Ranch is actually asking is three
-// things, in this order: did the hand do what I asked TODAY (per person, not
-// per row); is there anything I have not looked at (the 6H cursor already
-// knows); is there anything that needs me. "Today on the ranch" answers those
-// and nothing else. The full list lives in Activity. Nothing on Ranch scrolls.
+// ─── /ranch — the Ranch view (Block 47; replaces the hub of Block 12) ─────────
+// One page, read at a glance: head, bales on hand with days of feed left, rain
+// this season against normal — each a tap that opens what is beneath it. Under
+// them Cattle, Ground and The record as tabs; you never leave the page. Every
+// number is traceable to records; one that cannot be honestly derived is not
+// painted. Acres by kind live under Ground and feed used this season under the
+// hay number: reference, not status.
 export const dynamic = 'force-dynamic'
 export const generateMetadata = () => privateTitle('Ranch')
-
-const fmtN = (n: number) => n.toLocaleString('en-US')
-
-interface PersonToday { name: string; userId: string; lines: string[]; lastAt: string; count: number }
 
 export default async function RanchPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch')
-
   // Block 32: what this render read — taken before the reads below start.
   const through = await ledgerThrough(supabase)
-  const [numbers, recent, member] = await Promise.all([
-    ranchNumbers(supabase, user.id),
+  const [view, lots, todayCount, recordPage, work, rows] = await Promise.all([
+    ranchView(supabase, user.id),
+    getRanchLots(supabase, user.id).catch(() => []),
+    entriesToday(supabase).catch(() => 0),
     listActivity(supabase, user.id, {}, null).catch(() => null),
-    supabase.from('ranch_members').select('last_seen_at').eq('user_id', user.id).order('created_at', { ascending: true }).limit(1).maybeSingle(),
+    listWork(supabase, { limit: 60 }).catch(() => []),
+    placeRows(supabase).catch(() => ({ live: [], retired: [] })),
   ])
+  const [lastWork, where, purposeSupported] = await Promise.all([
+    lastWorkByLot(supabase, lots.map(l => l.id)).catch(() => ({})),
+    whereByLot(supabase, lots).catch(() => ({})),
+    lotPurposeSupported(supabase).catch(() => false),
+  ])
+  const oldestTs = recordPage?.rows[recordPage.rows.length - 1]?.ts ?? null
+  const workRows = work.filter(w => !recordPage?.nextCursor || (oldestTs != null && w.startedAt >= oldestTs))
 
-  const today = todayKey()
-  const standing = recent ? standingRows(recent.rows) : []
-  const todays = standing.filter(r => dayKey(r.ts) === today)
-
-  // One line per person who recorded something today, newest recorder first.
-  const byPerson = new Map<string, PersonToday>()
-  for (const r of todays) {
-    const line = describeEvent(r, recent!.names)
-    const p = byPerson.get(r.user_id) ?? { name: recent!.names.person(r.user_id), userId: r.user_id, lines: [], lastAt: r.ts, count: 0 }
-    p.count += 1
-    if (p.lines.length < 3) p.lines.push(line.replace(/^Removed: /, 'removed: '))
-    if (r.ts > p.lastAt) p.lastAt = r.ts
-    byPerson.set(r.user_id, p)
-  }
-  const people = [...byPerson.values()].sort((a, b) => b.lastAt.localeCompare(a.lastAt))
-
-  // Anything landed since the person last checked — the 6H cursor. A late
-  // sync is news the day it arrives, whatever day the work was.
-  // No cursor yet (Reviewed never pressed) means the same thing it means on
-  // Today's "Recorded since you checked": the last 24 hours. The first run of
-  // the 12.8 check found this reading 0 for a hand's fresh entries because the
-  // owner had no cursor — a null cursor is not "nothing is new".
-  const lastSeen = (member.data as { last_seen_at?: string | null } | null)?.last_seen_at ?? new Date(Date.now() - 24 * 3_600_000).toISOString()
-  const unseen = standing.filter(r => r.created_at > lastSeen && r.user_id !== user.id).length   // Block 27: made since
-
-  // The last thing recorded at all, for a quiet day.
-  const last = standing[0] ?? null
-
-  const tiles: { href: string; label: string; number: string | null; audit: string }[] = [
-    { href: '/ranch/cattle', label: 'Cattle', number: numbers.headInLots != null ? `${fmtN(numbers.headInLots)} head` : null, audit: 'cattle' },
-    { href: '/ranch/places', label: 'Ground', number: numbers.places != null ? plural(numbers.places, 'place') + (numbers.devices != null ? ` · ${plural(numbers.devices, 'device')}` : '') : null, audit: 'ground' },
-    { href: '/ranch/activity', label: 'The record', number: todays.length > 0 ? `${todays.length} ${todays.length === 1 ? 'entry' : 'entries'} today` : null, audit: 'record' },
+  const GROUPS: [string, string, string[]][] = [['pastures', 'Pastures', ['pasture']], ['fields', 'Fields', ['field']], ['yards', 'Yards', ['yard', 'stackyard', 'stack']], ['points', 'Points', ['gate', 'tank']]]
+  const known = new Set(GROUPS.flatMap(g => g[2]))
+  const row = (r: { id: string; name: string; kind: string; acres: number | null }) => ({ id: r.id, name: r.name, kind: r.kind, acres: r.acres })
+  const groups = [
+    ...GROUPS.map(([key, label, kinds]) => ({ key, label, rows: rows.live.filter(r => kinds.includes(r.kind)).map(row) })),
+    { key: 'other', label: 'Other', rows: rows.live.filter(r => !known.has(r.kind)).map(row) },
+    { key: 'off', label: 'Off the list', rows: rows.retired.map(row) },
   ]
 
   return (
@@ -90,53 +65,37 @@ export default async function RanchPage() {
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <LedgerStamp through={through} />
         <h1 className="type-page-heading text-ink">Ranch</h1>
-
-        {/* 12.8 — Today on the ranch */}
-        <section className="mt-4" aria-labelledby="ranch-today">
-          <h2 id="ranch-today" className={`${EYEBROW} !text-ink`}>Today on the ranch</h2>
-          <Card className="mt-2 p-0" data-audit="ranch-today">
-            {people.length === 0 ? (
-              <p className="px-4 py-4 font-dm-sans text-[17px] text-ink" data-audit="ranch-quiet">
-                Nothing recorded today{last ? ` · last entry ${dayKey(last.ts) === today ? '' : `${new Date(last.ts).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' })} `}${fmtTime(last.ts)} by ${recent!.names.person(last.user_id)}` : ''}.
-              </p>
-            ) : (
-              <ul className="divide-y divide-rule">
-                {people.map(p => (
-                  <li key={p.userId}>
-                    <Link href={`/ranch/activity?actor=${p.userId}`} className="flex min-h-[56px] items-start justify-between gap-3 px-4 py-3 hover:bg-forest-green/[0.03]" data-audit="ranch-person" data-user={p.userId}>
-                      <span className="min-w-0">
-                        <span className="block font-dm-sans text-[17px] text-ink"><span className="font-semibold">{p.name}</span> · {p.lines.join(', ')}{p.count > p.lines.length ? ` · +${p.count - p.lines.length} more` : ''}</span>
-                      </span>
-                      <span className="shrink-0 font-dm-sans text-[15px] tabular-nums text-secondary-ink">last at {fmtTime(p.lastAt)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {unseen > 0 && (
-              <div className="flex items-center justify-between gap-3 border-t border-rule px-4 py-3" data-audit="ranch-since">
-                <p className="font-dm-sans text-[16px] text-ink">{unseen} {unseen === 1 ? 'entry' : 'entries'} since you last checked.</p>
-                {/* 6H: Reviewed is an action, never a page load. */}
-                <ReviewedButton count={unseen} through={standing.filter(r => r.user_id !== user.id).map(r => r.created_at).sort().pop() ?? null} />
-              </div>
-            )}
-          </Card>
-        </section>
-
-        {/* 12.7 — three things, each with its number */}
-        <section className="mt-6" aria-label="Sections">
-          <div className="grid grid-cols-1 gap-3" data-audit="ranch-tiles">
-            {tiles.map(t => (
-              <Link key={t.href} href={t.href} className="flex min-h-[72px] items-center justify-between gap-3 rounded-xl border border-rule bg-surface px-5 py-4 hover:bg-forest-green/[0.03]" data-audit="ranch-tile" data-tile={t.audit}>
-                <span className="font-dm-sans text-[20px] font-semibold text-ink">{t.label}</span>
-                <span className="text-right font-dm-sans text-[17px] tabular-nums text-ink">
-                  {t.number && <span data-audit="tile-number">{t.number}</span>}
-                  <span aria-hidden className="ml-2 text-secondary-ink">→</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <RanchView
+          view={view}
+          todayCount={todayCount}
+          cattle={(
+            <div data-audit="ranch-cattle">
+              {lots.length > 0 && (
+                <Link href="/ranch/preg-check" data-audit="cattle-preg-check" className="mb-3 inline-flex min-h-[56px] w-full items-center justify-between rounded-xl border border-control-border bg-surface px-5 font-dm-sans text-[18px] font-semibold text-ink hover:bg-forest-green/[0.03]">
+                  <span>Preg check</span>
+                </Link>
+              )}
+              <HerdForm initialLots={lots} lastWork={lastWork} where={where} purposeSupported={purposeSupported} />
+            </div>
+          )}
+          ground={(
+            <div data-audit="ranch-ground">
+              {view.acresByKind.length > 0 && (
+                <ul className="divide-y divide-forest-green/10 rounded-xl border border-forest-green/10 bg-white px-4" data-audit="acres-by-kind">
+                  {view.acresByKind.map(a => <li key={a.kind} className="flex justify-between py-2 font-dm-sans text-[16px] text-ink"><span>{kindLabel(a.kind)} · {a.places} {a.places === 1 ? 'place' : 'places'}</span><span className="tabular-nums font-semibold">{fmtAcres(a.acres)}</span></li>)}
+                </ul>
+              )}
+              <PlacesByKind groups={groups} />
+              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/places" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-places-link">Places →</Link> · <Link href="/ranch/devices" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
+            </div>
+          )}
+          record={(
+            <div data-audit="ranch-today">
+              {recordPage && recordPage.rows.length > 0 ? <ActivityGroups page={recordPage} workRows={workRows} audit="ranch-record-list" /> : <p className="font-dm-sans text-[17px] text-ink" data-audit="ranch-quiet">Nothing recorded yet.</p>}
+              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/activity" className="inline-flex min-h-[44px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-activity-link">The whole record →</Link></p>
+            </div>
+          )}
+        />
       </main>
     </>
   )

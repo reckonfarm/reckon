@@ -15,7 +15,7 @@ import LedgerStamp from '@/app/components/LedgerStamp'
 import { ledgerThrough } from '@/lib/ledger-through'
 import { getChangesSince } from '@/lib/since'
 import FilterShell from './ActivityFilters'
-import ActivityDays from './ActivityDays'
+import ActivityGroups from './ActivityGroups'
 import { Select } from '@/app/components/ui/Field'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
@@ -64,17 +64,6 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     : filters.since ? 'Recorded since you checked'
     : 'Activity'
 
-  // Rows grouped by ranch day so "Tuesday" reads as a heading, not a hunt.
-  type Entry = { at: string; event?: NonNullable<typeof page>['rows'][number]; work?: (typeof workRows)[number] }
-  // 8B.3 — which days open. Today and yesterday, BY DATE, on the ranch clock
-  // (America/Denver, the same day boundary every balance uses). Not "the last
-  // N groups": the measured record had 17 entries on one day and one each on
-  // the nineteen behind it, so a count of days predicts nothing about volume.
-  const ranchToday = new Date(new Date().toLocaleString('en-US', { timeZone: RANCH_TZ }))
-  const dayKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  const yesterday = new Date(ranchToday); yesterday.setDate(yesterday.getDate() - 1)
-  const openDays = [dayKeyOf(ranchToday), dayKeyOf(yesterday)]
-
   // The active-filter sentence. Hiding a filter is only safe if a filtered
   // view can never look unfiltered, so this is what the collapsed row says.
   const activeFilterLabel = (() => {
@@ -86,9 +75,6 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     return bits.length > 0 ? bits.join(' · ') : null
   })()
 
-  const entries: Entry[] = [...(page?.rows ?? []).map(r => ({ at: r.ts, event: r })), ...workRows.map(w => ({ at: w.startedAt, work: w }))].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  const groups: { day: string; rows: Entry[] }[] = []
-  for (const e of entries) { const d = dayKey(e.at); const g = groups[groups.length - 1]; if (g && g.day === d) g.rows.push(e); else groups.push({ day: d, rows: [e] }) }
 
   return (
     <>
@@ -136,27 +122,10 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             </form>
             </FilterShell>
 
-            {entries.length === 0 ? (
+            {(page?.rows.length ?? 0) === 0 ? (
               <Card className="mt-4 p-5" data-audit="activity-empty"><p className="font-dm-sans text-[17px] text-ink">{filtering ? 'Nothing recorded matches those filters.' : 'Nothing recorded on the ranch yet.'}</p></Card>
             ) : (
-              <ActivityDays
-                openDays={openDays}
-                groups={groups.map(g => ({
-                  day: g.day,
-                  label: fmtDay(`${g.day}T12:00:00-06:00`, 'long'),
-                  count: g.rows.length,
-                  body: (
-                    <Card className="mt-2 p-0">
-                      <ol className="divide-y divide-rule" data-audit="activity-list">
-                        {/* Audit history (6B): every revision, each marked — replaced originals struck through. */}
-                        {g.rows.map(e => e.event
-                          ? <ActivityRowItem key={e.event.id} id={e.event.id} who={page.names.person(e.event.user_id)} line={describeEvent(e.event, page.names)} when={fmtTime(e.event.ts)} marker={markerFor(e.event)} />
-                          : <ActivityRowItem key={e.work!.id} id={e.work!.id} who={e.work!.device ? `${e.work!.device} (Scout)` : 'A Scout'} line={describeWork(e.work!, fmtDuration)} when={fmtTime(e.work!.startedAt)} marker={null} href={`/jobs/${e.work!.id}`} audit="activity-row" />)}
-                      </ol>
-                    </Card>
-                  ),
-                }))}
-              />
+              <ActivityGroups page={page} workRows={workRows} />
             )}
 
             {/* 6H: the review boundary moves only from a page that has every entry since the last review on it. */}
