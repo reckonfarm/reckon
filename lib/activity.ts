@@ -7,7 +7,7 @@ import { getRanchLotsIncludingRetired } from './herd-lots'
 import { lotLabel, type Lot } from './herd'
 import { MANUAL_EVENT_TYPES, MANUAL_EVENT_LABELS, isManualEventType } from './manual-log'
 import { GROUP_ACTION_LABELS, GROUP_ACTION_TYPE, isGroupAction } from './cattle/kinds'
-import { fmtDay, fmtTime, plural, dayKey, RANCH_TZ } from './jobs/format'
+import { fmtDay, fmtTime, plural, dayKey, todayKey, RANCH_TZ } from './jobs/format'
 import { live } from './ledger-effective'
 import { liveOnly } from './trash'
 import { droughtAlertLine } from './drought-words'
@@ -63,6 +63,12 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/
 // Ranch-day boundaries (America/Denver), never UTC — the class of defect that bit
 // the seed (UTC-stamped counts) and work-time-vs-recording-time.
 export function ranchDayStartIso(day: string): string { return zonedIso(day, 0) }
+
+// Block 39: the one number under the map — entries recorded today, any hand, any kind.
+export async function entriesToday(supabase: SupabaseClient): Promise<number> {
+  const { count } = await live(supabase.from('events').select('id', { count: 'exact', head: true }).in('type', [...ACTIVITY_TYPES])).gte('ts', ranchDayStartIso(todayKey()))
+  return count ?? 0
+}
 export function ranchDayEndIso(day: string): string { return zonedIso(day, 24) }
 function zonedIso(day: string, hour: number): string {
   // Find the UTC instant at which America/Denver reads `day` at `hour`:00.

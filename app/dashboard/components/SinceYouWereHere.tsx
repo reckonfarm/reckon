@@ -57,10 +57,6 @@ export default async function SinceYouWereHere() {
           <ActivityRowItem key={r.id} id={r.id} who={r.who} line={r.line} when={when(r.workedAt)} marker={r.marker} chain={[]} audit="since-row" rowClass="py-2" sep=" " />
         ))}
       </ul>
-      {/* Block 5F: the list is by when it was RECORDED; each line shows the day the work
-          was done — so an entry logged today for Tuesday's feeding rightly appears here,
-          dated Tuesday. */}
-      <p className="mt-2 font-dm-sans text-[14px] text-secondary-ink" data-audit="since-note">Newest recorded first · each line shows when the work was done{lastSeen ? '' : ' · since yesterday'}.</p>
       {/* 6H: Reviewed only when every entry is on this card; otherwise the whole list carries it. */}
       {total <= rows.length && <ReviewedButton count={total} through={since.newest} />}
       {total > rows.length && (
