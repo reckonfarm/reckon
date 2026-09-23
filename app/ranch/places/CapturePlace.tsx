@@ -408,6 +408,7 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
           </button>
           <button type="button" onClick={() => void beginRide()} className="min-h-[52px] rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[17px] font-semibold text-ink" data-audit="capture-ride-open">
             Ride the perimeter
+            {draft && <span className="block text-[14px] font-normal text-secondary-ink">Starts over — the ride above is thrown away</span>}
           </button>
         </div>
       </Card>

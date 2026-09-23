@@ -300,6 +300,7 @@ export default function PlaceMapClient({
   onPlaceTap,
   overview = false,
   zoomControl,
+  onLocate,
   focus = null,
   line = null,
 }: PlaceMapProps) {
@@ -338,7 +339,7 @@ export default function PlaceMapClient({
   useEffect(() => {
     if (!followMe || typeof navigator === 'undefined' || !navigator.geolocation) return
     const id = navigator.geolocation.watchPosition(
-      pos => setMe({ p: { lat: pos.coords.latitude, lng: pos.coords.longitude }, accuracyM: pos.coords.accuracy }),
+      pos => { const p = { lat: pos.coords.latitude, lng: pos.coords.longitude }; setMe({ p, accuracyM: pos.coords.accuracy }); onLocate?.(p, pos.coords.accuracy) },
       () => { setFollowMe(false); setNote('Could not get your position.') },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
     )

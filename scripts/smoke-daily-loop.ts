@@ -315,15 +315,21 @@ async function stableText(page: Page, selector: string, timeoutMs = 10_000): Pro
 // Block 13 — the one gesture. Hold a row (mouse down, 600 ms, up) and read the
 // sheet. `hold` returns whether the sheet opened; the caller reads its parts.
 async function hold(page: Page, row: Locator): Promise<boolean> {
-  await row.scrollIntoViewIfNeeded().catch(() => {})
-  const box = await row.boundingBox().catch(() => null)
-  if (!box) return false
-  await page.mouse.move(box.x + Math.min(40, box.width / 3), box.y + box.height / 2)
-  await page.mouse.down()
-  await page.waitForTimeout(650)
-  await page.mouse.up()
-  await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 3_000 }).catch(() => {})
-  return (await page.locator('[data-audit="row-actions-sheet"]').count()) === 1
+  // A row painted by the server answers a hold only once it has hydrated; on a slow
+  // page the first hold can land before that. Three tries, never a false 'closed'.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await row.scrollIntoViewIfNeeded().catch(() => {})
+    const box = await row.boundingBox().catch(() => null)
+    if (!box) return false
+    await page.mouse.move(box.x + Math.min(40, box.width / 3), box.y + box.height / 2)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    await page.mouse.up()
+    await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 3_000 }).catch(() => {})
+    if ((await page.locator('[data-audit="row-actions-sheet"]').count()) === 1) return true
+    await page.waitForTimeout(500)
+  }
+  return false
 }
 const sheet = (page: Page) => ({
   fix: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]'),
@@ -599,8 +605,10 @@ async function main() {
     await logFeed(page, 2, { place: placeName })
     await watchStates(page, 'Sent', 20_000, 'Fed 2 bales')
     await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+    // Block 43: places sit behind their kind's count — a stackyard is under Yards; open it first.
+    await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})
     const placeLink = page.locator(`main a[href="/ranch/places/${placeId}"]`)
-    record('2F: /places lists the place', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
+    record('2F: /places lists the place (under Yards, one tap open)', await placeLink.count() > 0, (await page.locator('main').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120))
     await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })
     const bodyP = await stableText(page, 'main')
     const h1p = await page.locator('h1').first().innerText().catch(() => '')
@@ -2158,6 +2166,75 @@ async function main() {
       record('36: New bunch asks "As of" (today unless changed) — a bunch put on the books six days late opens on the day it was counted: the opening count carries that day and the record shows it there', asOfDefault === '' && !!lotId36 && (lot36 as { head_count?: number } | null)?.head_count === 17 && anchorDay === opened, `as-of default "${asOfDefault}" (blank = today) · bunch ${lotId36 ? 'made' : 'MISSING'} head ${(lot36 as { head_count?: number } | null)?.head_count ?? '?'} · opening count on ${anchorDay || 'none'} (asked ${opened})`)
     })
 
+    // ── Block 42: count cattle into a pasture ───────────────────────────────
+    // PK's falsifier: stand in a pasture. Locate, tap the pasture, Count cattle in,
+    // pick a bunch, count 47, save — with the network off. The bunch reads 47 at
+    // that pasture, the move names both places, and it is in the outbox. Lock the
+    // phone mid-count and reopen: the total is intact.
+    await section('Block 42: count cattle into a pasture', async () => {
+      const sq = (lng: number, lat: number) => [[lng, lat], [lng + 0.02, lat], [lng + 0.02, lat + 0.02], [lng, lat + 0.02], [lng, lat]]
+      const { data: pInto } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 42 into pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [sq(-110.20, 46.90)] }, acres: 640 }).select('id').single()
+      const { data: pFrom } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} 42 from pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [sq(-110.25, 46.90)] }, acres: 640 }).select('id').single()
+      const intoId = String((pInto as { id?: string } | null)?.id ?? ''), fromId = String((pFrom as { id?: string } | null)?.id ?? '')
+      const lot42 = randomUUID(); const name42 = `${PREFIX} 42 cows`
+      await admin.from('herd_lots').insert({ id: lot42, ranch_id: ranchId, class: 'cows', name: name42, head_count: 50, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date(Date.now() - 3 * 86_400_000).toISOString(), schema_version: 1, payload: { lot_id: lot42, reason: 'created', source: 'manual', head_count: 50 } })
+      const mv = await page.request.post('/api/log', { data: { id: randomUUID(), type: 'cattle_moved', head: 50, herd_lot_id: lot42, to_place_id: fromId, place_id: fromId, ts: new Date(Date.now() - 2 * 86_400_000).toISOString() } })
+      if (!mv.ok()) throw new Error(`42 move: ${mv.status()}`)
+      // Standing in the pasture they are going into.
+      await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await page.context().setGeolocation({ latitude: 46.91, longitude: -110.19, accuracy: 5 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="map-locate"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator('[data-audit="map-locate"]').click({ timeout: 10_000 }).catch(() => {})                       // tap 1: Locate
+      const sheetHere = await page.locator('[data-audit="ranch-map-sheet"] [data-audit="sheet-here"]').waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      const sheetPlace = (await page.locator('[data-audit="ranch-map-sheet"] [data-audit="sheet-place"]').innerText().catch(() => '')).trim()
+      const countIn = page.locator('[data-audit="ranch-map-sheet"] [data-audit="sheet-count-in"]')
+      const offered = (await countIn.count()) === 1
+      await countIn.click({ timeout: 10_000 }).catch(() => {})                                                          // tap 2: Count cattle in
+      await page.waitForURL(/\/ranch\/tally\?to=/, { timeout: 15_000 }).catch(() => {})
+      const into = (await page.locator('[data-audit="tally-into"]').innerText().catch(() => '')).trim()
+      record('42 (ruling 5): Locate on Today names the pasture you are in — the sheet says you are here and offers Count cattle in, which opens the count into that pasture', sheetHere && sheetPlace.endsWith('42 into pasture') && offered && /\/ranch\/tally\?to=/.test(page.url()) && into === 'Into SMOKE-DAILY-LOOP 42 into pasture', `here ${sheetHere} · sheet "${sheetPlace}" · offered ${offered} · ${page.url().replace(BASE, '')} · "${into}"`)
+      // Begin, pick the bunch on the line: from prefills to where the bunch is.
+      await page.locator('[data-audit="tally-begin"]').click({ timeout: 10_000 })
+      await page.locator('[data-audit="tally-line"]').click({ timeout: 10_000 })
+      await page.locator('[data-audit="tally-change-bunch"]').selectOption(lot42)
+      const fromShown = await page.locator('[data-audit="tally-change-from"]').inputValue().catch(() => '')
+      const toShown = await page.locator('[data-audit="tally-change-to"]').inputValue().catch(() => '')
+      await page.locator('[data-audit="tally-line"]').click().catch(() => {})
+      const lineText = (await page.locator('[data-audit="tally-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      record('42 (ruling 1 + 2): the line at the top names the bunch, where from (prefilled from where the bunch is) and where to (the pasture you stand in), and a tap changes any of them', fromShown === fromId && toShown === intoId && /42 cows/.test(lineText) && /from .*42 from pasture → .*42 into pasture/.test(lineText), `from ${fromShown === fromId ? 'the bunch\'s place' : fromShown || 'blank'} · to ${toShown === intoId ? 'the pasture' : toShown || 'blank'} · line "${lineText}"`)
+      // Count to 20, then the phone dies (a reload) — reopening offers the count back, intact.
+      for (let i = 0; i < 5; i++) await page.locator('[data-audit="tally-plus-4"]').click()
+      const before = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      const heldTotal = (await page.locator('[data-audit="tally-held-total"]').innerText({ timeout: 15_000 }).catch(() => '')).trim()
+      await page.locator('[data-audit="tally-held-keep"]').click({ timeout: 10_000 }).catch(() => {})
+      const lineBack = (await page.locator('[data-audit="tally-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      record('42 (ruling 3): the count survives the phone dying — reopening offers it back with its total, bunch and places intact', before === '20' && heldTotal === '20' && /42 cows/.test(lineBack) && /42 into pasture/.test(lineBack), `before ${before} · offered back ${heldTotal} · line "${lineBack}"`)
+      // To 47 — in fours and a three — with the network off; a touch off the buttons changes nothing.
+      for (let i = 0; i < 6; i++) await page.locator('[data-audit="tally-plus-4"]').click()
+      await page.locator('[data-audit="tally-plus-3"]').click()
+      await page.locator('[data-audit="tally-total-box"]').click().catch(() => {})
+      const total47 = (await page.locator('[data-audit="tally-total"]').innerText().catch(() => '')).trim()
+      await page.context().setOffline(true)
+      await page.locator('[data-audit="tally-finish-open"]').click()
+      const finishLine = (await page.locator('[data-audit="tally-finish-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      await page.locator('[data-audit="tally-save"]').click()
+      const offStates = await watchStates(page, 'Sent', 4_000, 'Counted 47')
+      const queued = (await outbox(page)).find(i => (i.body as { type?: string; head?: number }).type === 'cattle_moved' && (i.body as { head?: number }).head === 47)
+      const qb = (queued?.body ?? {}) as { from_place_id?: string; to_place_id?: string; herd_lot_id?: string; set_head?: boolean }
+      record('42 THE FALSIFIER: count 47 and save with the network off — one record in the outbox: the move from the bunch\'s place into the pasture you stood in, carrying the count', total47 === '47' && offStates[0] === 'Saved' && !offStates.includes('Sent') && !!queued && qb.from_place_id === fromId && qb.to_place_id === intoId && qb.herd_lot_id === lot42 && qb.set_head === true && /42 cows/.test(finishLine), `total ${total47} · [${offStates.join(' → ')}] · queued ${!!queued} from ${qb.from_place_id === fromId} to ${qb.to_place_id === intoId} bunch ${qb.herd_lot_id === lot42} set_head ${qb.set_head === true} · finish "${finishLine}"`)
+      await page.context().setOffline(false)
+      const onStates = await watchStates(page, 'Sent', 45_000, 'Counted 47')
+      const { data: lotAfter } = await admin.from('herd_lots').select('head_count, place_id').eq('id', lot42).maybeSingle()
+      const la = lotAfter as { head_count?: number; place_id?: string | null } | null
+      const { data: moveRow } = queued ? await admin.from('events').select('type, payload').eq('id', queued.id).maybeSingle() : { data: null }
+      const mp = ((moveRow as { payload?: { from_place_id?: string; to_place_id?: string; head?: number; set_head?: boolean } } | null)?.payload) ?? {}
+      record('42 (ruling 1): when the signal returns the record lands as one — the bunch reads 47 at that pasture, and the move names both places', onStates.includes('Sent') && la?.head_count === 47 && la?.place_id === intoId && mp.from_place_id === fromId && mp.to_place_id === intoId && mp.head === 47 && mp.set_head === true, `[${onStates.join(' → ')}] · bunch ${la?.head_count ?? '?'} at ${la?.place_id === intoId ? 'the pasture' : la?.place_id ?? 'no place'} · move ${mp.from_place_id === fromId ? 'from' : 'from?'} → ${mp.to_place_id === intoId ? 'into' : 'into?'} head ${mp.head}`)
+      await page.context().setGeolocation(null).catch(() => {})
+    })
+
     // ── Block 12 (12.8): Today on the ranch — what a glance at Ranch is for ──
     // Did the hand do what I asked today; is there anything I have not looked
     // at; can I get to everything that left the hub. Replaces the 7B.2 expander
@@ -2920,7 +2997,7 @@ async function main() {
       const addPlace = await page.getByRole('link', { name: /Add a place/ }).count()
       const explains = await page.locator('[data-audit="since-note"], [data-audit="repeat-preview"]').count()
       const strip = await page.locator('[data-audit="weather-strip"]').count()
-      const cells = await page.locator('[data-audit^="weather-"][data-audit!="weather-strip"]').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('weather-', '')}=${(e.textContent ?? '').trim()}`))
+      const cells = await page.locator('[data-audit^="weather-"]:not([data-audit="weather-strip"]):not([data-audit="weather-reads"]):not([data-audit="weather-programs"])').evaluateAll(els => els.map(e => `${e.getAttribute('data-audit')!.replace('weather-', '')}=${(e.textContent ?? '').trim()}`))
       const sunrise = cells.find(c => c.startsWith('sunrise='))?.slice(8) ?? '', sunset = cells.find(c => c.startsWith('sunset='))?.slice(7) ?? ''
       const clock = /^\d{1,2}:\d{2} ?[AP]M$/
       const mapLine = (await page.locator('[data-audit="ranch-map-line"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
@@ -2965,9 +3042,8 @@ async function main() {
           const listed = await page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`).count()
           const rowText = await text(`[data-audit="trash-row"][data-id="${tp.id}"]`)
           if (await hold(page, page.locator(`[data-audit="trash-row"][data-id="${tp.id}"]`))) await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
-          await page.waitForTimeout(2_000)
-          const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle()
-          const restored = !!back && (back as { deleted_at: string | null }).deleted_at === null
+          let restored = false
+          for (let k = 0; k < 40 && !restored; k++) { const { data: back } = await admin.from('places').select('deleted_at').eq('id', tp.id).maybeSingle(); restored = !!back && (back as { deleted_at: string | null }).deleted_at === null; if (!restored) await page.waitForTimeout(250) }
           record('12.4/13: a deleted place waits in the trash — named, dated, with the day it goes for good — and holding the row → Put it back brings it back',
             del.ok() && dj.trashed === true && listed === 1 && /gone for good/.test(rowText) && restored,
             `${del.status()} trashed=${dj.trashed} · listed ${listed} · "${rowText.slice(0, 70)}" · restored ${restored}`)
@@ -4040,7 +4116,7 @@ async function main() {
         const onScreen = await page.evaluate(() => {
           const box = document.querySelector('[data-audit="tally-counting"]')
           if (!box) return { words: '', extras: -1 }
-          const allowed = new Set(['tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
+          const allowed = new Set(['tally-line', 'tally-change', 'tally-change-bunch', 'tally-change-from', 'tally-change-to', 'tally-total', 'tally-against', 'tally-undo', 'tally-plus-1', 'tally-plus-2', 'tally-plus-3', 'tally-plus-4', 'tally-leave', 'tally-finish-open', 'tally-removed', 'tally-wake'])
           const extras = Array.from(box.querySelectorAll('p, button, span')).filter(e => {
             const r = e.getBoundingClientRect()
             if (r.height === 0 || !(e.textContent ?? '').trim()) return false
@@ -4150,6 +4226,7 @@ async function main() {
       // 2 · Place: Fix opens the form; Delete with things attached — the entry
       // and the device survive and still name it; Undo puts it back.
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})   // Block 43: the corral is under Yards
       const placeRow = page.locator(`a[data-audit="place-row"][data-id="${place13}"]`).first()
       await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s2 = await hold(page, placeRow)
@@ -4158,6 +4235,7 @@ async function main() {
       const pinSwitch = await page.locator('[data-audit="place-edit-pinned"] input').count()
       record('13 (place): hold → Fix opens the place form with name, kind, where it sits, and Show on Weather', s2 && fixOpen2 && pinSwitch === 1, `sheet ${s2} · form ${fixOpen2} · Weather switch ${pinSwitch}`)
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-group-open"][data-group="yards"]').click({ timeout: 10_000 }).catch(() => {})   // Block 43: the group closes again on a fresh load
       await placeRow.waitFor({ timeout: 20_000 }).catch(() => {})
       const s2b = await hold(page, placeRow)
       await sheet(page).del.click().catch(() => {})

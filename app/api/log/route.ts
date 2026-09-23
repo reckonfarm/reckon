@@ -133,6 +133,19 @@ export async function POST(req: NextRequest) {
     const lot = lotRow as { id: string; retired_at: string | null; deleted_at: string | null } | null
     if (!lot || lot.retired_at || lot.deleted_at) return NextResponse.json({ error: 'That bunch is not on your ranch.' }, { status: 400 })
   }
+  // Block 42 (ruling 1): a count INTO a pasture is one record — the move carries
+  // the count as its head, and set_head makes the bunch read that count in the
+  // same act, through the outbox. The same door 22's count uses (setLotHeadFromCount).
+  if (body.type === 'cattle_moved' && (body as { set_head?: unknown }).set_head === true) {
+    const lotId = typeof body.herd_lot_id === 'string' ? body.herd_lot_id : null
+    const head = typeof body.head === 'number' ? body.head : null
+    if (lotId && head != null) {
+      const set = await setLotHeadFromCount(supabase, lotId, head)
+      if (!set.ok) return NextResponse.json({ error: set.error }, { status: 400 })
+      ;(payload as Record<string, unknown>).set_head = true
+      if (set.changed) (payload as Record<string, unknown>).head_before = set.before
+    }
+  }
 
   const ranch_id = await resolveRanchId(supabase, user.id)
   // Answered here, not by the database. Without this the person gets a 500

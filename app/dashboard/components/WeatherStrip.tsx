@@ -39,7 +39,7 @@ export default async function WeatherStrip({ lat, lng }: { lat: number; lng: num
       {cells.map(c => (
         <div key={c.audit} className="min-w-0 text-center">
           <p className="truncate font-dm-sans text-[17px] font-semibold tabular-nums text-ink" data-audit={`weather-${c.audit}`}>{c.value}</p>
-          <p className="font-dm-sans text-[12px] uppercase tracking-wide text-secondary-ink">{c.word}</p>
+          <p className="font-dm-sans text-[14px] uppercase tracking-wide text-secondary-ink">{c.word}</p>
         </div>
       ))}
     </div>

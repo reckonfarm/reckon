@@ -33,6 +33,9 @@ export interface Tally {
   taps: TapSize[]
   /** The bunch this count is about, when it was started from one. */
   lotId: string | null
+  /** Block 42: counting INTO a pasture — where they came from and where they are going. */
+  fromPlaceId?: string | null
+  toPlaceId?: string | null
 }
 
 /** What the phone did with a tap. Anything but 'kept' has to reach the screen. */
@@ -47,7 +50,7 @@ export function loadTally(): Tally | null {
     const t = JSON.parse(raw) as Tally
     if (!t || !Array.isArray(t.taps)) return null
     const taps = t.taps.filter((n): n is TapSize => (TAP_SIZES as readonly number[]).includes(n))
-    return { startedAt: Number(t.startedAt) || Date.now(), savedAt: Number(t.savedAt) || Date.now(), taps, lotId: typeof t.lotId === 'string' ? t.lotId : null }
+    return { startedAt: Number(t.startedAt) || Date.now(), savedAt: Number(t.savedAt) || Date.now(), taps, lotId: typeof t.lotId === 'string' ? t.lotId : null, fromPlaceId: typeof t.fromPlaceId === 'string' ? t.fromPlaceId : null, toPlaceId: typeof t.toPlaceId === 'string' ? t.toPlaceId : null }
   } catch {
     return null
   }
@@ -99,8 +102,8 @@ export function undoTap(t: Tally): { tally: Tally; removed: TapSize | null; wrot
   return { tally, removed, wrote: saveTally(tally) }
 }
 
-export function startTally(lotId: string | null = null): Tally {
-  const t: Tally = { startedAt: Date.now(), savedAt: Date.now(), taps: [], lotId }
+export function startTally(lotId: string | null = null, fromPlaceId: string | null = null, toPlaceId: string | null = null): Tally {
+  const t: Tally = { startedAt: Date.now(), savedAt: Date.now(), taps: [], lotId, fromPlaceId, toPlaceId }
   saveTally(t)
   return t
 }
