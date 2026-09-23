@@ -111,6 +111,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           </Card>
         )}
 
+        {canCorrect
+          ? <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null, line }}>
         <Card className="mt-4 p-0" data-audit="event-detail">
           <dl className="divide-y divide-rule">
             {rows.map(([k, v]) => (
@@ -121,6 +123,19 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             ))}
           </dl>
         </Card>
+            </CorrectionActions>
+          : (
+        <Card className="mt-4 p-0" data-audit="event-detail">
+          <dl className="divide-y divide-rule">
+            {rows.map(([k, v]) => (
+              <div key={k} className="flex min-h-[52px] items-baseline gap-4 px-4 py-3">
+                <dt className="w-28 shrink-0 font-dm-sans text-[14px] font-medium uppercase tracking-wide text-secondary-ink">{k}</dt>
+                <dd className="font-dm-sans text-[17px] leading-snug text-ink" data-audit={`event-${k.toLowerCase().replace(/\s+/g, '-')}`}>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+          )}
         {backdated && (
           <p className="mt-3 font-dm-sans text-[16px] leading-snug text-ink" data-audit="event-backdated">
             {isCorrection || isVoid
@@ -149,7 +164,6 @@ export default async function EventPage({ params, searchParams }: { params: Prom
 
         <p className="mt-3 font-dm-sans text-[14px] text-secondary-ink">Entry {row.id}</p>
 
-        {canCorrect && <CorrectionActions event={{ id: row.id, type: row.type, ts: row.ts, values: editableValues(row), reason: row.correction_reason ?? null, line }} />}
 
         <div className="mt-5 flex flex-wrap gap-3">
           <Link href={`/activity${placeId ? `?place=${placeId}` : ''}`} className="inline-flex min-h-[48px] items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">{placeName ? `All activity at ${placeName}` : 'All activity'}</Link>

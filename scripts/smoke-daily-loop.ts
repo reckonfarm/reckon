@@ -1235,7 +1235,7 @@ async function main() {
 
         // Ruling 3: the place chip on the bunch EDIT form records a move, through the outbox.
         await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G }).locator('[data-audit="lot-fix"]').click()
+        await hold(page, page.locator('[data-audit="lot-row"]').filter({ hasText: LOT6G })); await sheet(page).fix.click()   // Block 46: hold → Fix
         await page.locator('[data-audit="lot-place"]').getByRole('radio', { name: `${PREFIX} West stack`, exact: true }).click()
         await page.locator('[data-audit="lot-save"]').click()
         const chipStates = await watchStates(page, 'Sent', 30_000, `Moved ${LOT6G}`)
@@ -1275,7 +1275,7 @@ async function main() {
         record('5B: a 6-bale feeding synced and the strip states the balance', seq6.includes('Sent') && !!six && Number.isFinite(onHand6), `${seq6.join(' → ')} · on hand ${onHand6} · strip: ${strip6.slice(0, 120)}`)
         if (six) {
           await page.goto(`/ranch/activity/${six.id}`, { waitUntil: 'domcontentloaded' })
-          await page.locator('[data-audit="correct-entry"]').click()
+          await hold(page, page.locator('[data-audit="event-detail"]')); await sheet(page).fix.click()   // Block 46: hold → Fix
           await page.getByLabel('Bales', { exact: true }).fill('4')
           await page.locator('[data-audit="correction-reason"]').fill('was 4, typed 6')
           await page.locator('[data-audit="correction-save"]').click()
@@ -1290,7 +1290,7 @@ async function main() {
           const replaced = (await page.locator('[data-audit="event-replaced"]').innerText().catch(() => '')).replace(/\s+/g, ' ')
           const struck = await page.locator('h1[data-audit="event-line"].line-through').count()
           record('5B: the original stays readable, struck through, and names the current value, who changed it, and why', /Current: Fed 4 bales/.test(replaced) && /Changed by Smoke A/.test(replaced) && /was 4, typed 6/.test(replaced) && struck === 1, replaced.slice(0, 160))
-          const again = await page.locator('[data-audit="correct-entry"]').count()
+          const again = await page.locator('[data-audit="row-actions"] [data-audit="event-detail"]').count()   // Block 46: a held card offers Fix; a replaced entry's card is not held
           record('5B: a corrected entry offers no second correction (correct the current entry instead)', again === 0, `${again} correct button(s) on the original`)
         }
       }
@@ -1556,7 +1556,7 @@ async function main() {
         const describe = (bad: string[], now: Row) => bad.length ? `lost or changed: ${bad.join(', ')} · now ${JSON.stringify(now.payload)}` : `every other field kept · ${JSON.stringify(now.payload)}`
         const correct = async (p: Page, id: string, act: (p: Page) => Promise<void>, reason: string) => {
           await p.goto(`/ranch/activity/${id}`, { waitUntil: 'domcontentloaded' })
-          await p.locator('[data-audit="correct-entry"]').click()
+          await hold(p, p.locator('[data-audit="event-detail"]')); await sheet(p).fix.click()   // Block 46: hold → Fix
           await p.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
           await act(p)
           await p.locator('[data-audit="correction-reason"]').fill(reason)
@@ -1581,7 +1581,7 @@ async function main() {
           const o = await original(userId, lotId)
           await page.route('**/api/activity/options', async r => { await new Promise(res => setTimeout(res, 3_000)); await r.continue() })
           await page.goto(`/ranch/activity/${o.id}`, { waitUntil: 'domcontentloaded' })
-          await page.locator('[data-audit="correct-entry"]').click()
+          await hold(page, page.locator('[data-audit="event-detail"]')); await sheet(page).fix.click()   // Block 46: hold → Fix
           await page.locator('[data-audit="correction-options"][data-state="loading"]').waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {})
           const heldSave = await page.locator('[data-audit="correction-save"]').isDisabled()
           const heldLot = await page.locator('[data-audit="correction-herd_lot_id"]').inputValue().catch(() => '')
@@ -1619,7 +1619,7 @@ async function main() {
           record('6A: a reason-only correction lands as a correction — the reason recorded, every value and the time kept', h4.id !== h3.id && r4?.correction_reason === '6A reason only' && bad4.length === 0, `reason "${r4?.correction_reason}" · ${describe(bad4, h4)}`)
           // the same reason again, nothing else different: refused as nothing changed, reason included; the entry untouched
           await page.goto(`/ranch/activity/${h4.id}`, { waitUntil: 'domcontentloaded' })
-          await page.locator('[data-audit="correct-entry"]').click()
+          await hold(page, page.locator('[data-audit="event-detail"]')); await sheet(page).fix.click()   // Block 46: hold → Fix
           await page.locator('[data-audit="correction-options"][data-state="ready"]').waitFor({ state: 'attached', timeout: 20_000 })
           await page.locator('[data-audit="correction-reason"]').fill('6A reason only')
           await page.locator('[data-audit="correction-save"]').click()
@@ -2622,12 +2622,13 @@ async function main() {
         record('11.2: a receipt dies with its entry — never a balance for a row that is gone', false, 'could not find the entry to delete')
       } else {
         await page.goto(`/ranch/activity/${doomedId}`, { waitUntil: 'domcontentloaded' })
-        await page.locator('[data-audit="delete-entry"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
+        await page.locator('[data-audit="event-detail"]').first().waitFor({ state: 'attached', timeout: 15_000 }).catch(() => {})
         // 11.3 — Delete must be reachable WITHOUT scrolling the receipt away:
         // nothing transient may sit over a real control. Block 13: there is no
         // confirm any more; the tap IS the delete, and the strip's Undo is the
         // safety.
-        const opener = page.locator('[data-audit="delete-entry"]').first()
+        await hold(page, page.locator('[data-audit="event-detail"]').first())   // Block 46: hold → Delete
+        const opener = sheet(page).del
         let intercepted = false
         if (await opener.count() > 0) {
           await opener.click({ timeout: 5_000 }).catch(() => { intercepted = true })
@@ -3186,7 +3187,7 @@ async function main() {
       // The place page says where it sits; the parent's page says what is in it.
       await page.goto(`/ranch/places/${newId}`, { waitUntil: 'domcontentloaded' })
       const parentLink = await page.locator(`[data-audit="place-parent"] a[href="/ranch/places/${placeId}"]`).count()
-      await page.locator('[data-audit="place-edit-open"]').click().catch(() => {})
+      await hold(page, page.locator('[data-audit="place-head"]')); await sheet(page).fix.click().catch(() => {})   // Block 46: hold → Fix
       await page.locator('[data-audit="place-edit-parent"]').waitFor({ timeout: 10_000 }).catch(() => {})
       const editChecked = await page.locator('[data-audit="place-edit-parent-option"][data-kind="stackyard"][aria-checked="true"]').count()
       await page.goto(`/ranch/places/${placeId}`, { waitUntil: 'domcontentloaded' })

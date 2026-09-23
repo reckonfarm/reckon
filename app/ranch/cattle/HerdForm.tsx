@@ -556,11 +556,6 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
                 : <button type="button" onClick={() => void followThenGo(lot.id)} className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2" data-audit="lot-market-link" data-followed="false">Follow on Markets →</button>}
             </p>
           </div>
-          <div className="relative flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => openEdit(lot)} className="inline-flex min-h-[44px] items-center px-2 font-dm-sans text-[16px] font-medium text-accent hover:text-brand" data-audit="lot-fix">
-              Fix
-            </button>
-          </div>
         </div>
       </Card>
       </RowActions>

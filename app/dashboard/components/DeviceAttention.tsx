@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { devicesNeedingAttention } from '@/lib/devices-attention'
 import { Card } from '@/app/components/ui/Card'
@@ -27,7 +26,6 @@ export default async function DeviceAttention() {
               <span className="font-semibold">{d.name}</span> has not reported
               <span className="block text-[15px] text-secondary-ink">{d.lastSeen ? `Last collected ${fmtDay(d.lastSeen)} ${fmtTime(d.lastSeen)}` : 'Never collected'} · expected every {Math.round(d.expectedEveryMs / 3_600_000)} h</span>
             </span>
-            <Link href={`/ranch/devices#${d.id}`} className="inline-flex min-h-[48px] shrink-0 items-center rounded-lg border border-control-border bg-surface px-4 font-dm-sans text-[16px] font-semibold text-ink">Open</Link>
           </div>
           </HeldRow>
           </li>

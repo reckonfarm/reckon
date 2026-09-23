@@ -6,6 +6,8 @@ import { Card } from '@/app/components/ui/Card'
 import { PLACE_KINDS, MAX_NAME, allowedParentKinds, kindLabel, parentRule } from '@/lib/places/kinds'
 import { warning } from '@/lib/brand-colors'
 import { deleteWithUndo, callDelete, restoreFromTrash, showNotice } from '@/lib/undo'
+import RowActions from '@/app/components/RowActions'
+import type { ReactNode } from 'react'
 
 // ─── Correcting a place (057) ─────────────────────────────────────────────────
 //
@@ -51,7 +53,7 @@ type Mode = 'idle' | 'editing'
 const inputCls = 'mt-1 block w-full min-h-[48px] rounded-lg border border-control-border bg-surface px-3 font-dm-sans text-[17px] text-ink'
 const labelCls = 'block font-dm-sans text-[14px] font-medium text-secondary-ink'
 
-export default function EditPlace({ place }: { place: EditablePlace }) {
+export default function EditPlace({ place, children }: { place: EditablePlace; children?: ReactNode }) {
   const router = useRouter()
   const [mode, setMode] = useState<Mode>('idle')
   const [name, setName] = useState(place.name)
@@ -135,6 +137,8 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
   // ── A retired place: say so, and offer the way back ─────────────────────────
   if (place.retiredAt) {
     return (
+      <>
+      {children}
       <Card className="mt-4 border-forest-green/25 p-4 sm:p-5" data-audit="place-retired">
         <p className="font-dm-sans text-[17px] font-semibold text-ink">This place is off the list.</p>
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
@@ -148,12 +152,15 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
           {busy ? 'Putting it back…' : 'Put it back'}
         </button>
       </Card>
+      </>
     )
   }
 
   // ── The form ────────────────────────────────────────────────────────────────
   if (mode === 'editing') {
     return (
+      <>
+      {children}
       <Card className="mt-4 p-4 sm:p-5" data-audit="place-edit">
         <label className={labelCls} htmlFor="edit-place-name">Name
           <input id="edit-place-name" value={name} onChange={e => setName(e.target.value)} maxLength={MAX_NAME} className={inputCls} data-audit="place-edit-name" />
@@ -219,25 +226,16 @@ export default function EditPlace({ place }: { place: EditablePlace }) {
             Cancel
           </button>
         </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          {/* Block 13: one tap. It goes to the trash, the strip offers Undo. */}
-          <button type="button" disabled={busy} onClick={() => void remove()} className="inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: warning }} data-audit="place-delete-open">
-            Delete this place
-          </button>
-        </div>
       </Card>
+      </>
     )
   }
 
+  // Block 46: one gesture everywhere — the place's header is held for Fix and
+  // Delete, like every row on every list. No button under it.
   return (
-    <button
-      type="button"
-      onClick={() => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setError(null); setMode('editing') }}
-      className="mt-3 inline-flex min-h-[44px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2"
-      data-audit="place-edit-open"
-    >
-      Fix name, kind or where it sits
-    </button>
+    <RowActions links={{ label: place.name, fix: { onSelect: () => { setName(place.name); setKind(place.kind); setParentId(place.parentId); setError(null); setMode('editing') } }, del: { onSelect: () => void remove() } }}>
+      <div data-audit="place-head">{children}</div>
+    </RowActions>
   )
 }
