@@ -4445,8 +4445,9 @@ async function main() {
       const putBack10 = await sheet(page).extra.filter({ hasText: 'Put it back' }).count()
       const noDelete10 = (await sheet(page).del.count()) === 0 && /for good/i.test((await sheet(page).deleteNote.innerText().catch(() => '')))
       await sheet(page).extra.filter({ hasText: 'Put it back' }).first().click().catch(() => {})
-      await page.waitForTimeout(2_000)
-      const { data: back10 } = await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()
+      // Poll the DB up to 10 s — a fixed 2 s wait was the flake (same as 12.4/13's restores).
+      let back10: { deleted_at?: string | null } | null = null
+      for (let i = 0; i < 20; i++) { back10 = (await admin.from('places').select('deleted_at').eq('id', place13).maybeSingle()).data as { deleted_at?: string | null } | null; if (back10?.deleted_at === null) break; await page.waitForTimeout(500) }
       record('13 (trash): hold a trash row → Put it back, and no Delete — the sheet says when it goes for good',
         trashThere && s10 && putBack10 === 1 && noDelete10 && (back10 as { deleted_at?: string | null } | null)?.deleted_at === null,
         `there ${trashThere} · sheet ${s10} · put back ${putBack10} · no delete ${noDelete10} · restored ${(back10 as { deleted_at?: string | null } | null)?.deleted_at === null}`)
