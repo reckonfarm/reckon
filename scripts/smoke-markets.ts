@@ -164,6 +164,46 @@ async function main() {
     record('2.6G: no "range shown" and no collapsed range ($X–$X) anywhere', !/range shown/i.test(body) && !/\$(\d+)–\$?\1\b/.test(body), (body.match(/\$(\d+)–\$?\1\b/) ?? [''])[0])
     record('A4: sensitivity line is exact for 300 head × 550 lb', /Every \$1\/cwt move is \$1,650/.test(body), (body.match(/Every \$1\/cwt move is \$[\d,]+[^.]*\./) ?? [''])[0])
     record('B3: history card renders, points only', /Selected cattle/i.test(body) && /Points are reported sales/i.test(body))
+    // ── Block B — Markets paints its numbers before its chart ─────────────────
+    // The numbers and the bunch values are the point; the chart is context. Read
+    // off the stream as the member: the bunch value's segment must come before
+    // the history card's, the chart in a boundary of its own, and the space
+    // held for the chart must arrive with the numbers. Then the painted page:
+    // the card stands in exactly the space that was held, so nothing below it
+    // moved when it landed.
+    {
+      const cookie = (await ctx.cookies()).map(c => `${c.name}=${c.value}`).join('; ')
+      const tB = performance.now()
+      const resB = await fetch(`${BASE}/markets`, { headers: { cookie, ...(BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {}) }, redirect: 'manual' })
+      const firstByte = performance.now() - tB
+      let html = '', numbersAt = -1, chartAt = -1
+      const reader = resB.body!.getReader(); const dec = new TextDecoder()
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break
+        html += dec.decode(value, { stream: true }); const t = performance.now() - tB
+        if (numbersAt < 0 && /data-audit="lot-value"/.test(html)) numbersAt = t
+        if (chartAt < 0 && /data-audit="history-card"[\s>]/.test(html)) chartAt = t
+      }
+      const segs = html.split(/<div hidden id="S:([0-9a-z]+)">/)   // React numbers boundaries in base 36
+      const segOrder = (re: RegExp) => { for (let i = 2; i < segs.length; i += 2) if (re.test(segs[i])) return { id: segs[i - 1], order: (i - 2) / 2 }; return null }
+      const numbers = segOrder(/data-audit="lot-value"/), chart = segOrder(/data-audit="history-card"[\s>]/), hold = segOrder(/data-audit="history-card-hold"/)
+      const ours = resB.status === 200 && /data-audit="markets-title"/.test(html)
+      record('Block B: the numbers stream before the chart — the bunch value\'s segment first, the chart in a boundary of its own, its held space arriving with the numbers',
+        ours && numbers !== null && chart !== null && hold !== null && numbers.id !== chart.id && numbers.order < chart.order && hold.id === numbers.id,
+        `${ours ? 'our page' : `NOT our page (status ${resB.status})`} · first byte ${firstByte.toFixed(0)} ms · numbers at ${numbersAt.toFixed(0)} ms (segment ${numbers?.id}) · chart at ${chartAt.toFixed(0)} ms (segment ${chart?.id}) · hold with numbers ${hold !== null && hold.id === numbers?.id}`)
+      const HOLD = 767   // MarketsHistoryHold — the history card's painted box at 390 wide, measured 2026-10-06
+      const bctx = await browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const bp = await signIn(bctx)
+      await bp.goto('/markets', { waitUntil: 'domcontentloaded' })
+      await bp.locator('[data-audit="history-card"]').first().waitFor({ timeout: 45_000 }).catch(() => {})
+      await bp.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {})
+      await bp.waitForTimeout(800)
+      const painted = await bp.evaluate(`(function(){ var c = document.querySelector('[data-audit="history-card"]'); var v = document.querySelector('[data-audit="lot-value"]'); var n = performance.getEntriesByType('navigation')[0] || {}; return { card: c ? c.getBoundingClientRect().height : -1, value: v ? v.innerText.trim() : '', ttfb: n.responseStart || 0 } })()`) as { card: number; value: string; ttfb: number }
+      record('Block B: painted — the history card stands in exactly the space held for it, under the bunch value',
+        Math.abs(painted.card - HOLD) <= 1.5 && /\$[\d,]+/.test(painted.value) && painted.ttfb < 1000,
+        `card ${painted.card.toFixed(1)} px vs held ${HOLD} · bunch value "${painted.value}" · first byte ${painted.ttfb.toFixed(0)} ms`)
+      await bctx.close()
+    }
     // Block 2.6E — steps default OFF and the copy follows the state.
     const cattleCard = page.locator('[data-audit="history-card"]').first()   // the cattle chart; the Market-context instance is the second
     // Block 7.3 — the carried-forward toggle is gone. What must be true now is

@@ -42,39 +42,43 @@ export async function getHerdAnchor(input: {
   // Trend reads (additive — degrade honestly; never block the estimate above). Herd history
   // via the user-scoped SSR client so the owner-SELECT RLS scopes to the caller; price
   // history via service-role (RLS-none). A read error → null → the panel shows "unavailable".
-  let herdHistory: HerdHistoryRow[] | null = null
-  try {
-    let q = supabase
-      .from('herd_estimate_history')
-      .select('snapshot_date, total_value, lots_priced')
-      .order('snapshot_date', { ascending: false })
-      .limit(2)
-    if (ranchId) q = q.eq('ranch_id', ranchId)
-    const { data, error } = await q
-    herdHistory = error ? null : ((data ?? []) as HerdHistoryRow[])
-  } catch { herdHistory = null }
-
-  let priceHistory: PriceHistoryRow[] | null = []
+  // Block B: the three reads need nothing from one another, so they run side by side —
+  // in series they were 700 ms of the Markets body's wait, the slowest thing on the page.
   const localSlugs = resolved.local.map(b => b.slug_id)
-  if (localSlugs.length > 0) {
-    try {
-      const { data, error } = await createServiceClient()
-        .from('mars_price_history')
-        .select('slug_id, report_date, rows')
-        .in('slug_id', localSlugs)
-        .order('report_date', { ascending: false })
-      priceHistory = error ? null : ((data ?? []) as PriceHistoryRow[])
-    } catch { priceHistory = null }
-  }
+  const [herdHistory, priceHistory, matrix] = await Promise.all([
+    (async (): Promise<HerdHistoryRow[] | null> => {
+      try {
+        let q = supabase
+          .from('herd_estimate_history')
+          .select('snapshot_date, total_value, lots_priced')
+          .order('snapshot_date', { ascending: false })
+          .limit(2)
+        if (ranchId) q = q.eq('ranch_id', ranchId)
+        const { data, error } = await q
+        return error ? null : ((data ?? []) as HerdHistoryRow[])
+      } catch { return null }
+    })(),
+    (async (): Promise<PriceHistoryRow[] | null> => {
+      if (localSlugs.length === 0) return []
+      try {
+        const { data, error } = await createServiceClient()
+          .from('mars_price_history')
+          .select('slug_id, report_date, rows')
+          .in('slug_id', localSlugs)
+          .order('report_date', { ascending: false })
+        return error ? null : ((data ?? []) as PriceHistoryRow[])
+      } catch { return null }
+    })(),
+    // Outlook input (additive — degrade honestly; never block estimate/trend). Feeder LRP coverage
+    // price is the national CME index, so the MT seed carries the national floor (state-
+    // agnostic for feeder). getLrpMatrix never throws; buildOutlook is pure.
+    getLrpMatrix('MT'),
+  ])
 
   // Block 40b: the estimate reads the price history too — a class missing from the fresh report prices off the last report that had it.
   const estimate = estimateHerd({ lots }, resolved, priceHistory)
   const trend = buildTrend({ resolved, estimate, lots, herdHistory, priceHistory })
 
-  // Outlook (additive — degrade honestly; never block estimate/trend). Feeder LRP coverage
-  // price is the national CME index, so the MT seed carries the national floor (state-
-  // agnostic for feeder). getLrpMatrix never throws; buildOutlook is pure.
-  const matrix = await getLrpMatrix('MT')
   const outlook = buildOutlook({ lots, matrix })
 
   return { estimate, trend, outlook }
