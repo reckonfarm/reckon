@@ -1,17 +1,15 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase-server'
-import { privateTitle } from '@/lib/private-title'
-import SiteHeader from '@/app/components/SiteHeaderServer'
+import type { createClient } from '@/lib/supabase-server'
 import { Card } from '@/app/components/ui/Card'
-import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { fmtDay, fmtTime, dayKey } from '@/lib/jobs/format'
 import RecordHere from '../places/RecordHere'
 import EditDevice from './EditDevice'
 import { liveOnly } from '@/lib/trash'
 import HeldRow from '@/app/components/HeldRow'
 
-// ─── /ranch/devices (Block 6A) — the Devices section ──────────────────────────
+// ─── Devices (Block 6A), under Ranch → Ground (Session 3b) ───────────────────
+// A device is AT a place and has no life of its own, so its list sits with the
+// places, on the Ground tab, not on a page of its own.
 // Empty: says you can record work now, and what will appear here. Populated:
 // "{Place or machine} · {role}" leads; the product name is a label; last
 // observation and last sync are separate lines; battery when known; the
@@ -19,8 +17,6 @@ import HeldRow from '@/app/components/HeldRow'
 // words are "Last collected …" / "Waiting for collection" / "Check device" —
 // never "Online" for a sleeping logger, never "Offline" as a blanket verdict.
 // "Check device" needs a known cadence (lib/devices-attention); none is known.
-export const dynamic = 'force-dynamic'
-export const generateMetadata = () => privateTitle('Devices')
 
 interface DeviceRow {
   id: string
@@ -52,10 +48,7 @@ function statusOf(lastSeen: string | null): { word: string; detail: string } {
   return { word: 'Waiting for collection', detail: `Last collected ${fmtDay(lastSeen)}` }
 }
 
-export default async function DevicesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/ranch/devices')
+export default async function DevicesList({ supabase }: { supabase: Awaited<ReturnType<typeof createClient>> }) {
   // Block 12 (12.4): a device in the trash is not on this list.
   const { data, error } = await liveOnly(supabase
     .from('devices')
@@ -63,11 +56,8 @@ export default async function DevicesPage() {
     .order('name', { ascending: true })
   const devices = (data ?? []) as unknown as DeviceRow[]
   return (
-    <>
-      <SiteHeader />
-      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
-        <p className={EYEBROW}>Ranch · Devices</p>
-        <h1 className="mt-1 type-page-heading text-ink">Devices</h1>
+    <div className="mt-6" id="devices" data-audit="ranch-devices">
+      <h2 className="font-fraunces text-[20px] font-semibold text-ink">Devices</h2>
 
         {error && (
           <Card className="mt-4 p-5"><p className="font-dm-sans text-[17px] text-ink">Devices could not be read just now. Try again in a moment.</p></Card>
@@ -94,7 +84,7 @@ export default async function DevicesPage() {
                   {/* Block 13: hold the card for Fix (name, where it sits) · Delete.
                       The name is a person's — the device writes it once at
                       registration and never again. */}
-                  <HeldRow label={lead} openHref={`/ranch/devices#${d.id}`} fixHref={`/ranch/devices#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
+                  <HeldRow label={lead} openHref={`/ranch?tab=ground#${d.id}`} fixHref={`/ranch?tab=ground#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
                   <Card className="p-4 sm:p-5" data-audit="device-card">
                     <p className="font-dm-sans text-[17px] font-semibold text-ink">{lead} <span className="font-normal text-secondary-ink">· {role}</span></p>
                     <p className="mt-0.5 font-dm-sans text-[15px] text-secondary-ink">{product}{d.name !== lead ? ` · ${d.name}` : ''}</p>
@@ -123,7 +113,6 @@ export default async function DevicesPage() {
         {devices.length > 0 && (
           <p className="mt-4"><Link href="/ranch/devices/setup" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Set up another device</Link></p>
         )}
-      </main>
-    </>
+    </div>
   )
 }

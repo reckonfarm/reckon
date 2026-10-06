@@ -94,7 +94,7 @@ export default function SiteHeader({ center, signedIn = false }: Props) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-forest-green/10 bg-cream/90 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-y-1 px-4 py-3 sm:px-6 lg:px-8">
 
         <Link href="/" className="flex min-h-[48px] flex-col justify-center leading-tight">
           {/* The rope-line mark sits left of the wordmark (brand, commit 3). Its ink
@@ -133,7 +133,9 @@ export default function SiteHeader({ center, signedIn = false }: Props) {
           </p>
         )}
 
-        <div className="flex items-center gap-4">
+        {/* Session 3b: at 200% text the flag and Account outgrow one line beside the
+            mark; the row wraps them under it instead of scrolling the page sideways. */}
+        <div className="ml-auto flex items-center gap-3">
           {/* Menu links — DESKTOP ONLY. On mobile the BottomTabBar (md:hidden)
               carries navigation, so these hide at exactly the same `md` breakpoint
               to avoid duplicate nav. Logo + Sign out below stay visible on mobile. */}

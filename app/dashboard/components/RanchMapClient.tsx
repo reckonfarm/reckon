@@ -14,7 +14,6 @@ import type { Change } from '@/lib/since'
 import { centreOf } from '@/lib/places/geo'
 import { attention, brand } from '@/lib/brand-colors'
 import { fmtDay, fmtTime } from '@/lib/jobs/format'
-import ReviewedButton from '@/app/components/ReviewedButton'
 
 // ─── Block 26: the ranch map on Today — the picture, its key, and one sheet ──
 // No words on the map. The key is the bunches' own names in their colours; a
@@ -90,7 +89,6 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
               </p>
             </div>
           )}
-          {step != null && step === changes.length - 1 && total <= changes.length && <div className="mt-1"><ReviewedButton count={total} through={newest} /></div>}
           {total > changes.length && <Link href="/ranch/activity" className="mt-1 inline-flex min-h-[48px] items-center font-dm-sans text-[15px] font-semibold text-brand underline underline-offset-2" data-audit="changes-view-all">View all {total} →</Link>}
         </div>
       )}
