@@ -20,7 +20,7 @@ export default async function DeviceAttention() {
         {rows.map(d => (
           <li key={d.id}>
           {/* Block 13: hold for Fix (name, where it sits) · Delete. */}
-          <HeldRow label={d.name} openHref={`/ranch/devices#${d.id}`} fixHref={`/ranch/devices#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
+          <HeldRow label={d.name} openHref={`/ranch?tab=ground#${d.id}`} fixHref={`/ranch?tab=ground#fix-${d.id}`} del={{ kind: 'device', id: d.id }}>
           <div className="flex min-h-[56px] items-center justify-between gap-3 py-2" data-audit="device-attention-row">
             <span className="font-dm-sans text-[17px] text-ink">
               <span className="font-semibold">{d.name}</span> has not reported

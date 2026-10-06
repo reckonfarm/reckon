@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import type { RanchView as View } from '@/lib/ranch-view'
 import { fmtDay } from '@/lib/jobs/format'
@@ -17,9 +17,18 @@ const ranchDay = (key: string) => fmtDay(`${key}T12:00:00-06:00`)
 const n = (v: number) => v.toLocaleString('en-US')
 const inches = (v: number) => `${v.toFixed(2)}"`
 
-export default function RanchView({ view, todayCount, cattle, ground, record }: { view: View; todayCount: number; cattle: ReactNode; ground: ReactNode; record: ReactNode }) {
+export default function RanchView({ view, todayCount, cattle, ground, record, initialTab = 'cattle' }: { view: View; todayCount: number; cattle: ReactNode; ground: ReactNode; record: ReactNode; initialTab?: Tab }) {
   const [open, setOpen] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('cattle')
+  const [tab, setTab] = useState<Tab>(initialTab)
+  // Session 3b: ?tab=ground is the places page now, and a hash that names ground
+  // — a place, a capture, a device, a device's Fix — opens Ground on arrival
+  // and whenever the hash changes (a held row's Fix sets it on this page).
+  useEffect(() => {
+    const check = () => { if (/^#(capture|place-|fix-|devices)/.test(window.location.hash) || /^#[0-9a-f-]{36}$/.test(window.location.hash)) setTab('ground') }
+    check()
+    window.addEventListener('hashchange', check)
+    return () => window.removeEventListener('hashchange', check)
+  }, [])
   const toggle = (k: string) => setOpen(o => (o === k ? null : k))
 
   const numbers: { key: string; value: string; word: string; under: ReactNode }[] = []

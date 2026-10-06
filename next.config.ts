@@ -24,9 +24,13 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: '/herd',          destination: '/ranch/cattle',                 permanent: true },
-      { source: '/places',        destination: '/ranch/places',                 permanent: true },
+      // Session 3b: Places and Devices live on Ranch's Ground tab; the preg check in the record sheet.
+      { source: '/places',        destination: '/ranch?tab=ground',             permanent: true },
+      { source: '/ranch/places',  destination: '/ranch?tab=ground',             permanent: false },
+      { source: '/ranch/devices', destination: '/ranch?tab=ground',             permanent: false },
+      { source: '/ranch/preg-check', destination: '/today?record=preg_check',   permanent: false },
       { source: '/places/:id',    destination: '/ranch/places/:id',             permanent: true },
-      { source: '/devices',       destination: '/ranch/devices',                permanent: true },
+      { source: '/devices',       destination: '/ranch?tab=ground',             permanent: true },
       { source: '/activity',      destination: '/ranch/activity',               permanent: true },
       { source: '/activity/:id',  destination: '/ranch/activity/:id',           permanent: true },
       { source: '/jobs',          destination: '/ranch/activity?source=machine', permanent: true },

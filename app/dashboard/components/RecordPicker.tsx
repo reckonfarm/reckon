@@ -125,8 +125,8 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
             ['ride', 'Ride the perimeter'],
             ['draw', 'Draw a place on the map'],
           ] as const).map(([mode, label]) => (
-            <Link key={mode} href={mode === 'draw' ? '/ranch/places#capture' : `/ranch/places#capture-${mode}`}
-              onClick={() => { onClose(); if (mode !== 'draw' && window.location.pathname === '/ranch/places') window.dispatchEvent(new CustomEvent(CAPTURE_EVENT, { detail: mode })) }}
+            <Link key={mode} href={mode === 'draw' ? '/ranch?tab=ground#capture' : `/ranch?tab=ground#capture-${mode}`}
+              onClick={() => { onClose(); if (mode !== 'draw' && window.location.pathname === '/ranch') window.dispatchEvent(new CustomEvent(CAPTURE_EVENT, { detail: mode })) }}
               className="flex min-h-[56px] items-center rounded-lg border border-forest-green/15 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green" data-audit={`ground-${mode}`}>
               {label}
             </Link>

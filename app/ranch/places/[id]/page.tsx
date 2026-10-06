@@ -61,7 +61,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <p className="mb-3 font-dm-sans text-[16px]">
-          <Link href="/ranch/places" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
+          <Link href="/ranch?tab=ground" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
         {/* Correcting what a place IS (057): name, kind, retire. A retired place
             shows only the way back — the route refuses every other edit on one,

@@ -63,7 +63,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
         ) : rows.length === 0 ? (
           <Card className="mt-4 p-5" data-audit="work-empty">
             <p className="font-dm-sans text-[17px] text-ink">{kind === 'all' ? 'No machine work this season.' : `No ${kind} recorded by a machine this season.`}</p>
-            <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">A Scout on a machine records cutting and baling here. <Link href="/ranch/devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
+            <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">A Scout on a machine records cutting and baling here. <Link href="/ranch?tab=ground#devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
           </Card>
         ) : groups.map(g => (
           <section key={g.day} className="mt-5" aria-label={fmtDay(`${g.day}T12:00:00-06:00`, 'long')}>

@@ -18,6 +18,13 @@ import HerdForm from './cattle/HerdForm'
 import PlacesByKind from './places/PlacesByKind'
 import ActivityGroups from './activity/ActivityGroups'
 import Link from 'next/link'
+import { resolveMapCentre } from '@/lib/places/anchor'
+import PlaceMapLoader from './places/PlaceMapLoader'
+import CapturePlace from './places/CapturePlace'
+import DrawPlace from './places/DrawPlace'
+import RecordHere from './places/RecordHere'
+import DevicesList from './devices/DevicesList'
+import LitOnHash from '@/app/components/LitOnHash'
 
 // ─── /ranch — the Ranch view (Block 47; replaces the hub of Block 12) ─────────
 // One page, read at a glance: head, bales on hand with days of feed left, rain
@@ -29,7 +36,8 @@ import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 export const generateMetadata = () => privateTitle('Ranch')
 
-export default async function RanchPage() {
+export default async function RanchPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/ranch')
@@ -49,6 +57,10 @@ export default async function RanchPage() {
     lotPurposeSupported(supabase).catch(() => false),
     readFollowed(supabase, user.id).catch(() => [] as string[]),
   ])
+  // Session 3b: the Ground tab IS the places page — the map, the ways to mark
+  // ground, and the devices, which are at places. The separate pages went.
+  const drawn = rows.live.filter(r => r.ring)
+  const centre = await resolveMapCentre(supabase, user.id, drawn.map(r => r.ring!)).catch(() => null)
   const oldestTs = recordPage?.rows[recordPage.rows.length - 1]?.ts ?? null
   const workRows = work.filter(w => !recordPage?.nextCursor || (oldestTs != null && w.startedAt >= oldestTs))
 
@@ -66,17 +78,14 @@ export default async function RanchPage() {
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
         <LedgerStamp through={through} />
+        <LitOnHash prefix="place-" />
         <h1 className="type-page-heading text-ink">Ranch</h1>
         <RanchView
+          initialTab={tab === 'ground' ? 'ground' : tab === 'record' ? 'record' : 'cattle'}
           view={view}
           todayCount={todayCount}
           cattle={(
             <div data-audit="ranch-cattle">
-              {lots.length > 0 && (
-                <Link href="/ranch/preg-check" data-audit="cattle-preg-check" className="mb-3 inline-flex min-h-[56px] w-full items-center justify-between rounded-xl border border-control-border bg-surface px-5 font-dm-sans text-[18px] font-semibold text-ink hover:bg-forest-green/[0.03]">
-                  <span>Preg check</span>
-                </Link>
-              )}
               <HerdForm initialLots={lots} lastWork={lastWork} where={where} purposeSupported={purposeSupported} followed={followed} />
             </div>
           )}
@@ -87,8 +96,21 @@ export default async function RanchPage() {
                   {view.acresByKind.map(a => <li key={a.kind} className="flex justify-between py-2 font-dm-sans text-[16px] text-ink"><span>{kindLabel(a.kind)} · {a.places} {a.places === 1 ? 'place' : 'places'}</span><span className="tabular-nums font-semibold">{fmtAcres(a.acres)}</span></li>)}
                 </ul>
               )}
-              <PlacesByKind groups={groups} />
-              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/places" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-places-link">Places →</Link> · <Link href="/ranch/devices" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Devices →</Link></p>
+              {drawn.length > 0 && centre && (
+                <div className="mt-4" data-audit="places-map">
+                  <PlaceMapLoader shapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))} initialCenter={centre} height={320} />
+                </div>
+              )}
+              <div className="mt-4"><PlacesByKind groups={groups} /></div>
+              {centre && (
+                <div className="mt-4 space-y-3">
+                  <div id="capture" />
+                  <CapturePlace initialCenter={centre} otherShapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))} />
+                  <DrawPlace initialCenter={centre} otherShapes={drawn.map(r => ({ id: r.id, ring: r.ring! }))} />
+                  <RecordHere />
+                </div>
+              )}
+              <DevicesList supabase={supabase} />
             </div>
           )}
           record={(

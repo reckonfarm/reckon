@@ -501,7 +501,6 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
         // on the same gesture as Split rather than buried under Record.
         extra: [
           { label: 'Feed', onSelect: () => openLogIt({ type: 'hay_fed', lot: lot.id }) },
-          { label: 'Count at a gate', href: `/ranch/tally?lot=${lot.id}` },
           { label: 'Split', onSelect: () => openLogIt({ type: 'split', lot: lot.id }) },
         ],
         del: { onSelect: () => removeLot(lot) },

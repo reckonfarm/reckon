@@ -857,13 +857,21 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     const here = hereId ? places.find(p => p.id === hereId) ?? null : null
     fields = (<>
       {/* Session 2: standing in a pasture, the count is a count INTO it — Block 42's
-          tally, by ones to fours, one Save for the move and the count. The plain
-          count stays beneath for a bunch that is not moving. */}
-      {here && (
+          tally, by ones to fours, one Save for the move and the count. Session 3b:
+          anywhere else the same tally is the count at the gate, from here and
+          nowhere else — the bunch row's own door went. The plain count stays
+          beneath for a number already known. */}
+      {here ? (
         <Link href={`/ranch/tally?to=${here.id}`} onClick={close}
           className="flex min-h-[56px] w-full items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white"
           data-audit="count-into" data-place={here.id}>
           Count cattle into {here.name}
+        </Link>
+      ) : (
+        <Link href={lot ? `/ranch/tally?lot=${lot}` : '/ranch/tally'} onClick={close}
+          className="flex min-h-[56px] w-full items-center justify-center rounded-lg border border-forest-green/25 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green"
+          data-audit="count-through">
+          Count at the gate{chosen ? ` · ${lotLabel(chosen)}` : ''}
         </Link>
       )}
       <div>

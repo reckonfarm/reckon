@@ -90,7 +90,7 @@ export default function EditPlace({ place, children }: { place: EditablePlace; c
     const r = await deleteWithUndo({ label: place.name, run: () => callDelete(`/api/places/${place.id}`, { method: 'DELETE' }), undo: restoreFromTrash('places', place.id), after: `/ranch/places/${place.id}` })
     setBusy(false)
     if (!r.ok) { showNotice(r.error); return }
-    router.push('/ranch/places'); router.refresh()
+    router.push('/ranch?tab=ground'); router.refresh()
   }
 
   // Block 12 (12.3): a row held for Fix lands here with the form open.

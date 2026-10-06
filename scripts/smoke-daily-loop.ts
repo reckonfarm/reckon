@@ -1036,7 +1036,7 @@ async function main() {
       const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }
       const { data: anyEvent } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       const { data: anyPlace } = await admin.from('places').select('id').eq('ranch_id', ranchId).limit(1).maybeSingle()
-      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch/places'], ['/devices', '/ranch/devices'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
+      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch?tab=ground'], ['/devices', '/ranch?tab=ground'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
         ...(anyPlace ? [[`/places/${anyPlace.id}`, `/ranch/places/${anyPlace.id}`] as [string, string]] : []),
         ...(anyEvent ? [[`/activity/${anyEvent.id}`, `/ranch/activity/${anyEvent.id}`] as [string, string]] : [])]
       const results = await Promise.all(statics.map(async ([from, expected]) => ({ from, expected, ...(await hop(from)) })))
@@ -2354,8 +2354,8 @@ async function main() {
       // from where a person would look for it.
       const routes: string[] = []
       for (const r of ['/ranch/hay', '/ranch/work', '/ranch/devices']) { const res = await page.request.get(r).catch(() => null); routes.push(`${r} → ${res ? res.status() : 'no response'}`) }
-      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
-      const devLink = await page.locator('[data-audit="places-devices-link"]').count()
+      await page.goto('/ranch?tab=ground', { waitUntil: 'domcontentloaded' })
+      const devLink = await page.locator('[data-audit="ranch-devices"]').count()   // Session 3b: Devices sit ON Ground, not behind a link
       await page.goto('/ranch/activity', { waitUntil: 'domcontentloaded' })
       const machinesFilter = await page.locator('[data-audit="activity-machines-link"]').count()
       record('12.7: what left the hub is still reachable from where a person would look — Devices from Ground, machine work from the record, every old route answering',
@@ -4190,6 +4190,39 @@ async function main() {
       await page.keyboard.press('Escape').catch(() => {})
     })
 
+    // ── Session 3b — one way to do each thing ─────────────────────────────────
+    // PK's falsifier: search the app for a second door to preg check, count,
+    // places or Reviewed — there is none. The old addresses are not dead ends.
+    await section('Session 3b — one way to do each thing', async () => {
+      await page.goto('/ranch', { waitUntil: 'domcontentloaded' })
+      const pregRanch = await page.locator('[data-audit="cattle-preg-check"]').count()
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      const pregCattle = await page.locator('[data-audit="cattle-preg-check"]').count()
+      await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
+      const pregSheet = await page.locator('[data-audit="preg-bunch"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const pregLanded = new URL(page.url()).pathname
+      record('3b: the preg check has one door — the record sheet — and the old address lands there with the sheet open', pregRanch === 0 && pregCattle === 0 && pregLanded === '/today' && pregSheet, `on Ranch ${pregRanch} · on Cattle ${pregCattle} · /ranch/preg-check → ${pregLanded} · sheet ${pregSheet}`)
+      await page.keyboard.press('Escape').catch(() => {})
+      // Ground is the places page: the map, the groups, the ways to mark ground, the devices.
+      await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
+      const groundLanded = new URL(page.url()).pathname + new URL(page.url()).search
+      const groundOn = await page.locator('[data-audit="ranch-tab-ground"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      // The map is painted only when a place is drawn; a ranch with none drawn has no picture to show.
+      const { count: drawnCount } = await admin.from('places').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).not('geometry', 'is', null).is('deleted_at', null)
+      const onGround = { map: (drawnCount ?? 0) > 0 ? await page.locator('[data-audit="places-map"]').count() : 1, rows: await page.locator('[data-audit="place-group-open"]').count(), capture: await page.locator('[data-audit="capture-choose"]').count(), devices: await page.locator('[data-audit="ranch-devices"]').count(), links: await page.locator('[data-audit="ranch-places-link"], [data-audit="places-devices-link"]').count() }
+      await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
+      const devLanded = new URL(page.url()).pathname + new URL(page.url()).search
+      record('3b: Ground is the one places page — /ranch/places and /ranch/devices land on it, with the map, the groups, the ways to mark ground and the devices, and no link to a second page',
+        groundLanded === '/ranch?tab=ground' && devLanded === '/ranch?tab=ground' && groundOn && onGround.map >= 1 && onGround.rows >= 1 && onGround.capture >= 1 && onGround.devices === 1 && onGround.links === 0,
+        `/ranch/places → ${groundLanded} · /ranch/devices → ${devLanded} · Ground open ${groundOn} · map ${onGround.map} · groups ${onGround.rows} · capture ${onGround.capture} · devices ${onGround.devices} · second-page links ${onGround.links}`)
+      // Reviewed: where 6H put it — the Since card when every entry is on it, the last page of View all when not — and nowhere else.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"], [data-audit="since-empty"], [data-audit="since-view-all"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      const inStepper = await page.locator('[data-audit="changes-stepper"] [data-audit="mark-reviewed"]').count()
+      const onToday = await page.locator('[data-audit="mark-reviewed"]').count()
+      record('3b: Reviewed is where 6H put it and nowhere else — never inside the map\'s change stepper, at most one on Today', inStepper === 0 && onToday <= 1, `in the stepper ${inStepper} · on Today ${onToday}`)
+    })
+
     // ── Block 31 — a new rancher can create their ranch ───────────────────────
     // PK's falsifier: sign up a brand-new account. You see only the setup screen.
     // Name the ranch, pick a county, and you land on Today with an empty ranch
@@ -4369,21 +4402,30 @@ async function main() {
         const prior = page.viewportSize()
         await page.setViewportSize({ width: 390, height: 844 })
 
+        // Session 3b: ONE door — Record's Count tile, the bunch picked, "Count at the gate". The bunch row's own door went.
         await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
         const row22 = page.locator(`[data-audit="lot-row"]#lot-${lot22}`)
         await row22.waitFor({ timeout: 20_000 }).catch(() => {})
         await hold(page, row22)
-        const countBtn = page.locator('[data-audit="row-action-extra"]', { hasText: 'Count at a gate' })
-        const hasCount = await countBtn.count()
+        const rowDoor = await page.locator('[data-audit="row-action-extra"]', { hasText: /Count at a gate/ }).count()
+        await page.keyboard.press('Escape').catch(() => {})
+        await page.locator('[data-audit="row-actions-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
+        await recordControl(page).click()
+        await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 20_000 }).catch(() => {})
+        await page.locator('[data-audit="tile-cattle_counted"]').click()
+        await page.locator('[data-audit="count-bunch"]').waitFor({ timeout: 15_000 }).catch(() => {})
+        await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot22}"]`).first().click().catch(() => {})
+        const countBtn = page.locator('[data-audit="count-through"]')
+        const hasCount = rowDoor === 0 ? await countBtn.count() : 0
         await countBtn.first().click().catch(() => {})
         await page.locator('[data-audit="tally-begin"]').waitFor({ timeout: 20_000 }).catch(() => {})
         const haptics = (await page.locator('[data-audit="tally-haptics"]').innerText().catch(() => '')).trim()
         const subject = (await page.locator('[data-audit="tally-subject"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
         await page.locator('[data-audit="tally-begin"]').click().catch(() => {})
         await page.locator('[data-audit="tally-plus-1"]').waitFor({ timeout: 15_000 }).catch(() => {})
-        record('22: counting is on the bunch\'s own hold gesture, and the phone says what a tap will feel like before the gate, not during it',
-          hasCount === 1 && /^Buzz: /.test(haptics) && subject.includes('22 gate bunch'),
-          `Count on the row ${hasCount} · "${haptics}" · "${subject.slice(0, 60)}"`)
+        record('22/3b: the count at the gate has one door — Record\'s Count tile with the bunch picked, not the row — and the phone says what a tap will feel like before the gate, not during it',
+          hasCount === 1 && rowDoor === 0 && /^Buzz: /.test(haptics) && subject.includes('22 gate bunch'),
+          `Count from Record ${hasCount} · on the row ${rowDoor} · "${haptics}" · "${subject.slice(0, 60)}"`)
 
         const tap = async (n: number, times: number) => { for (let i = 0; i < times; i++) { await page.locator(`[data-audit="tally-plus-${n}"]`).click(); await page.waitForTimeout(35) } }
         await tap(4, 11); await tap(3, 1)                       // 47
