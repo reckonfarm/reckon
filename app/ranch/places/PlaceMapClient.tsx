@@ -77,8 +77,10 @@ const pinIcon = (draggable: boolean) => L.divIcon({
   className: '',
   iconSize: [PIN_SIZE, PIN_SIZE],
   iconAnchor: [PIN_SIZE / 2, PIN_SIZE / 2],
-  html: `<div data-audit="map-pin" style="width:${PIN_SIZE}px;height:${PIN_SIZE}px;display:flex;align-items:center;justify-content:center;cursor:${draggable ? 'grab' : 'default'}">
-    <div style="width:22px;height:22px;border-radius:9999px;background:${DRAFT_COLOR};border:3px solid ${cream};box-shadow:0 0 0 2px #111827, 0 2px 6px rgba(0,0,0,.5)"></div>
+  // Session 3c: once the pin can be dragged it says so by moving — one short
+  // lift-and-settle the moment it becomes draggable, never a sentence.
+  html: `<div data-audit="map-pin" data-draggable="${draggable ? 'yes' : 'no'}" style="width:${PIN_SIZE}px;height:${PIN_SIZE}px;display:flex;align-items:center;justify-content:center;cursor:${draggable ? 'grab' : 'default'}">
+    <div class="${draggable ? 'pin-settle' : ''}" style="width:22px;height:22px;border-radius:9999px;background:${DRAFT_COLOR};border:3px solid ${cream};box-shadow:0 0 0 2px #111827, 0 2px 6px rgba(0,0,0,.5)"></div>
   </div>`,
 })
 
@@ -620,6 +622,16 @@ export default function PlaceMapClient({
           full-size to the thumb (the hit box is 48 px; the pill is 36). Nothing
           else floats: full screen is a tap on the map, and the ranch re-frames
           itself when the place goes back. */}
+      {/* Session 3c: with no corner yet, the map itself shows what a tap does — a
+          ghost corner in the middle, gone the moment the first one lands. */}
+      {drawing && corners.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-[999] flex items-center justify-center" aria-hidden data-audit="draw-ghost">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-12 w-12 rounded-full border-[3px] border-dashed border-white bg-forest-green/30 shadow-[0_0_0_2px_rgba(0,0,0,.35)] animate-pulse" />
+            <span className="rounded-md bg-white/95 px-2 py-1 font-dm-sans text-[15px] font-semibold text-forest-green">Tap a corner</span>
+          </div>
+        </div>
+      )}
       <div className="pointer-events-none absolute right-2 top-2 z-[1000] flex flex-col items-end gap-2">
         {!drawing && (
           <div className="pointer-events-auto flex flex-col overflow-hidden rounded-xl border border-black/10 bg-white/95 shadow-sm" data-audit="map-pill">

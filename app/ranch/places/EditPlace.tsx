@@ -205,10 +205,19 @@ export default function EditPlace({ place, children }: { place: EditablePlace; c
 
         {/* Block 13: the Weather list's pin, where a person would look for it —
             on the place's own form, not a link on the Weather row. */}
+        {/* Session 3c (PK): the switch says what it does by doing it — on, the row
+            this place gets under Weather → Rain on my places is painted here; off,
+            there is no row. The word is where it goes, not a sentence. */}
         <label className="mt-4 flex min-h-[48px] items-center gap-3 font-dm-sans text-[16px] text-ink" data-audit="place-edit-pinned">
           <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="h-6 w-6 accent-forest-green" />
-          <span>Show on Weather</span>
+          <span className="inline-flex items-center gap-2 font-semibold"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 15a4 4 0 0 1 .5-8A5.5 5.5 0 0 1 18 8a3.5 3.5 0 0 1-.5 7H7z" /></svg>Weather</span>
         </label>
+        {pinned && (
+          <div className="ml-9 mt-1 rounded-lg border border-forest-green/15 bg-white px-3 py-2" data-audit="weather-row-preview">
+            <p className="font-dm-sans text-[13px] uppercase tracking-wide text-secondary-ink">Rain on my places</p>
+            <p className="font-dm-sans text-[16px] font-semibold text-ink">{name.trim() || place.name} <span className="font-normal text-secondary-ink">· latest reading</span></p>
+          </div>
+        )}
 
         {error && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold leading-snug" style={{ color: warning }} data-audit="place-edit-error">{error}</p>}
 

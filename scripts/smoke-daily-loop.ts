@@ -4145,6 +4145,108 @@ async function main() {
       record('3b: Reviewed is where 6H put it and nowhere else — never inside the map\'s change stepper, at most one on Today', inStepper === 0 && onToday <= 1, `in the stepper ${inStepper} · on Today ${onToday}`)
     })
 
+    // ── Session 3c — six controls that say what they do by doing it ──────────
+    // PK: fix the control, never restore the sentence. A zero-corner draw map
+    // shows a ghost corner on the map; a dropped pin settles once so it reads
+    // as draggable; Cancel in the record sheet says "Saved as a draft" once and
+    // keeps the draft; the tally's endings are one big Done and two small;
+    // the preg split shows the two bunches it makes; the Weather switch paints
+    // the row it adds.
+    await section('Session 3c — six controls that say what they do by doing it', async () => {
+      // 1. the draw map's ghost — there with no corner, gone after the first.
+      await page.goto('/ranch?tab=ground#capture', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-draw-open"]').first().click({ timeout: 20_000 }).catch(() => {})
+      const drawMap = page.locator('[data-audit="place-draw"] .leaflet-container').first()
+      const mapThere = await drawMap.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      await page.waitForTimeout(1_200)
+      const ghost0 = await page.locator('[data-audit="draw-ghost"]').count()
+      const ghostWords = ((await page.locator('[data-audit="draw-ghost"]').innerText().catch(() => '')) ?? '').trim()
+      const dbox = await drawMap.boundingBox().catch(() => null)
+      if (dbox) { await page.mouse.click(dbox.x + dbox.width * 0.4, dbox.y + dbox.height * 0.4); await page.waitForTimeout(400) }
+      const ghost1 = await page.locator('[data-audit="draw-ghost"]').count()
+      record('3c: a zero-corner draw map shows a ghost corner on the map itself, "Tap a corner", gone the moment the first corner lands', mapThere && ghost0 === 1 && ghostWords === 'Tap a corner' && ghost1 === 0, `map ${mapThere} · ghost before ${ghost0} ("${ghostWords}") · after a tap ${ghost1}`)
+      await page.locator('[data-audit="draw-cancel"], [data-audit="capture-cancel"]').first().click({ timeout: 3_000 }).catch(() => {})
+      // 2. the dropped pin settles once when it can be dragged.
+      const ctx3c = page.context()
+      await ctx3c.grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await ctx3c.setGeolocation({ latitude: 46.95, longitude: -110.10, accuracy: 30 })
+      await page.goto('/ranch?tab=ground#capture-drop', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="capture-drop"]').waitFor({ timeout: 20_000 }).catch(() => {})
+      for (let i = 0; i < 6; i++) { await ctx3c.setGeolocation({ latitude: 46.95 + i * 2e-7, longitude: -110.10, accuracy: 3 }); await page.waitForTimeout(350) }
+      const beforeDrop = await page.locator('[data-audit="capture-drop-map"] [data-audit="map-pin"][data-draggable="yes"]').count()
+      await page.locator('[data-audit="capture-take-point"]').click({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-pin-map"] [data-audit="map-pin"][data-draggable="yes"]').waitFor({ timeout: 10_000 }).catch(() => {})
+      const settled = await page.evaluate(`(function(){ var d = document.querySelector('[data-audit="capture-pin-map"] [data-audit="map-pin"][data-draggable="yes"] .pin-settle'); if (!d) return 'no pin'; var a = getComputedStyle(d).animationName; return a })()`)
+      record('3c: a dropped pin settles once the moment it becomes draggable — frozen before the drop, animated after', beforeDrop === 0 && settled === 'pin-settle', `draggable before the drop ${beforeDrop} · animation after ${settled}`)
+      await page.locator('[data-audit="capture-cancel"]').first().click({ timeout: 3_000 }).catch(() => {})
+      await page.locator('[data-audit="capture-discard-confirm"]').first().click({ timeout: 3_000 }).catch(() => {})
+      await ctx3c.setGeolocation(null).catch(() => {})
+      // 3. Cancel keeps the draft and says so, once; Throw it away is the discard.
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="tile-hay_fed"]').click()
+      await page.getByLabel('Hay fed').fill('3')
+      await page.locator('[data-audit="record-cancel"]').click()
+      const said = await page.locator('[role="status"]', { hasText: 'Saved as a draft' }).first().waitFor({ timeout: 4_000 }).then(() => true).catch(() => false)
+      await page.waitForTimeout(3_500)
+      const gone = (await page.locator('[role="status"]', { hasText: 'Saved as a draft' }).count()) === 0
+      await recordControl(page).click()
+      const kept = await page.getByLabel('Hay fed').inputValue().catch(() => '')
+      const throwAway = await page.locator('[data-audit="record-throw-away"]').count()
+      await page.locator('[data-audit="record-throw-away"]').click().catch(() => {})
+      await recordControl(page).click()
+      const picker = await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
+      await page.keyboard.press('Escape').catch(() => {})
+      record('3c: Cancel says "Saved as a draft" once at the moment of cancelling, then it is gone; the next Record opens on the draft; Throw it away is the discard', said && gone && kept === '3' && throwAway === 1 && picker, `said ${said} · gone after ${gone} · kept "${kept}" · Throw it away ${throwAway} · picker after the throw ${picker}`)
+      // 4. the tally's endings: one big Done, two small beneath.
+      const lot3c = randomUUID()
+      await admin.from('herd_lots').insert({ id: lot3c, ranch_id: ranchId, class: 'cows', name: `${PREFIX} 3c bunch`, head_count: 30, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
+      await admin.from('events').insert({ id: randomUUID(), user_id: userId, ranch_id: ranchId, type: 'head_count_set', ts: new Date().toISOString(), schema_version: 1, payload: { lot_id: lot3c, reason: 'created', source: 'manual', head_after: 30, head_before: null } })
+      await page.goto(`/ranch/tally?lot=${lot3c}`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="tally-begin"]').click({ timeout: 15_000 }).catch(() => {})
+      await page.locator('[data-audit="tally-plus-1"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      for (let i = 0; i < 3; i++) await page.locator('[data-audit="tally-plus-1"]').click()
+      await page.locator('[data-audit="tally-finish-open"]').click().catch(() => {})
+      await page.locator('[data-audit="tally-ending-set_head"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const shapes = await page.evaluate(`(function(){ var all = Array.from(document.querySelectorAll('[data-audit^="tally-ending-"]')); return all.map(function(e){ var b = e.getBoundingClientRect(); return (e.getAttribute('data-shape') || '?') + ':' + Math.round(b.height) + ':' + Math.round(b.width) }) })()`) as string[]
+      const big = shapes.filter(x => x.startsWith('done:')), small = shapes.filter(x => x.startsWith('small:'))
+      const sentences = ((await page.locator('[data-audit="tally-finish"]').innerText().catch(() => '')) ?? '').split('\n').filter(l => /\. /.test(l.trim())).length
+      record('3c: the tally\'s endings have Block 42\'s shapes — one big Done at least 72 px tall, two small beneath it, no sentence explaining any of them', big.length === 1 && Number(big[0].split(':')[1]) >= 72 && small.length === 2 && small.every(x => Number(x.split(':')[1]) < Number(big[0].split(':')[1])) && sentences === 0, `big ${big.join(' ')} · small ${small.join(' ')} · explaining sentences ${sentences}`)
+      // Done, so no count is left held for a later section to trip on.
+      await page.locator('[data-audit="tally-ending-set_head"]').click().catch(() => {})
+      await page.locator('[data-audit="tally-saved"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      // 5. the preg split shows the two bunches it makes.
+      await page.goto(`/today?fips=${HOME_FIPS}&record=preg_check`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="preg-bunch"], [data-audit="preg-lot-choice"]').first().waitFor({ timeout: 20_000 }).catch(() => {})
+      await page.locator(`[data-audit="preg-lot-choice"][data-lot="${lot3c}"]`).first().click({ timeout: 10_000 }).catch(() => {})
+      await page.locator('[data-audit="preg-checked-input"]').fill('30').catch(() => {})
+      await page.locator('[data-audit="preg-open-input"]').fill('4').catch(() => {})
+      const on = await page.locator('[data-audit="preg-split-toggle"]').isChecked().catch(() => false)
+      const twoLines = await page.locator('[data-audit="preg-split-result"] > span').count()
+      const keep = ((await page.locator('[data-audit="preg-split-keep"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const made = ((await page.locator('[data-audit="preg-split-new"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const sentence = await page.locator('[data-audit="preg-split-preview"]').count()
+      await page.locator('[data-audit="preg-split-toggle"]').click().catch(() => {})
+      const oneLine = await page.locator('[data-audit="preg-split-result"] > span').count()
+      record('3c: "Opens become a new bunch" shows the two bunches it makes — name · class · head each — and one bunch when off; the explaining sentence is gone', on && twoLines === 2 && /3c bunch · Cows · 26 head/.test(keep) && /· 4 head$/.test(made) && sentence === 0 && oneLine === 1, `on ${on} · lines ${twoLines} → off ${oneLine} · keeps "${keep}" · makes "${made}" · sentence ${sentence}`)
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.locator('[data-audit="record-throw-away"]').click({ timeout: 2_000 }).catch(() => {})
+      await admin.from('herd_lots').delete().eq('id', lot3c)
+      // 6. the Weather switch paints the row it adds.
+      await page.goto(`/ranch/places/${placeId}#edit`, { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="place-edit-pinned"] input').waitFor({ timeout: 20_000 }).catch(() => {})
+      const pin = page.locator('[data-audit="place-edit-pinned"] input')
+      if (await pin.isChecked().catch(() => false)) await pin.click()
+      const rowOff = await page.locator('[data-audit="weather-row-preview"]').count()
+      const label = ((await page.locator('[data-audit="place-edit-pinned"]').innerText().catch(() => '')) ?? '').trim()
+      await pin.click()
+      const rowOn = await page.locator('[data-audit="weather-row-preview"]').count()
+      const rowText = ((await page.locator('[data-audit="weather-row-preview"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      await pin.click()
+      record('3c: the Weather switch says what it does by doing it — on, the Rain-on-my-places row this place gets is painted under it, with its name; off, no row; the label is one word', rowOff === 0 && rowOn === 1 && /Rain on my places/.test(rowText) && /West stack/.test(rowText) && label === 'Weather', `off ${rowOff} · on ${rowOn} · row "${rowText}" · label "${label}"`)
+      await page.locator('[data-audit="place-edit-cancel"]').click().catch(() => {})
+    })
+
     // ── Block 31 — a new rancher can create their ranch ───────────────────────
     // PK's falsifier: sign up a brand-new account. You see only the setup screen.
     // Name the ranch, pick a county, and you land on Today with an empty ranch
@@ -4389,10 +4491,10 @@ async function main() {
 
         await page.locator('[data-audit="tally-finish-open"]').click().catch(() => {})
         await page.locator('[data-audit="tally-ending-set_head"]').waitFor({ timeout: 15_000 }).catch(() => {})
-        await page.locator('[data-audit="tally-ending-set_head"]').click().catch(() => {})
+        // Session 3c: the big Done IS the save — offline first, then the one tap.
         const ctx22 = page.context()
         await ctx22.setOffline(true)
-        await page.locator('[data-audit="tally-save"]').click().catch(() => {})
+        await page.locator('[data-audit="tally-ending-set_head"]').click().catch(() => {})
         const offSeq = await watchStates(page, 'Sent', 6_000, '219 head')
         await ctx22.setOffline(false)
         const onSeq = await watchStates(page, 'Sent', 45_000, '219 head')

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import RecordPicker from './RecordPicker'
+import { showNotice } from '@/lib/undo'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
 import Counter from '@/app/components/ui/Counter'
@@ -415,14 +416,17 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
 
   const hasDraft = useHasDraft()
 
-  const close = useCallback(() => {
+  // Session 3c (PK): Cancel keeps what was typed as a draft and says so in one
+  // line, at the moment of cancelling, then gone; the next Record opens on it.
+  // Throw it away is the one discard. `keepDraft` is Cancel's way out.
+  const close = useCallback((keepDraft = false) => {
     eventId.current = null
     setOpen(false); setType(null); setError(null)
     setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf(''); setHereId(null)
     setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT)
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
     placeChosen.current = false
-    writeDraft(null)
+    if (!keepDraft) writeDraft(null)
   }, [])
 
   // Apply a Draft to the fields (restore after an app switch, or a pre-fill
@@ -862,13 +866,13 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           nowhere else — the bunch row's own door went. The plain count stays
           beneath for a number already known. */}
       {here ? (
-        <Link href={`/ranch/tally?to=${here.id}`} onClick={close}
+        <Link href={`/ranch/tally?to=${here.id}`} onClick={() => close()}
           className="flex min-h-[56px] w-full items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white"
           data-audit="count-into" data-place={here.id}>
           Count cattle into {here.name}
         </Link>
       ) : (
-        <Link href={lot ? `/ranch/tally?lot=${lot}` : '/ranch/tally'} onClick={close}
+        <Link href={lot ? `/ranch/tally?lot=${lot}` : '/ranch/tally'} onClick={() => close()}
           className="flex min-h-[56px] w-full items-center justify-center rounded-lg border border-forest-green/25 bg-white px-4 font-dm-sans text-[17px] font-semibold text-forest-green"
           data-audit="count-through">
           Count at the gate{chosen ? ` · ${lotLabel(chosen)}` : ''}
@@ -987,9 +991,19 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         </p>
       )}
       <div className="rounded-xl border border-forest-green/20 p-4" data-audit="preg-split">
-        <label className="flex min-h-[48px] items-center gap-3 font-dm-sans text-[17px] font-semibold text-ink">
-          <input type="checkbox" checked={split} onChange={e => setSplit(e.target.checked)} className="h-6 w-6 accent-forest-green" data-audit="preg-split-toggle" />
-          <span>Opens become a new bunch</span>
+        {/* Session 3c: the switch shows the bunches it makes — never a sentence
+            explaining them. On: the source keeps the bred, the opens become
+            their own bunch, each as name · class · head. Off: one bunch. */}
+        <label className="flex min-h-[48px] items-start gap-3 font-dm-sans text-[17px] font-semibold text-ink">
+          <input type="checkbox" checked={split} onChange={e => setSplit(e.target.checked)} className="mt-1 h-6 w-6 shrink-0 accent-forest-green" data-audit="preg-split-toggle" />
+          <span className="flex min-w-0 flex-col gap-1" data-audit="preg-split-result">
+            {split ? (<>
+              <span data-audit="preg-split-keep">{source ? lotLabel(source) : 'The bunch'} · {source ? bunchDetail(source).replace(/\s*·.*$/, '') : '—'} · <span className="tabular-nums">{source && checked > 0 ? bred.toLocaleString() : '—'}</span> head</span>
+              <span className="text-forest-green" data-audit="preg-split-new">{nameShown || 'Opens'} · {classShown ? LOT_CLASS_LABELS[classShown as keyof typeof LOT_CLASS_LABELS] ?? classShown : '—'} · <span className="tabular-nums">{source && checked > 0 ? openN.toLocaleString() : '—'}</span> head</span>
+            </>) : (
+              <span data-audit="preg-split-keep">{source ? lotLabel(source) : 'The bunch'} · {source ? bunchDetail(source).replace(/\s*·.*$/, '') : '—'} · <span className="tabular-nums">{source && checked > 0 ? checked.toLocaleString() : '—'}</span> head</span>
+            )}
+          </span>
         </label>
         {split ? (
           <div className="mt-3">
@@ -1005,11 +1019,6 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 </button>
               ))}
             </div>
-            {source && checked > 0 && (
-              <p className="mt-3 font-dm-sans text-[16px] text-ink" data-audit="preg-split-preview">
-                {lotLabel(source)} keeps <span className="font-semibold">{bred.toLocaleString()}</span> · <span className="font-semibold">{openN.toLocaleString()}</span> to {nameShown}
-              </p>
-            )}
           </div>
         ) : (
           source && checked > 0 ? <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="preg-nosplit-preview">{lotLabel(source)} goes to <span className="font-semibold">{bred.toLocaleString()}</span> · {openN.toLocaleString()} open recorded, not moved</p> : null
@@ -1026,6 +1035,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     {placeField()}
   </>)
 
+  const typed = !!type && (n1.trim() !== '' || what.trim() !== '' || note.trim() !== '' || pcChecked.trim() !== '')
   return (
     <>
       {launcher && (
@@ -1138,14 +1148,22 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                     </button>
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => close()}
-                  disabled={busy}
-                  className="self-start min-h-[48px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+                <div className="flex flex-wrap items-center gap-x-5">
+                  <button
+                    type="button"
+                    onClick={() => { if (typed) showNotice('Saved as a draft'); close(typed) }}
+                    disabled={busy}
+                    className="self-start min-h-[48px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
+                    data-audit="record-cancel"
+                  >
+                    Cancel
+                  </button>
+                  {typed && !fixingId && (
+                    <button type="button" onClick={() => close()} disabled={busy} className="min-h-[48px] font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-50" style={{ color: warning }} data-audit="record-throw-away">
+                      Throw it away
+                    </button>
+                  )}
+                </div>
                 {/* Block 15 (ruling 6): Save at the bottom, full width, thumb height, saying what it does. */}
                 <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-rule bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] pt-3">
                   <Button type="submit" disabled={busy || (LOT_TYPES.includes(type) && lots === null)} className="w-full min-h-[60px] text-[18px]" data-audit="record-save">
