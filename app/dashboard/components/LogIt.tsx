@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import RecordPicker from './RecordPicker'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { todayKey } from '@/lib/jobs/format'
@@ -391,6 +392,9 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const [onHandNow, setOnHandNow] = useState<number | null>(null)
   const [what, setWhat] = useState('')
   const [place, setPlace] = useState<PlaceSlot>(EMPTY_SLOT)
+  // Session 2: the pasture under the phone's fix when an action was picked — the
+  // count form offers the count INTO it (Block 42's tally), the plain count beneath.
+  const [hereId, setHereId] = useState<string | null>(null)
   // Block 33 (ruling 1): Where follows the BUNCH — its recorded place, not the
   // last place this phone used (the audit kept SIM-Corrals for the cows after a
   // bull move). A place the person picked, or a draft that names one, is kept;
@@ -414,7 +418,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   const close = useCallback(() => {
     eventId.current = null
     setOpen(false); setType(null); setError(null)
-    setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf('')
+    setN1(''); setWhat(''); setPlace(EMPTY_SLOT); setFromPlace(EMPTY_SLOT); setToPlace(EMPTY_SLOT); setWhen(''); setEditWhen(false); setAsOf(''); setHereId(null)
     setLots(null); setLot(''); setLotsError(false); setNote(''); setStock(EMPTY_SLOT)
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
     placeChosen.current = false
@@ -850,7 +854,18 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
   if (type === 'cattle_counted') {
     const chosen = lots?.find(l => l.id === lot) ?? null
     const n = n1.trim() === '' ? null : Number(n1)
+    const here = hereId ? places.find(p => p.id === hereId) ?? null : null
     fields = (<>
+      {/* Session 2: standing in a pasture, the count is a count INTO it — Block 42's
+          tally, by ones to fours, one Save for the move and the count. The plain
+          count stays beneath for a bunch that is not moving. */}
+      {here && (
+        <Link href={`/ranch/tally?to=${here.id}`} onClick={close}
+          className="flex min-h-[56px] w-full items-center justify-center rounded-lg bg-forest-green px-4 font-dm-sans text-[17px] font-semibold text-white"
+          data-audit="count-into" data-place={here.id}>
+          Count cattle into {here.name}
+        </Link>
+      )}
       <div>
         <p className="font-dm-sans text-[16px] font-medium text-ink" id="count-bunch-label">Which bunch</p>
         {lots === null ? (
@@ -1048,7 +1063,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
               // first takes the place under the fix, or the form asks.
               <RecordPicker
                 onPick={(a, placeId) => {
-                  setType(a); setError(null)
+                  setType(a); setError(null); setHereId(placeId)
                   if (placeId) { if (a === 'cattle_moved') setToPlace({ id: placeId, newName: null }); else setPlace({ id: placeId, newName: null }) }
                 }}
                 onRare={(a, placeId) => { setType(a); setError(null); if (placeId) setPlace({ id: placeId, newName: null }) }}
