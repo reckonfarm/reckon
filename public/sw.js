@@ -31,22 +31,33 @@ self.addEventListener('install', event => {
 })
 
 self.addEventListener('activate', event => {
+  // Block A (PK, 2026-10-06): THE OFFLINE CACHE NEVER BLOCKS THE FIRST PAINT.
+  // Chrome holds every in-scope navigation until activation finishes, and this
+  // step used to fetch a whole copy of Today under waitUntil — the first open
+  // after a new worker waited 2.4 s for a cache fill it never saw. Activation
+  // now only drops old caches and claims the pages; the shell is seeded in the
+  // background, and every later Today navigation refreshes it anyway.
   event.waitUntil((async () => {
     const names = await caches.keys()
     await Promise.all(names.filter(n => n !== SHELL && n !== STATIC).map(n => caches.delete(n)))
     await self.clients.claim()
-    // The first open installs the worker but is not served by it, so seed the
-    // shell now: one signed-in Today, if the phone has one. A redirect to the
-    // sign-in page is not the app and is never kept.
-    try {
-      const res = await fetch('/today', { credentials: 'same-origin' })
-      if (res && res.ok && !res.redirected && res.headers.get('content-type')?.includes('text/html')) {
-        const cache = await caches.open(SHELL)
-        await cache.put(SHELL_KEY, res)
-      }
-    } catch { /* no signal at install: the next signed-in Today becomes the shell */ }
   })())
+  seedShell()
 })
+
+// One signed-in Today, if the phone has one, kept as the shell. Not awaited by
+// anything: a worker put to sleep before it finishes loses nothing, because
+// the next Today a person opens becomes the shell on its way to the screen.
+// A redirect to the sign-in page is not the app and is never kept.
+async function seedShell() {
+  try {
+    const res = await fetch('/today', { credentials: 'same-origin' })
+    if (res && res.ok && !res.redirected && res.headers.get('content-type')?.includes('text/html')) {
+      const cache = await caches.open(SHELL)
+      await cache.put(SHELL_KEY, res)
+    }
+  } catch { /* no signal yet: the next signed-in Today becomes the shell */ }
+}
 
 self.addEventListener('fetch', event => {
   const req = event.request

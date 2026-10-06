@@ -3715,6 +3715,85 @@ async function main() {
       await page.keyboard.press('Escape').catch(() => {})
     })
 
+    // ── Block A — Today paints the ranch first ───────────────────────────────
+    // PK's falsifier: with every upstream fetch blocked, Today still paints the
+    // ranch and every tap works, first byte under a second. On a deploy nothing
+    // can kill NWS, so the deploy is checked for the STRUCTURE that makes the
+    // falsifier true — the first byte before anything outside the ranch is
+    // read, the map's boundary resolving on its own, the strip's space held —
+    // and the literal run happens against a local server started under
+    // scripts/lib/block-upstream.mjs, where A3 reads the strip with no forecast.
+    await section('Block A — Today paints the ranch first', async () => {
+      // A1 — the stream itself, as the member: first byte, then the ranch's column.
+      const cookie = (await ctx.cookies()).map(c => `${c.name}=${c.value}`).join('; ')
+      const headers: Record<string, string> = { cookie, ...(BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {}) }
+      const tA = performance.now()
+      const resA = await fetch(`${BASE}/today`, { headers, redirect: 'manual' })
+      const firstByte = performance.now() - tA
+      let html = '', columnAt = -1, mapAt = -1, stripAt = -1
+      const reader = resA.body!.getReader(); const dec = new TextDecoder()
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break
+        html += dec.decode(value, { stream: true }); const t = performance.now() - tA
+        if (columnAt < 0 && /data-audit="column"/.test(html)) columnAt = t
+        if (mapAt < 0 && /data-audit="ranch-map"/.test(html)) mapAt = t
+        if (stripAt < 0 && /data-audit="weather-strip"/.test(html)) stripAt = t
+      }
+      const doneAt = performance.now() - tA
+      // Identity: a 200 that is OUR shell (the column marker), not a sign-in page or a Vercel error.
+      const ours = resA.status === 200 && columnAt > 0 && !/\/signin/.test(resA.headers.get('location') ?? '')
+      record('A1: Today\'s first byte waits on nothing outside the ranch — under 1 s, and the ranch\'s column within 1 s of it',
+        ours && firstByte < 1000 && columnAt - firstByte < 1000,
+        `${ours ? 'our shell' : `NOT our shell (status ${resA.status})`} · first byte ${firstByte.toFixed(0)} ms · column +${(columnAt - firstByte).toFixed(0)} ms · map at ${mapAt.toFixed(0)} ms · strip at ${stripAt.toFixed(0)} ms · done ${doneAt.toFixed(0)} ms`)
+      // A2 — the map's boundary and the strip's are two boundaries. React streams
+      // each resolved boundary as its own hidden segment; the map cannot have
+      // waited for the forecast if the forecast arrives in a segment of its own.
+      const segs = html.split(/<div hidden id="S:([0-9a-z]+)">/)   // React numbers boundaries in base 36 — S:c is a segment too
+      const segOf = (re: RegExp) => { for (let i = 2; i < segs.length; i += 2) if (re.test(segs[i])) return segs[i - 1]; return null }
+      const mapSeg = segOf(/data-audit="ranch-map"[\s>]/), stripSeg = segOf(/data-audit="weather-strip"[\s>]/), holdSeg = segOf(/data-audit="weather-strip-hold"[\s>]/)
+      record('A2: the weather strip streams in its own boundary — the map never waits for NWS',
+        ours && mapSeg !== null && stripSeg !== null && mapSeg !== stripSeg && holdSeg === mapSeg,
+        `map segment ${mapSeg} · strip segment ${stripSeg} · the strip\'s held space arrives with the map: ${holdSeg === mapSeg}`)
+      // A3 — painted: the first byte under a second on a settled worker, the map
+      // there to tap, and the strip standing in exactly the space that was held
+      // for it, forecast or not — a dead NWS leaves its dashes, never a gap and
+      // never a jump. Sunrise and sunset are computed, so they stand regardless.
+      await page.goto('/today', { waitUntil: 'domcontentloaded' })
+      await page.locator('[data-audit="ranch-map"]').waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await page.locator('[data-audit="weather-strip"]').waitFor({ timeout: 30_000 }).catch(() => {})
+      // Evaluated as a STRING: under tsx a function here arrives with esbuild's __name helper, which the page does not have.
+      const painted = await page.evaluate(`(function(){
+        var n = performance.getEntriesByType('navigation')[0] || {};
+        var map = document.querySelector('[data-audit="ranch-map"]');
+        var strip = document.querySelector('[data-audit="weather-strip"]');
+        var txt = function(k){ var el = document.querySelector('[data-audit="weather-' + k + '"]'); return el ? el.innerText.trim() : '' };
+        return { ttfb: n.responseStart || 0, held: n.fetchStart || 0, map: !!map && map.getBoundingClientRect().height > 100, strip: strip ? strip.getBoundingClientRect().height : -1,
+          source: strip ? (strip.dataset.source || 'absent') : 'absent', high: txt('high'), rain: txt('rain'), sunrise: txt('sunrise'), sunset: txt('sunset'), worker: !!(navigator.serviceWorker && navigator.serviceWorker.controller) };
+      })()`) as { ttfb: number; held: number; map: boolean; strip: number; source: string; high: string; rain: string; sunrise: string; sunset: string; worker: boolean }
+      const HOLD = 64.5   // WeatherStripHold's height — the strip's painted box at 390 wide, measured 2026-10-06
+      const stripStands = Math.abs(painted.strip - HOLD) <= 1.5
+      const forecastReads = painted.source === 'nws' ? /\d/.test(painted.high) && /\d/.test(painted.rain) : painted.high === '—' && painted.rain === '—'
+      const sunStands = /\d:\d\d/.test(painted.sunrise) && /\d:\d\d/.test(painted.sunset)
+      record('A3: painted — first byte under 1 s, the ranch map there, the strip standing in its held space with its forecast or its dashes, sunrise and sunset regardless',
+        painted.ttfb < 1000 && painted.map && stripStands && forecastReads && sunStands,
+        `first byte ${painted.ttfb.toFixed(0)} ms · map ${painted.map} · strip ${painted.strip.toFixed(1)} px vs held ${HOLD} · forecast ${painted.source} (high ${painted.high || '∅'} · rain ${painted.rain || '∅'}) · sun ${painted.sunrise}–${painted.sunset} · worker ${painted.worker ? 'in control' : 'not in control'}`)
+      // A4 — PK's ruling: the offline cache never blocks the first paint. A
+      // fresh browser installs the worker on its first page; the NEXT
+      // navigation is the one the browser holds until the worker has activated,
+      // and that hold used to carry a whole fetch of Today (2.4 s). Identity:
+      // the worker must be in control, or the hold was never tested.
+      const ctxA = await browser.newContext({ baseURL: BASE, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const pageA = await signIn(ctxA)
+      await pageA.evaluate(`navigator.serviceWorker ? navigator.serviceWorker.ready.then(function(){}) : null`).catch(() => {})
+      await pageA.goto('about:blank')
+      await pageA.goto('/today', { waitUntil: 'domcontentloaded' })
+      const cold = await pageA.evaluate(`(function(){ var n = performance.getEntriesByType('navigation')[0] || {}; return { held: n.fetchStart || 0, ttfb: n.responseStart || 0, worker: !!(navigator.serviceWorker && navigator.serviceWorker.controller) } })()`) as { held: number; ttfb: number; worker: boolean }
+      record('A4: the first open after a new worker is not held for the offline cache — the request starts within 300 ms, the worker in control',
+        cold.worker && cold.held < 300 && cold.ttfb < 1500,
+        `held ${cold.held.toFixed(0)} ms before the request · first byte ${cold.ttfb.toFixed(0)} ms · worker ${cold.worker ? 'in control' : 'NOT in control — the hold was not tested'}`)
+      await ctxA.close()
+    })
+
     // ── Block 27 — a record carries the moment it was made on the phone ──────
     // PK's falsifier: record a feeding offline at 10:00, reconnect at 16:00. It
     // orders and reads as 10:00. The phone's clock is the page's clock (a fixed

@@ -5,6 +5,13 @@ import type { UpcomingDeadlinesResult } from '@/lib/rma-deadline-service'
 /** A USDM reading with the week it is valid for — the shape the shell holds. */
 export type DatedReading = UsdmReading & { week_date: string }
 
+/** The operation profile's `crops` jsonb as a clean string[] for deadline filtering — only a plain array of strings is trusted. */
+export function cropsToStringArray(crops: unknown): string[] | null {
+  if (!Array.isArray(crops)) return null
+  const strings = crops.filter((c): c is string => typeof c === 'string')
+  return strings.length > 0 ? strings : null
+}
+
 // ─── Change-only alerts (Block 7.9) ───────────────────────────────────────────
 //
 // NOT marked 'server-only', deliberately. Nothing here touches a server-only

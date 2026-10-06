@@ -42,8 +42,8 @@ import { LiveJobCard, TodayJobs } from './components/RanchNow'
 // The operation's own cards — moved here from /home (shell pass, commit 3).
 import LogIt from './components/LogIt'
 import RepeatLastFeeding from './components/RepeatLastFeeding'
-import ProgramAlerts from './components/ProgramAlerts'
-import { buildProgramAlerts, readDismissals, type ProgramAlert } from '@/lib/program-alerts'
+import ProgramAlertsAsync from './components/ProgramAlertsAsync'
+import { cropsToStringArray } from '@/lib/program-alerts'
 import SinceYouWereHere from './components/SinceYouWereHere'
 import SeasonTotals from './components/SeasonTotals'
 import HayInventoryCard from './components/HayInventoryCard'
@@ -75,12 +75,6 @@ export const dynamic = 'force-dynamic'
 // The operation's county for the orientation line (layout, commit 2): name +
 // state + fips, nothing more — read once, shared with the herd-anchor chain.
 interface HomeCounty { fips: string; name: string; state: string }
-
-function cropsToStringArray(crops: unknown): string[] | null {
-  if (!Array.isArray(crops)) return null
-  const strings = crops.filter((c): c is string => typeof c === 'string')
-  return strings.length > 0 ? strings : null
-}
 
 // ─── LFP: ONE card per screen (shell pass, commit 6) ────────────────────────────
 // Awaits the shared lfpPromise (computed once) and renders the single LFP card in
@@ -204,14 +198,28 @@ export async function DashboardShell({
   const { gs, ge, pt, view: viewParam } = sp
   const priv = route !== 'county'
   let fips = sp.fips
+  // Block A: the member's client IS the request's client (one getUser, not
+  // two), and the home county it read is kept so nothing below reads it again.
+  let member: { id: string } | null = null
+  let memberClient: Awaited<ReturnType<typeof createClient>> | null = null
+  let homeFipsRead: string | null | undefined   // undefined = not read on this path
   if (priv) {
     // A private route needs a member; it resolves the county silently from the
     // home county (or the ?fips= they chose to look at). One cookie read.
     const pre = await createClient()
-    const { data: { user: member } } = await pre.auth.getUser()
-    if (!member) redirect(`/signin?next=${encodeURIComponent(`/${route}`)}`)
-    if (!fips) fips = (await getHomeCountyFips(member.id).catch(() => null)) ?? undefined
+    const { data: { user } } = await pre.auth.getUser()
+    if (!user) redirect(`/signin?next=${encodeURIComponent(`/${route}`)}`)
+    member = user
+    memberClient = pre
+    if (!fips) { homeFipsRead = await getHomeCountyFips(user.id).catch(() => null); fips = homeFipsRead ?? undefined }
   }
+  // Block A — TODAY PAINTS THE RANCH FIRST. Nothing outside the ranch's own
+  // records is read before this render returns: no national map, no operation
+  // profile and its bunches (Markets' anchor), no drought rows, deadlines or
+  // program alerts, and none of the five upstream services (ACIS, NWS twice,
+  // USDM twice) that only Weather and the county page read. What Today shows
+  // of those streams in behind its own boundary, or is not started at all.
+  const today = priv && route === 'today'
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
   // deliberate label↔key mismatch as 'drought'/"Weather"). Jobs via &view=jobs
@@ -235,7 +243,7 @@ export async function DashboardShell({
   // its own and paying the auth round-trip again. Signed out → user null → each
   // of them degrades exactly as before. The session itself is refreshed by
   // middleware; this is a read.
-  const supabase = await createClient()
+  const supabase = memberClient ?? await createClient()
 
   // ── Head reads, in parallel: national map · county · session+profile ────────
   // These are independent of one another. The profile is chained on the user
@@ -243,7 +251,8 @@ export async function DashboardShell({
   // service-role reads. Auth is only resolved when a county is in play — a bare
   // /dashboard never needed it and still doesn't.
   const [{ data: nationalMapRow }, countyRes, session] = await Promise.all([
-    db
+    // The national map is Weather's; Today never shows it.
+    today ? Promise.resolve({ data: null }) : db
       .from('official_maps')
       .select('id, map_type, scope, release_date, image_url, source_url')
       .eq('map_type', 'usdm_national')
@@ -257,13 +266,14 @@ export async function DashboardShell({
     // The session resolves county or not (Block 2): a member with no home
     // county lands on the bare dashboard and must still get their ledger.
     // Without a session cookie getUser is a local no-op, so the public
-    // no-county page pays nothing.
+    // no-county page pays nothing. A private route already has its member.
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = member ?? (await supabase.auth.getUser()).data.user
       // Profile and ranch (the outfit's name, flow commit 2) side by side —
-      // both need only the user; neither waits on the other.
+      // both need only the user; neither waits on the other. The profile and
+      // its bunches are Markets' and the deadlines'; Today reads neither.
       const [profileResult, ranch] = await Promise.all([
-        getOperationProfile({ supabase, user }),
+        today ? Promise.resolve({ status: 'unauthenticated' as const }) : getOperationProfile({ supabase, user }),
         user ? getRanch(supabase, user.id).catch(() => null) : Promise.resolve(null),
       ])
       return { user, profileResult, ranch }
@@ -285,7 +295,6 @@ export async function DashboardShell({
 
   // ── Ranch view data (only when a county is selected) ─────────────────────────
   let latest: DroughtReading | null                 = null
-  let priorReading: DroughtReading | null           = null   // Block 7.9 — the week before, for the change alert
 
   // Rainfall (ACIS) is held as a PROMISE and resolved behind a <Suspense> boundary in
   // the chrome (RainfallPanelAsync below) so it NEVER blocks the page's server render —
@@ -293,7 +302,9 @@ export async function DashboardShell({
   // call still starts here (concurrent with the cheap `latest` query). A rejection
   // degrades to the honest 'data_unavailable' state — never a crash, never a false
   // deficit. getPrecipNormal owns its own 9s deadline / 24h cache / honest-failure.
-  const precipPromise: Promise<PrecipNormalResult> = selectedCounty
+  // Block A: none of the three starts on Today — Today never reads them, and a
+  // promise nobody awaits is still a request the server makes.
+  const precipPromise: Promise<PrecipNormalResult> = selectedCounty && !today
     ? getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon)
         .catch(() => 'data_unavailable' as const)
     : Promise.resolve(null)
@@ -302,12 +313,12 @@ export async function DashboardShell({
   // with the cheap reads); resolved in ForecastPanelAsync. A rejection degrades to null →
   // honest "temporarily unavailable". Needs the county centroid for the gridpoint lookup.
   const forecastPromise: Promise<LocalForecast | null> =
-    selectedCounty && selectedCounty.lat != null && selectedCounty.lon != null
+    selectedCounty && !today && selectedCounty.lat != null && selectedCounty.lon != null
       ? getLocalForecast(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
   // Block 7 (Part 2): active NWS warnings for the county center — first on Weather when present.
   const alertsPromise: Promise<ActiveAlert[] | null> =
-    selectedCounty && selectedCounty.lat != null && selectedCounty.lon != null
+    selectedCounty && !today && selectedCounty.lat != null && selectedCounty.lon != null
       ? getActiveAlerts(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
 
@@ -341,11 +352,15 @@ export async function DashboardShell({
     // because the anchor genuinely needs the profile's lots + home county first.
     // The home county is read ONCE per request (layout, commit 2): the herd
     // anchor chain and the orientation line share it. Signed out → null, no read.
-    const homeFipsPromise: Promise<string | null> = user
-      ? getHomeCountyFips(user.id).catch(() => null)
-      : Promise.resolve(null)
+    const homeFipsPromise: Promise<string | null> = homeFipsRead !== undefined
+      ? Promise.resolve(homeFipsRead)   // already read above for this member
+      : user
+        ? getHomeCountyFips(user.id).catch(() => null)
+        : Promise.resolve(null)
     const [{ data: latestRow }, deadlineRes, home] = await Promise.all([
-      db
+      // Drought rows and deadlines are the county's and the programs'. On Today
+      // only the change-only alerts read them, inside their own boundary.
+      today ? Promise.resolve({ data: [] }) : db
         .from('drought_data')
         .select('week_date, d0, d1, d2, d3, d4')
         .eq('county_id', selectedCounty.id)
@@ -354,7 +369,7 @@ export async function DashboardShell({
         // before to know whether anything changed at all; one extra row on an
         // indexed read, no extra round trip.
         .limit(2),
-      getUpcomingDeadlines(selectedCounty.fips, crops),
+      today ? Promise.resolve<UpcomingDeadlinesResult>({ status: 'none' }) : getUpcomingDeadlines(selectedCounty.fips, crops),
       // The operation's county for the orientation line. When it's the county in
       // view the row is already here; only a DIFFERENT home county costs a read
       // (one indexed fips lookup, chained on the fips, concurrent with the rest).
@@ -367,7 +382,6 @@ export async function DashboardShell({
     ])
     const readings = (latestRow ?? []) as DroughtReading[]
     latest = readings[0] ?? null
-    priorReading = readings[1] ?? null
     deadlineResult = deadlineRes
     homeCounty = home
   }
@@ -378,7 +392,7 @@ export async function DashboardShell({
   // blocks the news/page paint. Resolves to a tagged outcome so an outage/timeout
   // degrades honestly. The Drought view's Promise.all below consumes this SAME promise,
   // so eligibility is computed ONCE and shared by the alert and the hero.
-  const lfpPromise: Promise<LfpFetchOutcome> = selectedCounty
+  const lfpPromise: Promise<LfpFetchOutcome> = selectedCounty && !today
     ? computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
         return { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt) }
@@ -388,39 +402,16 @@ export async function DashboardShell({
     : Promise.resolve({ ok: false as const })
 
   // ── Change-only program alerts (Block 7.9) ────────────────────────────────
-  // Computed only for Today, only for a signed-in member. Everything standing
-  // lives in Weather → Programs; this is strictly what CHANGED. The prior LFP
-  // tier comes from lfp_eligibility_snapshots (018) — the audited weekly
-  // engine output — rather than a second expensive USDM recomputation.
-  let programAlerts: ProgramAlert[] = []
-  if (priv && route === 'today' && selectedCounty && user) {
-    try {
-      const { data: tiers } = await db
-        .from('lfp_eligibility_snapshots')
-        .select('week_date, max_tier')
-        .eq('county_id', selectedCounty.id)
-        .order('week_date', { ascending: false })
-        .limit(2)
-      const t = (tiers ?? []) as { week_date: string; max_tier: number }[]
-      const all = buildProgramAlerts({
-        fips: selectedCounty.fips,
-        countyName: selectedCounty.name,
-        latest,
-        prior: priorReading,
-        lfpTier: t[0]?.max_tier ?? null,
-        priorLfpTier: t[1]?.max_tier ?? null,
-        deadlines: deadlineResult,
-      })
-      const seen = await readDismissals(supabase, user.id)
-      programAlerts = all.filter(a => !seen.has(a.key))
-    } catch { programAlerts = [] }
-  }
+  // Today only, signed in only. Block A: they read drought rows, the weekly
+  // LFP snapshots, the deadlines and the dismissals — the programs' records,
+  // not the ranch's — so they stream in behind their own boundary
+  // (ProgramAlertsAsync) and never hold the first paint.
 
   // Prior-year LFP (same forage period, year − 1) for the card's eligibility-math
   // comparison. Started here, awaited only inside LfpCardAsync once the current
   // year resolves — five USDM calls behind unstable_cache (keyed by release date),
   // a cache hit after the first load. Used to run inside the Weather body only.
-  const priorYearPromise: Promise<LfpEligibilityResult | null> = selectedCounty
+  const priorYearPromise: Promise<LfpEligibilityResult | null> = selectedCounty && !today
     ? computeLfpEligibility(
         selectedCounty.fips,
         { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },
@@ -681,7 +672,11 @@ export async function DashboardShell({
                       <>
                         {/* 3. Changed — program news only when something actually
                             changed, dismissible per person and per change. */}
-                        <ProgramAlerts alerts={programAlerts} />
+                        {user && (
+                          <Suspense fallback={null}>
+                            <ProgramAlertsAsync countyId={selectedCounty.id} fips={selectedCounty.fips} countyName={selectedCounty.name} userId={user.id} />
+                          </Suspense>
+                        )}
                         {/* 4. Needs attention — only real state, nothing when there is none. */}
                         {/* 4. Recorded since you checked (Block 2E / 5F / 6A): 3–5 rows + View all N updates; the quiet line when nothing is new.
 
