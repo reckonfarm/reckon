@@ -331,6 +331,25 @@ async function hold(page: Page, row: Locator): Promise<boolean> {
   }
   return false
 }
+// The row's RowActions wrapper: above the row (a card inside it) or inside the row (a list item holding one).
+const wrapOf = (row: Locator) => row.locator('xpath=ancestor-or-self::*[@data-audit="row-actions"][1] | descendant::*[@data-audit="row-actions"][1]').first()
+// Session 3: swipe a row left — a drag of 120 px under the finger, settled. Three tries, like hold().
+async function swipeLeft(page: Page, row: Locator): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await row.scrollIntoViewIfNeeded().catch(() => {})
+    const box = await row.boundingBox().catch(() => null)
+    if (!box) return false
+    const y = box.y + box.height / 2, x0 = box.x + box.width * 0.7
+    await page.mouse.move(x0, y)
+    await page.mouse.down()
+    for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 - i * 15, y); await page.waitForTimeout(16) }
+    await page.mouse.up()
+    await page.waitForTimeout(250)
+    if ((await wrapOf(row).getAttribute('data-swipe').catch(() => null)) === 'open') return true
+    await page.waitForTimeout(400)
+  }
+  return false
+}
 const sheet = (page: Page) => ({
   fix: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix"]'),
   fixNote: page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix-note"]'),
@@ -1017,7 +1036,7 @@ async function main() {
       const hop = async (path: string) => { const r = await page.request.get(path, { maxRedirects: 0 }); return { status: r.status(), location: (r.headers()['location'] ?? '').replace(/^https?:\/\/[^/]+/, '') } }
       const { data: anyEvent } = await admin.from('events').select('id').eq('user_id', userId).eq('type', 'hay_fed').order('ingested_at', { ascending: false }).limit(1).maybeSingle()
       const { data: anyPlace } = await admin.from('places').select('id').eq('ranch_id', ranchId).limit(1).maybeSingle()
-      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch/places'], ['/devices', '/ranch/devices'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
+      const statics: [string, string][] = [['/herd', '/ranch/cattle'], ['/places', '/ranch?tab=ground'], ['/devices', '/ranch?tab=ground'], ['/activity', '/ranch/activity'], ['/jobs', '/ranch/activity?source=machine'], ['/watchlist', '/weather/locations'], ['/radar', '/weather/radar'], ['/profile', '/account'],
         ...(anyPlace ? [[`/places/${anyPlace.id}`, `/ranch/places/${anyPlace.id}`] as [string, string]] : []),
         ...(anyEvent ? [[`/activity/${anyEvent.id}`, `/ranch/activity/${anyEvent.id}`] as [string, string]] : [])]
       const results = await Promise.all(statics.map(async ([from, expected]) => ({ from, expected, ...(await hop(from)) })))
@@ -2090,6 +2109,60 @@ async function main() {
       await tryHold('Places', '/ranch/places', '[data-audit="place-rows"] li', async () => { await page.locator('[data-audit="place-group-open"]').first().click({ timeout: 10_000 }).catch(() => {}) })
       await tryHold('Hay ledger', `/today?fips=${HOME_FIPS}`, '[data-audit="hay-line"]', async () => { await page.locator('[data-audit="hay-details"] summary, [data-audit="hay-details"] button').first().click({ timeout: 10_000 }).catch(() => {}) })
       record('37: long-press a row in Activity, Cattle, Places and the hay ledger — Fix and Delete, one gesture everywhere', holdsOk, holds.join(' | '))
+    })
+
+    // ── Session 3 — swipe left on any row reveals Fix and Delete ──────────────
+    // PK: a hidden gesture nobody can discover is a gesture nobody uses. The
+    // falsifier: swipe left on a row in each of the six lists and get Fix and
+    // Delete; the hold still works for people who know it. Your own row under
+    // People has neither (a note instead), so there a full swipe opens the
+    // sheet that says why — never a dead row.
+    await section('Session 3 — swipe left on any row reveals Fix and Delete', async () => {
+      const { data: dS3 } = await admin.from('devices').insert({ user_id: userId, ranch_id: ranchId, hardware_id: `${PREFIX}-S3-hw`, type: 'spotter', name: `${PREFIX} S3 gauge`, place_id: placeId }).select('id').single()
+      const swipes: string[] = []
+      let swipesOk = true
+      const trySwipe = async (list: string, path: string, rowSel: string, open?: () => Promise<void>) => {
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        if (open) await open()
+        const row = page.locator(rowSel).first()
+        const there = await row.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+        const opened = there && await swipeLeft(page, row)
+        const wrap = wrapOf(row)
+        const fix = await wrap.locator('[data-audit="swipe-fix"]:visible').count()
+        const del = await wrap.locator('[data-audit="swipe-delete"]:visible').count()
+        // The buttons stand inside the row's own box, where the row slid off them.
+        const rowBox = await wrap.boundingBox().catch(() => null)
+        const delBox = await wrap.locator('[data-audit="swipe-delete"]').boundingBox().catch(() => null)
+        const inRow = !!rowBox && !!delBox && delBox.x >= rowBox.x && delBox.x + delBox.width <= rowBox.x + rowBox.width + 1 && delBox.height >= 48
+        // Tap the row: it closes, and does not open its page. The row's own box has
+        // slid left, so the tap lands on the wrapper, which stays put.
+        const before = page.url()
+        if (opened) await wrap.click({ position: { x: 20, y: 20 } }).catch(() => {})
+        await page.waitForTimeout(400)
+        const closed = (await wrap.getAttribute('data-swipe').catch(() => null)) === 'closed' && page.url() === before
+        // And the hold still works.
+        const held = there && await hold(page, row)
+        await page.keyboard.press('Escape').catch(() => {})
+        const ok = opened && fix === 1 && del === 1 && inRow && closed && held
+        if (!ok) swipesOk = false
+        swipes.push(`${list}: row ${there} · swiped open ${opened} · Fix ${fix} · Delete ${del} · in the row ${inRow} · tap closes ${closed} · hold still ${held}`)
+      }
+      await trySwipe('Activity', '/ranch/activity', '[data-audit="activity-row"]')
+      await trySwipe('Cattle', '/ranch/cattle', '[data-audit="lot-row"]')
+      await trySwipe('Places', '/ranch/places', '[data-audit="place-rows"] li', async () => { await page.locator('[data-audit="place-group-open"]').first().click({ timeout: 10_000 }).catch(() => {}) })
+      await trySwipe('Hay ledger', `/today?fips=${HOME_FIPS}`, '[data-audit="hay-line"]', async () => { await page.locator('[data-audit="hay-details"] summary, [data-audit="hay-details"] button').first().click({ timeout: 10_000 }).catch(() => {}) })
+      await trySwipe('Devices', '/ranch/devices', '[data-audit="device-card"]')
+      record('S3: swipe left on a row in Activity, Cattle, Places, the hay ledger and Devices — Fix and Delete stand in the row, a tap closes it, and the hold still works', swipesOk, swipes.join(' | '))
+      // People: your own row has a note instead of Fix and Delete — the swipe opens the sheet that says so.
+      await page.goto('/account', { waitUntil: 'domcontentloaded' })
+      const me = page.locator('[data-audit="member-row"]').first()
+      const meThere = await me.waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+      if (meThere) await swipeLeft(page, me)
+      const meSheet = await page.locator('[data-audit="row-actions-sheet"]').waitFor({ timeout: 4_000 }).then(() => true).catch(() => false)
+      const meNote = await page.locator('[data-audit="row-actions-sheet"] [data-audit="row-action-fix-note"], [data-audit="row-actions-sheet"] [data-audit="row-action-delete-note"]').count()
+      await page.keyboard.press('Escape').catch(() => {})
+      record('S3: People — your own row has nothing to fix or delete, so the swipe opens the sheet that says why, never a dead row', meThere && meSheet && meNote >= 1, `row ${meThere} · sheet ${meSheet} · notes ${meNote}`)
+      if (dS3) await admin.from('devices').delete().eq('id', dS3.id)
     })
 
     // ── Block 37 (ruling 3): no long lists — Activity is a few days at a time ──
@@ -4052,7 +4125,8 @@ async function main() {
     // mile off, then none at all.
     await section('Session 2 — Record knows where you are', async () => {
       // Its own pasture, so the section runs alone (ONLY=) as well as in the loop. The fixes below are inside it, then a mile off.
-      const ringS2 = [[-110.06, 46.93], [-110.04, 46.93], [-110.04, 46.92], [-110.06, 46.92], [-110.06, 46.93]]
+      // Its own ground, a few miles from every other section's ring: two pastures on one ring would both hold the fix, and the older one would answer.
+      const ringS2 = [[-110.16, 46.96], [-110.14, 46.96], [-110.14, 46.95], [-110.16, 46.95], [-110.16, 46.96]]
       const { data: pas, error: pasErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} S2 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ringS2] }, acres: 380 }).select('id, name').single()
       if (pasErr || !pas) throw new Error(`Session 2 pasture: ${pasErr?.message ?? 'not made'}`)
       const hereLine = page.locator('[data-audit="record-here"]')
@@ -4064,7 +4138,7 @@ async function main() {
       await page.keyboard.press('Escape').catch(() => {})
       // Inside the pasture.
       await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
-      await page.context().setGeolocation({ latitude: 46.925, longitude: -110.05, accuracy: 5 })
+      await page.context().setGeolocation({ latitude: 46.955, longitude: -110.15, accuracy: 5 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       const mapLocate = await page.locator('[data-audit="map-locate"]').waitFor({ timeout: 20_000 }).then(() => 1).catch(() => 0)
       const note = await page.locator('[data-audit="locate-note"]').count()
@@ -4094,7 +4168,7 @@ async function main() {
       await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
       await page.keyboard.press('Escape').catch(() => {})
       // A mile off: the line says you are not inside a drawn pasture; Count offers no pasture.
-      await page.context().setGeolocation({ latitude: 46.95, longitude: -110.10, accuracy: 5 })
+      await page.context().setGeolocation({ latitude: 47.10, longitude: -110.50, accuracy: 5 })
       await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
       await recordControl(page).click()
       await page.locator('[data-audit="record-picker"][data-fix="yes"]').waitFor({ timeout: 15_000 }).catch(() => {})
@@ -4125,13 +4199,17 @@ async function main() {
       await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
       const pregCattle = await page.locator('[data-audit="cattle-preg-check"]').count()
       await page.goto('/ranch/preg-check', { waitUntil: 'domcontentloaded' })
-      const pregLanded = new URL(page.url()).pathname + new URL(page.url()).search
-      record('3b: the preg check has one door — the record sheet — and the old address lands there', pregRanch === 0 && pregCattle === 0 && pregLanded === '/today?record=preg_check', `on Ranch ${pregRanch} · on Cattle ${pregCattle} · /ranch/preg-check → ${pregLanded}`)
+      const pregSheet = await page.locator('[data-audit="preg-bunch"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const pregLanded = new URL(page.url()).pathname
+      record('3b: the preg check has one door — the record sheet — and the old address lands there with the sheet open', pregRanch === 0 && pregCattle === 0 && pregLanded === '/today' && pregSheet, `on Ranch ${pregRanch} · on Cattle ${pregCattle} · /ranch/preg-check → ${pregLanded} · sheet ${pregSheet}`)
+      await page.keyboard.press('Escape').catch(() => {})
       // Ground is the places page: the map, the groups, the ways to mark ground, the devices.
       await page.goto('/ranch/places', { waitUntil: 'domcontentloaded' })
       const groundLanded = new URL(page.url()).pathname + new URL(page.url()).search
       const groundOn = await page.locator('[data-audit="ranch-tab-ground"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
-      const onGround = { map: await page.locator('[data-audit="places-map"]').count(), rows: await page.locator('[data-audit="place-rows"]').count(), capture: await page.locator('[data-audit="capture-choose"]').count(), devices: await page.locator('[data-audit="ranch-devices"]').count(), links: await page.locator('[data-audit="ranch-places-link"], [data-audit="places-devices-link"]').count() }
+      // The map is painted only when a place is drawn; a ranch with none drawn has no picture to show.
+      const { count: drawnCount } = await admin.from('places').select('id', { count: 'exact', head: true }).eq('ranch_id', ranchId).not('geometry', 'is', null).is('deleted_at', null)
+      const onGround = { map: (drawnCount ?? 0) > 0 ? await page.locator('[data-audit="places-map"]').count() : 1, rows: await page.locator('[data-audit="place-group-open"]').count(), capture: await page.locator('[data-audit="capture-choose"]').count(), devices: await page.locator('[data-audit="ranch-devices"]').count(), links: await page.locator('[data-audit="ranch-places-link"], [data-audit="places-devices-link"]').count() }
       await page.goto('/ranch/devices', { waitUntil: 'domcontentloaded' })
       const devLanded = new URL(page.url()).pathname + new URL(page.url()).search
       record('3b: Ground is the one places page — /ranch/places and /ranch/devices land on it, with the map, the groups, the ways to mark ground and the devices, and no link to a second page',
@@ -4433,7 +4511,9 @@ async function main() {
         await hold(page, row22)
         const rowDoor = await page.locator('[data-audit="row-action-extra"]', { hasText: /Count at a gate/ }).count()
         await page.keyboard.press('Escape').catch(() => {})
+        await page.locator('[data-audit="row-actions-sheet"]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {})
         await recordControl(page).click()
+        await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 20_000 }).catch(() => {})
         await page.locator('[data-audit="tile-cattle_counted"]').click()
         await page.locator('[data-audit="count-bunch"]').waitFor({ timeout: 15_000 }).catch(() => {})
         await page.locator(`[data-audit="count-bunch-option"][data-lot="${lot22}"]`).first().click().catch(() => {})
