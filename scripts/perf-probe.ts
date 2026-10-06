@@ -20,7 +20,17 @@
 // service role for PK's own account and never leaves a record behind.
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import Module from 'node:module'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+
+// The app's server libs open with `import 'server-only'`, a build-time marker
+// that the npm package of that name turns into a throw outside Next. Resolve it
+// to nothing here, before any lib loads — the probe crashed on it 2026-10-06.
+const resolveFilename = (Module as unknown as { _resolveFilename: (...a: unknown[]) => string })._resolveFilename
+;(Module as unknown as { _resolveFilename: (...a: unknown[]) => string })._resolveFilename = function (request: unknown, ...rest: unknown[]) {
+  if (request === 'server-only') return resolve(process.cwd(), 'scripts/lib/server-only-stub.js')
+  return resolveFilename.call(this, request, ...rest)
+}
 
 for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
   const p = resolve(process.cwd(), f)
@@ -198,13 +208,16 @@ async function browser(accessToken: string) {
 
     console.log(`\n── browser ${slow ? '· slow phone (4× CPU, 1.6 Mbps, 150 ms)' : '· as fast as this machine goes'} ──`)
     console.log(`   page            TTFB      FCP      LCP   blocked   usable   JS`)
+    // "usable" is the page's own control, there to tap: Today's ranch map,
+    // Ranch's numbers, a bunch row or the New bunch button, Markets' title.
+    // (Until 2026-10-06 Today waited for two markers that no component paints.)
     const pages: [string, string, string][] = [
-      ['Today', '/today', '[data-audit="ranch-map-card"], [data-audit="repeat-last"], main'],
+      ['Today', '/today', '[data-audit="ranch-map"]'],
       ['Ranch', '/ranch', '[data-audit="ranch-numbers"]'],
       ['Cattle', '/ranch/cattle', '[data-audit="lot-row"], [data-audit="new-bunch-button"]'],
       ['Markets', '/markets', '[data-audit="markets-title"]'],
     ]
-    for (const [name, path, usableSel] of pages) {
+    const measure = async (name: string, path: string, usableSel: string) => {
       await page.goto('about:blank')
       await page.addInitScript(`
         window.__lcp = 0; window.__tbt = 0;
@@ -221,11 +234,22 @@ async function browser(accessToken: string) {
         var n = performance.getEntriesByType('navigation')[0] || {};
         var fcp = (performance.getEntriesByName('first-contentful-paint')[0] || {}).startTime || 0;
         var js = performance.getEntriesByType('resource').filter(function(r){ return /\\.js(\\?|$)/.test(r.name) });
-        return { ttfb: n.responseStart || 0, fcp: fcp, lcp: window.__lcp || 0, tbt: window.__tbt || 0,
+        return { ttfb: n.responseStart || 0, fcp: fcp, lcp: window.__lcp || 0, tbt: window.__tbt || 0, held: n.fetchStart || 0,
+                 worker: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
                  jsCount: js.length, jsKb: js.reduce(function(s,r){ return s + (r.transferSize || 0) }, 0) / 1024 };
-      })()`) as { ttfb: number; fcp: number; lcp: number; tbt: number; jsCount: number; jsKb: number }
+      })()`) as { ttfb: number; fcp: number; lcp: number; tbt: number; held: number; worker: boolean; jsCount: number; jsKb: number }
       console.log(`   ${name.padEnd(12)} ${ms(m.ttfb).padStart(8)} ${ms(m.fcp).padStart(8)} ${ms(m.lcp).padStart(8)} ${ms(m.tbt).padStart(9)} ${(usable < 0 ? 'never' : ms(usable)).padStart(8)}   ${m.jsCount} files ${m.jsKb.toFixed(0)} KB`)
+      return m
     }
+    // COLD, THEN SETTLED (PK, 2026-10-06). The first navigation after a new
+    // service worker is a different number from every later one: the browser
+    // holds it until the worker has activated, and that hold used to include a
+    // whole fetch of Today. Both are reported, as their own rows, so a cold
+    // worker is never again read as a slow server.
+    const cold = await measure('Today (cold)', '/today', '[data-audit="ranch-map"]')
+    console.log(`                first open after a new worker: held ${ms(cold.held)} before the request · worker ${cold.worker ? 'in control' : 'not in control'}`)
+    await page.evaluate(`navigator.serviceWorker ? navigator.serviceWorker.ready.then(function(){}) : null`).catch(() => {})
+    for (const [name, path, usableSel] of pages) await measure(name, path, usableSel)
     await b.close()
   }
 }
