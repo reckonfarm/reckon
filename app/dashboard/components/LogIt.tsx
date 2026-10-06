@@ -62,6 +62,8 @@ export const LOGIT_OPEN_EVENT = 'dryline:logit-open'
 // chute is a sheet now, not a page, so it opens with no signal.
 export type SheetType = ManualEventType | 'preg_check' | 'split'
 export interface Draft {
+  /** Session 3c: kept by Cancel — offered on the picker, never opened on the next Record by itself. */
+  waiting?: boolean
   type: SheetType | null
   n1?: string
   what?: string
@@ -427,6 +429,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
     setPcChecked(''); setPcOpen(''); setSplit(true); setSplitName(''); setSplitClass(''); setFixingId(null); setNewBunch(false)
     placeChosen.current = false
     if (!keepDraft) writeDraft(null)
+    else { const d = readDraft(); if (d && d.type) writeDraft({ ...d, waiting: true }) }
   }, [])
 
   // Apply a Draft to the fields (restore after an app switch, or a pre-fill
@@ -453,7 +456,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       const d = (e as CustomEvent<Draft>).detail
       if (d && d.type) { writeDraft(d); applyDraft(d, true) }
       else if (d && (d.place || d.fromPlace || d.toPlace)) { applyDraft(d, true) }   // Record here: the picker, with the place already chosen
-      else { const saved = readDraft(); if (saved && saved.type) applyDraft(saved, true); else setOpen(true) }   // the picker, or the unfinished draft
+      else { const saved = readDraft(); if (saved && saved.type && !saved.waiting) applyDraft(saved, true); else setOpen(true) }   // the picker, or the unfinished draft; a draft Cancel kept waits on the picker
     }
     window.addEventListener(LOGIT_OPEN_EVENT, onOpen)
     return () => window.removeEventListener(LOGIT_OPEN_EVENT, onOpen)
@@ -1075,10 +1078,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
               )}
             </div>
 
-            {!type ? (
-              // Block 20: the picker is the ranch map and one row of actions.
-              // A place tapped first is the record's place; an action tapped
-              // first takes the place under the fix, or the form asks.
+            {!type ? (<>
+              {/* Block 20: the picker is the ranch map and one row of actions. A place tapped first is the record's place; an action tapped first takes the place under the fix, or the form asks. */}
               <RecordPicker
                 onPick={(a, placeId) => {
                   setType(a); setError(null); setHereId(placeId)
@@ -1087,7 +1088,15 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 onRare={(a, placeId) => { setType(a); setError(null); if (placeId) setPlace({ id: placeId, newName: null }) }}
                 onClose={close}
               />
-            ) : (
+              {/* Session 3c: a draft Cancel kept is offered here, under the row — one tap back
+                  to it, or thrown away — never opened over the row by itself. */}
+              {hasDraft && (() => { const d = readDraft(); return d && d.type && d.waiting ? (
+                <div className="mt-3 flex flex-wrap items-center gap-x-5" data-audit="draft-waiting">
+                  <button type="button" onClick={() => applyDraft(d, true)} className="min-h-[48px] font-dm-sans text-[16px] font-semibold text-forest-green underline underline-offset-2" data-audit="finish-draft-line">Finish your unsaved entry · {TILE_VERB[d.type] ?? d.type}</button>
+                  <button type="button" onClick={() => writeDraft(null)} className="min-h-[48px] font-dm-sans text-[16px] font-semibold underline underline-offset-2" style={{ color: warning }} data-audit="record-throw-away">Throw it away</button>
+                </div>
+              ) : null })()}
+            </>) : (
               <form
                 className="mt-4 flex flex-col gap-4"
                 onSubmit={e => { e.preventDefault(); submit() }}
@@ -1151,7 +1160,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
                 <div className="flex flex-wrap items-center gap-x-5">
                   <button
                     type="button"
-                    onClick={() => { if (typed) showNotice('Saved as a draft'); close(typed) }}
+                    onClick={() => { if (typed) showNotice('Saved as a draft', 2_000, 'said'); close(typed) }}
                     disabled={busy}
                     className="self-start min-h-[48px] font-dm-sans text-[16px] font-semibold text-secondary-ink underline underline-offset-2 disabled:opacity-50"
                     data-audit="record-cancel"

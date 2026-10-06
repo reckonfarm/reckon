@@ -35,6 +35,7 @@ export default function UndoStrip() {
           <p className="min-w-0 flex-1 font-dm-sans text-[17px] leading-snug">
             {item.state === 'undone' ? <><span className="font-semibold">Put back</span> · {item.label}</>
               : item.state === 'failed' ? <span className="font-semibold">{item.error ?? 'It could not be put back.'}</span>
+              : item.state === 'said' ? <span className="font-semibold" data-audit="strip-said">{item.error}</span>
               : <><span className="font-semibold">Deleted</span> · {item.label}</>}
           </p>
           {item.state === 'shown' && (

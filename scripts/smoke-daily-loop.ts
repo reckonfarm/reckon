@@ -4268,14 +4268,19 @@ async function main() {
       const said = await page.locator('[role="status"]', { hasText: 'Saved as a draft' }).first().waitFor({ timeout: 4_000 }).then(() => true).catch(() => false)
       await page.waitForTimeout(3_500)
       const gone = (await page.locator('[role="status"]', { hasText: 'Saved as a draft' }).count()) === 0
+      // The next Record opens the picker, the row there, with the kept draft offered under it — never opened over the row by itself.
       await recordControl(page).click()
+      const rowBack = await page.locator('[data-audit="record-actions"]').waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      const offered = await page.locator('[data-audit="finish-draft-line"]').count()
+      await page.locator('[data-audit="finish-draft-line"]').click().catch(() => {})
       const kept = await page.getByLabel('Hay fed').inputValue().catch(() => '')
       const throwAway = await page.locator('[data-audit="record-throw-away"]').count()
       await page.locator('[data-audit="record-throw-away"]').click().catch(() => {})
-      await recordControl(page).click()
-      const picker = await page.locator('[data-audit="record-picker"]').waitFor({ timeout: 8_000 }).then(() => true).catch(() => false)
       await page.keyboard.press('Escape').catch(() => {})
-      record('3c: Cancel says "Saved as a draft" once at the moment of cancelling, then it is gone; the next Record opens on the draft; Throw it away is the discard', said && gone && kept === '3' && throwAway === 1 && picker, `said ${said} · gone after ${gone} · kept "${kept}" · Throw it away ${throwAway} · picker after the throw ${picker}`)
+      await recordControl(page).click()
+      const clean = await page.locator('[data-audit="record-actions"]').waitFor({ timeout: 8_000 }).then(async () => (await page.locator('[data-audit="draft-waiting"]').count()) === 0).catch(() => false)
+      await page.keyboard.press('Escape').catch(() => {})
+      record('3c: Cancel says "Saved as a draft" once, then it is gone; the next Record opens the row with the draft offered under it; one tap finishes it, Throw it away is the discard', said && gone && rowBack && offered === 1 && kept === '3' && throwAway === 1 && clean, `said ${said} · gone after ${gone} · row back ${rowBack} · offered ${offered} · kept "${kept}" · Throw it away ${throwAway} · clean after the throw ${clean}`)
       // 4. the tally's endings: one big Done, two small beneath.
       const lot3c = randomUUID()
       await admin.from('herd_lots').insert({ id: lot3c, ranch_id: ranchId, class: 'cows', name: `${PREFIX} 3c bunch`, head_count: 30, avg_weight: 1100, weight_unit: 'lb', created_by: userId, updated_by: userId })
@@ -4321,7 +4326,7 @@ async function main() {
       const rowOn = await page.locator('[data-audit="weather-row-preview"]').count()
       const rowText = ((await page.locator('[data-audit="weather-row-preview"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
       await pin.click()
-      record('3c: the Weather switch says what it does by doing it — on, the Rain-on-my-places row this place gets is painted under it, with its name; off, no row; the label is one word', rowOff === 0 && rowOn === 1 && /Rain on my places/.test(rowText) && /West stack/.test(rowText) && label === 'Weather', `off ${rowOff} · on ${rowOn} · row "${rowText}" · label "${label}"`)
+      record('3c: the Weather switch says what it does by doing it — on, the Rain-on-my-places row this place gets is painted under it, with its name; off, no row; the label is one word', rowOff === 0 && rowOn === 1 && /Rain on my places/i.test(rowText) && /West stack/.test(rowText) && label === 'Weather', `off ${rowOff} · on ${rowOn} · row "${rowText}" · label "${label}"`)
       await page.locator('[data-audit="place-edit-cancel"]').click().catch(() => {})
     })
 
