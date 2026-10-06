@@ -4,7 +4,9 @@ import { createClient } from '@/lib/supabase-server'
 import { resolveRanchId } from '@/lib/ranch-membership'
 import { CONTACT_EMAIL, OPERATOR_NAME } from '@/lib/legal'
 import { privateTitle } from '@/lib/private-title'
-import SiteHeader from '@/app/components/SiteHeader'
+import { headers } from 'next/headers'
+import InstallLine, { type InstallPlatform } from '@/app/components/InstallLine'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import ProfileForm from './ProfileForm'
@@ -24,6 +26,9 @@ const link = 'inline-flex min-h-[48px] items-center font-dm-sans text-[16px] fon
 
 export default async function AccountPage() {
   const supabase = await createClient()
+  // Session 1 (2): the walkthrough for the phone in hand; a desktop gets no line.
+  const ua = (await headers()).get('user-agent') ?? ''
+  const installPlatform: InstallPlatform | null = /iPhone|iPad|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : null
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/signin?next=/account')
   const ranchId = await resolveRanchId(supabase, user.id).catch(() => null)
@@ -78,11 +83,9 @@ export default async function AccountPage() {
             <p className="font-dm-sans text-[16px] text-ink"><a href={`mailto:${CONTACT_EMAIL}`} className={link}>{CONTACT_EMAIL}</a></p>
             <p className="mt-1 font-dm-sans text-[15px] text-secondary-ink">{OPERATOR_NAME}. <Link href="/terms" className="inline-flex min-h-[48px] items-center underline underline-offset-2">Terms</Link> · <Link href="/privacy" className="inline-flex min-h-[48px] items-center underline underline-offset-2">Privacy</Link></p>
             <p className="mt-2"><Link href="/ranch/devices/setup" className={link}>Setting up a device →</Link></p>
-            {/* Block 7.7 — the Feedback button left Today, where it floated over the
-                controls the screen exists for. It is still on every other page, and
-                this says so, because a button that moved without a word is a button
-                a person concludes was taken away. */}
-            <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink" data-audit="help-feedback">Telling us something is off: the <span className="font-semibold">Feedback</span> button sits in the corner of every page except Today, this one included.</p>
+            {/* Session 1 (1): the flag in the header, on every screen. */}
+            <p className="mt-2 font-dm-sans text-[15px] text-secondary-ink" data-audit="help-feedback">Something wrong? Tap the flag at the top of any screen. PK gets that screen and your words.</p>
+            {installPlatform && <p className="mt-2"><InstallLine platform={installPlatform} where="account" /></p>}
           </Card>
         </section>
 

@@ -8,6 +8,7 @@ import { flagDisabled } from '@/lib/flags'
 import type { User } from '@supabase/supabase-js'
 import { bindPrivateStateTo } from '@/lib/private-state'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
+import SomethingWrong from './SomethingWrong'
 
 // Block 7.7 — the tagline is a signed-OUT promise. On the ranch's own work
 // screen it is a second line of chrome above the first thing a person came to
@@ -29,12 +30,18 @@ const NAV: { href: string; label: string }[] = [
 
 interface Props {
   center?: React.ReactNode
+  /** Session 1 (3): what the server knew from the auth cookie, so the first paint is right. */
+  signedIn?: boolean
 }
 
-export default function SiteHeader({ center }: Props) {
+export default function SiteHeader({ center, signedIn = false }: Props) {
   const pathname = usePathname()
   const compact = pathname === '/today'
   const [user, setUser] = useState<User | null>(null)
+  // Until the browser has read the session, the server's word stands: a member
+  // sees Account from the first byte, never "Sign in" for a beat.
+  const [known, setKnown] = useState(false)
+  const signed = known ? !!user : signedIn || !!user
   const [unread, setUnread] = useState(0)
   // Block 6A — the selected ranch, on every page for a signed-in person. One
   // small read per session, cached per user in sessionStorage (cleared by
@@ -66,7 +73,7 @@ export default function SiteHeader({ center }: Props) {
     // Block 5D: whoever is signed in owns the phone's private state; state
     // written under someone else is cleared before any surface reads it.
     supabase.auth.getSession()
-      .then(({ data }) => { bindPrivateStateTo(data.session?.user?.id ?? null); setUser(data.session?.user ?? null) })
+      .then(({ data }) => { bindPrivateStateTo(data.session?.user?.id ?? null); setUser(data.session?.user ?? null); setKnown(true) })
       .catch(() => { /* local read only — never strand the header */ })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       bindPrivateStateTo(session?.user?.id ?? null)
@@ -151,7 +158,8 @@ export default function SiteHeader({ center }: Props) {
               </button>
             </nav>
           )}
-          {user ? (
+          {signed && <SomethingWrong />}
+          {signed ? (
             <Link
               href="/account"
               className="inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-forest-green/20 px-4 font-dm-sans text-[16px] font-medium text-forest-green hover:bg-forest-green/5 transition-colors"

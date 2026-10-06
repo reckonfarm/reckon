@@ -3,7 +3,7 @@ import LedgerStamp from '@/app/components/LedgerStamp'
 import { ledgerThrough } from '@/lib/ledger-through'
 import { Suspense } from 'react'
 import { createServiceClient } from '@/lib/supabase'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { computeLfpEligibility } from '@/lib/lfp-eligibility'
 import { resolveDefaultGrazingWindow } from '@/lib/grazing-window'
 import CountySelector from './components/CountySelector'
@@ -52,6 +52,8 @@ import RanchMapCard, { RanchMapHold } from './components/RanchMapCard'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { cookies, headers } from 'next/headers'
+import InstallLine, { type InstallPlatform } from '@/app/components/InstallLine'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getRanch } from '@/lib/ranch-membership'
 import type { Lot } from '@/lib/herd'
@@ -220,6 +222,16 @@ export async function DashboardShell({
   // USDM twice) that only Weather and the county page read. What Today shows
   // of those streams in behind its own boundary, or is not started at all.
   const today = priv && route === 'today'
+  // Session 1 (2): a phone that has not put Dryline on its home screen gets one
+  // line saying how, painted by the server (no shove when the page wakes): the
+  // phone is read from the request, the two cookies say installed or not now.
+  let install: InstallPlatform | null = null
+  if (today) {
+    const [h, jar] = await Promise.all([headers(), cookies()])
+    const ua = h.get('user-agent') ?? ''
+    const platform: InstallPlatform | null = /iPhone|iPad|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : null
+    if (platform && !jar.get('dl_installed') && !jar.get('dl_install_later')) install = platform
+  }
   // Block B: Markets is the ranch's numbers too. The county's and the programs'
   // reads — the national map, drought rows, deadlines, and the five upstream
   // services — belong to Weather, Programs and the public county page; a
@@ -449,6 +461,7 @@ export async function DashboardShell({
       <main className={priv && route === 'today' ? 'mx-auto max-w-[1160px] px-4 py-6 sm:px-5 lg:grid lg:grid-cols-[minmax(0,42rem)_minmax(18rem,1fr)] lg:items-start lg:gap-8' : 'mx-auto max-w-2xl px-4 py-6 sm:px-5'} data-audit="column">
         <ScrollToTop />
         {priv && route === 'today' && user && <LedgerStamp through={through} />}
+        {today && user && install && <InstallLine platform={install} where="today" />}
         {/* Block 6B — one short first-visit banner on the public county page; the county data stays first. */}
         {!priv && !user && selectedCounty && <CountyBanner />}
 

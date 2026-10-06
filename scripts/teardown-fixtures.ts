@@ -22,7 +22,7 @@ export async function sweep(label = 'sweep'): Promise<number> {
     // Block 28 (074): a place that history points at is never hard-deleted —
     // events and bunches go first, and places in passes (a parent is refused
     // while a child still lives).
-    for (const t of ['events', 'devices', 'herd_lots', 'places', 'places', 'places', 'operation_profiles', 'ranch_members', 'invitations']) {
+    for (const t of ['events', 'devices', 'herd_lots', 'places', 'places', 'places', 'operation_profiles', 'ranch_members', 'invitations', 'feedback']) {
       const col = t === 'herd_lots' ? 'created_by' : t === 'invitations' ? 'created_by' : 'user_id'
       n += (await admin.from(t).delete().in(col, ids).select('*')).data?.length ?? 0
     }

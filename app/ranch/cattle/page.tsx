@@ -5,7 +5,7 @@ import { privateTitle } from '@/lib/private-title'
 import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
 import { readFollowed } from '@/lib/herd-follow'
 import { lastWorkByLot, whereByLot } from '@/lib/ranch-summary'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import HerdForm from './HerdForm'
 

@@ -140,6 +140,67 @@ async function main() {
     }
     record(`every screen paints — ${screens.length} of them`, bad.length === 0, bad.length ? bad.join(' · ') : screens.map(s => s[0]).join(' '))
 
+    // 2b — Session 1 (3): the header is right from the FIRST byte. The server
+    // paints Account for a signed-in member; "Sign in" never shows for a beat.
+    // Read off the HTML as sent, not the hydrated page.
+    {
+      const cookie = (await ctx.cookies()).map(c => `${c.name}=${c.value}`).join('; ')
+      const hdr: Record<string, string> = { cookie, ...(BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {}) }
+      const wrong: string[] = []
+      for (const path of ['/ranch/places', '/today', '/account']) {
+        const html = await fetch(`${BASE}${path}`, { headers: hdr, redirect: 'manual' }).then(r => r.status === 200 ? r.text() : `status ${r.status}`)
+        const head = html.slice(0, html.indexOf('</header>') + 9)
+        const account = /data-audit="account-button"/.test(head), signin = /href="\/signin"/.test(head)
+        if (!account || signin) wrong.push(`${path}: ${account ? 'Account' : 'no Account'}${signin ? ' + Sign in' : ''}${/^status/.test(html) ? ` (${html})` : ''}`)
+      }
+      record('the header says Account from the first byte on every private screen — never Sign in for a beat', wrong.length === 0, wrong.length ? wrong.join(' · ') : '/ranch/places /today /account')
+    }
+
+    // 2c — Session 1 (1): something's wrong — one tap, any screen, and PK gets
+    // the screen and the words. The flag is in the header; the sheet takes the
+    // words; Send lands a row with the page it came from. The email is proved
+    // by the route's code and PK's inbox, not by a suite that would mail him.
+    {
+      await page.goto('/ranch/cattle', { waitUntil: 'domcontentloaded' })
+      await page.locator('header [data-audit="something-wrong"]').click()
+      await page.locator('[data-audit="something-wrong-words"]').fill('SMOKE-FAST: the count is off by one')
+      await page.locator('[data-audit="something-wrong-send"]').click()
+      const sent = await page.locator('[data-audit="something-wrong-sent"]').waitFor({ timeout: 15_000 }).then(() => true).catch(() => false)
+      const { data: rows } = await admin.from('feedback').select('id, message, page_path, user_id').eq('user_id', userId).order('created_at', { ascending: false }).limit(1)
+      const row = rows?.[0] ?? null
+      record('something\'s wrong: one tap in the header, the words, Send — "Sent" on screen and the row carries the page', sent && !!row && row.page_path === '/ranch/cattle' && /off by one/.test(row.message ?? ''), `sent ${sent} · row ${row ? `page ${row.page_path} · "${row.message}"` : 'none'}`)
+      if (row) await admin.from('feedback').delete().eq('id', row.id)
+    }
+
+    // 2d — Session 1 (2): the home-screen walkthrough. An iPhone that has not
+    // installed Dryline gets the line on Today from the server, with the
+    // three steps and two pictures behind one tap; an installed phone (the
+    // cookie the app sets when it runs from the home screen) gets no line.
+    {
+      const ios = await browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      // The same session, carried over: a second magic link for one address
+      // trips the sign-in limit (f011074), and a page that lands on /signin
+      // has no line to find. Identity first: the page must be Today.
+      await ios.addCookies(await ctx.cookies())
+      const ip = await ios.newPage()
+      await ip.goto('/today', { waitUntil: 'domcontentloaded' })
+      const landed = new URL(ip.url()).pathname
+      const line = await ip.locator('[data-audit="install-line"]').first().waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)
+      await ip.locator('[data-audit="install-line"]').first().click().catch(() => {})
+      await ip.locator('[data-audit="install-steps"]').waitFor({ timeout: 8_000 }).catch(() => {})
+      const steps = await ip.locator('[data-audit="install-steps"] li').count()
+      const pictures = await ip.locator('[data-audit="install-steps"] svg').count()
+      const words = ((await ip.locator('[data-audit="install-steps"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      await ios.addCookies([{ name: 'dl_installed', value: '1', url: BASE }])
+      await ip.goto('/today', { waitUntil: 'domcontentloaded' })
+      await ip.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const after = await ip.locator('[data-audit="install-line"]').count()
+      record('home-screen walkthrough: an iPhone gets the line on Today, Share → Add to Home Screen → Add with two pictures; an installed phone gets no line',
+        landed === '/today' && line && steps === 3 && pictures === 2 && /Share/.test(words) && /Add to Home Screen/.test(words) && after === 0,
+        `page ${landed} · line ${line} · steps ${steps} · pictures ${pictures} · installed → line ${after}`)
+      await ios.close()
+    }
+
     // 3 — a record saves and reaches Sent
     await page.goto('/today', { waitUntil: 'domcontentloaded' })
     await page.locator('[data-audit="record-fab"], [data-audit="record-control"]').first().click().catch(() => {})
