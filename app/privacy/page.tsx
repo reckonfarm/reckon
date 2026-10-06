@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Metadata } from 'next'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { renderMarkdown } from '@/lib/markdown'
 import { fillLegal } from '@/lib/legal'
 

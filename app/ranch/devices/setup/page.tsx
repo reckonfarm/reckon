@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import { CONTACT_EMAIL } from '@/lib/legal'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 

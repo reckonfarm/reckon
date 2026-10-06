@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { privateTitle } from '@/lib/private-title'
 import { placeRows } from '@/lib/places/rows'

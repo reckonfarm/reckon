@@ -1,6 +1,6 @@
 import { createServiceClient } from '@/lib/supabase'
 import HayMapLoader from './HayMapLoader'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 
 export const dynamic = 'force-dynamic'
 

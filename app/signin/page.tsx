@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import SignInForm from './SignInForm'
 
 // ?next= and ?mode= are validated HERE (server) and passed as props — no

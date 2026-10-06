@@ -4,7 +4,7 @@ import { flagDisabled } from '@/lib/flags'
 import { Card } from '@/app/components/ui/Card'
 import { Heading } from '@/app/components/ui/Heading'
 import { createServiceClient } from '@/lib/supabase'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import { signHayPhotosForRows } from '@/lib/hay-photos'
 
 const DROUGHT_BADGE: Record<number, { label: string; cls: string }> = {

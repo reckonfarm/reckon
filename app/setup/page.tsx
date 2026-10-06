@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { resolveRanchId } from '@/lib/ranch-membership'
-import SiteHeader from '@/app/components/SiteHeader'
+import SiteHeader from '@/app/components/SiteHeaderServer'
 import SetupForm from './SetupForm'
 
 // ─── Block 31: the one setup screen ─────────────────────────────────────────

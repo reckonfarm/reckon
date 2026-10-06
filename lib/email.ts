@@ -90,6 +90,46 @@ export async function sendMessageNotification(params: MessageNotificationParams)
   if (error) throw new Error(`Resend error: ${error.message}`)
 }
 
+// ─── "Something's wrong" → PK (Session 1, pilot blocker 1) ───────────────────
+
+export interface SomethingWrongParams {
+  from: string | null
+  words: string
+  pagePath: string | null
+  url: string | null
+  screenText: string
+  userAgent: string | null
+  screenWidth: number | null
+  standalone: boolean
+}
+
+export async function sendSomethingWrong(p: SomethingWrongParams): Promise<void> {
+  if (emailsDisabled()) return
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+  const resend = new Resend(apiKey)
+  const when = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', dateStyle: 'medium', timeStyle: 'short' })
+  const body = [
+    `${p.from ?? 'Someone not signed in'} says something's wrong on ${p.pagePath ?? 'a page'} — ${when} (ranch time).`,
+    '',
+    `“${p.words}”`,
+    '',
+    `Where: ${p.url ?? p.pagePath ?? 'unknown'}`,
+    `Phone: ${p.userAgent ?? 'unknown'}${p.screenWidth ? ` · ${p.screenWidth} px wide` : ''}${p.standalone ? ' · home-screen app' : ' · in a browser'}`,
+    '',
+    '— What the screen said —',
+    p.screenText || '(nothing painted, or the sheet was all there was)',
+  ].join('\n')
+  const { error } = await resend.emails.send({
+    from: 'Dryline Alerts <alerts@dryline.farm>',
+    to: 'pk@dryline.farm',
+    replyTo: p.from ?? undefined,
+    subject: `Something's wrong: ${p.words.slice(0, 60).replace(/\s+/g, ' ')}${p.words.length > 60 ? '…' : ''}`,
+    text: body,
+  })
+  if (error) throw new Error(`Resend error: ${error.message}`)
+}
+
 // ─── Demand routing (buyer want → opted-in seller) ────────────────────────────
 
 export interface DemandRoutingEmailParams {
