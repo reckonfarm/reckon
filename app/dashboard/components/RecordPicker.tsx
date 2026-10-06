@@ -39,7 +39,12 @@ export type RareAction = 'preg_check' | 'hay_inventory' | 'bales_stacked'
 
 export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (action: Exclude<PickAction, 'place'>, placeId: string | null) => void; onRare: (action: RareAction, placeId: string | null) => void; onClose: () => void }) {
   const [map, setMap] = useState<RanchMap | null>(() => (typeof window === 'undefined' ? null : readCached()))
-  const [fix, setFix] = useState<{ p: LatLng; accuracyM: number } | null>(null)
+  const [fix, setFix] = useState<{ p: LatLng; accuracyM: number; at: number } | null>(null)
+  // Session 2: the fix's age is read when it is painted, and again every ten
+  // seconds while the sheet is open — a line that says "just now" for a
+  // minute is a lie.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 10_000); return () => clearInterval(id) }, [])
   const [placeMenu, setPlaceMenu] = useState(false)
 
   // The ranch, fresh when there is signal; the last good answer otherwise.
@@ -57,7 +62,7 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
     let alive = true
     navigator.geolocation.getCurrentPosition(
-      pos => { if (alive) setFix({ p: { lat: pos.coords.latitude, lng: pos.coords.longitude }, accuracyM: pos.coords.accuracy }) },
+      pos => { if (alive) setFix({ p: { lat: pos.coords.latitude, lng: pos.coords.longitude }, accuracyM: pos.coords.accuracy, at: pos.timestamp || Date.now() }) },
       () => { /* no fix: the form asks, or the bunch answers */ },
       { enableHighAccuracy: true, timeout: 6_000, maximumAge: 60_000 },
     )
@@ -75,6 +80,12 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
     return null
   }, [fix, map])
 
+  // Session 2 — RECORD KNOWS WHERE YOU ARE. One line under the row: the pasture
+  // under your feet and how old the fix is, or that you are not inside a drawn
+  // one. Nothing while the phone has no fix yet — the row never waits for it.
+  const herePlace = underFix ? map?.places.find(p => p.id === underFix) ?? null : null
+  const fixAge = fix ? Math.max(0, Math.round((now - fix.at) / 1000)) : 0
+  const ageWord = fixAge < 15 ? 'just now' : fixAge < 90 ? `${fixAge} s ago` : `${Math.round(fixAge / 60)} min ago`
   const act = useCallback((a: PickAction) => {
     if (a === 'place') { setPlaceMenu(m => !m); return }
     onPick(a, underFix)
@@ -94,6 +105,11 @@ export default function RecordPicker({ onPick, onRare, onClose }: { onPick: (act
         ))}
       </div>
 
+      {fix && (
+        <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="record-here" data-place={herePlace?.id ?? ''} data-fix-age={fixAge}>
+          {herePlace ? <>In <span className="font-semibold">{herePlace.name}</span> · fix {ageWord}</> : <>Not inside a drawn pasture · fix {ageWord}</>}
+        </p>
+      )}
       {/* The three the row does not carry, one tap each, as words. */}
       <div className="mt-2 flex flex-wrap gap-x-4" data-audit="record-rare">
         {([['preg_check', 'Preg check'], ['hay_inventory', 'Count hay'], ['bales_stacked', 'Add bales to a stack']] as const).map(([k, w]) => (

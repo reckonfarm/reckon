@@ -48,11 +48,12 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
   const [landedAt] = useState(() => Date.now())
   const placedCount = map.places.reduce((n, p) => n + p.bunches.length, 0)
   // Block 42 (ruling 5): Locate names the pasture you are standing in and opens it.
-  // Outside every drawn pasture the line under the map says so; a tap on one picks it.
-  const [here, setHere] = useState<{ placeId: string | null } | null>(null)
+  // Session 2 (PK): the map keeps its own Locate — that tap is the product — and
+  // loses the sentence under it; where you are is Record's line now.
+  const [hereId, setHereId] = useState<string | null>(null)   // the pasture Locate found, so its sheet can say "you're here"
   const locate = (p: LatLng) => {
     const hit = map.places.find(pl => { if (!pl.ring) return false; const [pt, ...ring] = projectXY([p, ...pl.ring], p.lat); return pointInPolygon(pt, ring) })
-    setHere({ placeId: hit?.id ?? null })
+    setHereId(hit?.id ?? null)
     if (hit) setOpenId(hit.id)
   }
   const shapes = useMemo(() => map.places.filter(p => p.ring).map(p => {
@@ -68,7 +69,6 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
         <PlaceMapLoader shapes={shapes} initialCenter={map.centre} height="40vh" overview onPlaceTap={setOpenId} focus={focus} line={lineFor(current)} onLocate={locate} />
       )}
       {/* Block 39: what is live now, in one line — never a list. */}
-      {here && !here.placeId && <p className="mt-2 font-dm-sans text-[16px] font-semibold text-ink" data-audit="locate-note">Not inside a drawn pasture — tap one</p>}
       <p className="mt-2 font-dm-sans text-[16px] text-ink" data-audit="ranch-map-line">{placedCount} {placedCount === 1 ? 'bunch' : 'bunches'} placed · {todayCount} {todayCount === 1 ? 'entry' : 'entries'} today</p>
       {/* Block 29: the changes, stepped. Under the map, in words. */}
       {total > 0 && (
@@ -139,7 +139,7 @@ export default function RanchMapClient({ map, changes = [], total = 0, newest = 
         <BottomSheet open onClose={() => setOpenId(null)} label={open.name} audit="ranch-map-sheet">
             <p className="font-fraunces text-[22px] font-semibold leading-tight text-ink">
               <Link href={`/ranch/places/${open.id}`} className="inline-flex min-h-[48px] items-center underline-offset-2 hover:underline" data-audit="sheet-place">{open.name}</Link>
-              {here?.placeId === open.id && <span className="ml-2 font-dm-sans text-[16px] font-normal text-forest-green" data-audit="sheet-here">you&rsquo;re here</span>}
+              {hereId === open.id && <span className="ml-2 font-dm-sans text-[16px] font-normal text-forest-green" data-audit="sheet-here">you&rsquo;re here</span>}
               {fmtAcres(open.acres) && <span className="ml-2 font-dm-sans text-[16px] font-normal text-secondary-ink" data-audit="sheet-acres">{fmtAcres(open.acres)}</span>}
             </p>
             {/* Block 42: count cattle INTO this pasture — the tally, with this place as where they are going. */}

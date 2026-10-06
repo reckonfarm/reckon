@@ -4044,6 +4044,78 @@ async function main() {
       await page.context().setGeolocation(null).catch(() => {})
     })
 
+    // ── Session 2 — Record knows where you are ────────────────────────────────
+    // PK: one line under the action row — the pasture under your feet and the
+    // fix's age, never waiting for the fix — and Count offers the count INTO
+    // that pasture. The Today map KEEPS its Locate; only the sentence under it
+    // went. The section draws its own pasture; the fixes are inside it, then a
+    // mile off, then none at all.
+    await section('Session 2 — Record knows where you are', async () => {
+      // Its own pasture, so the section runs alone (ONLY=) as well as in the loop. The fixes below are inside it, then a mile off.
+      const ringS2 = [[-110.06, 46.93], [-110.04, 46.93], [-110.04, 46.92], [-110.06, 46.92], [-110.06, 46.93]]
+      const { data: pas, error: pasErr } = await admin.from('places').insert({ user_id: userId, ranch_id: ranchId, name: `${PREFIX} S2 pasture`, kind: 'pasture', geometry: { type: 'Polygon', coordinates: [ringS2] }, acres: 380 }).select('id, name').single()
+      if (pasErr || !pas) throw new Error(`Session 2 pasture: ${pasErr?.message ?? 'not made'}`)
+      const hereLine = page.locator('[data-audit="record-here"]')
+      // The phone sees the new pasture once (Record's copy of the ranch names the ground under a fix).
+      await page.context().setGeolocation(null).catch(() => {})
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.waitForFunction((pid: string) => { try { return (localStorage.getItem('dryline_ranch_map_v1') ?? '').includes(pid) } catch { return false } }, pas.id as string, { timeout: 20_000 }).catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})
+      // Inside the pasture.
+      await page.context().grantPermissions(['geolocation'], { origin: BASE }).catch(() => {})
+      await page.context().setGeolocation({ latitude: 46.925, longitude: -110.05, accuracy: 5 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      const mapLocate = await page.locator('[data-audit="map-locate"]').waitFor({ timeout: 20_000 }).then(() => 1).catch(() => 0)
+      const note = await page.locator('[data-audit="locate-note"]').count()
+      await recordControl(page).click()
+      await page.locator(`[data-audit="record-picker"][data-under-fix="${pas.id}"]`).waitFor({ timeout: 15_000 }).catch(() => {})
+      const inText = ((await hereLine.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const inPlace = await hereLine.getAttribute('data-place').catch(() => null)
+      // The line is BELOW the row (Block 38: nothing above the actions). The sheet
+      // slides in; both boxes are read together once it has settled, or the row
+      // is measured mid-slide and the line after it.
+      await page.waitForTimeout(700)
+      const boxes = await page.evaluate(`(function(){ var r = document.querySelector('[data-audit="record-actions"]'); var l = document.querySelector('[data-audit="record-here"]'); return { row: r ? r.getBoundingClientRect() : null, line: l ? l.getBoundingClientRect() : null } })()`) as { row: { y: number; height: number } | null; line: { y: number } | null }
+      const rowBox = boxes.row, lineBox = boxes.line
+      record('S2: standing in a pasture, Record says so in one line under the row — the pasture and the fix\'s age — and the map keeps its Locate, the sentence under it gone',
+        mapLocate === 1 && note === 0 && inPlace === pas.id && new RegExp(`In ${pas.name}`).test(inText) && /fix (just now|\d+ s ago|\d+ min ago)/.test(inText) && !!rowBox && !!lineBox && lineBox.y >= rowBox.y + rowBox.height,
+        `map Locate ${mapLocate} · note ${note} · line "${inText}" · place ${inPlace === pas.id ? 'the pasture' : inPlace} · below the row ${!!rowBox && !!lineBox && lineBox.y >= rowBox.y + rowBox.height}`)
+      // Count offers the count INTO it, and the plain count is still beneath.
+      await page.locator('[data-audit="tile-cattle_counted"]').click()
+      const into = page.locator('[data-audit="count-into"]')
+      const intoThere = await into.waitFor({ timeout: 10_000 }).then(() => true).catch(() => false)
+      const intoHref = await into.getAttribute('href').catch(() => '')
+      const intoText = ((await into.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      const plain = await page.locator('[data-audit="count-bunch"], [data-audit="lots-loading"]').count()
+      record('S2: Count, standing in a pasture, offers "Count cattle into <pasture>" (Block 42\'s tally, one Save for move and count) with the plain count beneath',
+        intoThere && intoHref === `/ranch/tally?to=${pas.id}` && intoText === `Count cattle into ${pas.name}` && plain >= 1,
+        `offer ${intoThere} · href ${intoHref} · "${intoText}" · plain count beneath ${plain}`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})
+      // A mile off: the line says you are not inside a drawn pasture; Count offers no pasture.
+      await page.context().setGeolocation({ latitude: 46.95, longitude: -110.10, accuracy: 5 })
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      await page.locator('[data-audit="record-picker"][data-fix="yes"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const outText = ((await hereLine.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
+      await page.locator('[data-audit="tile-cattle_counted"]').click()
+      await page.locator('[data-audit="count-bunch"], [data-audit="lots-loading"]').first().waitFor({ timeout: 10_000 }).catch(() => {})
+      const intoOut = await page.locator('[data-audit="count-into"]').count()
+      record('S2: outside every drawn pasture the line says so, and Count offers no pasture', /^Not inside a drawn pasture · fix /.test(outText) && intoOut === 0, `line "${outText}" · offers ${intoOut}`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.keyboard.press('Escape').catch(() => {})
+      // No fix at all: no line, and the row is there at once — Record never waits.
+      await page.context().setGeolocation(null).catch(() => {})
+      await page.goto(`/today?fips=${HOME_FIPS}`, { waitUntil: 'domcontentloaded' })
+      await recordControl(page).click()
+      const tilesNoFix = await page.locator('[data-audit="record-actions"] button').count()
+      await page.waitForTimeout(1_500)
+      const lineNoFix = await hereLine.count()
+      record('S2: with no fix there is no line, and the row is there at once — Record never waits for the phone', tilesNoFix === 6 && lineNoFix === 0, `tiles ${tilesNoFix} · line ${lineNoFix}`)
+      await page.keyboard.press('Escape').catch(() => {})
+    })
+
     // ── Block 31 — a new rancher can create their ranch ───────────────────────
     // PK's falsifier: sign up a brand-new account. You see only the setup screen.
     // Name the ranch, pick a county, and you land on Today with an empty ranch
