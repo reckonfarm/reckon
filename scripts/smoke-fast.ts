@@ -147,13 +147,13 @@ async function main() {
       const cookie = (await ctx.cookies()).map(c => `${c.name}=${c.value}`).join('; ')
       const hdr: Record<string, string> = { cookie, ...(BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {}) }
       const wrong: string[] = []
-      for (const path of ['/ranch/places', '/today', '/account']) {
+      for (const path of ['/ranch?tab=ground', '/today', '/account']) {   // Session 3b: Places is Ground now
         const html = await fetch(`${BASE}${path}`, { headers: hdr, redirect: 'manual' }).then(r => r.status === 200 ? r.text() : `status ${r.status}`)
         const head = html.slice(0, html.indexOf('</header>') + 9)
         const account = /data-audit="account-button"/.test(head), signin = /href="\/signin"/.test(head)
         if (!account || signin) wrong.push(`${path}: ${account ? 'Account' : 'no Account'}${signin ? ' + Sign in' : ''}${/^status/.test(html) ? ` (${html})` : ''}`)
       }
-      record('the header says Account from the first byte on every private screen — never Sign in for a beat', wrong.length === 0, wrong.length ? wrong.join(' · ') : '/ranch/places /today /account')
+      record('the header says Account from the first byte on every private screen — never Sign in for a beat', wrong.length === 0, wrong.length ? wrong.join(' · ') : '/ranch?tab=ground /today /account')
     }
 
     // 2c — Session 1 (1): something's wrong — one tap, any screen, and PK gets
