@@ -220,6 +220,11 @@ export async function DashboardShell({
   // USDM twice) that only Weather and the county page read. What Today shows
   // of those streams in behind its own boundary, or is not started at all.
   const today = priv && route === 'today'
+  // Block B: Markets is the ranch's numbers too. The county's and the programs'
+  // reads — the national map, drought rows, deadlines, and the five upstream
+  // services — belong to Weather, Programs and the public county page; a
+  // private Today or Markets starts none of them.
+  const needsCounty = !priv || route === 'weather' || route === 'programs'
   // My Operation defaults to the TODAY view (internal key 'news' — kept so deep
   // links, the heavy-fetch gates, and the middleware redirect stay untouched; same
   // deliberate label↔key mismatch as 'drought'/"Weather"). Jobs via &view=jobs
@@ -252,7 +257,7 @@ export async function DashboardShell({
   // /dashboard never needed it and still doesn't.
   const [{ data: nationalMapRow }, countyRes, session] = await Promise.all([
     // The national map is Weather's; Today never shows it.
-    today ? Promise.resolve({ data: null }) : db
+    !needsCounty ? Promise.resolve({ data: null }) : db
       .from('official_maps')
       .select('id, map_type, scope, release_date, image_url, source_url')
       .eq('map_type', 'usdm_national')
@@ -302,9 +307,9 @@ export async function DashboardShell({
   // call still starts here (concurrent with the cheap `latest` query). A rejection
   // degrades to the honest 'data_unavailable' state — never a crash, never a false
   // deficit. getPrecipNormal owns its own 9s deadline / 24h cache / honest-failure.
-  // Block A: none of the three starts on Today — Today never reads them, and a
-  // promise nobody awaits is still a request the server makes.
-  const precipPromise: Promise<PrecipNormalResult> = selectedCounty && !today
+  // Block A/B: none of the three starts on Today or Markets — neither reads them,
+  // and a promise nobody awaits is still a request the server makes.
+  const precipPromise: Promise<PrecipNormalResult> = selectedCounty && needsCounty
     ? getPrecipNormal(selectedCounty.fips, selectedCounty.lat, selectedCounty.lon)
         .catch(() => 'data_unavailable' as const)
     : Promise.resolve(null)
@@ -313,12 +318,12 @@ export async function DashboardShell({
   // with the cheap reads); resolved in ForecastPanelAsync. A rejection degrades to null →
   // honest "temporarily unavailable". Needs the county centroid for the gridpoint lookup.
   const forecastPromise: Promise<LocalForecast | null> =
-    selectedCounty && !today && selectedCounty.lat != null && selectedCounty.lon != null
+    selectedCounty && needsCounty && selectedCounty.lat != null && selectedCounty.lon != null
       ? getLocalForecast(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
   // Block 7 (Part 2): active NWS warnings for the county center — first on Weather when present.
   const alertsPromise: Promise<ActiveAlert[] | null> =
-    selectedCounty && !today && selectedCounty.lat != null && selectedCounty.lon != null
+    selectedCounty && needsCounty && selectedCounty.lat != null && selectedCounty.lon != null
       ? getActiveAlerts(selectedCounty.lat, selectedCounty.lon).catch(() => null)
       : Promise.resolve(null)
 
@@ -360,7 +365,7 @@ export async function DashboardShell({
     const [{ data: latestRow }, deadlineRes, home] = await Promise.all([
       // Drought rows and deadlines are the county's and the programs'. On Today
       // only the change-only alerts read them, inside their own boundary.
-      today ? Promise.resolve({ data: [] }) : db
+      !needsCounty ? Promise.resolve({ data: [] }) : db
         .from('drought_data')
         .select('week_date, d0, d1, d2, d3, d4')
         .eq('county_id', selectedCounty.id)
@@ -369,7 +374,7 @@ export async function DashboardShell({
         // before to know whether anything changed at all; one extra row on an
         // indexed read, no extra round trip.
         .limit(2),
-      today ? Promise.resolve<UpcomingDeadlinesResult>({ status: 'none' }) : getUpcomingDeadlines(selectedCounty.fips, crops),
+      !needsCounty ? Promise.resolve<UpcomingDeadlinesResult>({ status: 'none' }) : getUpcomingDeadlines(selectedCounty.fips, crops),
       // The operation's county for the orientation line. When it's the county in
       // view the row is already here; only a DIFFERENT home county costs a read
       // (one indexed fips lookup, chained on the fips, concurrent with the rest).
@@ -392,7 +397,7 @@ export async function DashboardShell({
   // blocks the news/page paint. Resolves to a tagged outcome so an outage/timeout
   // degrades honestly. The Drought view's Promise.all below consumes this SAME promise,
   // so eligibility is computed ONCE and shared by the alert and the hero.
-  const lfpPromise: Promise<LfpFetchOutcome> = selectedCounty && !today
+  const lfpPromise: Promise<LfpFetchOutcome> = selectedCounty && needsCounty
     ? computeLfpEligibility(selectedCounty.fips, (() => {
         if (gs && ge) return { grazingPeriod: { startDate: gs, endDate: ge } }
         return { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt) }
@@ -411,7 +416,7 @@ export async function DashboardShell({
   // comparison. Started here, awaited only inside LfpCardAsync once the current
   // year resolves — five USDM calls behind unstable_cache (keyed by release date),
   // a cache hit after the first load. Used to run inside the Weather body only.
-  const priorYearPromise: Promise<LfpEligibilityResult | null> = selectedCounty && !today
+  const priorYearPromise: Promise<LfpEligibilityResult | null> = selectedCounty && needsCounty
     ? computeLfpEligibility(
         selectedCounty.fips,
         { grazingPeriod: resolveDefaultGrazingWindow(selectedCounty.fips, pt, new Date().getFullYear() - 1) },

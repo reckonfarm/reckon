@@ -209,13 +209,13 @@ async function browser(accessToken: string) {
     console.log(`\n── browser ${slow ? '· slow phone (4× CPU, 1.6 Mbps, 150 ms)' : '· as fast as this machine goes'} ──`)
     console.log(`   page            TTFB      FCP      LCP   blocked   usable   JS`)
     // "usable" is the page's own control, there to tap: Today's ranch map,
-    // Ranch's numbers, a bunch row or the New bunch button, Markets' title.
+    // Ranch's numbers, a bunch row or the New bunch button, Markets' bunch value (or its reported sale).
     // (Until 2026-10-06 Today waited for two markers that no component paints.)
     const pages: [string, string, string][] = [
       ['Today', '/today', '[data-audit="ranch-map"]'],
       ['Ranch', '/ranch', '[data-audit="ranch-numbers"]'],
       ['Cattle', '/ranch/cattle', '[data-audit="lot-row"], [data-audit="new-bunch-button"]'],
-      ['Markets', '/markets', '[data-audit="markets-title"]'],
+      ['Markets', '/markets', '[data-audit="lot-value"], [data-audit="reported-sale"]'],
     ]
     const measure = async (name: string, path: string, usableSel: string) => {
       await page.goto('about:blank')

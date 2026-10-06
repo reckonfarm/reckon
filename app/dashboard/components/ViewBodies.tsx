@@ -843,6 +843,11 @@ export async function HayViewBody({
   )
 }
 
+/** The history card's painted box (767 px at 390 wide, measured 2026-10-06), held until the chart's series are read. */
+function MarketsHistoryHold() {
+  return <div className="h-[767px] rounded-xl border border-forest-green/10 bg-white" aria-hidden data-audit="history-card-hold" />
+}
+
 export async function MarketsViewBody({
   selectedCounty, lots: allLots, followed, signedIn, homeFips, supabase, sellBarn = null, ranchId = null, selectedLotId = null, titled = false,
 }: {
@@ -941,7 +946,7 @@ export async function MarketsViewBody({
         <>
           <ReportedSale result={localAuction} volume={null} />
           <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
-            <Suspense fallback={null}>
+            <Suspense fallback={<MarketsHistoryHold />}>
               <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={null} />
             </Suspense>
           </section>
@@ -969,7 +974,10 @@ export async function MarketsViewBody({
       {/* 3 — price history: the chart, its selection strip, and the spread and
           movement rows that belong to the same question. */}
       <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
-        <Suspense fallback={null}>
+        {/* Block B: the chart is context; the numbers above are the point. Its own
+            boundary, and its own held space — the history card's painted box — so
+            what changed and price protection below do not move when it lands. */}
+        <Suspense fallback={<MarketsHistoryHold />}>
           <MarketsHistory resolved={resolvedView} lots={lots} selectedLotId={selectedLotId} />
         </Suspense>
         {anchor && <PriceHistoryPanel trend={anchor.trend} pageBarn={localAuction.status === 'ok' ? localAuction.barnName : null} />}
