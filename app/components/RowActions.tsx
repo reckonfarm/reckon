@@ -181,8 +181,11 @@ export default function RowActions({ links, children, className = '' }: { links:
     // list) must reach the form that is already mounted: router.push only
     // rewrites the URL, and no effect re-runs. Setting the hash fires
     // hashchange, which the forms listen for.
+    // Session 3b: the page may carry a search (/ranch?tab=ground), so the
+    // comparison is path AND search, or a device's Fix on Ground pushes a URL
+    // that differs only by its hash and no form hears a hashchange.
     const hashAt = a.href.indexOf('#')
-    if (hashAt > 0 && typeof window !== 'undefined' && a.href.slice(0, hashAt) === window.location.pathname) {
+    if (hashAt > 0 && typeof window !== 'undefined' && a.href.slice(0, hashAt) === window.location.pathname + window.location.search) {
       window.location.hash = a.href.slice(hashAt)
       return
     }
