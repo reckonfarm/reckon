@@ -178,3 +178,13 @@
 /* The attribution, tidy and whole: small, one line, never hidden. */
 .leaflet-container .leaflet-control-attribution { font: 10px/1.3 var(--font-dm-sans, system-ui, sans-serif); background: rgba(253, 251, 247, 0.85); color: #526257; padding: 1px 5px; white-space: nowrap; max-width: 100%; overflow-x: auto; }
 .leaflet-container .leaflet-control-attribution a { color: #1B4332; }
+
+/* Session 3c: a pin that just became draggable lifts and settles once. */
+@keyframes pin-settle {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.15); }
+  60% { transform: translateY(0) scale(1); }
+  80% { transform: translateY(-4px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); }
+}
+.pin-settle { animation: pin-settle 700ms ease-out 1; }

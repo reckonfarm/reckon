@@ -29,7 +29,7 @@ export interface UndoItem {
   /** Where to take the person after Undo, if the row's own page is the right place. */
   after?: string | null
   expiresAt: number
-  state: 'shown' | 'undoing' | 'undone' | 'failed'
+  state: 'shown' | 'undoing' | 'undone' | 'failed' | 'said'
   error?: string
 }
 
@@ -70,11 +70,11 @@ export async function runUndo(): Promise<boolean> {
 }
 
 /** A sentence on the strip with no Undo — a delete that was refused, say. */
-export function showNotice(error: string): void {
+export function showNotice(error: string, ms = 6_000, state: 'failed' | 'said' = 'failed'): void {
   const id = `${Date.now().toString(36)}-n`
-  current = { id, label: '', undo: async () => ({ ok: true }), after: null, expiresAt: Date.now() + 6_000, state: 'failed', error }
+  current = { id, label: '', undo: async () => ({ ok: true }), after: null, expiresAt: Date.now() + ms, state, error }
   if (timer) clearTimeout(timer)
-  timer = setTimeout(() => { if (current?.id === id) { current = null; emit() } }, 6_000)
+  timer = setTimeout(() => { if (current?.id === id) { current = null; emit() } }, ms)
   emit()
 }
 

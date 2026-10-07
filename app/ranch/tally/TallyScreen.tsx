@@ -134,8 +134,9 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
   }
 
   // ── Ruling 6: finishing chooses the meaning ────────────────────────────────
-  function save() {
-    if (!tally || !source && ending !== 'observation') { setSaveErr(countingIn ? 'Pick the bunch you counted.' : 'Pick what this count means.'); return }
+  function save(endingOverride?: Ending) {
+    const e: Ending = endingOverride ?? ending
+    if (!tally || !source && e !== 'observation') { setSaveErr(countingIn ? 'Pick the bunch you counted.' : 'Pick what this count means.'); return }
     setSaveErr(null)
     const id = eventId.current ?? (eventId.current = newEventId())
     let body: Record<string, unknown>
@@ -145,13 +146,13 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
       // what came through, and set_head makes the bunch read it, in the same act.
       body = { id, type: 'cattle_moved', head: through, herd_lot_id: source.id, from_place_id: fromId, to_place_id: toId, place_id: toId, set_head: true }
       label = `Counted ${through} into ${placeName(toId) ?? 'the pasture'} · ${lotLabel(source)} set to ${through}`
-    } else if (ending === 'new_bunch' && source) {
+    } else if (e === 'new_bunch' && source) {
       // One split implementation (Block 19): this calls the same builder the
       // split sheet and the preg check call, and 071 does the arithmetic.
       const name = (newName.trim() || defaultSplitName(source, ranchToday())).slice(0, 40)
       body = splitBody({ id, source, head: through, name, class: defaultSplitClass(source.class) })
       label = splitLabel(source, through, name)
-    } else if (ending === 'set_head' && source) {
+    } else if (e === 'set_head' && source) {
       body = { id, type: 'cattle_counted', counted: through, herd_lot_id: source.id, set_head: true }
       label = `Counted ${through} head of ${lotLabel(source)} · set the bunch to ${through}`
     } else {
@@ -223,7 +224,7 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
         <p className="mt-1 font-dm-sans text-[17px] text-ink" data-audit="tally-finish-line">{source ? lotLabel(source) : 'Pick the bunch'} · from {placeName(fromId) ?? '—'} → {placeName(toId) ?? '—'}</p>
         {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-save-error">{saveErr}</p>}
         <div className="mt-4 flex flex-col gap-2">
-          <button type="button" onClick={save} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Save</button>
+          <button type="button" onClick={() => save()} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Save</button>
           <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back">Back</button>
         </div>
       </Card>
@@ -240,17 +241,28 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
       <Card className="mt-4 p-4 sm:p-5" data-audit="tally-finish">
         <p className="type-main-number text-ink" data-audit="tally-finish-total">{through.toLocaleString('en-US')}</p>
         <p className="font-dm-sans text-[16px] text-secondary-ink">counted{source ? ` · ${lotLabel(source)}` : ''}</p>
-        <p className="mt-4 font-dm-sans text-[16px] font-semibold text-ink" id="tally-ending-label">What does this count mean</p>
-        <div className="mt-2 flex flex-col gap-2" role="radiogroup" aria-labelledby="tally-ending-label" data-audit="tally-ending">
-          {opts.map(o => (
-            <button key={o.key} type="button" role="radio" aria-checked={ending === o.key} disabled={!o.can} onClick={() => setEnding(o.key)}
-              className={`min-h-[60px] rounded-lg border px-4 py-2 text-left font-dm-sans text-[17px] font-semibold disabled:opacity-40 ${ending === o.key ? 'border-forest-green bg-forest-green text-cream' : 'border-control-border bg-surface text-ink'}`}
-              data-audit={`tally-ending-${o.key}`}>
-              {o.label}
-              <span className={`block text-[15px] font-normal ${ending === o.key ? 'opacity-90' : 'text-secondary-ink'}`}>{o.hint}</span>
+        {/* Session 3c (PK): Block 42's shapes — one big Done, the two other endings
+            small beneath it, no sentence explaining any of them. Done is what a
+            count usually means: the bunch is set to it; with no bunch, the count
+            just goes on the record. A new bunch asks its name, then one Save. */}
+        {(() => {
+          const big = source ? opts[0] : opts[2]
+          const small = opts.filter(o => o.key !== big.key)
+          return (<>
+            <button type="button" onClick={() => save(big.key)} className="mt-4 min-h-[72px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[19px] font-semibold text-cream" data-audit={`tally-ending-${big.key}`} data-shape="done">
+              {big.label}
             </button>
-          ))}
-        </div>
+            <div className="mt-3 flex flex-col items-start gap-1" data-audit="tally-ending">
+              {small.map(o => (
+                <button key={o.key} type="button" disabled={!o.can} onClick={() => { if (o.key === 'new_bunch') setEnding('new_bunch'); else save(o.key) }}
+                  className={`min-h-[48px] text-left font-dm-sans text-[16px] font-semibold underline underline-offset-2 disabled:opacity-40 ${ending === o.key ? 'text-forest-green' : 'text-secondary-ink'}`}
+                  data-audit={`tally-ending-${o.key}`} data-shape="small">
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </>)
+        })()}
         {ending === 'new_bunch' && source && (
           <label className="mt-3 block font-dm-sans text-[16px] font-medium text-ink" htmlFor="tally-new-name">Name the new bunch
             <input id="tally-new-name" value={newName || defaultSplitName(source, ranchToday())} onChange={e => setNewName(e.target.value.slice(0, 40))} maxLength={40}
@@ -259,7 +271,9 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
         )}
         {saveErr && <p role="alert" className="mt-3 font-dm-sans text-[16px] font-semibold" style={{ color: warning }} data-audit="tally-save-error">{saveErr}</p>}
         <div className="mt-4 flex flex-col gap-2">
-          <button type="button" onClick={save} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Record the count</button>
+          {ending === 'new_bunch' && source && (
+            <button type="button" onClick={() => save('new_bunch')} className="min-h-[60px] w-full rounded-lg bg-forest-green px-4 font-dm-sans text-[18px] font-semibold text-cream" data-audit="tally-save">Start the new bunch</button>
+          )}
           <button type="button" onClick={() => setMode('counting')} className="min-h-[52px] font-dm-sans text-[17px] font-semibold text-secondary-ink underline underline-offset-2" data-audit="tally-back-to-counting">Back</button>
         </div>
       </Card>
