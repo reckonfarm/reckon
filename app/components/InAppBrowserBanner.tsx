@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { isInAppBrowser, isStandalone } from '@/lib/phone'
 
 // Dismissible nudge shown ONLY inside embedded/in-app browsers (Facebook/Instagram/
 // etc. WKWebView), which use isolated, often-ephemeral cookie jars — so a session
@@ -9,18 +10,7 @@ import { useEffect, useState } from 'react'
 // PWA home-screen app (we already ship the manifest + icon). Purely additive — it
 // touches no auth logic and never renders in normal Safari/Chrome or the installed app.
 
-// Known in-app browser UA signatures (isolated cookie jars). iOS Safari and the
-// Messages link sheet share Safari's UA and can't be told apart, so we deliberately
-// DON'T flag those (avoids false positives nagging real Safari users).
-const IN_APP_UA = /(FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|GSA\/|Twitter|Snapchat|Pinterest|musical_ly|TikTok|; wv\))/i
-
-function isStandalone(): boolean {
-  if (typeof window === 'undefined') return false
-  return (
-    window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
-    (navigator as unknown as { standalone?: boolean }).standalone === true
-  )
-}
+// The UA signatures and the standalone test live in lib/phone (Block 48).
 
 const DISMISS_KEY = 'dryline_iab_dismissed'
 
@@ -32,7 +22,7 @@ export default function InAppBrowserBanner() {
       if (sessionStorage.getItem(DISMISS_KEY) === '1') return
     } catch { /* sessionStorage unavailable */ }
     if (isStandalone()) return // already in the durable home-screen context
-    if (IN_APP_UA.test(navigator.userAgent)) setShow(true)
+    if (isInAppBrowser(navigator.userAgent)) setShow(true)
   }, [])
 
   function dismiss() {
