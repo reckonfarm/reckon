@@ -3,6 +3,8 @@ import { Fraunces, DM_Sans } from "next/font/google";
 import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
 import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
+import InstallNudge from '@/app/components/InstallNudge'
+import { Suspense } from 'react'
 import StandaloneCookie from '@/app/components/StandaloneCookie'
 import RecordSheetHost from '@/app/components/RecordSheetHost'
 import ServiceWorkerRegistration from '@/app/components/ServiceWorkerRegistration'
@@ -81,7 +83,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-cream text-forest-green">
         {/* Session 1 (2): Chrome offers its install prompt once, early — before React
-            is awake to hear it. Caught here and held for the Install button. */}
+            is awake to hear it. Caught here and held for the install buttons. */}
         <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__dlInstall=e})" }} />
         <StandaloneCookie />
         <InAppBrowserBanner />
@@ -90,6 +92,8 @@ export default function RootLayout({
         <ServiceWorkerRegistration />
         <EdgeSwipeBack />
         <PullToRefresh />
+        {/* Block 48: the one install ask, after something useful happens (R3). */}
+        <Suspense fallback={null}><InstallNudge /></Suspense>
         <SiteFooter />
         <BottomTabBar />
         <Analytics />

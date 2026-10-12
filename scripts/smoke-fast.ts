@@ -18,6 +18,10 @@
 //   5. THE HOLD MENU OFFERS NOTHING DEAD. Open came off; Fix and Split stay.
 //   6. AN UNDO IS REACHABLE. Delete a bunch and check that the thing the
 //      browser would hand the tap to is the Undo button, not a floating pill.
+//   7. THE MANIFEST IS WHOLE and /start lands by session (Block 48).
+//   8. THE INSTALL ASK waits for a second day and never shows in the
+//      installed app (Block 48, R3).
+//   9. INSIDE FACEBOOK the ask says open Safari, with a Copy link (Block 48).
 //
 // Its own account and ranch, swept by scripts/teardown-fixtures.ts like every
 // other fixture: smoke-fast@dryline.farm, SMOKE-FAST ranch.
@@ -172,18 +176,28 @@ async function main() {
       if (row) await admin.from('feedback').delete().eq('id', row.id)
     }
 
-    // 2d — Session 1 (2): the home-screen walkthrough. An iPhone that has not
-    // installed Dryline gets the line on Today from the server, with the
-    // three steps and two pictures behind one tap; an installed phone (the
-    // cookie the app sets when it runs from the home screen) gets no line.
+    // 2d — Session 1 (2), moved by Block 48 (R3): the home-screen walkthrough
+    // lives under Help on Account now, never painted on a first load of Today.
+    // An iPhone gets the line there, with the three steps and two pictures
+    // behind one tap; Today paints no line at all.
+    const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+    // serviceWorkers: 'block' — once the worker claims a page, ITS fetch of a
+    // navigation carries Chromium's own user agent, not the context's, so a
+    // server-side phone read painted nothing (both Today and Account, through
+    // the worker, came back as a desktop). A real phone's worker carries the
+    // real phone. The phone contexts here talk to the server directly.
+    const phone = (ua: string) => browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: ua, serviceWorkers: 'block', extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
     {
-      const ios = await browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+      const ios = await phone(IPHONE_UA)
       // The same session, carried over: a second magic link for one address
       // trips the sign-in limit (f011074), and a page that lands on /signin
-      // has no line to find. Identity first: the page must be Today.
+      // has no line to find. Identity first: the page must be Account.
       await ios.addCookies(await ctx.cookies())
       const ip = await ios.newPage()
       await ip.goto('/today', { waitUntil: 'domcontentloaded' })
+      await ip.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const onToday = await ip.locator('[data-audit="install-line"]').count()
+      await ip.goto('/account', { waitUntil: 'domcontentloaded' })
       const landed = new URL(ip.url()).pathname
       const line = await ip.locator('[data-audit="install-line"]').first().waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)
       await ip.locator('[data-audit="install-line"]').first().click().catch(() => {})
@@ -191,14 +205,96 @@ async function main() {
       const steps = await ip.locator('[data-audit="install-steps"] li').count()
       const pictures = await ip.locator('[data-audit="install-steps"] svg').count()
       const words = ((await ip.locator('[data-audit="install-steps"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ')
-      await ios.addCookies([{ name: 'dl_installed', value: '1', url: BASE }])
-      await ip.goto('/today', { waitUntil: 'domcontentloaded' })
-      await ip.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 15_000 }).catch(() => {})
-      const after = await ip.locator('[data-audit="install-line"]').count()
-      record('home-screen walkthrough: an iPhone gets the line on Today, Share → Add to Home Screen → Add with two pictures; an installed phone gets no line',
-        landed === '/today' && line && steps === 3 && pictures === 2 && /Share/.test(words) && /Add to Home Screen/.test(words) && after === 0,
-        `page ${landed} · line ${line} · steps ${steps} · pictures ${pictures} · installed → line ${after}`)
+      record('home-screen walkthrough: an iPhone gets the line under Help on Account, Share → Add to Home Screen → Add with two pictures; Today paints no line',
+        landed === '/account' && line && steps === 3 && pictures === 2 && /Share/.test(words) && /Add to Home Screen/.test(words) && onToday === 0,
+        `page ${landed} · line ${line} · steps ${steps} · pictures ${pictures} · line on Today ${onToday}`)
       await ios.close()
+    }
+
+    // 7 — Block 48: the manifest is whole, and /start lands where the person
+    // works. Read as served: the JSON itself, every shortcut answering with
+    // our own page, both screenshots answering as PNG, and the redirect by
+    // session — signed out to Markets, signed in to Today.
+    {
+      const cookie = (await ctx.cookies()).map(c => `${c.name}=${c.value}`).join('; ')
+      const bypass: Record<string, string> = BYPASS ? { 'x-vercel-protection-bypass': BYPASS } : {}
+      const faults: string[] = []
+      const res = await fetch(`${BASE}/manifest.webmanifest`, { headers: bypass })
+      const m = res.ok ? await res.json().catch(() => null) as null | { id?: string; scope?: string; start_url?: string; display?: string; icons?: { src: string; sizes: string; purpose?: string }[]; shortcuts?: { name: string; url: string }[]; screenshots?: { src: string; form_factor?: string }[] } : null
+      if (!m) faults.push(`manifest ${res.status}`)
+      else {
+        if (m.id !== '/') faults.push(`id ${m.id}`)
+        if (m.scope !== '/') faults.push(`scope ${m.scope}`)
+        if (m.start_url !== '/start?source=pwa') faults.push(`start_url ${m.start_url}`)
+        if (m.display !== 'standalone') faults.push(`display ${m.display}`)
+        if (!(m.icons ?? []).some(i => i.purpose === 'maskable' && i.sizes === '512x512')) faults.push('no 512 maskable icon')
+        if ((m.icons ?? []).filter(i => i.purpose === 'any').length < 2) faults.push('the any icons are gone')
+        const names = (m.shortcuts ?? []).map(x => x.name)
+        if (names.join('|') !== 'Record feed|Count cattle|Markets') faults.push(`shortcuts ${names.join(', ') || 'none'}`)
+        // Each shortcut's own landmark, as painted: the tally has no header.
+        const landmark: Record<string, RegExp> = { 'Record feed': /aria-label="Ledgers"/, 'Count cattle': /Count at a gate/, 'Markets': />Markets</ }
+        for (const sc of m.shortcuts ?? []) {
+          const r = await fetch(`${BASE}${sc.url}`, { headers: { cookie, ...bypass }, redirect: 'follow' })
+          const html = r.ok ? await r.text() : ''
+          if (!r.ok || !(landmark[sc.name] ?? /data-audit="column"/).test(html)) faults.push(`${sc.name} → ${sc.url} answered ${r.status}${r.ok ? ', not its screen' : ''}`)
+        }
+        const shots = (m.screenshots ?? []).filter(x => x.form_factor === 'narrow')
+        if (shots.length !== 2) faults.push(`${shots.length} narrow screenshots`)
+        for (const sh of shots) {
+          const r = await fetch(`${BASE}${sh.src}`, { headers: bypass })
+          if (!r.ok || !/image\/png/.test(r.headers.get('content-type') ?? '')) faults.push(`${sh.src} answered ${r.status} ${r.headers.get('content-type') ?? ''}`)
+        }
+        for (const [who, hdr, want] of [['signed out', bypass, '/markets'], ['signed in', { cookie, ...bypass }, '/today']] as const) {
+          const r = await fetch(`${BASE}/start?source=pwa`, { headers: hdr, redirect: 'manual' })
+          const to = r.headers.get('location') ?? ''
+          if (!(r.status >= 300 && r.status < 400) || new URL(to, BASE).pathname !== want) faults.push(`/start ${who} → ${r.status} ${to || 'no location'}`)
+        }
+      }
+      record('the manifest is whole — id, scope, start_url, maskable icon, three shortcuts at our screens, two narrow screenshots — and /start sends a signed-out phone to Markets, a signed-in one to Today',
+        faults.length === 0, faults.length ? faults.join(' · ') : 'manifest ok · shortcuts answer · screenshots png · /start → /markets, /today')
+    }
+
+    // 8 — Block 48 (R3): the install ask never shows on a first load and never
+    // inside the installed app. Three readings on one signed-in iPhone: a
+    // fresh phone on its first load (no sheet); the same phone on its second
+    // day (the sheet, with the steps — the proof the check can see one at
+    // all); and that second day opened from the home screen (no sheet).
+    const SECOND_DAY = JSON.stringify({ days: ['2026-01-01'], saves: 0, checks: 0, dismissedAt: null, installedAt: null })
+    const nudgeOn = async (opts: { ua: string; seed?: string; standalone?: boolean }) => {
+      const c = await phone(opts.ua)
+      await c.addCookies(await ctx.cookies())
+      // Strings, not functions: under tsx a function arrives with an esbuild
+      // helper (__name) the page does not have, and the override never runs.
+      if (opts.seed) await c.addInitScript(`try{localStorage.setItem('dryline_install',${JSON.stringify(opts.seed)})}catch(e){}`)
+      if (opts.standalone) await c.addInitScript("Object.defineProperty(navigator,'standalone',{get:function(){return true}})")
+      const p = await c.newPage()
+      await p.goto('/today', { waitUntil: 'domcontentloaded' })
+      await p.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const shown = await p.locator('[data-audit="install-nudge"]').waitFor({ state: 'visible', timeout: 6_000 }).then(() => true).catch(() => false)
+      const text = shown ? ((await p.locator('[data-audit="install-nudge"]').innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ') : ''
+      const steps = shown ? await p.locator('[data-audit="install-nudge-steps"] li').count() : 0
+      const inApp = shown ? await p.locator('[data-audit="install-nudge-inapp"]').count() : 0
+      const copy = shown ? await p.locator('[data-audit="install-nudge-copy"]').count() : 0
+      const page_ = new URL(p.url()).pathname
+      await c.close()
+      return { shown, text, steps, inApp, copy, page: page_ }
+    }
+    {
+      const first = await nudgeOn({ ua: IPHONE_UA })
+      const second = await nudgeOn({ ua: IPHONE_UA, seed: SECOND_DAY })
+      const installed = await nudgeOn({ ua: IPHONE_UA, seed: SECOND_DAY, standalone: true })
+      record('the install ask: nothing on a first load, the sheet with the three steps on a second day, nothing when opened from the home screen',
+        first.page === '/today' && !first.shown && second.shown && second.steps === 3 && /home screen/.test(second.text) && /no signal/.test(second.text) && !installed.shown,
+        `first load ${first.shown ? 'SHOWN' : 'none'} · second day ${second.shown ? `shown, ${second.steps} steps` : 'NOT shown'} · home-screen app ${installed.shown ? 'SHOWN' : 'none'} (page ${first.page})`)
+    }
+
+    // 9 — Block 48: an iPhone inside Facebook cannot add anything to its home
+    // screen; the ask says to open Safari and offers the link to carry over.
+    {
+      const fb = await nudgeOn({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/430.0.0.0;FBDV/iPhone15,2]', seed: SECOND_DAY })
+      record('inside Facebook, the ask says "Open this in Safari" and offers a Copy link button',
+        fb.shown && fb.inApp === 1 && /Open this in Safari to add it to your home screen/.test(fb.text) && fb.copy === 1 && fb.steps === 0,
+        fb.shown ? `"${fb.text.slice(0, 110)}" · copy button ${fb.copy} · steps ${fb.steps}` : `not shown (page ${fb.page})`)
     }
 
     // 3 — a record saves and reaches Sent
