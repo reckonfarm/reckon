@@ -181,7 +181,12 @@ async function main() {
     // An iPhone gets the line there, with the three steps and two pictures
     // behind one tap; Today paints no line at all.
     const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
-    const phone = (ua: string) => browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: ua, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    // serviceWorkers: 'block' — once the worker claims a page, ITS fetch of a
+    // navigation carries Chromium's own user agent, not the context's, so a
+    // server-side phone read painted nothing (both Today and Account, through
+    // the worker, came back as a desktop). A real phone's worker carries the
+    // real phone. The phone contexts here talk to the server directly.
+    const phone = (ua: string) => browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: ua, serviceWorkers: 'block', extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
     {
       const ios = await phone(IPHONE_UA)
       // The same session, carried over: a second magic link for one address
@@ -226,10 +231,12 @@ async function main() {
         if ((m.icons ?? []).filter(i => i.purpose === 'any').length < 2) faults.push('the any icons are gone')
         const names = (m.shortcuts ?? []).map(x => x.name)
         if (names.join('|') !== 'Record feed|Count cattle|Markets') faults.push(`shortcuts ${names.join(', ') || 'none'}`)
+        // Each shortcut's own landmark, as painted: the tally has no header.
+        const landmark: Record<string, RegExp> = { 'Record feed': /aria-label="Ledgers"/, 'Count cattle': /Count at a gate/, 'Markets': />Markets</ }
         for (const sc of m.shortcuts ?? []) {
           const r = await fetch(`${BASE}${sc.url}`, { headers: { cookie, ...bypass }, redirect: 'follow' })
           const html = r.ok ? await r.text() : ''
-          if (!r.ok || !/data-audit="account-button"/.test(html)) faults.push(`${sc.name} → ${sc.url} answered ${r.status}${r.ok ? ', not our signed-in page' : ''}`)
+          if (!r.ok || !(landmark[sc.name] ?? /data-audit="column"/).test(html)) faults.push(`${sc.name} → ${sc.url} answered ${r.status}${r.ok ? ', not its screen' : ''}`)
         }
         const shots = (m.screenshots ?? []).filter(x => x.form_factor === 'narrow')
         if (shots.length !== 2) faults.push(`${shots.length} narrow screenshots`)
@@ -256,8 +263,10 @@ async function main() {
     const nudgeOn = async (opts: { ua: string; seed?: string; standalone?: boolean }) => {
       const c = await phone(opts.ua)
       await c.addCookies(await ctx.cookies())
-      if (opts.seed) await c.addInitScript((v: string) => { try { localStorage.setItem('dryline_install', v) } catch { /* no storage */ } }, opts.seed)
-      if (opts.standalone) await c.addInitScript(() => { Object.defineProperty(navigator, 'standalone', { get: () => true }) })
+      // Strings, not functions: under tsx a function arrives with an esbuild
+      // helper (__name) the page does not have, and the override never runs.
+      if (opts.seed) await c.addInitScript(`try{localStorage.setItem('dryline_install',${JSON.stringify(opts.seed)})}catch(e){}`)
+      if (opts.standalone) await c.addInitScript("Object.defineProperty(navigator,'standalone',{get:function(){return true}})")
       const p = await c.newPage()
       await p.goto('/today', { waitUntil: 'domcontentloaded' })
       await p.locator('main [role="tablist"][aria-label="Ledgers"]').waitFor({ timeout: 15_000 }).catch(() => {})
