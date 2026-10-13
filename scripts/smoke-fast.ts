@@ -351,9 +351,12 @@ async function main() {
       const outbox = await p.evaluate("(function(){ try { return localStorage.getItem('dryline_outbox_v1') } catch (e) { return 'unreadable' } })()") as string | null
       // Swipe the sheet away (tap the dim) and try a save on the count screen.
       await p.keyboard.press('Escape').catch(() => {})
+      // The count screen's own path: Start counting → one tap → Finish → "Just record the count" (its Save).
       await p.goto('/ranch/tally', { waitUntil: 'domcontentloaded' })
-      await p.getByRole('button', { name: '+1' }).first().click().catch(() => {})
-      await p.locator('[data-audit="tally-save"]').click().catch(() => {})
+      await p.locator('[data-audit="tally-begin"]').click().catch(() => {})
+      await p.locator('[data-audit="tally-buttons"] button').first().click().catch(() => {})
+      await p.locator('[data-audit="tally-finish-open"]').click().catch(() => {})
+      await p.getByRole('button', { name: 'Just record the count' }).click().catch(() => {})
       const tallySheet = await p.locator('[data-audit="sign-in-sheet"]').waitFor({ state: 'visible', timeout: 6_000 }).then(() => true).catch(() => false)
       const outbox2 = await p.evaluate("(function(){ try { return localStorage.getItem('dryline_outbox_v1') } catch (e) { return 'unreadable' } })()") as string | null
       const empty = (v: string | null) => v == null || v === '[]'
@@ -368,7 +371,8 @@ async function main() {
     // this reads that the signed-in landmarks stand and no example piece does.)
     {
       const faults: string[] = []
-      for (const [path, landmark] of [['/today', 'main [role="tablist"][aria-label="Ledgers"]'], ['/ranch', '[data-audit="ranch-cattle"]'], ['/markets', '[data-audit="markets-title"]'], ['/weather', '[data-audit="weather-title"], [data-audit="county-control"]']] as const) {
+      // This fixture ranch has no home county, so Markets and Weather are read on a county asked for.
+      for (const [path, landmark] of [['/today', 'main [role="tablist"][aria-label="Ledgers"]'], ['/ranch', '[data-audit="ranch-cattle"]'], ['/markets?fips=30069', '[data-audit="markets-title"]'], ['/weather?fips=30069', '[data-audit="weather-title"]']] as const) {
         await page.goto(path, { waitUntil: 'domcontentloaded' })
         const ok = await page.locator(landmark).first().waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
         const example = await page.locator('[data-audit="example-banner"], [data-audit="example-today"], [data-audit^="locked-"], [data-audit="sign-in-gate"]').count()
@@ -408,6 +412,8 @@ async function main() {
     {
       await page.goto('/today?record=hay_fed&source=shortcut', { waitUntil: 'domcontentloaded' })
       const up = await page.locator('[data-audit="record-sheet"]').waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)
+      // The feed sheet's Save reads "Loading bunches…" until the lots arrive, then "Record feeding".
+      await page.getByRole('button', { name: 'Record feeding', exact: true }).waitFor({ timeout: 15_000 }).catch(() => {})
       const feed = await page.getByRole('button', { name: 'Record feeding', exact: true }).count()
       const cleaned = new URL(page.url()).search
       record('the Record feed shortcut opens the feed sheet directly (?record=hay_fed), and the address is cleaned', up && feed === 1 && cleaned === '', `sheet ${up} · feed Save ${feed} · search "${cleaned}"`)
