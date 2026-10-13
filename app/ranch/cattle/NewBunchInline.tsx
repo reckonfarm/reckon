@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useEffect, useState } from 'react'
 import Counter from '@/app/components/ui/Counter'
 import { LOT_CLASSES, LOT_CLASS_LABELS, LOT_NAME_MAX, type Lot, type LotClass } from '@/lib/herd'
@@ -50,6 +51,7 @@ export default function NewBunchInline({ onMade, onCancel, defaultClass = null, 
 
   async function save() {
     if (!valid || !klass) return
+    if (requireSignIn()) return
     setBusy(true); setError(null)
     try {
       const res = await fetch('/api/herd/lots', {

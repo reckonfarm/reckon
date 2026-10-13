@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { useRecordAvailable, useRecordSheetOpen } from '@/lib/record-sheet-state'
 import { openLogIt } from '@/app/dashboard/components/LogIt'
 import { useUndoOwnsTheSlot } from '@/lib/undo'
+import { useSession } from '@/lib/sign-in-sheet'
 
 // ─── Record — the pill, back (Block 12, 12.1) ─────────────────────────────────
 // PK liked it. It comes back UNDER the 11.4 rule, not instead of it: no
@@ -34,7 +35,10 @@ export default function RecordFab() {
   // for ten seconds, on a screen where the person's next tap is Undo or
   // nothing.
   const undoShowing = useUndoOwnsTheSlot()
-  if (!available || sheetOpen || undoShowing) return null
+  // Block 49 (R1): a signed-out visitor sees the same Record — the tap opens
+  // the sign-in sheet (openLogIt asks first), never a button that does nothing.
+  const signedOut = useSession() === 'out'
+  if ((!available && !signedOut) || sheetOpen || undoShowing) return null
   if (pathname === '/' || HIDDEN_ON.some(p => pathname.startsWith(p))) return null
   return (
     <button

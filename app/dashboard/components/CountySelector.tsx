@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { trackEvent } from '@/lib/analytics'
 import { US_STATE_NAMES } from '@/lib/news-sources'
+import { rememberCounty } from '@/lib/county-cookie'
 
 // County names in the counties table already end in "County" ("Petroleum County"); some
 // do not ("Baltimore city"). Say "County" once, never twice.
@@ -86,6 +87,7 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
     setResults([])
     setOpen(false)
     inputRef.current?.blur()
+    rememberCounty(county.fips)   // Block 49: the phone remembers, so Markets and Weather open here next time
     // `view` keeps the caller's view across the switch (the Weather view's
     // selector lands on the new county's Weather, not its Today).
     go(`${basePath}?fips=${county.fips}${view ? `&view=${view}` : ''}`)
@@ -111,6 +113,21 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
   // field, results, and a visible Cancel that keeps the current county. With no
   // county chosen yet there is nothing to rest on, so the chooser is simply open.
   const [choosing, setChoosing] = useState(false)
+  // Block 49: "Near me" — the county under the phone, from its own position.
+  const [locating, setLocating] = useState<'idle' | 'busy' | 'failed' | 'denied'>('idle')
+  function nearMe() {
+    if (!('geolocation' in navigator)) { setLocating('failed'); return }
+    setLocating('busy')
+    navigator.geolocation.getCurrentPosition(async pos => {
+      try {
+        const res = await fetch(`/api/counties?lat=${pos.coords.latitude.toFixed(4)}&lon=${pos.coords.longitude.toFixed(4)}`)
+        const data = await res.json()
+        const county = Array.isArray(data) ? (data[0] as County | undefined) : undefined
+        if (!county) { setLocating('failed'); return }
+        select(county)
+      } catch { setLocating('failed') }
+    }, err => setLocating(err.code === 1 ? 'denied' : 'failed'), { timeout: 10_000, maximumAge: 300_000 })
+  }
   const chooserOpen = !selectedCounty || choosing
   function startChoosing() {
     setChoosing(true)
@@ -187,6 +204,12 @@ export default function CountySelector({ selectedCounty, basePath = '/dashboard'
         </ul>
       )}
 
+      <button type="button" onClick={nearMe} disabled={locating === 'busy'} className="mt-2 inline-flex min-h-[48px] items-center gap-2 rounded-lg border border-control-border px-4 font-dm-sans text-[16px] font-semibold text-ink hover:bg-forest-green/5 disabled:opacity-60" data-audit="county-near-me">
+        <svg aria-hidden width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="8" /></svg>
+        {locating === 'busy' ? 'Finding your county…' : 'Near me'}
+      </button>
+      {locating === 'denied' && <p className="mt-1 font-dm-sans text-[15px] text-ink">Location is off for this site. Search by name above.</p>}
+      {locating === 'failed' && <p className="mt-1 font-dm-sans text-[15px] text-ink">Couldn&rsquo;t find a county from here. Search by name above.</p>}
       {/* No match */}
       {showNoMatch && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-control-border bg-surface px-4 py-3 shadow-overlay">

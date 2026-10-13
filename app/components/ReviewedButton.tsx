@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -22,6 +23,7 @@ export default function ReviewedButton({ count, through = null }: { count: numbe
         type="button"
         disabled={state === 'busy'}
         onClick={async () => {
+          if (requireSignIn()) return
           setState('busy')
           try {
             const r = await fetch('/api/seen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ through }) })

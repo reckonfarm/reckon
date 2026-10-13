@@ -31,6 +31,7 @@ import RegionalMapLoader from './RegionalMapLoader'
 import type { OwnPlace, OwnDevice } from './RegionalMapClient'
 import LatestReadingCard, { type DroughtHistoryWeek } from './LatestReadingCard'
 import PrecipVsNormalPanel from './RainfallPanelLoader'
+import LockedTeaser from '@/app/components/LockedTeaser'
 import RainOnMyPlaces from './RainOnMyPlaces'
 import ForecastPanel from './ForecastPanel'
 import HayNearbyCards, { type NearbyHayCard } from './HayNearbyCards'
@@ -485,6 +486,8 @@ export async function WeatherViewBody({
       )}
       {/* 2. Recorded rain at my places — gauge readings only, source named. */}
       {/* Block 7 (Part 3): rain on my places — the latest reading per place, who recorded it, missing never zero. */}
+      {/* Block 49 (R1): signed out, the one teaser stands where the person's places would be. */}
+      {!user && <LockedTeaser label="Weather at your places" audit="locked-weather-places" />}
       <Suspense fallback={null}>
         <RainOnMyPlaces user={user} />
       </Suspense>
@@ -944,6 +947,8 @@ export async function MarketsViewBody({
       )}
       {lots.length === 0 && !signedIn && (
         <>
+          {/* Block 49 (R1): the bunch block's place, held by the one teaser. */}
+          <LockedTeaser label="Your bunches priced here" audit="locked-markets-bunches" />
           <ReportedSale result={localAuction} volume={null} />
           <section aria-labelledby="price-history-h" data-audit="price-history-section" className="space-y-3">
             <Suspense fallback={<MarketsHistoryHold />}>

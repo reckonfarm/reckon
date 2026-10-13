@@ -1,7 +1,7 @@
 import { movedWho } from '@/lib/move-line'
 import QuantityTap from './QuantityTap'
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
@@ -13,6 +13,8 @@ import { consequenceFor } from '@/lib/log-consequence'
 import { isManualEventType } from '@/lib/manual-log'
 import SaveReceipt from '@/app/components/SaveReceipt'
 import { privateTitle } from '@/lib/private-title'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import { exampleEvent } from '@/lib/example-ranch'
 
 // ─── /activity/[id] — the exact event (Block 5A) + its correction chain (5B) ──
 // Opened by its stable id from a handoff row, a Recently logged row, a place, or
@@ -32,8 +34,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const { saved } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=${encodeURIComponent(`/ranch/activity/${id}`)}`)
-  const ev = await getEvent(supabase, user.id, id)
+  // Block 49 (R2): signed out, the entry is the example ranch's (by its fixture id) — never a ranch table read.
+  const ev = user ? await getEvent(supabase, user.id, id) : exampleEvent(id)
   if (!ev) notFound()
   const { row, names, actorRole, line, quantity, placeId, lotId, corrects, correctedBy, head, canCorrect } = ev
   // Block 27: back-dated means MADE on a later day than the work — the person's
@@ -83,6 +85,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        {!user && <ExampleBanner />}
         <p className={EYEBROW}>The record · one entry</p>
         <h1 className={`mt-1 type-page-heading text-ink ${replaced ? 'line-through decoration-2' : ''}`} data-audit="event-line">{line}</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">{fmtDay(row.ts, 'long')}, recorded by {names.person(row.user_id)}.</p>

@@ -36,7 +36,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // reader there takes preg_check, and this block builds no new deep-link
     // plumbing. Count cattle is its own screen.
     shortcuts: [
-      { name: 'Record feed', short_name: 'Record', url: '/today?source=shortcut', icons: [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+      { name: 'Record feed', short_name: 'Record', url: '/today?record=hay_fed&source=shortcut', icons: [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' }] },
       { name: 'Count cattle', short_name: 'Count', url: '/ranch/tally?source=shortcut', icons: [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' }] },
       { name: 'Markets', url: '/markets?source=shortcut', icons: [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' }] },
     ],

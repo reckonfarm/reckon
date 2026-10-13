@@ -1,7 +1,7 @@
 import { REMOVED } from '@/lib/move-line'
 import PlaceNameTap from '../PlaceNameTap'
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
@@ -19,6 +19,8 @@ import { placeRing, resolveMapCentre } from '@/lib/places/anchor'
 import { kindLabel } from '@/lib/places/kinds'
 import { childrenSummary } from '@/lib/places/rows'
 import HeldRow from '@/app/components/HeldRow'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import { examplePlace } from '@/lib/example-ranch'
 
 // ─── /ranch/places/[id] (Block 6A · the shape in slice 1) ─────────────────────
 // name / type → THE GROUND (its shape on satellite, with acreage, or the offer
@@ -33,6 +35,8 @@ export const dynamic = 'force-dynamic'
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return privateTitle(examplePlace(id)?.history.place?.name ?? 'Place')   // Block 49: no ranch table read signed out
   const { data } = await supabase.from('places').select('name').eq('id', id).maybeSingle()
   return privateTitle((data as { name?: string } | null)?.name?.trim() || 'Place')
 }
@@ -41,18 +45,20 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
   const { id } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=/ranch/places/${id}`)
-
-  const [history, activity, devicesRes] = await Promise.all([
+  // Block 49 (R2): signed out, the place is the example ranch's (by its fixture id); no ranch table is read.
+  const ex = user ? null : examplePlace(id)
+  if (!user && !ex) notFound()
+  const [history, activity, devicesRes] = user ? await Promise.all([
     getPlaceHistory(supabase, id),
     listActivity(supabase, user.id, { place: id }, null).catch(() => null),
     supabase.from('devices').select('id, name, type, last_seen').eq('place_id', id).order('name'),
-  ])
+  ]) : [ex!.history, ex!.activity, { data: [] }]
   if (!history.place) notFound()
   const { place, memory, counts, parent, children } = history
   const inside = childrenSummary(children, kindLabel)
   const ring = placeRing(place.geometry)
-  const centre = await resolveMapCentre(supabase, user.id, ring ? [ring] : [])
+  // The example never draws (no user → no DrawPlace below), so its centre is never read.
+  const centre = user ? await resolveMapCentre(supabase, user.id, ring ? [ring] : []) : { lat: 0, lng: 0 }
   const rows = activity ? standingRows(activity.rows).slice(0, 10) : []
   const devices = (devicesRes.data ?? []) as { id: string; name: string; type: string; last_seen: string | null }[]
 
@@ -60,6 +66,7 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        {!user && <ExampleBanner />}
         <p className="mb-3 font-dm-sans text-[16px]">
           <Link href="/ranch?tab=ground" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">All places</Link>
         </p>
@@ -97,6 +104,9 @@ export default async function PlacePage({ params }: { params: Promise<{ id: stri
               ring
                 ? <DrawPlace place={{ id: place.id, name: place.name, kind: place.kind, ring, acres: place.acres }} initialCenter={centre} />
                 : <p className="font-dm-sans text-[15px] text-secondary-ink">This place went off the list without a shape drawn.</p>
+            ) : !user ? (
+              // Block 49: the example ranch has no ground drawn, and drawing is a save — the sign-in sheet's, not the map's.
+              <p className="font-dm-sans text-[15px] text-secondary-ink" data-audit="place-no-shape">No shape drawn yet.</p>
             ) : (
               <>
                 <DrawPlace

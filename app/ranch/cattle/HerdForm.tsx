@@ -26,6 +26,7 @@ import Counter from '@/app/components/ui/Counter'
 import Link from 'next/link'
 import type { LastWork, BunchWhere } from '@/lib/ranch-summary'
 import { enqueue, newEventId } from '@/lib/outbox'
+import { isSignInRequired, requireSignIn } from '@/lib/sign-in-sheet'
 import { moveLine, NO_PLACE_RECORDED } from '@/lib/move-line'
 import RowActions from '@/app/components/RowActions'
 import TapValue from '@/app/components/TapValue'
@@ -87,6 +88,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
   // single tap that then lands on Markets; a failed send stays here and says so.
   const [followedIds, setFollowedIds] = useState<Set<string>>(() => new Set(followed))
   const followThenGo = async (id: string) => {
+    if (requireSignIn(`/markets?lot=${id}`)) return
     try {
       const r = await fetch('/api/herd/follow', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lot_id: id, followed: true }) })
       if (!r.ok) throw new Error(String(r.status))
@@ -171,9 +173,10 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     setDFrame(DEFAULT_FRAME); setDWeaned(true); setDWindows([]); setDMonth(''); setShowDetail(false); setDPurpose(''); setDPlace('')
   }
 
-  function openAdd() { resetDraft(); setDAsOf(''); setErrorMsg(''); setEditing('new') }
+  function openAdd() { if (requireSignIn()) return; resetDraft(); setDAsOf(''); setErrorMsg(''); setEditing('new') }
 
   function openEdit(lot: Lot) {
+    if (requireSignIn()) return
     setDName(lot.name ?? '')
     setDClass(lot.class)
     setDHead(String(lot.head_count))
@@ -230,6 +233,7 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
     return next
   }
   async function write(url: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<boolean> {
+    if (requireSignIn()) return false
     setStatus('saving'); setErrorMsg('')
     try {
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) })
@@ -267,7 +271,8 @@ export default function HerdForm({ initialLots, lastWork = {}, where = {}, purpo
       try {
         enqueue({ id: newEventId(), type: 'cattle_moved', ts: new Date().toISOString(), head: orig.head_count, herd_lot_id: orig.id, from_place_id: orig.place_id ?? null, to_place_id: movedTo, place_id: movedTo },
           moveLine(orig.head_count, orig, nameOf(orig.place_id), nameOf(movedTo)))
-      } catch {
+      } catch (e) {
+        if (isSignInRequired(e)) return
         setStatus('error'); setErrorMsg('This phone is full, so the move was not saved. Free some space on the phone, then pick the place again.'); return
       }
     }

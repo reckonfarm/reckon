@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import LedgerStamp from '@/app/components/LedgerStamp'
@@ -25,6 +24,8 @@ import DrawPlace from './places/DrawPlace'
 import RecordHere from './places/RecordHere'
 import DevicesList from './devices/DevicesList'
 import LitOnHash from '@/app/components/LitOnHash'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import { exampleRanch, exampleView, exampleActivityPage, exampleLastWork, exampleTodayCount } from '@/lib/example-ranch'
 
 // ─── /ranch — the Ranch view (Block 47; replaces the hub of Block 12) ─────────
 // One page, read at a glance: head, bales on hand with days of feed left, rain
@@ -40,7 +41,9 @@ export default async function RanchPage({ searchParams }: { searchParams: Promis
   const { tab } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/ranch')
+  // Block 49 (R2): signed out, the Ranch view is the Dry Creek example — the
+  // same page from the committed fixture, with no ranch table read.
+  if (!user) return <ExampleRanchPage tab={tab} />
   // Block 32: what this render read — taken before the reads below start.
   const through = await ledgerThrough(supabase)
   const [view, lots, todayCount, recordPage, work, rows] = await Promise.all([
@@ -116,6 +119,53 @@ export default async function RanchPage({ searchParams }: { searchParams: Promis
           record={(
             <div data-audit="ranch-today">
               {recordPage && recordPage.rows.length > 0 ? <ActivityGroups page={recordPage} workRows={workRows} audit="ranch-record-list" /> : <p className="font-dm-sans text-[17px] text-ink" data-audit="ranch-quiet">Nothing recorded yet.</p>}
+              <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-activity-link">The whole record →</Link></p>
+            </div>
+          )}
+        />
+      </main>
+    </>
+  )
+}
+
+function ExampleRanchPage({ tab }: { tab?: string }) {
+  const ex = exampleRanch()
+  const view = exampleView()
+  const recordPage = exampleActivityPage()
+  const lastWork = exampleLastWork()
+  const GROUPS: [string, string, string[]][] = [['pastures', 'Pastures', ['pasture']], ['fields', 'Fields', ['field']], ['yards', 'Yards', ['yard', 'stackyard', 'stack']], ['points', 'Points', ['gate', 'tank']]]
+  const known = new Set(GROUPS.flatMap(g => g[2]))
+  const row = (r: { id: string; name: string; kind: string; acres: number | null }) => ({ id: r.id, name: r.name, kind: r.kind, acres: r.acres })
+  const groups = [
+    ...GROUPS.map(([key, label, kinds]) => ({ key, label, rows: ex.places.filter(r => kinds.includes(r.kind)).map(row) })),
+    { key: 'other', label: 'Other', rows: ex.places.filter(r => !known.has(r.kind)).map(row) },
+    { key: 'off', label: 'Off the list', rows: [] as ReturnType<typeof row>[] },
+  ]
+  return (
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <ExampleBanner />
+        <LitOnHash prefix="place-" />
+        <h1 className="type-page-heading text-ink">Ranch</h1>
+        <RanchView
+          initialTab={tab === 'ground' ? 'ground' : tab === 'record' ? 'record' : 'cattle'}
+          view={view}
+          todayCount={exampleTodayCount()}
+          cattle={(
+            <div data-audit="ranch-cattle">
+              <HerdForm initialLots={ex.lots} lastWork={lastWork} where={{}} purposeSupported followed={[]} />
+            </div>
+          )}
+          ground={(
+            <div data-audit="ranch-ground">
+              <div className="mt-4"><PlacesByKind groups={groups} /></div>
+              <div className="mt-4"><RecordHere /></div>
+            </div>
+          )}
+          record={(
+            <div data-audit="ranch-today">
+              {recordPage.rows.length > 0 ? <ActivityGroups page={recordPage} workRows={[]} audit="ranch-record-list" /> : <p className="font-dm-sans text-[17px] text-ink" data-audit="ranch-quiet">Nothing recorded yet.</p>}
               <p className="mt-3 font-dm-sans text-[16px]"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2" data-audit="ranch-activity-link">The whole record →</Link></p>
             </div>
           )}

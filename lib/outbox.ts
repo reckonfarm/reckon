@@ -34,6 +34,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { isQuotaError, makeRoomForRecords } from './local-space'
+import { signedOutNow, openSignInSheet, SignInRequired } from './sign-in-sheet'
 
 export type OutboxState = 'local' | 'queued' | 'synced' | 'failed'
 
@@ -226,6 +227,9 @@ export function hasUnsynced(): boolean { return unsyncedCount() > 0 }
  * `holdMs` defers the first upload (undo window).
  */
 export function enqueue(body: Record<string, unknown>, label: string, holdMs = 0, opts: { endpoint?: string; link?: { href: string; label: string } } = {}): OutboxItem {
+  // Block 49 (R1): a phone with no session keeps no record — the sign-in sheet
+  // opens instead, nothing is written, and the caller lets SignInRequired pass.
+  if (signedOutNow()) { openSignInSheet(); throw new SignInRequired() }
   const id = typeof body.id === 'string' && body.id ? body.id : newEventId()
   const hold = Math.max(holdMs, MIN_DWELL_MS)
   // Block 15 (ruling 2): a FIX re-saves under the same id. The refused item is

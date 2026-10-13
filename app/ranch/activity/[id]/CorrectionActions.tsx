@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { navigateTo } from '@/lib/standalone-nav'
@@ -177,6 +178,7 @@ export default function CorrectionActions({ event, children }: { event: Editable
       if (Object.keys(p).length === 0 && draft.reason.trim() === (event.reason ?? '').trim()) { setError('Nothing changed — change a value, the time, or the reason; or cancel.'); return }
       Object.assign(body, p)
     }
+    if (requireSignIn()) return
     setBusy(true)
     try {
       const res = await fetch(`/api/activity/${event.id}/${kind}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })

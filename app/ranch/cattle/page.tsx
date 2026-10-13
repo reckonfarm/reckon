@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import { getRanchLots, lotPurposeSupported } from '@/lib/herd-lots'
@@ -8,6 +7,8 @@ import { lastWorkByLot, whereByLot } from '@/lib/ranch-summary'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import HerdForm from './HerdForm'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import { exampleRanch, exampleLastWork } from '@/lib/example-ranch'
 
 // ─── /ranch/cattle — the Cattle section: lot identity only (Block 6B, commit 1) ──
 // One row per lot: head count, name, purpose, last recorded work, "View market
@@ -20,18 +21,19 @@ export const generateMetadata = () => privateTitle('Cattle')
 export default async function CattlePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/ranch/cattle')
-  const lots = await getRanchLots(supabase, user.id)
-  const [lastWork, where, purposeSupported, followed] = await Promise.all([
+  // Block 49 (R2): signed out, the bunches are the example ranch's.
+  const lots = user ? await getRanchLots(supabase, user.id) : exampleRanch().lots
+  const [lastWork, where, purposeSupported, followed] = user ? await Promise.all([
     lastWorkByLot(supabase, lots.map(l => l.id)).catch(() => ({})),
     whereByLot(supabase, lots).catch(() => ({})),
     lotPurposeSupported(supabase).catch(() => false),
     readFollowed(supabase, user.id).catch(() => [] as string[]),
-  ])
+  ]) : [exampleLastWork(), {}, true, [] as string[]]
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        {!user && <ExampleBanner />}
         <p className={EYEBROW}>Ranch · Cattle</p>
         <h1 className="mt-1 type-page-heading text-ink">Cattle</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">

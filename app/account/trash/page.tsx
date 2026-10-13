@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeaderServer'
@@ -7,6 +6,7 @@ import { EYEBROW } from '@/app/components/ui/Eyebrow'
 import { Card } from '@/app/components/ui/Card'
 import { listTrash, TRASH_DAYS } from '@/lib/trash'
 import TrashList from './TrashList'
+import SignInGate from '@/app/components/SignInGate'
 
 // ─── /account/trash (Block 12, 12.4) ──────────────────────────────────────────
 // Where deleted things wait for seven days. PK's ruling: he never sees it
@@ -19,7 +19,15 @@ export const generateMetadata = () => privateTitle('Trash')
 export default async function TrashPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/account/trash')
+  if (!user) return (
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <h1 className="type-page-heading text-ink">Trash</h1>
+        <SignInGate returnTo="/account/trash"><p className="mt-2 font-dm-sans text-[17px] text-ink">Sign in to see your trash.</p></SignInGate>
+      </main>
+    </>
+  )
   const items = await listTrash(supabase)
 
   return (

@@ -1,0 +1,744 @@
+{
+ "ranch": {
+  "name": "Dry Creek Ranch"
+ },
+ "snapshotDay": "2026-10-13",
+ "people": [
+  {
+   "id": "baf1560a-3710-4781-a203-51d17934ab92",
+   "name": "Walt",
+   "role": "owner"
+  },
+  {
+   "id": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "name": "Ray",
+   "role": "member"
+  }
+ ],
+ "lots": [
+  {
+   "id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+   "class": "steers",
+   "name": "Steer calves",
+   "head_count": 180,
+   "avg_weight": 550,
+   "weight_unit": "lb",
+   "frame": "Medium and Large",
+   "weaned": true,
+   "purpose": "sale_calves",
+   "place_id": null,
+   "createdDayOffset": 36
+  },
+  {
+   "id": "543f62a9-a451-4074-a5fd-29742a679b0c",
+   "class": "heifers",
+   "name": "Replacement heifers",
+   "head_count": 40,
+   "avg_weight": 600,
+   "weight_unit": "lb",
+   "frame": "Medium and Large",
+   "weaned": true,
+   "purpose": "replacements",
+   "place_id": null,
+   "createdDayOffset": 36
+  }
+ ],
+ "places": [
+  {
+   "id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+   "name": "Home pasture",
+   "kind": "pasture",
+   "parent_id": null,
+   "acres": null
+  },
+  {
+   "id": "ac33da15-de05-4607-ac62-7af23b956bc4",
+   "name": "North stackyard",
+   "kind": "stackyard",
+   "parent_id": null,
+   "acres": null
+  }
+ ],
+ "events": [
+  {
+   "id": "4edf6712-c49f-4688-a8ae-2158a58dcff7",
+   "type": "turnout",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 1,
+   "clock": "07:01:02",
+   "madeDayOffset": 1,
+   "madeClock": "07:01:02",
+   "payload": {
+    "date": {
+     "dayOffset": -243
+    },
+    "source": "manual",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "9b96b7a0-3010-43a9-a09a-6fd2a425ff22",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "15:19:33",
+   "madeDayOffset": 3,
+   "madeClock": "15:19:34",
+   "payload": {
+    "bales": 2,
+    "source": "manual",
+    "place_id": null,
+    "herd_lot_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "5248d3d5-3360-4f24-a0c3-1a17d644f779",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "15:18:07",
+   "madeDayOffset": 3,
+   "madeClock": "15:18:07",
+   "payload": {
+    "bales": 2,
+    "source": "manual",
+    "place_id": null,
+    "herd_lot_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "9bf23fa0-4b06-4362-aa9a-fc7ce7259f7e",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "14:51:06",
+   "madeDayOffset": 3,
+   "madeClock": "14:51:06",
+   "payload": {
+    "bales": 2,
+    "source": "manual",
+    "place_id": null,
+    "herd_lot_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "1680ac01-8407-4eef-a09b-5ce0aacf898d",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "14:49:34",
+   "madeDayOffset": 3,
+   "madeClock": "14:49:34",
+   "payload": {
+    "bales": 2,
+    "source": "manual",
+    "place_id": null,
+    "herd_lot_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "29fa0817-4fc9-4348-ad20-34ee11eba796",
+   "type": "rain",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "12:12:18",
+   "madeDayOffset": 3,
+   "madeClock": "12:12:18",
+   "payload": {
+    "inches": 0.45,
+    "source": "manual",
+    "place_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "9d14d50b-e24b-48db-a036-39b594a7cfcc",
+   "type": "rain",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 3,
+   "clock": "07:48:28",
+   "madeDayOffset": 3,
+   "madeClock": "07:48:28",
+   "payload": {
+    "inches": 0.6,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "17342d5e-1f2d-48a5-a175-0f93d29cfaed",
+   "type": "hay_fed",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 7,
+   "clock": "07:40:00",
+   "madeDayOffset": 7,
+   "madeClock": "15:00:44",
+   "payload": {
+    "bales": 3,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf"
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "114e543f-80ce-498e-a51d-8c747405a121",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 8,
+   "clock": "18:01:30",
+   "madeDayOffset": 8,
+   "madeClock": "18:01:30",
+   "payload": {
+    "bales": 3,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "7e4428ee-f214-4327-a664-99a9b0e26cc3",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 8,
+   "clock": "17:44:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:45:05",
+   "payload": {
+    "bales": 3,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "d1a5c3b8-87f6-48ab-a2af-7a7b359a9f51",
+   "type": "hay_fed",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 8,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 6,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "4bffd799-e41b-4977-a606-ae5f26bd86b7",
+   "type": "hay_fed",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 9,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "15c9662c-3c61-4077-ab9f-db857e25126e",
+   "type": "hay_fed",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 10,
+   "clock": "18:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:56:43",
+   "payload": {
+    "bales": 1,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "bd9aa3d7-af4e-45e8-a104-cdbdbb2fa191",
+   "type": "hay_fed",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 10,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "f38e9c8a-857c-4d7d-acb2-2be6f6e5462b",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 11,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 6,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "ef3231df-f26e-4780-a970-2420adefaab8",
+   "type": "rain",
+   "user": "5a23338b-ae9e-4931-a6f6-39564293a42d",
+   "dayOffset": 12,
+   "clock": "19:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "inches": 0.8,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "858babbb-5e99-4b76-a26a-3325c2e9c800",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 12,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "12fd3976-e6fa-4812-a944-397a7428fb92",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 13,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "9018493c-33fa-4a76-a9b3-245cb0263f17",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 15,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 4,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "9ca92f04-7505-422b-ae51-64a6970d6abf",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 16,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "5b6c7d49-607f-4c6e-a178-0678b20cce0e",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 18,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "d9f6d642-c7c8-4f04-aad0-22beb3929062",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 19,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "7c213160-0072-41fe-a5ad-ca5da4c9f790",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 20,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 6,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "5f124420-b36c-4fa1-a2d1-966d64d3e182",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 22,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 4,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "090dad88-f198-4c64-a1e1-5af479c0043f",
+   "type": "rain",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 23,
+   "clock": "19:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "inches": 0.35,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "bfa0a6e8-459a-4ff6-a6f6-917c2af555ab",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 23,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "1d1664e9-f7e7-4f0c-aaae-13fc4e6c03e3",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 25,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "dc16c749-3485-4d81-acb6-00a3ba8f44ec",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 26,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 4,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "5e5404a6-b1a8-440e-af85-9069fc45b09c",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 27,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 5,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "df62490d-18d2-490c-a8ec-8d341cf5790f",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 29,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 4,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "d0296273-9ee8-420a-a3da-c3ac68ad6f9e",
+   "type": "hay_fed",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 30,
+   "clock": "07:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "bales": 4,
+    "source": "manual",
+    "place_id": "46612758-ce89-42cf-a22b-e697e1a01e12",
+    "herd_lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "99b84f7a-3800-46b0-a389-155c301d4d7c",
+   "type": "hay_inventory",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 35,
+   "clock": "18:00:00",
+   "madeDayOffset": 8,
+   "madeClock": "17:09:27",
+   "payload": {
+    "as_of": {
+     "dayOffset": 35
+    },
+    "bales": 420,
+    "source": "manual",
+    "place_id": "ac33da15-de05-4607-ac62-7af23b956bc4",
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "d78ad7ce-2f5c-44eb-aaae-c2a640922885",
+   "type": "head_count_set",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 36,
+   "clock": "18:00:00",
+   "madeDayOffset": 1,
+   "madeClock": "12:45:01",
+   "payload": {
+    "lot_id": "2e3452c2-5607-48b1-a3c9-71ebfd06bfdf",
+    "reason": "backfill",
+    "source": "manual",
+    "head_after": 180,
+    "head_before": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  },
+  {
+   "id": "87bfab50-5c79-4f65-ad56-c4c83e87b2fe",
+   "type": "head_count_set",
+   "user": "baf1560a-3710-4781-a203-51d17934ab92",
+   "dayOffset": 36,
+   "clock": "18:00:00",
+   "madeDayOffset": 1,
+   "madeClock": "12:45:01",
+   "payload": {
+    "lot_id": "543f62a9-a451-4074-a5fd-29742a679b0c",
+    "reason": "backfill",
+    "source": "manual",
+    "head_after": 40,
+    "head_before": null,
+    "schema_version": 1
+   },
+   "supersedes_event_id": null,
+   "superseded_by": null,
+   "voidedDayOffset": null,
+   "correction_reason": null
+  }
+ ],
+ "lastSeenDayOffset": 9
+}

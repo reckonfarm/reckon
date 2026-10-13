@@ -1,4 +1,6 @@
 'use client'
+
+import { isSignInRequired } from '@/lib/sign-in-sheet'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import PlaceMapLoader from '@/app/ranch/places/PlaceMapLoader'
@@ -191,7 +193,7 @@ function SeenHere({ lotId, label, placeId, placeName }: { lotId: string; label: 
       const id = newEventId()
       enqueue({ id, type: 'bunch_seen', herd_lot_id: lotId, place_id: placeId }, `Seen ${label} at ${placeName}`, 10_000)
       setMadeId(id)
-    } catch { setFull(true) }
+    } catch (e) { if (!isSignInRequired(e)) setFull(true) }
   }
   return (
     <div className="mt-2" onClick={e => e.stopPropagation()}>

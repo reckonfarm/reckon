@@ -1,5 +1,6 @@
 'use client'
 
+import { isSignInRequired } from '@/lib/sign-in-sheet'
 import { CAPTURE_EVENT } from '@/lib/places/capture-event'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
@@ -304,8 +305,8 @@ export default function CapturePlace({ initialCenter, otherShapes = [] }: { init
     const label = `${trimmed} added · ${kindLabel(kind).toLowerCase()}${parent ? ` · in ${parent.name}` : ''}`
     try {
       enqueue(body, label, 0, { endpoint: '/api/places', link: { href: `/ranch/places/${id}`, label: 'Open this place' } })
-    } catch {
-      setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
+    } catch (e) {
+      if (!isSignInRequired(e)) setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
       return
     }
     if (pending.kind === 'ring') { clearRideDraft(); setDraft(null) }

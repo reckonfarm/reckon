@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import SaveStatus from '@/app/dashboard/components/SaveStatus'
 import { useOwnSaveStrip } from '@/app/dashboard/components/LogIt'
+import { isSignInRequired } from '@/lib/sign-in-sheet'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { lotLabel, bunchDetail, type Lot } from '@/lib/herd'
 import { splitBody, splitLabel, defaultSplitName, defaultSplitClass } from '@/lib/cattle/split'
@@ -159,8 +160,8 @@ export default function TallyScreen({ lots, initialLotId, initialToId = null, in
       body = { id, type: 'cattle_counted', counted: through, ...(source ? { herd_lot_id: source.id } : {}) }
       label = `Counted ${through} head${source ? ` of ${lotLabel(source)}` : ''}`
     }
-    try { enqueue(body, label) } catch {
-      setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
+    try { enqueue(body, label) } catch (e) {
+      if (!isSignInRequired(e)) setSaveErr('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
       return
     }
     clearTally()

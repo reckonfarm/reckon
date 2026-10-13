@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import { privateTitle } from '@/lib/private-title'
 import SiteHeader from '@/app/components/SiteHeaderServer'
@@ -9,6 +8,8 @@ import HayInventoryCard from '@/app/dashboard/components/HayInventoryCard'
 import { LedgerLoading } from '@/app/dashboard/components/LedgerTabs'
 import LedgerStamp from '@/app/components/LedgerStamp'
 import { ledgerThrough } from '@/lib/ledger-through'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import ExampleHayCard from '@/app/dashboard/components/ExampleHayCard'
 
 // ─── /ranch/hay (Block 6A) — the Hay section ──────────────────────────────────
 // The same self-gating hay card Today carries (a counted baseline, on hand,
@@ -20,17 +21,17 @@ export const generateMetadata = () => privateTitle('Hay')
 export default async function HayPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/ranch/hay')
-  const through = await ledgerThrough(supabase)   // Block 32: what this render read, before the card reads
+  // Block 49 (R2): signed out, the hay is the example ranch's.
+  const through = user ? await ledgerThrough(supabase) : null   // Block 32: what this render read, before the card reads
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
-        <LedgerStamp through={through} />
+        {user ? <LedgerStamp through={through} /> : <ExampleBanner />}
         <p className={EYEBROW}>Ranch · Hay</p>
         <h1 className="mt-1 type-page-heading text-ink">Hay</h1>
         <div className="mt-4">
-          <Suspense fallback={<LedgerLoading />}><HayInventoryCard /></Suspense>
+          {user ? <Suspense fallback={<LedgerLoading />}><HayInventoryCard /></Suspense> : <ExampleHayCard />}
         </div>
         <p className="mt-4"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Every hay line</Link></p>
       </main>

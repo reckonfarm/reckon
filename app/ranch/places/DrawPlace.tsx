@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PlaceMapLoader, { type MapShape } from './PlaceMapLoader'
@@ -59,6 +60,7 @@ export default function DrawPlace({
     const trimmed = name.trim()
     if (!trimmed) { setError('A place needs a name.'); return }
     if (saving) return
+    if (requireSignIn()) return
     setSaving(true)
     setError(null)
     try {
