@@ -51,7 +51,9 @@ import LedgerTabs, { LedgerLoading } from './components/LedgerTabs'
 import RanchMapCard, { RanchMapHold } from './components/RanchMapCard'
 import DeviceAttention from './components/DeviceAttention'
 import { createClient } from '@/lib/supabase-server'
-import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
+import ExampleToday from './components/ExampleToday'
+import { COUNTY_COOKIE } from '@/lib/county-cookie'
 import { getHomeCountyFips } from '@/lib/concierge-service'
 import { getRanch } from '@/lib/ranch-membership'
 import type { Lot } from '@/lib/herd'
@@ -203,15 +205,26 @@ export async function DashboardShell({
   let member: { id: string } | null = null
   let memberClient: Awaited<ReturnType<typeof createClient>> | null = null
   let homeFipsRead: string | null | undefined   // undefined = not read on this path
+  // Block 49 (R2): signed out, Today is the Dry Creek example ranch — rendered
+  // from the committed fixture, with no ranch table read.
+  let example = false
   if (priv) {
-    // A private route needs a member; it resolves the county silently from the
-    // home county (or the ?fips= they chose to look at). One cookie read.
+    // A member resolves the county silently from the home county (or the
+    // ?fips= they chose to look at). One cookie read.
     const pre = await createClient()
     const { data: { user } } = await pre.auth.getUser()
-    if (!user) redirect(`/signin?next=${encodeURIComponent(`/${route}`)}`)
-    member = user
-    memberClient = pre
-    if (!fips) { homeFipsRead = await getHomeCountyFips(user.id).catch(() => null); fips = homeFipsRead ?? undefined }
+    if (user) {
+      member = user
+      memberClient = pre
+      if (!fips) { homeFipsRead = await getHomeCountyFips(user.id).catch(() => null); fips = homeFipsRead ?? undefined }
+    } else if (route === 'today') {
+      example = true
+    } else {
+      // Block 49 (R1): Markets, Weather and Programs are public. Signed out the
+      // county is the one asked for, else the one this phone remembers (the
+      // county cookie the picker and "Near me" write); none → the picker.
+      if (!fips) { const remembered = (await cookies()).get(COUNTY_COOKIE)?.value; if (remembered && /^\d{5}$/.test(remembered)) fips = remembered }
+    }
   }
   // Block A — TODAY PAINTS THE RANCH FIRST. Nothing outside the ranch's own
   // records is read before this render returns: no national map, no operation
@@ -469,7 +482,8 @@ export async function DashboardShell({
             is set: county selection is for the public drought / program /
             weather / market tools, never a gate on the ledger. Same
             self-gating, RLS-scoped components as the county view's Today. */}
-        {priv && route === 'today' && !selectedCounty && (
+        {example && <ExampleToday />}
+        {priv && route === 'today' && !selectedCounty && !example && (
           <div className="mb-8 space-y-4">
             {/* Block 26: the ranch, first. Its own Suspense — nothing below waits for it. */}
             <Suspense fallback={<RanchMapHold />}><RanchMapCard /></Suspense>
@@ -492,9 +506,10 @@ export async function DashboardShell({
           </div>
         )}
 
-        {(!priv || !selectedCounty) && (
+        {/* Block 49: signed out, Markets and Weather keep the picker at the top — it is how the county changes with no account. */}
+        {(!priv || !selectedCounty || !user) && !example && (
           <section className="mb-6" aria-label="County">
-            <CountySelector selectedCounty={selectedCounty} />
+            <CountySelector selectedCounty={selectedCounty} basePath={priv ? `/${route === 'programs' ? 'weather/programs' : route}` : '/dashboard'} />
           </section>
         )}
 
@@ -529,7 +544,7 @@ export async function DashboardShell({
                   is; the header says so on every page in the app already.
                   Signed out is untouched: the county page's only heading is
                   here, and so is the Share that the public funnel runs on. */}
-              {priv && ranchName && route !== 'today' ? null : priv && ranchName ? (
+              {priv && route !== 'today' && (ranchName || !user) ? null : priv && ranchName ? (
                 // A named outfit is the subject (flow, commit 2); the secondary
                 // line is the OPERATION's county — the home county, the one the
                 // landing and the bottom anchor resolve to — not whichever county

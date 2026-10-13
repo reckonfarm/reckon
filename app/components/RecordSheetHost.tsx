@@ -170,7 +170,9 @@ export default function RecordSheetHost() {
   // Block 11 (11.4): the bar's Record item lives in the root layout and would
   // otherwise offer a tap with no sheet behind it to a signed-out visitor.
   useEffect(() => { setRecordAvailable(signedIn); return () => setRecordAvailable(false) }, [signedIn])
-  if (!signedIn) return null
+  // Block 49 (R1): signed out there is no sheet to mount, but Record still
+  // stands — the pill's tap is the sign-in ask (openLogIt asks first).
+  if (!signedIn) return <RecordFab />
   return (
     <>
       <SyncRefresh />

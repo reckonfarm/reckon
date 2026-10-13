@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { resolveRanchId } from '@/lib/ranch-membership'
@@ -15,6 +14,7 @@ import RanchPeopleCard from './RanchPeopleCard'
 import SignOutButton from './SignOutButton'
 import FeedbackWidget from '@/app/components/FeedbackWidget'
 import ShareButton from '@/app/components/ShareButton'
+import SignInGate from '@/app/components/SignInGate'
 
 // ─── /account (Block 6A) ──────────────────────────────────────────────────────
 // Behind the header's Account button: identity · ranch settings · crew and
@@ -30,7 +30,16 @@ export default async function AccountPage() {
   const ua = (await headers()).get('user-agent') ?? ''
   const installPlatform: InstallPlatform | null = /iPhone|iPad|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : null
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/signin?next=/account')
+  // Block 49 (R1): settings have no example — the sign-in sheet opens here, over one line.
+  if (!user) return (
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        <h1 className="type-page-heading text-ink">Account</h1>
+        <SignInGate returnTo="/account"><p className="mt-2 font-dm-sans text-[17px] text-ink">Sign in to see your account.</p></SignInGate>
+      </main>
+    </>
+  )
   const ranchId = await resolveRanchId(supabase, user.id).catch(() => null)
   return (
     <>

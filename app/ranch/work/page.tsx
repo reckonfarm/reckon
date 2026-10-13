@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import HeldRow from '@/app/components/HeldRow'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
@@ -9,6 +8,7 @@ import { privateTitle } from '@/lib/private-title'
 import { listWork, type WorkKind } from '@/lib/jobs/work'
 import { fmtDay, fmtTime, fmtDuration, dayKey } from '@/lib/jobs/format'
 import InProgressBadge from '@/app/jobs/InProgressBadge'
+import ExampleBanner from '@/app/components/ExampleBanner'
 
 // ─── Ranch → Work (Block 6 · 6J) ──────────────────────────────────────────────
 // A section under Ranch, not a fifth tab: the machines' sessions this season
@@ -27,8 +27,8 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
   const kind = pick(sp.kind)
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=${encodeURIComponent(`/ranch/work${kind === 'all' ? '' : `?kind=${kind}`}`)}`)
-  const res = await listWork(supabase, { kind }).then(rows => ({ ok: true as const, rows })).catch(() => ({ ok: false as const, rows: [] }))
+  // Block 49 (R2): signed out, the example ranch — which has no Scout, so no machine work; the page says so.
+  const res = user ? await listWork(supabase, { kind }).then(rows => ({ ok: true as const, rows })).catch(() => ({ ok: false as const, rows: [] })) : { ok: true as const, rows: [] as Awaited<ReturnType<typeof listWork>> }
   const rows = [...res.rows.filter(r => !r.minor), ...res.rows.filter(r => r.minor)]
   const anyBaling = res.rows.some(r => r.kind === 'baling')
 
@@ -39,6 +39,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        {!user && <ExampleBanner />}
         <p className={EYEBROW}>Ranch</p>
         <h1 className="mt-1 type-page-heading text-ink">Work</h1>
         <p className="mt-1 font-dm-sans text-[16px] text-secondary-ink">Sessions a Scout observed on a machine this season — cutting and baling — each opening its own record. Work recorded by hand is under <Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-semibold text-brand underline underline-offset-2">Activity</Link>.</p>

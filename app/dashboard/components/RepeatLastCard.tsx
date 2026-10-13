@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Card } from '@/app/components/ui/Card'
 import { enqueue, newEventId, useOutbox } from '@/lib/outbox'
+import { isSignInRequired } from '@/lib/sign-in-sheet'
 import { openLogIt } from './LogIt'
 import SaveStatus from './SaveStatus'
 import { EYEBROW } from '@/app/components/ui/Eyebrow'
@@ -49,8 +50,8 @@ function RepeatRow({ last }: { last: LastFeeding }) {
     try {
       enqueue({ id, type: 'hay_fed', bales: last.bales, herd_lot_id: last.lotId, place_id: last.placeId }, label, UNDO_HOLD_MS)
       setMadeId(id)
-    } catch {
-      setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
+    } catch (e) {
+      if (!isSignInRequired(e)) setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
     }
   }
 

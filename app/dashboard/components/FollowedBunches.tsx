@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -22,6 +23,7 @@ export default function FollowedBunches({ lots, followed }: { lots: { id: string
 
   const toggle = async (id: string) => {
     if (busy) return
+    if (requireSignIn()) return
     setBusy(id); setFailed(null)
     try {
       const r = await fetch('/api/herd/follow', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lot_id: id, followed: !set.has(id) }) })

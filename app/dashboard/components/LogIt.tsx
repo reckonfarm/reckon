@@ -19,6 +19,7 @@ import { discard } from '@/lib/outbox'
 import { warning } from '@/lib/brand-colors'
 import { todayKey as ranchToday } from '@/lib/jobs/format'
 import NewBunchInline from '@/app/ranch/cattle/NewBunchInline'
+import { isSignInRequired, requireSignIn, here } from '@/lib/sign-in-sheet'
 import { enqueue, newEventId } from '@/lib/outbox'
 import { setRecordSheetOpen } from '@/lib/record-sheet-state'
 import SaveStatus from './SaveStatus'
@@ -112,6 +113,10 @@ export function draftFromBody(body: Record<string, unknown>, outboxId: string): 
   return { type: body.type as ManualEventType, n1, what: str(body.what), place: str(body.place_id) ?? undefined, fromPlace: str(body.from_place_id), toPlace: str(body.to_place_id), lot: str(body.herd_lot_id), when, asOf: str(body.as_of), outboxId }
 }
 export function openLogIt(draft: Draft) {
+  // Block 49 (R1): signed out, Record opens the sign-in sheet. After signing in
+  // the person lands back on this page — with the feed or preg-check sheet
+  // open when that is what they tapped (the ?record= reader below).
+  if (requireSignIn(draft.type === 'hay_fed' || draft.type === 'preg_check' ? `${here().split(/[?#]/)[0]}?record=${draft.type}` : undefined)) return
   try { window.dispatchEvent(new CustomEvent(LOGIT_OPEN_EVENT, { detail: draft })) } catch { /* SSR */ }
 }
 function readDraft(): Draft | null {
@@ -464,11 +469,13 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
 
   // Block 15: /ranch/preg-check redirects to /today?record=preg_check — the
   // chute is this sheet now. Read once, on a task; the query is a request.
+  // Block 49: ?record=hay_fed opens the feed sheet the same way — the home-screen
+  // "Record feed" shortcut, and where a signed-out Record feed lands after sign-in.
   useEffect(() => {
     if (!sheet || typeof window === 'undefined') return
     const want = new URLSearchParams(window.location.search).get('record')
-    if (want !== 'preg_check') return
-    const t = setTimeout(() => { applyDraft({ type: 'preg_check' }, true); window.history.replaceState(null, '', window.location.pathname) }, 0)
+    if (want !== 'preg_check' && want !== 'hay_fed') return
+    const t = setTimeout(() => { applyDraft({ type: want }, true); window.history.replaceState(null, '', window.location.pathname) }, 0)
     return () => clearTimeout(t)
   }, [sheet, applyDraft])
 
@@ -679,7 +686,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
           ...(when ? { ts: new Date(when).toISOString() } : {}),
         }
         const label = `Preg check · ${checked} checked · ${bred} bred · ${openN} open${doSplit ? ` · ${openN} to ${name}` : ''}`
-        try { enqueue(pbody, label) } catch { setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
+        try { enqueue(pbody, label) } catch (e) { if (!isSignInRequired(e)) setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
         writeLastLot(lot)
         close()
         return
@@ -705,7 +712,7 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
         const klass = splitClass || defaultSplitClass(source.class)
         const id = fixingId ?? eventId.current ?? (eventId.current = newEventId())
         const sbody = splitBody({ id, source, head, name, class: klass, ...(when ? { ts: new Date(when).toISOString() } : {}) })
-        try { enqueue(sbody, splitLabel(source, head, name)) } catch { setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
+        try { enqueue(sbody, splitLabel(source, head, name)) } catch (e) { if (!isSignInRequired(e)) setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.'); setBusy(false); return }
         writeLastLot(lot)
         close()
         return
@@ -750,8 +757,8 @@ export default function LogIt({ launcher = true, sheet = true }: { launcher?: bo
       const label = describe(type, num, what, lotName ? lotLabel(lotName) : null, placeName(placeId), placeName(fromId), placeName(toId), lotName ?? null)
       try {
         enqueue(body, label)
-      } catch {
-        setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
+      } catch (e) {
+        if (!isSignInRequired(e)) setError('This phone is full, so nothing was saved. Free some space on the phone, then record it again.')
         return
       }
       writeLastPlace((type === 'cattle_moved' ? toId : placeId) ?? '')

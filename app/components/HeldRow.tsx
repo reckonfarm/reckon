@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import RowActions, { type RowAction } from './RowActions'
@@ -47,6 +48,7 @@ export default function HeldRow({ label, openHref, fixHref, fixNote, del, delete
   const delAction: RowAction | null = del ? {
     label: 'Delete',
     onSelect: async () => {
+      if (requireSignIn()) return
       const d = DELETES[del.kind]
       const r = await deleteWithUndo({ label, run: () => d.run(del.id), undo: restoreFromTrash(d.table, del.id), after: del.after })
       if (r.ok) {

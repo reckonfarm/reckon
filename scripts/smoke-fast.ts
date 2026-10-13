@@ -22,6 +22,14 @@
 //   8. THE INSTALL ASK waits for a second day and never shows in the
 //      installed app (Block 48, R3).
 //   9. INSIDE FACEBOOK the ask says open Safari, with a Copy link (Block 48).
+//  10. SIGNED OUT, EVERY PRIVATE SCREEN IS THE EXAMPLE RANCH: a 200, the
+//      example banner, and not one request for a ranch table on the network
+//      log (Block 49, R2). Settings open the sign-in sheet instead.
+//  11. SIGNED OUT, RECORD IS THE SIGN-IN SHEET and the outbox stays empty (R1).
+//  12. SIGNED IN, NOTHING OF THE EXAMPLE SHOWS on Today, Ranch or Markets.
+//  13. SIGNED OUT, MARKETS AND WEATHER ARE REAL PAGES at 320 and 390, on the
+//      county the phone remembers, with the one teaser where the ranch would be.
+//  14. THE RECORD FEED SHORTCUT OPENS THE FEED SHEET (?record=hay_fed).
 //
 // Its own account and ranch, swept by scripts/teardown-fixtures.ts like every
 // other fixture: smoke-fast@dryline.farm, SMOKE-FAST ranch.
@@ -32,6 +40,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { guardWorktree, suiteIdentity } from './lib/suite-guard'
+import exampleFixture from '../lib/example-ranch/fixture.json'
 
 for (const f of ['.env', '.env.local', 'e2e/.env.e2e']) {
   const p = resolve(process.cwd(), f)
@@ -295,6 +304,115 @@ async function main() {
       record('inside Facebook, the ask says "Open this in Safari" and offers a Copy link button',
         fb.shown && fb.inApp === 1 && /Open this in Safari to add it to your home screen/.test(fb.text) && fb.copy === 1 && fb.steps === 0,
         fb.shown ? `"${fb.text.slice(0, 110)}" · copy button ${fb.copy} · steps ${fb.steps}` : `not shown (page ${fb.page})`)
+    }
+
+    // 10 — Block 49 (R2): signed out, every private screen is the Dry Creek
+    // example. A fresh context with no cookies; the network log is the proof
+    // that nothing asked for a ranch table — no Supabase REST call and no
+    // /api route that reads one. Settings have no example: the sheet opens.
+    const RANCH_API = /\/api\/(places|herd|activity|ranch|seen|watchlist|home-county|operation-profile|log|trash|members|invitations|devices|setup|profile|jobs|threads)(\/|\?|$)/
+    const anon = () => browser.newContext({ baseURL: BASE, viewport: { width: 390, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+    {
+      const c = await anon()
+      const p = await c.newPage()
+      const asked: string[] = []
+      p.on('request', r => { const u = r.url(); if (/\/rest\/v1\//.test(u) || RANCH_API.test(new URL(u).pathname)) asked.push(new URL(u).pathname) })
+      const placeId = exampleFixture.places[0]?.id, eventId = exampleFixture.events.find(e => e.type === 'hay_fed')?.id
+      const screens = ['/today', '/ranch', '/ranch?tab=ground', '/ranch?tab=record', '/ranch/activity', '/ranch/cattle', '/ranch/hay', '/ranch/work', '/ranch/tally', `/ranch/places/${placeId}`, `/ranch/activity/${eventId}`]
+      const faults: string[] = []
+      for (const path of screens) {
+        const res = await p.goto(path, { waitUntil: 'networkidle' }).catch(() => null)
+        const landed = new URL(p.url()).pathname + new URL(p.url()).search
+        const banner = await p.locator('[data-audit="example-banner"]').count()
+        const status = res?.status() ?? 0
+        if (status !== 200 || landed !== path || banner < 1) faults.push(`${path} → ${status} at ${landed}, banner ${banner}`)
+      }
+      await p.goto('/account', { waitUntil: 'networkidle' }).catch(() => {})
+      const gate = await p.locator('[data-audit="sign-in-gate"]').count()
+      const sheet = await p.locator('[data-audit="sign-in-sheet"]').waitFor({ state: 'visible', timeout: 6_000 }).then(() => true).catch(() => false)
+      if (gate !== 1 || !sheet) faults.push(`/account gate ${gate}, sheet ${sheet}`)
+      record('signed out, every private screen is the example ranch — 200, the example banner, and not one ranch-table request on the network log; settings open the sign-in sheet',
+        faults.length === 0 && asked.length === 0,
+        `${screens.length} screens${faults.length ? ` · ${faults.join(' · ')}` : ''} · ranch requests ${asked.length ? asked.slice(0, 4).join(', ') : 'none'} · account → sheet ${sheet}`)
+      await c.close()
+    }
+
+    // 11 — Block 49 (R1): signed out, Record is the sign-in sheet, and nothing
+    // reaches the outbox. The tally's Save is the same ask.
+    {
+      const c = await anon()
+      const p = await c.newPage()
+      await p.goto('/today', { waitUntil: 'domcontentloaded' })
+      await p.locator('[data-audit="example-today"]').waitFor({ timeout: 15_000 }).catch(() => {})
+      const fab = await p.locator('[data-audit="record-fab"]').waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
+      await p.locator('[data-audit="record-fab"]').click().catch(() => {})
+      const sheet = await p.locator('[data-audit="sign-in-sheet"]').waitFor({ state: 'visible', timeout: 6_000 }).then(() => true).catch(() => false)
+      const recordSheet = await p.locator('[data-audit="record-sheet"]').count()
+      const outbox = await p.evaluate("(function(){ try { return localStorage.getItem('dryline_outbox_v1') } catch (e) { return 'unreadable' } })()") as string | null
+      // Swipe the sheet away (tap the dim) and try a save on the count screen.
+      await p.keyboard.press('Escape').catch(() => {})
+      await p.goto('/ranch/tally', { waitUntil: 'domcontentloaded' })
+      await p.getByRole('button', { name: '+1' }).first().click().catch(() => {})
+      await p.locator('[data-audit="tally-save"]').click().catch(() => {})
+      const tallySheet = await p.locator('[data-audit="sign-in-sheet"]').waitFor({ state: 'visible', timeout: 6_000 }).then(() => true).catch(() => false)
+      const outbox2 = await p.evaluate("(function(){ try { return localStorage.getItem('dryline_outbox_v1') } catch (e) { return 'unreadable' } })()") as string | null
+      const empty = (v: string | null) => v == null || v === '[]'
+      record('signed out, Record and a count\'s Save open the sign-in sheet and the outbox stays empty',
+        fab && sheet && recordSheet === 0 && empty(outbox) && tallySheet && empty(outbox2),
+        `Record pill ${fab} · sheet on Record ${sheet} · record sheet ${recordSheet} · sheet on Save ${tallySheet} · outbox ${empty(outbox2) ? 'empty' : (outbox2 ?? '').slice(0, 40)}`)
+      await c.close()
+    }
+
+    // 12 — Block 49: signed in, nothing of the example or the teasers shows.
+    // (Byte-for-byte against the previous deploy cannot be read from one run;
+    // this reads that the signed-in landmarks stand and no example piece does.)
+    {
+      const faults: string[] = []
+      for (const [path, landmark] of [['/today', 'main [role="tablist"][aria-label="Ledgers"]'], ['/ranch', '[data-audit="ranch-cattle"]'], ['/markets', '[data-audit="markets-title"]'], ['/weather', '[data-audit="weather-title"], [data-audit="county-control"]']] as const) {
+        await page.goto(path, { waitUntil: 'domcontentloaded' })
+        const ok = await page.locator(landmark).first().waitFor({ timeout: 20_000 }).then(() => true).catch(() => false)
+        const example = await page.locator('[data-audit="example-banner"], [data-audit="example-today"], [data-audit^="locked-"], [data-audit="sign-in-gate"]').count()
+        if (!ok || example > 0) faults.push(`${path}: landmark ${ok}, example pieces ${example}`)
+      }
+      record('signed in, Today, Ranch, Markets and Weather stand as before — their landmarks painted, no example banner, no teaser', faults.length === 0, faults.length ? faults.join(' · ') : 'four screens, nothing of the example')
+    }
+
+    // 13 — Block 49 (R1): signed out, Markets and Weather are real pages on the
+    // county the phone remembers (the cookie the picker writes), at 320 and 390,
+    // with the one teaser standing where the ranch's own numbers would be.
+    {
+      const faults: string[] = []
+      for (const width of [320, 390]) {
+        const c = await browser.newContext({ baseURL: BASE, viewport: { width, height: 844 }, extraHTTPHeaders: BYPASS ? { 'x-vercel-protection-bypass': BYPASS, 'x-vercel-set-bypass-cookie': 'true' } : {} })
+        await c.addCookies([{ name: 'dryline_county', value: '30069', url: BASE }])
+        const p = await c.newPage()
+        await p.goto('/markets', { waitUntil: 'domcontentloaded' })
+        const mTitle = await p.locator('[data-audit="markets-title"]').waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+        const mBody = await p.locator('[data-audit="price-history-section"], [data-audit="reported-sale"], [data-audit="locked-markets-bunches"]').first().waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+        const mTeaser = await p.locator('[data-audit="locked-markets-bunches"]').count()
+        const mOverflow = await p.evaluate('document.documentElement.scrollWidth - window.innerWidth') as number
+        await p.goto('/weather', { waitUntil: 'domcontentloaded' })
+        const wTitle = await p.locator('[data-audit="weather-title"]').waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+        const wBody = await p.locator('[data-audit="weather-forecast"], [data-audit="weather-estimate"]').first().waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+        const wTeaser = await p.locator('[data-audit="locked-weather-places"]').count()
+        const wOverflow = await p.evaluate('document.documentElement.scrollWidth - window.innerWidth') as number
+        const wText = ((await p.locator('[data-audit="weather-title"]').innerText().catch(() => '')) ?? '')
+        if (!mTitle || !mBody || mTeaser !== 1 || mOverflow > 0) faults.push(`${width} markets: title ${mTitle} body ${mBody} teaser ${mTeaser} overflow ${mOverflow}`)
+        if (!wTitle || !wBody || wTeaser !== 1 || wOverflow > 0 || !/Petroleum/.test(wText)) faults.push(`${width} weather: title ${wTitle} (${wText.slice(0, 40)}) body ${wBody} teaser ${wTeaser} overflow ${wOverflow}`)
+        await c.close()
+      }
+      record('signed out, Markets and Weather render real content at 320 and 390 on the remembered county, each with its one teaser and no sideways scroll', faults.length === 0, faults.length ? faults.join(' · ') : 'both widths · Petroleum County · teasers 1 and 1')
+    }
+
+    // 14 — Block 49 (fold-in 1): the Record feed shortcut opens the feed sheet itself.
+    {
+      await page.goto('/today?record=hay_fed&source=shortcut', { waitUntil: 'domcontentloaded' })
+      const up = await page.locator('[data-audit="record-sheet"]').waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)
+      const feed = await page.getByRole('button', { name: 'Record feeding', exact: true }).count()
+      const cleaned = new URL(page.url()).search
+      record('the Record feed shortcut opens the feed sheet directly (?record=hay_fed), and the address is cleaned', up && feed === 1 && cleaned === '', `sheet ${up} · feed Save ${feed} · search "${cleaned}"`)
+      await page.getByRole('button', { name: 'Cancel' }).click().catch(() => {})
+      await page.evaluate("(function(){ try { localStorage.removeItem('manual_log_draft_v1') } catch (e) {} })()")
     }
 
     // 3 — a record saves and reaches Sent

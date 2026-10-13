@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
@@ -57,6 +58,7 @@ export default function HomeCountyButton({ countyFips, countyName }: Props) {
   }, [countyFips])
 
   async function toggle() {
+    if (requireSignIn()) return
     setBusy(true)
     // After either write: tell the bottom bar (event) and re-render the
     // server-side orientation line (refresh keeps client view state — the

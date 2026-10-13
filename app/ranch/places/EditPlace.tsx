@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/app/components/ui/Card'
@@ -104,6 +105,7 @@ export default function EditPlace({ place, children }: { place: EditablePlace; c
   }, [])
 
   const send = async (body: Record<string, unknown>) => {
+    if (requireSignIn()) return
     setBusy(true)
     setError(null)
     try {

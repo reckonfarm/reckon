@@ -1,5 +1,6 @@
 'use client'
 
+import { requireSignIn } from '@/lib/sign-in-sheet'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-browser'
@@ -62,6 +63,7 @@ export default function WatchlistButton({ countyId, countyName }: Props) {
   }, [countyId])
 
   async function toggle() {
+    if (requireSignIn()) return
     setBusy(true)
     const method = watching ? 'DELETE' : 'POST'
     await fetch('/api/watchlist', {

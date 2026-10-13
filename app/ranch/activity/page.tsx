@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import SiteHeader from '@/app/components/SiteHeaderServer'
 import { Card } from '@/app/components/ui/Card'
@@ -17,6 +16,8 @@ import { getChangesSince } from '@/lib/since'
 import FilterShell from './ActivityFilters'
 import ActivityGroups from './ActivityGroups'
 import { Select } from '@/app/components/ui/Field'
+import ExampleBanner from '@/app/components/ExampleBanner'
+import { exampleActivityPage, exampleFilterOptions } from '@/lib/example-ranch'
 
 // ─── /activity — everything recorded on the ranch, in order, findable (Block 5A) ──
 // Chronological by WORK time, newest first, paginated by keyset; filterable by
@@ -36,17 +37,19 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect(`/signin?next=${encodeURIComponent('/ranch/activity' + qs({ actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to) }))}`)
   const filters: ActivityFilters = { actor: pick(sp.actor), place: pick(sp.place), lot: pick(sp.lot), from: pick(sp.from), to: pick(sp.to), since: pick(sp.since) }
+  // Block 49 (R2): signed out, the record is the Dry Creek example's — the same
+  // page, the same filters, from the committed fixture; no ranch table is read.
+  const example = !user
   // Block 6A: /jobs → /ranch/activity?source=machine — the machines' sessions (jobs) under the record.
   if (pick(sp.source) === 'machine') return <MachineActivity user={user} />
   // Block 32: what this render read — taken before the reads below start.
-  const through = await ledgerThrough(supabase)
+  const through = user ? await ledgerThrough(supabase) : null
   // Five states, five copies (Block 6B): no records · no filter matches · request failed · no permission (not on a ranch) · (no coverage belongs to markets).
-  const [pageRes, options] = await Promise.all([
+  const [pageRes, options] = user ? await Promise.all([
     listActivity(supabase, user.id, filters, pick(sp.cursor)).then(p => ({ ok: true as const, page: p })).catch(() => ({ ok: false as const, page: null })),
     filterOptions(supabase, user.id).catch(() => ({ people: [], places: [], lots: [] })),
-  ])
+  ]) : [{ ok: true as const, page: exampleActivityPage(filters) }, exampleFilterOptions()]
   const failed = !pageRes.ok
   const page = pageRes.page
 
@@ -55,7 +58,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   // job ids, on the unfiltered listing — a job carries no actor, place or lot to filter by.
   // Within this page's window only: on a later page, sessions newer than its newest row are
   // on the page before; sessions older than its oldest row are on the page after.
-  const work = !filtering && page ? await listWork(supabase, { limit: 60 }).catch(() => []) : []
+  const work = !filtering && page && user ? await listWork(supabase, { limit: 60 }).catch(() => []) : []
   const newestTs = page?.rows[0]?.ts ?? null, oldestTs = page?.rows[page.rows.length - 1]?.ts ?? null
   const workRows = work.filter(w => (!pick(sp.cursor) || (newestTs != null && w.startedAt <= newestTs)) && (!page?.nextCursor || (oldestTs != null && w.startedAt >= oldestTs)))
   const heading = filters.place && options.places.find(p => p.id === filters.place)
@@ -80,7 +83,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
-        <LedgerStamp through={through} />
+        {example ? <ExampleBanner /> : <LedgerStamp through={through} />}
         <p className={EYEBROW}>The record</p>
         <h1 className="mt-1 type-page-heading text-ink">{heading}</h1>
         {/* Block 12 (12.7): Work left the Ranch hub — machine work is the record's
@@ -131,7 +134,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             {/* Block 32 (found past 50 rows): the list is paged by WORK time, so the newest
                 made-at can sit on page 1 while Reviewed is on the last — send the newest
                 made-at of everything since you checked, the one read the card and the map share. */}
-            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={(await getChangesSince(supabase, user.id))?.newest ?? page.rows.map(r => r.created_at).sort().pop() ?? null} />}
+            {filters.since && !page.nextCursor && page.rows.length > 0 && <ReviewedButton count={page.rows.length} through={(user ? (await getChangesSince(supabase, user.id))?.newest : null) ?? page.rows.map(r => r.created_at).sort().pop() ?? null} />}
             {page.nextCursor && (
               <Link href={`/activity${qs(filters, { cursor: page.nextCursor })}`} className="mt-4 inline-flex min-h-[52px] w-full items-center justify-center rounded-lg border border-control-border bg-surface font-dm-sans text-[17px] font-semibold text-ink" data-audit="activity-older">
                 More days →
@@ -146,15 +149,17 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
 // The machines' side of the record: jobs derived from connected machines, the
 // same list the Jobs view carries, under the record's own heading.
-function MachineActivity({ user }: { user: { id: string } }) {
+function MachineActivity({ user }: { user: { id: string } | null }) {
   return (
     <>
       <SiteHeader />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-5" data-audit="column">
+        {!user && <ExampleBanner />}
         <p className={EYEBROW}>The record · machines</p>
         <h1 className="mt-1 type-page-heading text-ink">Jobs recorded by connected machines</h1>
         <p className="mt-1"><Link href="/ranch/activity" className="inline-flex min-h-[48px] items-center font-dm-sans text-[16px] font-semibold text-brand underline underline-offset-2">Activity</Link></p>
-        <div className="mt-4" data-audit="machine-activity"><JobsView user={user} /></div>
+        {/* Block 49: the example ranch has no Scout on a machine, so there is nothing to list. */}
+        {user ? <div className="mt-4" data-audit="machine-activity"><JobsView user={user} /></div> : <Card className="mt-4 p-5" data-audit="machine-activity-example"><p className="font-dm-sans text-[17px] text-ink">No machine sessions on the example ranch.</p></Card>}
       </main>
     </>
   )

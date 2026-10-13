@@ -4,6 +4,7 @@ import "./globals.css";
 import BottomTabBar from '@/app/components/BottomTabBar'
 import InAppBrowserBanner from '@/app/components/InAppBrowserBanner'
 import InstallNudge from '@/app/components/InstallNudge'
+import SignInSheet from '@/app/components/SignInSheet'
 import { Suspense } from 'react'
 import StandaloneCookie from '@/app/components/StandaloneCookie'
 import RecordSheetHost from '@/app/components/RecordSheetHost'
@@ -86,6 +87,8 @@ export default function RootLayout({
             is awake to hear it. Caught here and held for the install buttons. */}
         <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__dlInstall=e})" }} />
         <StandaloneCookie />
+        {/* Block 49 (R1): the one sign-in sheet; every write control opens it when there is no session. */}
+        <Suspense fallback={null}><SignInSheet /></Suspense>
         <InAppBrowserBanner />
         {children}
         <RecordSheetHost />

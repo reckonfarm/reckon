@@ -49,11 +49,14 @@ function friendlyError(message: string, ctx: 'signin' | 'signup' | 'otp'): strin
 export default function SignInForm({
   next,
   initialMode,
+  inSheet = false,
 }: {
   // Post-auth landing — validated server-side in page.tsx (internal path or /watchlist).
   next: string
   // 'signup' opens straight in create-account mode (the FrontDoor CTA path).
   initialMode: 'signin' | 'signup'
+  // Block 49: inside the sign-in sheet the page is still behind it — no "Back to Dryline".
+  inSheet?: boolean
 }) {
 
   // Top-level method. Password is the primary path; OTP is the fallback.
@@ -275,9 +278,9 @@ export default function SignInForm({
           >
             ← Use a password instead
           </button>
-          <Link href="/" className={LINK_CLS}>
+          {!inSheet && <Link href="/" className={LINK_CLS}>
             Back to Dryline
-          </Link>
+          </Link>}
         </div>
       </div>
     )
@@ -411,9 +414,9 @@ export default function SignInForm({
         >
           Email me a code instead
         </button>
-        <Link href="/" className={LINK_CLS}>
+        {!inSheet && <Link href="/" className={LINK_CLS}>
           Back to Dryline
-        </Link>
+        </Link>}
       </div>
     </div>
   )
